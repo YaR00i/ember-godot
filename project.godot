@@ -1,0 +1,34 @@
+; Engine configuration file.
+; Godot 4.3+ Forward+ — many OmniLight3D shadows without Three cube samplers.
+; Pack path is sibling joi-conductor/content/ember (see ember_pack.gd).
+
+config_version=5
+
+[application]
+
+config/name="Ember Godot"
+config/description="Lighting spike for Ember voxel maps. Authoring stays in JOI content/ember."
+run/main_scene="res://scenes/spike.tscn"
+config/features=PackedStringArray("4.3", "Forward Plus")
+config/icon="res://icon.svg"
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+window/stretch/mode="canvas_items"
+
+[ember]
+
+; Absolute path wins. Empty = ../joi-conductor/content/ember next to this repo.
+pack_path=""
+map_id="fan_town"
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
+lights_and_shadows/directional_shadow/size=4096
+lights_and_shadows/positional_shadow/atlas_size=4096
+lights_and_shadows/positional_shadow/soft_shadow_filter_quality=2
+anti_aliasing/quality/msaa_3d=2
+textures/vram_compression/import_etc2_astc=true

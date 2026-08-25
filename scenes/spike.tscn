@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://ember_spike"]
+
+[ext_resource type="Script" path="res://scripts/spike.gd" id="1_spike"]
+
+[node name="Spike" type="Node3D"]
+script = ExtResource("1_spike")

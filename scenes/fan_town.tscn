@@ -1,0 +1,20 @@
+[gd_scene load_steps=2 format=3 uid="uid://ember_fan_town"]
+
+[ext_resource type="Script" path="res://scripts/fan_town.gd" id="1_fan"]
+
+[node name="FanTown" type="Node3D"]
+script = ExtResource("1_fan")
+map_id = "fan_town"
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="Gate" type="Label" parent="CanvasLayer"]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 720.0
+offset_bottom = 280.0
+theme_override_colors/font_color = Color(0.95, 0.88, 0.72, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.7)
+theme_override_constants/shadow_offset_x = 1
+theme_override_font_sizes/font_size = 16
+text = "Loading fan_town…"
