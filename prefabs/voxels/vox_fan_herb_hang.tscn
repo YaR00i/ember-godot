@@ -1,0 +1,14 @@
+[gd_scene format=3 uid="uid://7w0qken7ng3b"]
+
+[ext_resource type="Script" path="res://scripts/ember_voxel_prop.gd" id="1_los3k"]
+[ext_resource type="ArrayMesh" path="res://prefabs/voxels/meshes/vox_fan_herb_hang_block.res" id="2_jfg5w"]
+
+[node name="vox_fan_herb_hang" type="Node3D" unique_id=2103546171]
+script = ExtResource("1_los3k")
+model_id = "vox_fan_herb_hang"
+metadata/ember_source_signature = "edad46e0f7c43ebd7ab357afdb49d47eb8910479e5d9f783e5feba0182d5a635"
+
+[node name="Mesh" type="MeshInstance3D" parent="." unique_id=565750524]
+transform = Transform3D(16, 0, 0, 0, 16, 0, 0, 0, 16, -8, 0, -8)
+mesh = ExtResource("2_jfg5w")
+metadata/ember_block_position = Vector3(-0.5, 0, -0.5)

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="EmberCombatLootTableResource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_loot_table_resource.gd" id="1_table"]
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_loot_entry_resource.gd" id="2_entry"]
+
+[sub_resource type="Resource" id="LootEntry_herb"]
+script = ExtResource("2_entry")
+item_id = "herb"
+chance_percent = 100.0
+minimum_count = 1
+maximum_count = 1
+
+[resource]
+script = ExtResource("1_table")
+table_id = "swamp_spirit_drops"
+display_name = "Осколки болотного духа"
+description = "Гарантированная трава для проверки полного reward-потока."
+accent_color = Color(0.36, 0.82, 0.72, 1)
+entries = Array[ExtResource("2_entry")]([SubResource("LootEntry_herb")])

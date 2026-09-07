@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EmberCombatActionResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_action_resource.gd" id="1_action"]
+
+[resource]
+script = ExtResource("1_action")
+action_id = "gust"
+display_name = "Порыв"
+hint = "Толкает цель в соседнюю область."
+requirements_text = "Враг должен быть в пределах 2 клеток и в линии обзора. При попадании толкает, только если сила 1 выше устойчивости цели и путь свободен."
+menu_group = 2
+element = 5
+effect = 5
+power = 1
+mp_cost = 4
+accuracy_modifier = 8
+scaling = 2
+delay = 90
+range_cells = 2
+force = 1
+ui_color = Color(0.65098, 0.909804, 0.737255, 1)

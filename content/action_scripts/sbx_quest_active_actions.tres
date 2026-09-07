@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3 uid="uid://b87ytnnx1lyyb"]
+
+[ext_resource type="Script" uid="uid://sctw08epm1a3" path="res://scripts/ember_action_resource.gd" id="1_kldfm"]
+
+[resource]
+script = ExtResource("1_kldfm")
+action_id = "sbx_quest_active_actions"
+document = {
+"id": "sbx_quest_active_actions",
+"nameRu": "Новая цепочка",
+"steps": [{
+"count": 10,
+"itemId": "coin",
+"type": "give_item"
+}]
+}

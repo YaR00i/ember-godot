@@ -1,0 +1,25 @@
+[gd_scene format=3 uid="uid://qbdog2vd6vpa"]
+
+[ext_resource type="Script" path="res://scripts/ember_voxel_prop.gd" id="1_b858h"]
+[ext_resource type="ArrayMesh" path="res://prefabs/voxels/meshes/vox_fan_chandelier_block.res" id="2_rnmsu"]
+
+[node name="vox_fan_chandelier" type="Node3D" unique_id=1318388015]
+script = ExtResource("1_b858h")
+model_id = "vox_fan_chandelier"
+metadata/ember_source_signature = "fb506e2d64805d03bdc9f8dd4867d18aac0c92288939593affd199a56f8c4cdd"
+
+[node name="Mesh" type="MeshInstance3D" parent="." unique_id=598823195]
+transform = Transform3D(16, 0, 0, 0, 16, 0, 0, 0, 16, -8, 0, -8)
+cast_shadow = 0
+mesh = ExtResource("2_rnmsu")
+metadata/ember_block_position = Vector3(-0.5, 0, -0.5)
+
+[node name="Omni" type="OmniLight3D" parent="." unique_id=1840785320]
+transform = Transform3D(16, 0, 0, 0, 16, 0, 0, 0, 16, -0.014512062, 13.014512, -0.014512062)
+light_color = Color(1, 0.69, 0.34, 1)
+light_energy = 19.216814
+light_specular = 0.0
+omni_range = 41.6
+omni_attenuation = 1.05
+metadata/ember_block_position = Vector3(-0.0009070039, 0.813407, -0.0009070039)
+metadata/ember_range_blocks = 2.6

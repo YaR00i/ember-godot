@@ -1,0 +1,26 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/fan_town.gd" id="1_play"]
+[ext_resource type="Script" path="res://scripts/ember_map_loader.gd" id="2_map"]
+
+[node name="FanTownInn" type="Node3D"]
+script = ExtResource("1_play")
+map_id = "fan_town_inn"
+
+[node name="Map" type="Node3D" parent="."]
+script = ExtResource("2_map")
+map_id = "fan_town_inn"
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="Gate" type="Label" parent="CanvasLayer"]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 760.0
+offset_bottom = 112.0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.9)
+theme_override_constants/shadow_offset_x = 2
+theme_override_constants/shadow_offset_y = 2
+theme_override_font_sizes/font_size = 18
+text = "Ember Godot — fan_town_inn"

@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="EmberCombatEffectResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_effect_resource.gd" id="1_effect"]
+
+[resource]
+script = ExtResource("1_effect")
+effect_id = "ice_barrier_cell"
+display_name = "Ледяная преграда"
+description = "До конца боя делает пустую клетку непроходимой и помечает её Frozen."
+operation = 3
+block_mode = 2
+add_cell_tags = PackedStringArray("frozen")
+ui_color = Color(0.662745, 0.933333, 1, 1)

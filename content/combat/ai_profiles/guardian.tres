@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="EmberCombatAiProfileResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_ai_profile_resource.gd" id="1_profile"]
+
+[resource]
+script = ExtResource("1_profile")
+profile_id = "guardian"
+display_name = "Осторожный страж"
+description = "Держит ближайшую угрозу и переходит в защиту, когда здоровье опускается до 35%."
+target_priority = 2
+action_priority = 0
+prefer_elemental_reactions = false
+positioning_behavior = 1
+low_hp_threshold_percent = 35
+low_hp_behavior = 1
+accent_color = Color(0.784314, 0.356863, 0.423529, 1)

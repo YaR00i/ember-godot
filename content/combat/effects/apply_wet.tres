@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="EmberCombatEffectResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_effect_resource.gd" id="1_effect"]
+
+[resource]
+script = ExtResource("1_effect")
+effect_id = "apply_wet"
+display_name = "Наложить Wet"
+description = "Накладывает Wet на выбранного бойца с учётом его устойчивости."
+status_id = "wet"
+status_duration = 2
+ui_color = Color(0.396078, 0.811765, 0.882353, 1)

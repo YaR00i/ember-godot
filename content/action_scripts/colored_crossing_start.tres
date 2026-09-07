@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="EmberActionResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_action_resource.gd" id="1_action"]
+
+[resource]
+script = ExtResource("1_action")
+action_id = "colored_crossing_start"
+document = {
+"id": "colored_crossing_start",
+"nameRu": "Начать засаду у цветной переправы",
+"steps": [{
+"dialogueId": "sandbox_notice_talk",
+"type": "talk"
+}, {
+"encounterId": "colored_crossing_demo",
+"type": "start_battle"
+}]
+}

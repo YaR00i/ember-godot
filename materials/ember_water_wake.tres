@@ -1,0 +1,11 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://shaders/ember_water_wake.gdshader" id="1_wake"]
+
+[resource]
+render_priority = 4
+shader = ExtResource("1_wake")
+shader_parameter/wake_shadow = Color(0.42, 0.86, 0.82, 1)
+shader_parameter/wake_color = Color(0.88, 1, 0.93, 1)
+shader_parameter/alpha_scale = 0.58
+shader_parameter/animation_fps = 3.0

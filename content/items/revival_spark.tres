@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="EmberItemResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_item_resource.gd" id="1_item"]
+
+[resource]
+script = ExtResource("1_item")
+item_id = "revival_spark"
+definition = {
+"combatRange": 2.0,
+"iconId": "potion",
+"id": "revival_spark",
+"kind": "consumable",
+"name": "Revival spark",
+"nameRu": "Искра возвращения",
+"notesRu": "Возвращает павшего союзника с 1 HP.",
+"rarity": "rare",
+"reviveHp": 1.0,
+"sellPrice": 0.0,
+"slot": "none",
+"stackMax": 3.0,
+"tags": ["revive", "forge"],
+"unsellable": true,
+"useIn": "both"
+}

@@ -58,10 +58,7 @@ func _try_pack_lantern(origin: Vector3) -> bool:
 	var mi := MeshInstance3D.new()
 	mi.name = "Lantern"
 	mi.mesh = mesh
-	var mat := StandardMaterial3D.new()
-	mat.vertex_color_use_as_albedo = true
-	mat.roughness = 0.8
-	mi.material_override = mat
+	mi.material_override = EmberLights.voxel_material()
 	mi.position = origin
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	add_child(mi)

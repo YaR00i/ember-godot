@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3 uid="uid://d0ogc586mk4p8"]
+
+[ext_resource type="Script" uid="uid://sctw08epm1a3" path="res://scripts/ember_action_resource.gd" id="1_xcbwu"]
+
+[resource]
+script = ExtResource("1_xcbwu")
+action_id = "sandbox_chain"
+document = {
+"id": "sandbox_chain",
+"nameRu": "Цепочка песочницы",
+"steps": [{
+"dialogueId": "sandbox_notice_talk",
+"type": "talk"
+}, {
+"count": 1.0,
+"itemId": "coin",
+"type": "give_item"
+}, {
+"flag": "sandbox_chain_done",
+"type": "set_flag",
+"value": true
+}, {
+"sec": 0.0,
+"type": "wait"
+}]
+}

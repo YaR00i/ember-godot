@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3 uid="uid://bieoko6ebstt3"]
+
+[ext_resource type="Script" uid="uid://sctw08epm1a3" path="res://scripts/ember_action_resource.gd" id="1_flvc8"]
+
+[resource]
+script = ExtResource("1_flvc8")
+action_id = "sbx_quest_done_actions"
+document = {
+"id": "sbx_quest_done_actions",
+"nameRu": "События задания · sbx_quest_done",
+"steps": [{
+"shopId": "village_kiosk",
+"type": "open_shop"
+}]
+}

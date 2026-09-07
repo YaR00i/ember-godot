@@ -1,0 +1,42 @@
+[gd_resource type="Resource" script_class="EmberShopResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_shop_resource.gd" id="1_sdsf3"]
+
+[resource]
+script = ExtResource("1_sdsf3")
+shop_id = "village_kiosk"
+definition = {
+"id": "village_kiosk",
+"listings": Array[Dictionary]([{
+"buyPrice": 6,
+"itemId": "qingxin_tea",
+"sellPrice": 3,
+"stock": 6
+}, {
+"buyPrice": 4,
+"itemId": "meat_bun",
+"sellPrice": 2,
+"stock": 8
+}, {
+"buyPrice": 3,
+"itemId": "herb",
+"sellPrice": 1,
+"stock": 12
+}, {
+"buyPrice": 12,
+"itemId": "parlor_talisman",
+"sellPrice": 6,
+"stock": 2
+}, {
+"buyPrice": 5,
+"itemId": "almond_tofu",
+"sellPrice": 2,
+"stock": 6
+}, {
+"buyPrice": 10,
+"itemId": "traveler_tunic",
+"sellPrice": 5,
+"stock": 2
+}]),
+"nameRu": "Киоск деревни"
+}

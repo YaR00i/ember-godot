@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="EmberBattlefieldResource" format=3 uid="uid://kue2l2bqc1ax"]
+
+[ext_resource type="Script" uid="uid://dlbxo7lha48wa" path="res://scripts/prototypes/ember_battlefield_resource.gd" id="1_field"]
+[ext_resource type="Resource" uid="uid://34tfducftaai" path="res://content/combat/surfaces/colored_crossing_surface.tres" id="2_bqvam"]
+
+[resource]
+script = ExtResource("1_field")
+field_id = "colored_crossing"
+display_name = "Цветная переправа"
+preview_intro = "E2 · Цветная переправа: переместитесь, затем используйте правило панели."
+visual_surface = ExtResource("2_bqvam")
+terrain_kinds = PackedByteArray(0, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 2, 2, 2, 0, 0, 0, 0, 0, 2, 0, 0, 0)
+elevations = PackedInt32Array(1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+blocked = PackedByteArray(0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0)
+groups = PackedStringArray("", "tide", "tide", "", "", "", "", "", "tide", "tide", "tide", "tide", "", "", "", "", "tide", "tide", "tide", "", "", "", "", "ember", "ember", "ember", "", "", "", "", "", "ember", "", "", "")
+party_deployment_cells = Array[Vector2i]([Vector2i(1, 2), Vector2i(0, 3), Vector2i(0, 1), Vector2i(0, 4)])
+enemy_deployment_cells = Array[Vector2i]([Vector2i(5, 1), Vector2i(5, 3), Vector2i(6, 2)])

@@ -1,0 +1,86 @@
+[gd_resource type="Resource" script_class="EmberQuestResource" format=3 uid="uid://bgp2pgux7lcwe"]
+
+[ext_resource type="Script" uid="uid://mu1tcaiwiubc" path="res://scripts/ember_quest_resource.gd" id="1_quest"]
+
+[resource]
+script = ExtResource("1_quest")
+quest_id = "sandbox_notice_quest"
+definition = {
+"editorLayout": {
+"objective:objective_2": {
+"x": 1000.0,
+"y": -40.0
+},
+"objective:objective_3": {
+"x": 1440.0,
+"y": 360.0
+},
+"objective:objective_4": {
+"x": 2000.0,
+"y": 500.0
+},
+"objective:objective_5": {
+"x": 2640.0,
+"y": 760.0
+},
+"objective:read_notice": {
+"x": 500.0,
+"y": -60.0
+},
+"quest_root": {
+"x": -120.0,
+"y": 340.0
+}
+},
+"id": "sandbox_notice_quest",
+"objectives": [{
+"counterEventId": "",
+"flagId": "sandbox_notice_read",
+"id": "read_notice",
+"optional": false,
+"progressMode": "flag",
+"requiredCount": 1,
+"requiresObjectiveIds": Array[String]([]),
+"textRu": "Прочитать табличку у южного входа"
+}, {
+"counterEventId": "",
+"flagId": "sandbox_notice_quest_objective_2",
+"id": "objective_2",
+"optional": false,
+"progressMode": "flag",
+"requiredCount": 1,
+"requiresObjectiveIds": Array[String](["read_notice"]),
+"textRu": "получить 10 монет"
+}, {
+"counterEventId": "",
+"flagId": "sandbox_notice_quest_objective_3",
+"id": "objective_3",
+"optional": false,
+"progressMode": "flag",
+"requiredCount": 1,
+"requiresObjectiveIds": Array[String](["objective_2"]),
+"textRu": "Новая цель"
+}, {
+"counterEventId": "",
+"flagId": "sandbox_notice_quest_objective_4",
+"id": "objective_4",
+"optional": false,
+"progressMode": "flag",
+"requiredCount": 1,
+"requiresObjectiveIds": Array[String](["objective_3"]),
+"textRu": "Новая цель"
+}, {
+"counterEventId": "",
+"flagId": "sandbox_notice_quest_objective_5",
+"id": "objective_5",
+"optional": false,
+"progressMode": "flag",
+"requiredCount": 1,
+"requiresObjectiveIds": Array[String](["objective_4"]),
+"textRu": "битва"
+}],
+"showWhenAvailable": true,
+"statusFlagId": "sandbox_notice_status",
+"summaryRu": "Проверь первую сюжетную зацепку в песочнице и посмотри, как мир отмечает выполненную цель.",
+"titleRu": "Записка у ворот"
+}

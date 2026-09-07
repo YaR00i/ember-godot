@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3 uid="uid://djy63f0mmus1k"]
+
+[ext_resource type="Script" uid="uid://sctw08epm1a3" path="res://scripts/ember_action_resource.gd" id="1_wvmfj"]
+
+[resource]
+script = ExtResource("1_wvmfj")
+action_id = "sbx_bush_sw_actions"
+document = {
+"id": "sbx_bush_sw_actions",
+"nameRu": "Новая цепочка",
+"steps": [{
+"encounterId": "colored_crossing_demo",
+"type": "start_battle"
+}]
+}

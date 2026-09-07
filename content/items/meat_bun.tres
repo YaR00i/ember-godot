@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EmberItemResource" format=3 uid="uid://ci1loii4a8sn6"]
+
+[ext_resource type="Script" uid="uid://c47gk0wemno2a" path="res://scripts/ember_item_resource.gd" id="1_0i4in"]
+
+[resource]
+script = ExtResource("1_0i4in")
+item_id = "meat_bun"
+definition = {
+"hpRestore": 18.0,
+"iconId": "bun",
+"id": "meat_bun",
+"kind": "consumable",
+"name": "Meat bun",
+"nameRu": "Мясная булочка",
+"rarity": "common",
+"sellPrice": 2.0,
+"slot": "none",
+"stackMax": 20.0,
+"tags": ["food"],
+"useIn": "explore"
+}

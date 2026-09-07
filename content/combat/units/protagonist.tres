@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="EmberCombatUnitResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_unit_resource.gd" id="1_unit"]
+
+[resource]
+script = ExtResource("1_unit")
+unit_id = "protagonist"
+display_name = "Искатель"
+description = "Главный герой: ближний бой, огонь, мобильность и рискованные решения. Имя можно сменить позже без изменения стабильного ID."
+max_hp = 20
+max_mp = 36
+strength = 8
+magic = 6
+defense = 5
+resistance = 4
+speed = 11
+accuracy = 92
+luck = 8
+move_range = 3
+jump_height = 2
+weight_class = 1
+fire_resistance = 10
+action_ids = PackedStringArray("strike", "kindle", "forge_leap", "overheat", "steam_breach", "lift_throw", "defend")
+battle_color = Color(1, 0.67451, 0.352941, 1)
+prototype_roster_order = 3
+prototype_zone = 0
+prototype_next_at = 30.0

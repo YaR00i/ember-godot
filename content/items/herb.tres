@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="EmberItemResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_item_resource.gd" id="1_fehw6"]
+
+[resource]
+script = ExtResource("1_fehw6")
+item_id = "herb"
+definition = {
+"combatRange": 2.0,
+"hpRestore": 4.0,
+"iconId": "herb",
+"id": "herb",
+"kind": "consumable",
+"name": "Qingxin sprig",
+"nameRu": "Погребальная трава",
+"rarity": "common",
+"sellPrice": 1.0,
+"slot": "none",
+"stackMax": 99.0,
+"tags": ["forage", "liyue"],
+"useIn": "both"
+}

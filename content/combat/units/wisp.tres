@@ -1,0 +1,34 @@
+[gd_resource type="Resource" script_class="EmberCombatUnitResource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_unit_resource.gd" id="1_unit"]
+[ext_resource type="Resource" path="res://content/combat/loot_tables/swamp_spirit_drops.tres" id="2_loot"]
+
+[resource]
+script = ExtResource("1_unit")
+unit_id = "wisp"
+display_name = "Болотный огонёк"
+team = 1
+description = "Хрупкий и быстрый болотный дух."
+combat_level = 2
+creature_type = 4
+max_hp = 12
+strength = 4
+magic = 6
+defense = 2
+resistance = 5
+speed = 13
+accuracy = 90
+luck = 7
+move_range = 2
+jump_height = 2
+weight_class = 1
+frozen_resistance = 1
+burning_resistance = 1
+action_ids = PackedStringArray("enemy_strike")
+ai_profile_id = "opportunist"
+loot_table = ExtResource("2_loot")
+combat_tags = PackedStringArray("swamp", "spirit")
+battle_color = Color(0.941176, 0.470588, 0.513726, 1)
+prototype_roster_order = 0
+prototype_zone = 1
+prototype_next_at = 6.0

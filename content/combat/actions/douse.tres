@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="EmberCombatActionResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_action_resource.gd" id="1_action"]
+
+[resource]
+script = ExtResource("1_action")
+action_id = "douse"
+display_name = "Обливание"
+hint = "Накладывает Wet; тушит Burning."
+requirements_text = "Враг должен быть в пределах 3 клеток и в линии обзора. При попадании накладывает Wet с учётом устойчивости цели; Burning снимается."
+menu_group = 2
+element = 1
+effect = 1
+power = 2
+mp_cost = 4
+accuracy_modifier = 8
+scaling = 2
+delay = 105
+range_cells = 3
+ui_color = Color(0.431373, 0.847059, 1, 1)

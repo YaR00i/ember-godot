@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="EmberBattlefieldResource" format=3 uid="uid://bh8dl2mrnh3qr"]
+
+[ext_resource type="Script" uid="uid://dlbxo7lha48wa" path="res://scripts/prototypes/ember_battlefield_resource.gd" id="1_field"]
+
+[resource]
+script = ExtResource("1_field")
+field_id = "thaw_keeper"
+display_name = "Хранитель оттепели"
+preview_intro = "E3 · Хранитель оттепели: заморозьте связанные мокрые панели, затем растопите их."
+width = 9
+height = 7
+terrain_kinds = PackedByteArray(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+elevations = PackedInt32Array(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+blocked = PackedByteArray(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+groups = PackedStringArray("", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "tide", "tide", "tide", "", "", "", "", "", "", "tide", "tide", "tide", "", "", "", "", "", "", "ember", "ember", "ember", "", "", "", "", "", "", "", "ember", "", "", "", "", "", "", "", "", "", "", "", "", "")
+focus_cell = Vector2i(4, 4)
+party_deployment_cells = Array[Vector2i]([Vector2i(2, 3), Vector2i(1, 4), Vector2i(1, 2), Vector2i(1, 5)])
+enemy_deployment_cells = Array[Vector2i]([Vector2i(6, 4), Vector2i(7, 3), Vector2i(5, 2)])

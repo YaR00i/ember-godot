@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="EmberCombatActionResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_action_resource.gd" id="1_action"]
+
+[resource]
+script = ExtResource("1_action")
+action_id = "enemy_strike"
+display_name = "Удар врага"
+hint = "Ближний физический удар; враг сначала ищет допустимую клетку."
+requirements_text = "Герой должен оказаться в дальности удара и в линии обзора."
+power = 3
+accuracy_modifier = 5
+delay = 100
+range_cells = 1
+ui_color = Color(1, 0.552941, 0.470588, 1)

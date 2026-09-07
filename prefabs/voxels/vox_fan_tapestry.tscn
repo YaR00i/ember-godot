@@ -1,0 +1,14 @@
+[gd_scene format=3 uid="uid://bbmuftvnq15q6"]
+
+[ext_resource type="Script" path="res://scripts/ember_voxel_prop.gd" id="1_8rvas"]
+[ext_resource type="ArrayMesh" path="res://prefabs/voxels/meshes/vox_fan_tapestry_block.res" id="2_c874t"]
+
+[node name="vox_fan_tapestry" type="Node3D" unique_id=730222017]
+script = ExtResource("1_8rvas")
+model_id = "vox_fan_tapestry"
+metadata/ember_source_signature = "8a360f2c459118496cc09193894a4b90dd02996105f732d75fc9b96c7b5ace68"
+
+[node name="Mesh" type="MeshInstance3D" parent="." unique_id=1214805566]
+transform = Transform3D(16, 0, 0, 0, 16, 0, 0, 0, 16, -8, 0, -8)
+mesh = ExtResource("2_c874t")
+metadata/ember_block_position = Vector3(-0.5, 0, -0.5)

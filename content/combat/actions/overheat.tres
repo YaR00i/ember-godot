@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EmberCombatActionResource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_action_resource.gd" id="1_action"]
+[ext_resource type="Resource" path="res://content/combat/effects/apply_overheated.tres" id="2_effect"]
+
+[resource]
+script = ExtResource("1_action")
+action_id = "overheat"
+display_name = "Накал"
+hint = "На два следующих хода атакующие приёмы сильнее, но входящий урон возрастает."
+requirements_text = "Применяется на себя. Накал добавляет +2 к силе атакующего приёма; пока он активен, входящий урон увеличен на 25%. Любое завершённое действие сокращает длительность."
+menu_group = 1
+element = 4
+target = 2
+effect = 11
+scaling = 0
+mp_cost = 6
+delay = 80
+range_cells = 0
+effect_steps = Array[Resource]([ExtResource("2_effect")])
+ui_color = Color(1, 0.537255, 0.278431, 1)

@@ -1,0 +1,13 @@
+[gd_scene format=3 uid="uid://cf51d8khlmk7a"]
+
+[ext_resource type="Script" path="res://scripts/ember_voxel_prop.gd" id="1_ourlo"]
+[ext_resource type="ArrayMesh" path="res://prefabs/voxels/meshes/vox_fan_mage_sign.res" id="3_gwfa8"]
+
+[node name="vox_fan_mage_sign" type="Node3D" unique_id=1421347461]
+script = ExtResource("1_ourlo")
+model_id = "vox_fan_mage_sign"
+metadata/ember_source_signature = "4ae8b134d42222480b673855d3d167309938ecd67705bc8b347a1dd163d7a57d"
+
+[node name="Mesh" type="MeshInstance3D" parent="." unique_id=211524189]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0, -8)
+mesh = ExtResource("3_gwfa8")

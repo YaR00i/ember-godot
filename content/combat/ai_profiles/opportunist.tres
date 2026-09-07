@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="EmberCombatAiProfileResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_ai_profile_resource.gd" id="1_profile"]
+
+[resource]
+script = ExtResource("1_profile")
+profile_id = "opportunist"
+display_name = "Стихийный оппортунист"
+description = "Ищет уже подготовленную реакцию, затем действует в порядке карточек бойца по самой раненой цели."
+target_priority = 0
+action_priority = 0
+prefer_elemental_reactions = true
+positioning_behavior = 1
+low_hp_threshold_percent = 0
+low_hp_behavior = 0
+accent_color = Color(0.941176, 0.470588, 0.513726, 1)

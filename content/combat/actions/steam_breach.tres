@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="EmberCombatActionResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_action_resource.gd" id="1_action"]
+
+[resource]
+script = ExtResource("1_action")
+action_id = "steam_breach"
+display_name = "Паровой пробой"
+hint = "Орик раскалывает лёд, а Искатель пробивает цель паровым ударом и отбрасывает её."
+requirements_text = "Орик должен быть не дальше 3 клеток от Искателя, жив и иметь 6 MP; цель должна быть Frozen, находиться в пределах 2 клеток и в линии обзора."
+menu_group = 1
+element = 7
+effect = 10
+power = 9
+mp_cost = 8
+accuracy_modifier = 10
+scaling = 1
+delay = 145
+range_cells = 2
+force = 3
+partner_unit_id = "orik"
+partner_range_cells = 3
+partner_mp_cost = 6
+partner_delay = 145
+ui_color = Color(1, 0.670588, 0.352941, 1)

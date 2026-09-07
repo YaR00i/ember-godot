@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3 uid="uid://bt13h5ax70j56"]
+
+[ext_resource type="Script" uid="uid://sctw08epm1a3" path="res://scripts/ember_action_resource.gd" id="1_ktpgl"]
+
+[resource]
+script = ExtResource("1_ktpgl")
+action_id = "sbx_quest_done_actions_3"
+document = {
+"id": "sbx_quest_done_actions_3",
+"nameRu": "События задания · sbx_quest_done",
+"steps": [{
+"flag": "sandbox_notice_quest_objective_3",
+"type": "set_flag",
+"value": true
+}]
+}

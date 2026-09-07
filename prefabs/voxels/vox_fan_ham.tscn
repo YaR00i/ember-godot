@@ -1,0 +1,14 @@
+[gd_scene format=3 uid="uid://dlu08qxvhoaso"]
+
+[ext_resource type="Script" path="res://scripts/ember_voxel_prop.gd" id="1_kkx3e"]
+[ext_resource type="ArrayMesh" path="res://prefabs/voxels/meshes/vox_fan_ham_block.res" id="2_5l24n"]
+
+[node name="vox_fan_ham" type="Node3D" unique_id=327618511]
+script = ExtResource("1_kkx3e")
+model_id = "vox_fan_ham"
+metadata/ember_source_signature = "9cbf61f2336fe368acd3d738eb7eeebd386dddb06763b3a26ae6fda5cef20d01"
+
+[node name="Mesh" type="MeshInstance3D" parent="." unique_id=1205612958]
+transform = Transform3D(16, 0, 0, 0, 16, 0, 0, 0, 16, -8, 0, -8)
+mesh = ExtResource("2_5l24n")
+metadata/ember_block_position = Vector3(-0.5, 0, -0.5)

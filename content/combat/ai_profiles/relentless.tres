@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="EmberCombatAiProfileResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_ai_profile_resource.gd" id="1_profile"]
+
+[resource]
+script = ExtResource("1_profile")
+profile_id = "relentless"
+display_name = "Напористый налётчик"
+description = "Выбирает самое сильное доступное действие и добивает наиболее раненую цель."
+target_priority = 0
+action_priority = 1
+prefer_elemental_reactions = false
+positioning_behavior = 1
+low_hp_threshold_percent = 0
+low_hp_behavior = 0
+accent_color = Color(0.905882, 0.603922, 0.403922, 1)

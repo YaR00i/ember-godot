@@ -1,0 +1,13 @@
+[gd_scene format=3 uid="uid://dvieudhq7vb1f"]
+
+[ext_resource type="Script" path="res://scripts/ember_voxel_prop.gd" id="1_08ccn"]
+[ext_resource type="ArrayMesh" path="res://prefabs/voxels/meshes/vox_fan_laundry.res" id="3_60yfp"]
+
+[node name="vox_fan_laundry" type="Node3D" unique_id=567084207]
+script = ExtResource("1_08ccn")
+model_id = "vox_fan_laundry"
+metadata/ember_source_signature = "8295f1e3d527bb28c68233d775d70dfe41ddec907e7802f9960256ce0dc1f288"
+
+[node name="Mesh" type="MeshInstance3D" parent="." unique_id=376159748]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0, -8)
+mesh = ExtResource("3_60yfp")

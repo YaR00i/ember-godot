@@ -1,0 +1,57 @@
+[gd_resource type="Resource" script_class="EmberDialogueResource" format=3 uid="uid://d1c526ri7tyoc"]
+
+[ext_resource type="Script" uid="uid://84tjlemkn8pa" path="res://scripts/ember_dialogue_resource.gd" id="1_e820n"]
+
+[resource]
+script = ExtResource("1_e820n")
+dialogue_id = "sandbox_notice_talk"
+document = {
+"editorLayout": {
+"a": {
+"x": -200.0,
+"y": 60.0
+},
+"b": {
+"x": 340.0,
+"y": 60.0
+},
+"end": {
+"x": 1240.0,
+"y": 80.0
+},
+"flag_1": {
+"x": 840.0,
+"y": 140.0
+}
+},
+"id": "sandbox_notice_talk",
+"nameRu": "Табличка у входа",
+"startStepId": "a",
+"steps": [{
+"id": "a",
+"nameRu": "Табличка",
+"next": "b",
+"portraitKey": "neutral",
+"speaker": "sign",
+"textRu": "Песочница агента. Ходи осями карты, F — interact.",
+"type": "dialogue"
+}, {
+"id": "b",
+"nameRu": "Табличка",
+"next": "flag_1",
+"portraitKey": "neutral",
+"speaker": "sign",
+"textRu": "Сундук севернее, лавка западнее, цепочка — у западной стены.",
+"type": "dialogue"
+}, {
+"id": "end",
+"type": "end"
+}, {
+"flag": "new_flag",
+"id": "flag_1",
+"next": "end",
+"type": "set_flag",
+"value": true
+}],
+"use": "talk"
+}

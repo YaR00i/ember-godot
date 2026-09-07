@@ -1,0 +1,14 @@
+[gd_scene format=3 uid="uid://bgpymxfvqefko"]
+
+[ext_resource type="Script" path="res://scripts/ember_voxel_prop.gd" id="1_2ryyb"]
+[ext_resource type="ArrayMesh" path="res://prefabs/voxels/meshes/vox_vil_sign_block.res" id="2_1e1c4"]
+
+[node name="vox_vil_sign" type="Node3D" unique_id=704395577]
+script = ExtResource("1_2ryyb")
+model_id = "vox_vil_sign"
+metadata/ember_source_signature = "3ae5e15d302b198a140a834b4036adcf4727933e8a179697481d2f0bf8860cfe"
+
+[node name="Mesh" type="MeshInstance3D" parent="." unique_id=2109759720]
+transform = Transform3D(16, 0, 0, 0, 16, 0, 0, 0, 16, -8, 0, -8)
+mesh = ExtResource("2_1e1c4")
+metadata/ember_block_position = Vector3(-0.5, 0, -0.5)

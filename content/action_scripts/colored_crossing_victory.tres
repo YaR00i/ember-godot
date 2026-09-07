@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="EmberActionResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_action_resource.gd" id="1_action"]
+
+[resource]
+script = ExtResource("1_action")
+action_id = "colored_crossing_victory"
+document = {
+"id": "colored_crossing_victory",
+"nameRu": "Награда за цветную переправу",
+"steps": [{
+"count": 5,
+"itemId": "coin",
+"type": "give_item"
+}]
+}

@@ -1,0 +1,13 @@
+---
+description: Protect Ember's live Godot import cache during automated checks
+alwaysApply: true
+---
+
+# Godot import-cache safety
+
+- Never launch this working checkout with `--headless --editor`.
+- Run targeted tests with `--headless --path . --script res://...`.
+- Use `--check-only` when only GDScript parsing is required.
+- Run editor/import smoke tests only in a disposable checkout or import cache.
+- Keep `addons/at-icons/.gdignore` while the @icons plugin is disabled; removing
+  it deliberately enables one GUI import of all 3,708 themed SVG variants.

@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="EmberCombatEffectResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_effect_resource.gd" id="1_effect"]
+
+[resource]
+script = ExtResource("1_effect")
+effect_id = "wind_spread_elements"
+display_name = "Раздуть стихию"
+description = "Распространяет Wet или Burning с выбранной клетки на соседние клетки и бойцов."
+operation = 4
+spread_radius = 1
+spread_status_ids = PackedStringArray("wet", "burning")
+spread_cell_tags = PackedStringArray("wet")
+spread_status_duration = 2
+ui_color = Color(0.65098, 0.909804, 0.737255, 1)

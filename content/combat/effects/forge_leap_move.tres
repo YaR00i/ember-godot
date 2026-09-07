@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="EmberCombatEffectResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_effect_resource.gd" id="1_effect"]
+
+[resource]
+script = ExtResource("1_effect")
+effect_id = "forge_leap_move"
+display_name = "Вертикальный рывок"
+description = "Перемещает применяющего на свободную клетку с перепадом высоты до четырёх уровней."
+operation = 6
+move_max_height_delta = 4
+ui_color = Color(1, 0.67451, 0.352941, 1)

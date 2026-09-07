@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EmberCombatActionResource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_action_resource.gd" id="1_action"]
+[ext_resource type="Resource" path="res://content/combat/effects/earth_stone_wall.tres" id="2_effect"]
+
+[resource]
+script = ExtResource("1_action")
+action_id = "earth_wall"
+display_name = "Каменный заслон"
+hint = "Ставит на пустой клетке преграду для движения и линии обзора."
+requirements_text = "Пустая проходимая клетка в пределах 3 клеток и в линии обзора. Преграда остаётся до конца боя."
+menu_group = 2
+element = 8
+target = 4
+effect = 11
+scaling = 0
+mp_cost = 5
+delay = 110
+range_cells = 3
+effect_steps = Array[Resource]([ExtResource("2_effect")])
+ui_color = Color(0.635294, 0.513725, 0.34902, 1)

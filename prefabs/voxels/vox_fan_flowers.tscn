@@ -1,0 +1,13 @@
+[gd_scene format=3 uid="uid://cd57sgq7m1cu"]
+
+[ext_resource type="Script" path="res://scripts/ember_voxel_prop.gd" id="1_waabb"]
+[ext_resource type="ArrayMesh" path="res://prefabs/voxels/meshes/vox_fan_flowers.res" id="3_to2fs"]
+
+[node name="vox_fan_flowers" type="Node3D" unique_id=1061653614]
+script = ExtResource("1_waabb")
+model_id = "vox_fan_flowers"
+metadata/ember_source_signature = "00acfa50a0826ae7c9a58a17a75ec9c0ed2d018a4d4ac16f6780c17b2fd63069"
+
+[node name="Mesh" type="MeshInstance3D" parent="." unique_id=331165755]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0, -8)
+mesh = ExtResource("3_to2fs")

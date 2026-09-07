@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="EmberItemResource" format=3 uid="uid://b1e61t1ndf47p"]
+
+[ext_resource type="Script" uid="uid://c47gk0wemno2a" path="res://scripts/ember_item_resource.gd" id="1_krklx"]
+
+[resource]
+script = ExtResource("1_krklx")
+item_id = "qingxin_tea"
+definition = {
+"hpRestore": 12.0,
+"mpRestore": 8.0,
+"combatRange": 2.0,
+"iconId": "potion",
+"id": "qingxin_tea",
+"kind": "consumable",
+"name": "Qingxin tea",
+"nameRu": "Чай цинсинь",
+"rarity": "uncommon",
+"sellPrice": 3.0,
+"slot": "none",
+"stackMax": 10.0,
+"tags": ["food", "tea"],
+"useIn": "both"
+}

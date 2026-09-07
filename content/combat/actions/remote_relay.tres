@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EmberCombatActionResource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_action_resource.gd" id="1_action"]
+[ext_resource type="Resource" path="res://content/combat/effects/activate_forge_focus.tres" id="2_effect"]
+
+[resource]
+script = ExtResource("1_action")
+action_id = "remote_relay"
+display_name = "Дальний контакт"
+hint = "Активирует узел поля на расстоянии без подхода к нему."
+requirements_text = "Неактивированный авторский узел в пределах 6 дальности и в линии обзора. Повторно тот же узел активировать нельзя."
+menu_group = 1
+element = 3
+target = 4
+effect = 11
+scaling = 0
+mp_cost = 5
+delay = 90
+range_cells = 6
+effect_steps = Array[Resource]([ExtResource("2_effect")])
+ui_color = Color(1, 0.898039, 0.419608, 1)

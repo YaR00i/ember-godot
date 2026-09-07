@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="EmberCombatUnitResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_unit_resource.gd" id="1_unit"]
+
+[resource]
+script = ExtResource("1_unit")
+unit_id = "sena"
+display_name = "Сена"
+description = "Инженер дальнего боя: проводит молнию, активирует узлы и перегружает приоритетные цели."
+max_hp = 16
+max_mp = 38
+strength = 4
+magic = 10
+defense = 3
+resistance = 8
+speed = 11
+accuracy = 93
+luck = 12
+move_range = 3
+jump_height = 2
+weight_class = 1
+lightning_resistance = 10
+action_ids = PackedStringArray("strike", "spark", "remote_relay", "overload", "duo_pulse", "lift_throw", "defend")
+battle_color = Color(0.788235, 0.643137, 1, 1)
+prototype_roster_order = 2
+prototype_zone = 0
+prototype_next_at = 24.0

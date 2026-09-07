@@ -1,0 +1,14 @@
+[gd_scene format=3 uid="uid://cmv6ruhggsla3"]
+
+[ext_resource type="Script" path="res://scripts/ember_voxel_prop.gd" id="1_oj30l"]
+[ext_resource type="ArrayMesh" path="res://prefabs/voxels/meshes/vox_fan_rug_block.res" id="2_bkveg"]
+
+[node name="vox_fan_rug" type="Node3D" unique_id=1202529748]
+script = ExtResource("1_oj30l")
+model_id = "vox_fan_rug"
+metadata/ember_source_signature = "0506d00006b87a9456286d956e79f5aa23a31f0eb3935816cae2d945779e057a"
+
+[node name="Mesh" type="MeshInstance3D" parent="." unique_id=1572456932]
+transform = Transform3D(16, 0, 0, 0, 16, 0, 0, 0, 16, -8, 0, -8)
+mesh = ExtResource("2_bkveg")
+metadata/ember_block_position = Vector3(-0.5, 0, -0.5)

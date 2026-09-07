@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="EmberCombatEffectResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_effect_resource.gd" id="1_effect"]
+
+[resource]
+script = ExtResource("1_effect")
+effect_id = "activate_forge_focus"
+display_name = "Активировать узел"
+description = "Дистанционно активирует авторский узел текущего поля один раз за бой."
+operation = 7
+ui_color = Color(1, 0.898039, 0.419608, 1)

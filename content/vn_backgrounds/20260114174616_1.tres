@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="EmberVnBackground" format=3 uid="uid://w7pdhhwpoesg"]
+
+[ext_resource type="Script" uid="uid://dgw688h2y0tmd" path="res://scripts/ember_vn_background.gd" id="1_7jyqf"]
+
+[resource]
+script = ExtResource("1_7jyqf")
+id = "20260114174616_1"
+display_name = "20260114174616 1"
+image_path = "res://assets/vn_backgrounds/20260114174616_1.jpg"
+tags = PackedStringArray()

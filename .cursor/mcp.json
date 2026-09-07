@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "godot": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "C:\\Users\\novos\\Projects\\ember-godot\\tools\\godot-mcp.cmd"
+      ],
+      "env": {
+        "GODOT_PATH": "C:\\Users\\novos\\Projects\\ember-godot\\tools\\godot\\Godot_v4.7.2-stable_win64.exe"
+      }
+    }
+  }
+}

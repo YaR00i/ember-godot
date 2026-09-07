@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="EmberCombatActionResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_action_resource.gd" id="1_action"]
+
+[resource]
+script = ExtResource("1_action")
+action_id = "strike"
+display_name = "Удар"
+hint = "Быстрый обычный урон без стихии."
+requirements_text = "Враг должен стоять в дальности удара и быть виден бойцу. Результат попадания и крит открываются только после выполнения."
+power = 4
+accuracy_modifier = 5
+delay = 100
+range_cells = 1
+ui_color = Color(0.85098, 0.870588, 0.913725, 1)

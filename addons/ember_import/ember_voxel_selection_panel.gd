@@ -1,0 +1,293 @@
+@tool
+extends VBoxContainer
+## Transient selection owner + bounded visualization. No saved schema or Undo stack.
+const Selection = preload("res://addons/ember_import/ember_voxel_selection.gd")
+const DEFAULT_OVERLAY_COLOR := Color(1, 0.45, 0.05, 0.45)
+signal activation_requested
+signal paint_requested(indices: PackedInt32Array)
+signal selection_changed(has_selection: bool)
+var active := false
+var selected: Dictionary = {}
+var _resource: EmberVoxelModelResource
+var _region := Rect2i()
+var _height := -1
+var _toggle: Button
+var _mode: OptionButton
+var _operation: OptionButton
+var _tolerance: SpinBox
+var _status: Label
+var _paint: Button
+var _mask: CheckButton
+var _overlay: MultiMeshInstance3D
+var _job: RefCounted
+var _pending_operation := 0
+var _drawing := false
+var _draw_indices := PackedInt32Array()
+var _draw_cursor := 0
+var _applying := false
+var _preserve_next_change := false
+var _mask_kind := "none"
+var _selected_columns: Dictionary = {}
+var _overlay_color := DEFAULT_OVERLAY_COLOR
+
+
+func _init() -> void:
+	name = "VoxelSelectionPanel"
+	var heading := Label.new()
+	heading.text = "ВЫДЕЛЕНИЕ ВОКСЕЛЕЙ"
+	add_child(heading)
+	_toggle = Button.new()
+	_toggle.name = "VoxelSelectToggle"
+	_toggle.text = "Выбирать воксели · V"
+	_toggle.toggle_mode = true
+	_toggle.pressed.connect(func() -> void: activation_requested.emit())
+	add_child(_toggle)
+	_mode = _options(["Один воксель", "Связные похожего цвета", "Все похожего цвета"])
+	_mode.select(1)
+	_operation = _options(["Новое выделение", "Добавить · Shift", "Вычесть · Ctrl"])
+	var row := HBoxContainer.new()
+	var label := Label.new()
+	label.text = "Допуск цвета %"
+	row.add_child(label)
+	_tolerance = SpinBox.new()
+	_tolerance.name = "VoxelSelectionTolerance"
+	_tolerance.max_value = 100
+	row.add_child(_tolerance)
+	add_child(row)
+	_status = Label.new()
+	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	add_child(_status)
+	_paint = Button.new()
+	_paint.name = "VoxelSelectionPaint"
+	_paint.text = "Окрасить выделенное"
+	_paint.pressed.connect(_request_paint)
+	add_child(_paint)
+	_mask = CheckButton.new()
+	_mask.name = "VoxelSelectionMaskBrush"
+	_mask.text = "Кисть по выделению"
+	_mask.tooltip_text = "Точная маска для цвета; XZ-отпечаток для формы."
+	add_child(_mask)
+	var clear := Button.new()
+	clear.text = "Снять выделение"
+	clear.pressed.connect(clear_selection)
+	add_child(clear)
+	var help := Label.new()
+	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	help.text = "Объём в рабочей области и срезе, включая внутренние воксели. Цвет и материал используют точные воксели; форма — их вертикальные колонки. Esc: отмена поиска / выход."
+	add_child(help)
+	_update_status()
+
+
+func sync(resource: EmberVoxelModelResource, region: Rect2i, height: int, surface: Node3D) -> void:
+	if resource != _resource or region != _region or height != _height:
+		if _resource != null and _resource.changed.is_connected(_on_source_changed):
+			_resource.changed.disconnect(_on_source_changed)
+		_resource = resource
+		_region = region
+		_height = height
+		clear_selection()
+		if _resource != null:
+			_resource.changed.connect(_on_source_changed)
+	if not is_instance_valid(_overlay) and is_instance_valid(surface):
+		_overlay = MultiMeshInstance3D.new()
+		_overlay.name = "VoxelSelectionOverlay"
+		_overlay.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		surface.add_child(_overlay)
+	_toggle.disabled = resource == null
+
+
+func set_active(value: bool) -> void:
+	active = value and _resource != null
+	_toggle.set_pressed_no_signal(active)
+	if not active:
+		cancel_search()
+
+
+func busy() -> bool:
+	return _job != null or _drawing
+
+
+func set_tool_support(kind: String) -> void:
+	_mask_kind = kind
+	if kind == "none":
+		_mask.set_pressed_no_signal(false)
+	_update_status()
+
+
+func mask_brushes_enabled() -> bool:
+	return _mask.button_pressed and _mask_kind != "none" and not selected.is_empty()
+
+
+func preserves_mask_after_commit() -> bool:
+	return mask_brushes_enabled() and _mask_kind == "voxels"
+
+
+func allows_brush_index(index: int) -> bool:
+	if not mask_brushes_enabled():
+		return true
+	if _mask_kind == "voxels":
+		return selected.has(index)
+	if _resource == null or index < 0 or index >= _resource.voxels.size():
+		return false
+	var size := _resource.grid_size()
+	var cell := Selection.cell_of(index, size)
+	return _selected_columns.has(cell.x + cell.z * size.x)
+
+
+func preserve_next_source_change() -> void:
+	_preserve_next_change = true
+
+
+func choose(seed: Vector3i, shift := false, control := false) -> void:
+	if _resource == null or _drawing:
+		return
+	_overlay_color = DEFAULT_OVERLAY_COLOR
+	_pending_operation = 2 if control else 1 if shift else _operation.selected
+	_job = Selection.new()
+	_job.start(_resource, seed, _mode.selected, _tolerance.value / 100.0, _region, _height)
+	_update_status("Поиск… Esc отменяет; карта пока не меняется")
+
+
+func _process(_delta: float) -> void:
+	var deadline := Time.get_ticks_usec() + 3000
+	while _job != null and Time.get_ticks_usec() < deadline:
+		_job.step(128)
+		if _job.done:
+			var message: String = _job.error
+			if message.is_empty():
+				var next := Selection.combine(selected, _job.indices, _pending_operation)
+				if next.size() > Selection.LIMIT:
+					message = "Лимит %d вокселей; прежнее выделение сохранено" % Selection.LIMIT
+				else:
+					selected = next
+					_rebuild_selected_columns()
+					_begin_overlay()
+					selection_changed.emit(not selected.is_empty())
+			_job = null
+			_update_status(message)
+	while _drawing and Time.get_ticks_usec() < deadline:
+		_draw_one()
+	if not busy():
+		_paint.disabled = selected.is_empty()
+
+
+func cancel_search() -> void:
+	_job = null
+	_update_status()
+
+
+func clear_selection() -> void:
+	_job = null
+	_drawing = false
+	selected.clear()
+	_selected_columns.clear()
+	_draw_indices.clear()
+	if is_instance_valid(_overlay):
+		_overlay.multimesh = null
+	_mask.set_pressed_no_signal(false)
+	_update_status()
+	selection_changed.emit(false)
+
+
+func set_selection(indices: PackedInt32Array, color := DEFAULT_OVERLAY_COLOR) -> void:
+	_overlay_color = color
+	_overlay_color.a = 0.45
+	selected.clear()
+	for index in indices:
+		selected[int(index)] = true
+	_rebuild_selected_columns()
+	_begin_overlay()
+	_update_status()
+	selection_changed.emit(not selected.is_empty())
+
+
+func selection_indices() -> PackedInt32Array:
+	var result := PackedInt32Array(selected.keys())
+	result.sort()
+	return result
+
+
+func _on_source_changed() -> void:
+	if _preserve_next_change:
+		_preserve_next_change = false
+	elif not _applying:
+		clear_selection() # Undo/brush/palette edits cannot leave a stale mask.
+
+
+func _request_paint() -> void:
+	if busy() or selected.is_empty():
+		return
+	_applying = true
+	paint_requested.emit(PackedInt32Array(selected.keys()))
+	_applying = false
+
+
+func _begin_overlay() -> void:
+	_draw_indices = PackedInt32Array(selected.keys())
+	_draw_cursor = 0
+	_drawing = not _draw_indices.is_empty()
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3.ONE * (1.006 / _resource.normalized_density())
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.albedo_color = _overlay_color
+	mesh.material = material
+	var multi := MultiMesh.new()
+	multi.transform_format = MultiMesh.TRANSFORM_3D
+	multi.mesh = mesh
+	multi.instance_count = _draw_indices.size()
+	multi.visible_instance_count = 0
+	_overlay.multimesh = multi
+
+
+func _draw_one() -> void:
+	var cell := Selection.cell_of(_draw_indices[_draw_cursor], _resource.grid_size())
+	var at := (Vector3(cell) + Vector3.ONE * 0.5) / _resource.normalized_density()
+	_overlay.multimesh.set_instance_transform(_draw_cursor, Transform3D(Basis.IDENTITY, at))
+	_draw_cursor += 1
+	if _draw_cursor >= _draw_indices.size():
+		_drawing = false
+		_overlay.multimesh.visible_instance_count = _draw_cursor
+		_update_status()
+
+
+func _update_status(message := "") -> void:
+	_status.text = message if not message.is_empty() else "Выделено: %d vox%s" % [selected.size(), " · подсветка…" if _drawing else ""]
+	_paint.disabled = busy() or selected.is_empty()
+	_mask.disabled = selected.is_empty() or _mask_kind == "none"
+	if _mask_kind == "voxels":
+		_mask.text = "Кисть только по выбранным вокселям"
+		_mask.tooltip_text = "Цвет или материал меняются только на точных индексах выделения; после мазка маска остаётся."
+	elif _mask_kind == "columns":
+		_mask.text = "Кисть только по колонкам выделения"
+		_mask.tooltip_text = "Форма меняется лишь в вертикальном XZ-отпечатке выделения; после успешного мазка устаревшая маска очищается."
+	else:
+		_mask.text = "Кисть по выделению недоступна"
+		_mask.tooltip_text = "Заливка уровня работает с замкнутым водоёмом, а не с voxel-маской."
+
+
+func _rebuild_selected_columns() -> void:
+	_selected_columns.clear()
+	if _resource == null:
+		return
+	var size := _resource.grid_size()
+	for raw_index in selected:
+		var cell := Selection.cell_of(int(raw_index), size)
+		_selected_columns[cell.x + cell.z * size.x] = true
+
+
+func _options(labels: Array) -> OptionButton:
+	var option := OptionButton.new()
+	for label in labels:
+		option.add_item(str(label))
+	add_child(option)
+	return option
+
+
+func _exit_tree() -> void:
+	_job = null
+	if _resource != null and _resource.changed.is_connected(_on_source_changed):
+		_resource.changed.disconnect(_on_source_changed)
+	if is_instance_valid(_overlay):
+		_overlay.queue_free()

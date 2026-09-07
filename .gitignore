@@ -6,3 +6,15 @@ export_presets.cfg
 *.tmp
 .DS_Store
 Thumbs.db
+
+# Local capture artifacts created by automated runtime checks.
+.codex-*
+
+# Standalone local companion for browsing the vendored at-icons package.
+@icons picker.html
+
+# Hidden replacement/backup copies left beside the active voxel plugin binary.
+addons/zylann.voxel/bin/~*
+
+# Local Godot 4.7.2 binaries (~180 MB). Launch via edit.bat / run.bat.
+tools/godot/*.exe

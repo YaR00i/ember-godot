@@ -1,0 +1,12 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://shaders/ember_water_contact.gdshader" id="1_contact"]
+
+[resource]
+render_priority = 3
+shader = ExtResource("1_contact")
+shader_parameter/contact_color = Color(0.88, 1, 0.93, 1)
+shader_parameter/contact_shadow = Color(0.42, 0.86, 0.82, 1)
+shader_parameter/alpha_scale = 0.62
+shader_parameter/pixel_density = 24.0
+shader_parameter/animation_fps = 3.0

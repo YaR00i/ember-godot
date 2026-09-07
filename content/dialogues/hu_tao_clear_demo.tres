@@ -1,0 +1,148 @@
+[gd_resource type="Resource" script_class="EmberDialogueResource" format=3 uid="uid://crl8y56q1rfmw"]
+
+[ext_resource type="Script" uid="uid://84tjlemkn8pa" path="res://scripts/ember_dialogue_resource.gd" id="1_iphrd"]
+
+[resource]
+script = ExtResource("1_iphrd")
+dialogue_id = "hu_tao_clear_demo"
+document = {
+"defaultBgArtId": "hu_tao_clear_placeholder",
+"editorGroups": [{
+"collapsed": false,
+"id": "group_1",
+"members": ["intro", "choice", "brave_reply", "fluster_reply"],
+"title": "Новая группа"
+}],
+"editorLayout": {
+"brave_reply": {
+"x": 1240.0,
+"y": -60.0
+},
+"cg": {
+"x": 0.0,
+"y": 0.0
+},
+"choice": {
+"x": 780.0,
+"y": 380.0
+},
+"end": {
+"x": 2060.0,
+"y": 120.0
+},
+"fluster_reply": {
+"x": 1240.0,
+"y": 360.0
+},
+"intro": {
+"x": 420.0,
+"y": -80.0
+},
+"reward": {
+"x": 1820.0,
+"y": 220.0
+}
+},
+"id": "hu_tao_clear_demo",
+"nameRu": "После двора",
+"startStepId": "cg",
+"steps": [{
+"artId": "20260114174616_1",
+"captionRu": "Защита измерения дрогнула…",
+"id": "cg",
+"next": "intro",
+"type": "splash"
+}, {
+"actors": [{
+"floorY": 100.0,
+"id": "main",
+"lockY": true,
+"portraitKey": "bunny_tease",
+"scale": 1.0,
+"speaker": "hu_tao",
+"x": 50.0,
+"y": 100.0,
+"z": 1.0
+}],
+"id": "intro",
+"nameRu": "Ху Тао",
+"next": "choice",
+"portraitKey": "bunny_tease",
+"portraitSide": "right",
+"speaker": "hu_tao",
+"textRu": "Ого, живой? А я уже почти заказывала тебе гроб со скидкой директора~",
+"type": "dialogue"
+}, {
+"actors": [{
+"id": "main",
+"portraitKey": "bunny_tease",
+"scale": 1.6,
+"speaker": "hu_tao",
+"x": 50.0,
+"y": 92.0,
+"z": 1.0
+}],
+"id": "choice",
+"options": [{
+"id": "brave",
+"labelRu": "Я ещё не закончил.",
+"next": "brave_reply"
+}, {
+"id": "fluster",
+"labelRu": "Т-ты специально меня пачкала?!",
+"next": "fluster_reply"
+}],
+"promptRu": "Что ответишь?",
+"type": "choice"
+}, {
+"actors": [{
+"flipX": true,
+"floorY": 100.0,
+"id": "main",
+"lockY": true,
+"portraitKey": "bunny_smirk",
+"scale": 1.0,
+"speaker": "hu_tao",
+"x": 50.0,
+"y": 100.0,
+"z": 1.0
+}],
+"id": "brave_reply",
+"nameRu": "Ху Тао",
+"next": "reward",
+"portraitKey": "bunny_smirk",
+"portraitSide": "right",
+"speaker": "hu_tao",
+"textRu": "Хе-хе. Тогда ломай мои порталы дальше — мне любопытно, когда ты сдашься.",
+"type": "dialogue"
+}, {
+"actors": [{
+"floorY": 100.0,
+"id": "main",
+"lockY": true,
+"portraitKey": "bunny_shy",
+"rotate": 0.0,
+"scale": 1.0,
+"speaker": "hu_tao",
+"x": 50.0,
+"y": 100.0,
+"z": 1.0
+}],
+"id": "fluster_reply",
+"nameRu": "Ху Тао",
+"next": "reward",
+"portraitKey": "bunny_shy",
+"portraitSide": "right",
+"speaker": "hu_tao",
+"textRu": "Пачкала? Это же атмосфера заведения! …Ладно, чуть-чуть специально.",
+"type": "dialogue"
+}, {
+"amount": 5.0,
+"id": "reward",
+"next": "end",
+"type": "grant_cinders"
+}, {
+"id": "end",
+"type": "end"
+}]
+}

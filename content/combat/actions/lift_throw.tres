@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="EmberCombatActionResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_action_resource.gd" id="1_action"]
+
+[resource]
+script = ExtResource("1_action")
+action_id = "lift_throw"
+display_name = "Подъём и бросок"
+hint = "Поднимает лёгкого бойца и бросает на выбранную клетку."
+requirements_text = "Цель должна стоять рядом, иметь малый размер и вес не выше 1. Затем выберите свободную клетку в пределах 3 клеток. Урон падения открывается после броска."
+menu_group = 1
+target = 3
+effect = 9
+power = 2
+delay = 120
+range_cells = 1
+throw_range_cells = 3
+max_lift_weight = 1
+ui_color = Color(0.968627, 0.760784, 0.352941, 1)

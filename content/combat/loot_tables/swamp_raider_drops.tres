@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="EmberCombatLootTableResource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_loot_table_resource.gd" id="1_table"]
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_loot_entry_resource.gd" id="2_entry"]
+
+[sub_resource type="Resource" id="LootEntry_coin"]
+script = ExtResource("2_entry")
+item_id = "coin"
+chance_percent = 100.0
+minimum_count = 2
+maximum_count = 3
+
+[resource]
+script = ExtResource("1_table")
+table_id = "swamp_raider_drops"
+display_name = "Кошель налётчика"
+description = "Небольшое количество монет с диапазоном количества."
+accent_color = Color(0.91, 0.64, 0.33, 1)
+entries = Array[ExtResource("2_entry")]([SubResource("LootEntry_coin")])

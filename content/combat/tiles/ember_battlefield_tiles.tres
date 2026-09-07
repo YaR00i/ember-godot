@@ -1,0 +1,142 @@
+[gd_resource type="MeshLibrary" format=3 uid="uid://3n6ekh65qhja"]
+
+[ext_resource type="Shader" uid="uid://cj4hl4nnqgvfg" path="res://shaders/combat_battlefield_tile.gdshader" id="1_shader"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_neutral"]
+render_priority = 0
+shader = ExtResource("1_shader")
+shader_parameter/base_color = Color(0.16, 0.21, 0.29, 1)
+shader_parameter/accent_color = Color(0.33, 0.42, 0.55, 1)
+shader_parameter/pattern_mode = 0.0
+shader_parameter/roughness_value = 0.86
+shader_parameter/metallic_value = 0.0
+shader_parameter/emission_strength = 0.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_neutral"]
+material = SubResource("ShaderMaterial_neutral")
+size = Vector3(1.128, 0.18, 1.128)
+
+[sub_resource type="BoxShape3D" id="BoxShape_neutral"]
+size = Vector3(1.128, 0.18, 1.128)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_wet"]
+render_priority = 0
+shader = ExtResource("1_shader")
+shader_parameter/base_color = Color(0.07, 0.31, 0.43, 1)
+shader_parameter/accent_color = Color(0.27, 0.74, 0.91, 1)
+shader_parameter/pattern_mode = 1.0
+shader_parameter/roughness_value = 0.38
+shader_parameter/metallic_value = 0.05
+shader_parameter/emission_strength = 0.12
+
+[sub_resource type="BoxMesh" id="BoxMesh_wet"]
+material = SubResource("ShaderMaterial_wet")
+size = Vector3(1.128, 0.18, 1.128)
+
+[sub_resource type="BoxShape3D" id="BoxShape_wet"]
+size = Vector3(1.128, 0.18, 1.128)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_ember"]
+render_priority = 0
+shader = ExtResource("1_shader")
+shader_parameter/base_color = Color(0.36, 0.13, 0.09, 1)
+shader_parameter/accent_color = Color(1, 0.47, 0.18, 1)
+shader_parameter/pattern_mode = 2.0
+shader_parameter/roughness_value = 0.76
+shader_parameter/metallic_value = 0.0
+shader_parameter/emission_strength = 0.62
+
+[sub_resource type="BoxMesh" id="BoxMesh_ember"]
+material = SubResource("ShaderMaterial_ember")
+size = Vector3(1.128, 0.18, 1.128)
+
+[sub_resource type="BoxShape3D" id="BoxShape_ember"]
+size = Vector3(1.128, 0.18, 1.128)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_frozen"]
+render_priority = 0
+shader = ExtResource("1_shader")
+shader_parameter/base_color = Color(0.25, 0.48, 0.68, 1)
+shader_parameter/accent_color = Color(0.78, 0.94, 1, 1)
+shader_parameter/pattern_mode = 3.0
+shader_parameter/roughness_value = 0.24
+shader_parameter/metallic_value = 0.14
+shader_parameter/emission_strength = 0.18
+
+[sub_resource type="BoxMesh" id="BoxMesh_frozen"]
+material = SubResource("ShaderMaterial_frozen")
+size = Vector3(1.128, 0.18, 1.128)
+
+[sub_resource type="BoxShape3D" id="BoxShape_frozen"]
+size = Vector3(1.128, 0.18, 1.128)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_blocked"]
+render_priority = 0
+shader = ExtResource("1_shader")
+shader_parameter/base_color = Color(0.1, 0.09, 0.14, 1)
+shader_parameter/accent_color = Color(0.42, 0.31, 0.46, 1)
+shader_parameter/pattern_mode = 4.0
+shader_parameter/roughness_value = 0.92
+shader_parameter/metallic_value = 0.0
+shader_parameter/emission_strength = 0.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_blocked"]
+material = SubResource("ShaderMaterial_blocked")
+size = Vector3(1.128, 0.78, 1.128)
+
+[sub_resource type="BoxShape3D" id="BoxShape_blocked"]
+size = Vector3(1.128, 0.78, 1.128)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_blocked_faded"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(0.22, 0.19, 0.29, 0.24)
+roughness = 0.92
+
+[sub_resource type="BoxMesh" id="BoxMesh_blocked_faded"]
+material = SubResource("StandardMaterial3D_blocked_faded")
+size = Vector3(1.128, 0.78, 1.128)
+
+[resource]
+item/0/name = "Neutral"
+item/0/mesh = SubResource("BoxMesh_neutral")
+item/0/mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/0/mesh_cast_shadow = 1
+item/0/shapes = [SubResource("BoxShape_neutral"), Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)]
+item/0/navigation_mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/0/navigation_layers = 1
+item/1/name = "Wet"
+item/1/mesh = SubResource("BoxMesh_wet")
+item/1/mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/1/mesh_cast_shadow = 1
+item/1/shapes = [SubResource("BoxShape_wet"), Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)]
+item/1/navigation_mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/1/navigation_layers = 1
+item/2/name = "Ember"
+item/2/mesh = SubResource("BoxMesh_ember")
+item/2/mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/2/mesh_cast_shadow = 1
+item/2/shapes = [SubResource("BoxShape_ember"), Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)]
+item/2/navigation_mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/2/navigation_layers = 1
+item/3/name = "Frozen"
+item/3/mesh = SubResource("BoxMesh_frozen")
+item/3/mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/3/mesh_cast_shadow = 1
+item/3/shapes = [SubResource("BoxShape_frozen"), Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)]
+item/3/navigation_mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/3/navigation_layers = 1
+item/4/name = "Blocked"
+item/4/mesh = SubResource("BoxMesh_blocked")
+item/4/mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+item/4/mesh_cast_shadow = 1
+item/4/shapes = [SubResource("BoxShape_blocked"), Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)]
+item/4/navigation_mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/4/navigation_layers = 1
+item/5/name = "BlockedFaded"
+item/5/mesh = SubResource("BoxMesh_blocked_faded")
+item/5/mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+item/5/mesh_cast_shadow = 0
+item/5/shapes = [SubResource("BoxShape_blocked"), Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)]
+item/5/navigation_mesh_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
+item/5/navigation_layers = 1

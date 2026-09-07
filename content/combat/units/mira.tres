@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="EmberCombatUnitResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_unit_resource.gd" id="1_unit"]
+
+[resource]
+script = ExtResource("1_unit")
+unit_id = "mira"
+display_name = "Мира"
+description = "Быстрая проводница воды: подготавливает Wet, меняет позицию Порывом и дорого лечит одну цель."
+max_hp = 18
+max_mp = 40
+strength = 5
+magic = 9
+defense = 3
+resistance = 7
+speed = 12
+accuracy = 94
+luck = 10
+move_range = 3
+jump_height = 2
+weight_class = 1
+water_resistance = 15
+action_ids = PackedStringArray("strike", "douse", "gust", "mira_mend", "lift_throw", "defend")
+battle_color = Color(0.396078, 0.811765, 0.882353, 1)
+prototype_roster_order = 0
+prototype_zone = 0
+prototype_next_at = 0.0

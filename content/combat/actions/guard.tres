@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="EmberCombatActionResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_action_resource.gd" id="1_action"]
+
+[resource]
+script = ExtResource("1_action")
+action_id = "guard"
+display_name = "Прикрытие"
+hint = "Следующий входящий урон цели уменьшается вдвое."
+requirements_text = "Союзник должен быть в пределах 3 клеток. Применяется без проверки попадания."
+menu_group = 1
+element = 6
+target = 1
+effect = 6
+power = 0
+mp_cost = 5
+scaling = 0
+delay = 80
+range_cells = 3
+ui_color = Color(0.764706, 0.713725, 1, 1)

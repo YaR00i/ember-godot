@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3 uid="uid://rvwdepevyt7b"]
+
+[ext_resource type="Script" uid="uid://sctw08epm1a3" path="res://scripts/ember_action_resource.gd" id="1_eh1o1"]
+
+[resource]
+script = ExtResource("1_eh1o1")
+action_id = "sbx_bush_se_actions"
+document = {
+"id": "sbx_bush_se_actions",
+"nameRu": "События задания · sbx_bush_se",
+"steps": [{
+"flag": "sandbox_notice_status",
+"type": "set_flag",
+"value": "done"
+}, {
+"targetMapId": "agent_sandbox",
+"targetRegionId": "start",
+"type": "change_map"
+}]
+}

@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EmberCombatActionResource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_action_resource.gd" id="1_action"]
+[ext_resource type="Resource" path="res://content/combat/effects/ice_barrier_cell.tres" id="2_effect"]
+
+[resource]
+script = ExtResource("1_action")
+action_id = "ice_wall"
+display_name = "Ледяной заслон"
+hint = "Ставит Frozen-преграду для движения и линии обзора."
+requirements_text = "Пустая проходимая клетка в пределах 3 клеток и в линии обзора. Преграда остаётся до конца боя."
+menu_group = 2
+element = 2
+target = 4
+effect = 11
+scaling = 0
+mp_cost = 7
+delay = 120
+range_cells = 3
+effect_steps = Array[Resource]([ExtResource("2_effect")])
+ui_color = Color(0.662745, 0.933333, 1, 1)

@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="EmberCombatLootTableResource" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_loot_table_resource.gd" id="1_table"]
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_loot_entry_resource.gd" id="2_entry"]
+
+[sub_resource type="Resource" id="LootEntry_tea"]
+script = ExtResource("2_entry")
+item_id = "qingxin_tea"
+chance_percent = 100.0
+minimum_count = 1
+maximum_count = 1
+
+[sub_resource type="Resource" id="LootEntry_herb"]
+script = ExtResource("2_entry")
+item_id = "herb"
+chance_percent = 45.0
+minimum_count = 1
+maximum_count = 2
+
+[resource]
+script = ExtResource("1_table")
+table_id = "swamp_elite_drops"
+display_name = "Запасы стража"
+description = "Гарантированный чай и дополнительный материал с шансом."
+accent_color = Color(0.78, 0.36, 0.45, 1)
+entries = Array[ExtResource("2_entry")]([SubResource("LootEntry_tea"), SubResource("LootEntry_herb")])

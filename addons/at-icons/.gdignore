@@ -1,0 +1,6 @@
+# The @icons picker is currently disabled. Keep its 3,708 editor-themed SVG
+# sources outside Godot's asset scan so GUI/headless scale changes cannot cause
+# a full reimport on the next editor launch.
+#
+# Remove this file only when deliberately enabling the plugin. The first GUI
+# editor launch after removal will perform one expected icon import.

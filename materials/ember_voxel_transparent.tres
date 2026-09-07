@@ -1,0 +1,10 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://shaders/ember_voxel_transparent.gdshader" id="1_transparent"]
+
+[resource]
+render_priority = 1
+shader = ExtResource("1_transparent")
+shader_parameter/toon_steps = 4
+shader_parameter/band_floor = 0.19
+shader_parameter/local_light_softness = 1.0

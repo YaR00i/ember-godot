@@ -1,0 +1,62 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_grid_3d_world.gd" id="1_world"]
+[ext_resource type="Script" path="res://scripts/orbit_camera.gd" id="2_camera"]
+[ext_resource type="Resource" path="res://content/combat/battlefields/colored_crossing.tres" id="3_field"]
+[ext_resource type="MeshLibrary" path="res://content/combat/tiles/ember_battlefield_tiles.tres" id="4_tiles"]
+
+[sub_resource type="Environment" id="Environment_combat"]
+background_mode = 1
+background_color = Color(0.0627451, 0.0901961, 0.133333, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.721569, 0.796078, 0.886275, 1)
+ambient_light_energy = 0.72
+tonemap_mode = 2
+
+[node name="CombatGrid3DWorld" type="Node3D"]
+script = ExtResource("1_world")
+battlefield = ExtResource("3_field")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_combat")
+
+[node name="CombatKeyLight" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-58, -32, 0)
+light_color = Color(1, 0.945098, 0.819608, 1)
+light_energy = 1.15
+shadow_enabled = true
+
+[node name="CombatGridMap" type="GridMap" parent="."]
+cell_size = Vector3(1.2, 0.52, 1.2)
+mesh_library = ExtResource("4_tiles")
+collision_layer = 1
+collision_mask = 1
+
+[node name="CombatActors3D" type="Node3D" parent="."]
+
+[node name="CombatOverlays3D" type="Node3D" parent="."]
+
+[node name="CombatPairContext3D" type="Node3D" parent="."]
+
+[node name="CameraRig" type="Node3D" parent="."]
+script = ExtResource("2_camera")
+camera_path = NodePath("CombatCamera3D")
+target = Vector3(3.6, 0, 2.25)
+distance = 11.55
+yaw_degrees = 31.4
+pitch_degrees = 48.1
+min_distance = 4.0
+max_distance = 40.0
+orthographic_size = 9.2
+min_orthographic_size = 4.0
+max_orthographic_size = 18.0
+keyboard_pan_speed = 6.0
+mouse_wheel_zoom_enabled = false
+axis_lock_enabled = false
+vertical_rotation_locked = true
+focus_smoothing_duration = 0.42
+
+[node name="CombatCamera3D" type="Camera3D" parent="CameraRig"]
+projection = 1
+size = 9.2
+current = true

@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="EmberCombatActionResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_action_resource.gd" id="1_action"]
+
+[resource]
+script = ExtResource("1_action")
+action_id = "spark"
+display_name = "Искра"
+hint = "По Wet проводит урон по вражеским целям в той же области."
+requirements_text = "Враг должен быть в пределах 3 клеток и в линии обзора. При попадании по Wet молния проходит по другим мокрым врагам связанной области."
+menu_group = 2
+element = 3
+effect = 3
+power = 4
+mp_cost = 6
+accuracy_modifier = 5
+scaling = 2
+delay = 115
+range_cells = 3
+ui_color = Color(1, 0.898039, 0.419608, 1)

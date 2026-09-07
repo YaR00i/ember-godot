@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="EmberCombatActionResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_action_resource.gd" id="1_action"]
+
+[resource]
+script = ExtResource("1_action")
+action_id = "duo_pulse"
+display_name = "Грозовая связка"
+hint = "Мира усиливает молнию Сены: удар проходит по мокрым врагам одной цепи."
+requirements_text = "Мира должна быть не дальше 3 клеток от Сены, жива и иметь 6 MP; на цели заранее должен быть Wet. Цель должна быть в пределах 3 клеток и в линии обзора."
+menu_group = 1
+element = 7
+effect = 8
+power = 8
+mp_cost = 8
+accuracy_modifier = 10
+scaling = 2
+delay = 140
+range_cells = 3
+partner_unit_id = "mira"
+partner_range_cells = 3
+partner_mp_cost = 6
+partner_delay = 140
+ui_color = Color(0.968627, 0.65098, 0.870588, 1)

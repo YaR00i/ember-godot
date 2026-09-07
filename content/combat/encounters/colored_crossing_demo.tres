@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="EmberEncounterResource" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_encounter_resource.gd" id="1_encounter"]
+[ext_resource type="Resource" path="res://content/combat/battlefields/colored_crossing.tres" id="2_field"]
+[ext_resource type="PackedScene" path="res://scenes/combat/arenas/colored_crossing.tscn" id="3_arena"]
+
+[resource]
+script = ExtResource("1_encounter")
+encounter_id = "colored_crossing_demo"
+display_name = "Засада у цветной переправы"
+description = "Первая авторская встреча: постоянная партия против болотной засады на цветных панелях."
+intro_text = "Налётчики перекрыли цветную переправу. Используйте Wet и связанные панели."
+battlefield = ExtResource("2_field")
+arena_scene = ExtResource("3_arena")
+party_unit_ids = PackedStringArray("mira", "orik", "sena", "protagonist")
+enemy_unit_ids = PackedStringArray("wisp", "raider", "warden")
+victory_flag_id = "colored_crossing_won"
+victory_action_script_id = "colored_crossing_victory"
+victory_xp = 35
+repeatable = true

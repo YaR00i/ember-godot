@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EmberItemResource" format=3 uid="uid://oo6ig1saol6n"]
+
+[ext_resource type="Script" uid="uid://c47gk0wemno2a" path="res://scripts/ember_item_resource.gd" id="1_44tvw"]
+
+[resource]
+script = ExtResource("1_44tvw")
+item_id = "almond_tofu"
+definition = {
+"hpRestore": 10.0,
+"iconId": "tofu",
+"id": "almond_tofu",
+"kind": "consumable",
+"name": "Almond tofu",
+"nameRu": "Миндальный тофу",
+"rarity": "common",
+"sellPrice": 2.0,
+"slot": "none",
+"stackMax": 10.0,
+"tags": ["food"],
+"useIn": "explore"
+}

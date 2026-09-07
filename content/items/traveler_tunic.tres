@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EmberItemResource" format=3 uid="uid://nktuapt54yny"]
+
+[ext_resource type="Script" uid="uid://c47gk0wemno2a" path="res://scripts/ember_item_resource.gd" id="1_ggeb5"]
+
+[resource]
+script = ExtResource("1_ggeb5")
+item_id = "traveler_tunic"
+definition = {
+"def": 3.0,
+"iconId": "tunic",
+"id": "traveler_tunic",
+"kind": "armor",
+"name": "Traveler tunic",
+"nameRu": "Туника путника",
+"rarity": "common",
+"sellPrice": 5.0,
+"slot": "body",
+"stackMax": 1.0,
+"tags": ["armor"],
+"useIn": "explore"
+}

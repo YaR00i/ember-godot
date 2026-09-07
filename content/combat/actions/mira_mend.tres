@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EmberCombatActionResource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_action_resource.gd" id="1_action"]
+[ext_resource type="Resource" path="res://content/combat/effects/restore_major_hp.tres" id="2_effect"]
+
+[resource]
+script = ExtResource("1_action")
+action_id = "mira_mend"
+display_name = "Глубокая перевязь"
+hint = "Детерминированно восстанавливает одной живой цели 12 HP."
+requirements_text = "Живой союзник с неполным HP в пределах 3 клеток и в линии обзора. Лечение дорогое и занимает полное действие."
+menu_group = 2
+element = 6
+target = 1
+effect = 11
+scaling = 0
+mp_cost = 10
+delay = 120
+range_cells = 3
+effect_steps = Array[Resource]([ExtResource("2_effect")])
+ui_color = Color(0.466667, 0.85098, 0.603922, 1)

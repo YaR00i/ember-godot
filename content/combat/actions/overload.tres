@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="EmberCombatActionResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_action_resource.gd" id="1_action"]
+
+[resource]
+script = ExtResource("1_action")
+action_id = "overload"
+display_name = "Перегрузка"
+hint = "Мощный дальний разряд с высокой стоимостью и долгим восстановлением."
+requirements_text = "Враг в пределах 4 клеток и в линии обзора. Попадание, крит и урон заранее не раскрываются; после применения Сена сильнее задерживается в очереди."
+menu_group = 2
+element = 3
+power = 8
+mp_cost = 10
+accuracy_modifier = -8
+scaling = 2
+delay = 145
+range_cells = 4
+ui_color = Color(1, 0.835294, 0.313725, 1)

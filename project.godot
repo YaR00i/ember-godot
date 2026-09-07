@@ -1,16 +1,25 @@
 ; Engine configuration file.
-; Godot 4.3+ Forward+ — many OmniLight3D shadows without Three cube samplers.
-; Pack path is sibling joi-conductor/content/ember (see ember_pack.gd).
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
 
 config_version=5
 
 [application]
 
 config/name="Ember Godot"
-config/description="Lighting spike for Ember voxel maps. Authoring stays in JOI content/ember."
-run/main_scene="res://scenes/spike.tscn"
-config/features=PackedStringArray("4.3", "Forward Plus")
+config/description="Godot 4 Forward+ Ember. Maps are authored .tscn; pack is one-way import."
+run/main_scene="res://scenes/fan_town.tscn"
+config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
+
+[autoload]
+
+MCPRuntime="*uid://b2isfyc1s7ep8"
+EmberExploreProgress="*res://scripts/ember_explore_state.gd"
 
 [display]
 
@@ -18,17 +27,20 @@ window/size/viewport_width=1600
 window/size/viewport_height=900
 window/stretch/mode="canvas_items"
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/godot_mcp/plugin.cfg", "res://addons/ember_import/plugin.cfg", "res://addons/ember_surface_canvas/plugin.cfg")
+
 [ember]
 
-; Absolute path wins. Empty = ../joi-conductor/content/ember next to this repo.
 pack_path=""
 map_id="fan_town"
+save_slot=0
 
 [rendering]
 
-renderer/rendering_method="forward_plus"
-lights_and_shadows/directional_shadow/size=4096
-lights_and_shadows/positional_shadow/atlas_size=4096
-lights_and_shadows/positional_shadow/soft_shadow_filter_quality=2
-anti_aliasing/quality/msaa_3d=2
 textures/vram_compression/import_etc2_astc=true
+lights_and_shadows/directional_shadow/16_bits=false
+lights_and_shadows/positional_shadow/soft_shadow_filter_quality=1
+anti_aliasing/quality/msaa_3d=2
+lights_and_shadows/positional_shadow/atlas_quadrant_0_subdiv=3

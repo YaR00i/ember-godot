@@ -1,0 +1,13 @@
+[gd_scene format=3 uid="uid://mprhj1m6evo8"]
+
+[ext_resource type="Script" path="res://scripts/ember_voxel_prop.gd" id="1_r4dji"]
+[ext_resource type="ArrayMesh" path="res://prefabs/voxels/meshes/vox_fan_awning_stripe.res" id="3_f26fp"]
+
+[node name="vox_fan_awning_stripe" type="Node3D" unique_id=1093230059]
+script = ExtResource("1_r4dji")
+model_id = "vox_fan_awning_stripe"
+metadata/ember_source_signature = "316a5acec82c99994a67af31cc4488a91b1092a7603cd1f499d73c10d68703cc"
+
+[node name="Mesh" type="MeshInstance3D" parent="." unique_id=87257511]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0, -8)
+mesh = ExtResource("3_f26fp")

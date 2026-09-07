@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EmberCombatActionResource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_action_resource.gd" id="1_action"]
+[ext_resource type="Resource" path="res://content/combat/effects/wind_spread_elements.tres" id="2_effect"]
+
+[resource]
+script = ExtResource("1_action")
+action_id = "wind_spread"
+display_name = "Раздувка"
+hint = "Разносит Wet или Burning с выбранной клетки на соседние клетки и цели."
+requirements_text = "На выбранной клетке должен быть Wet/Burning или стоять боец с таким статусом. Дальность 4 клетки, распространение — на 1 клетку."
+menu_group = 2
+element = 5
+target = 4
+effect = 11
+scaling = 0
+mp_cost = 4
+delay = 95
+range_cells = 4
+effect_steps = Array[Resource]([ExtResource("2_effect")])
+ui_color = Color(0.65098, 0.909804, 0.737255, 1)

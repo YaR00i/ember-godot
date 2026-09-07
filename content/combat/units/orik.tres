@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="EmberCombatUnitResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_unit_resource.gd" id="1_unit"]
+
+[resource]
+script = ExtResource("1_unit")
+unit_id = "orik"
+display_name = "Орик"
+description = "Стойкий защитник: замораживает мокрые цели, прикрывает союзников и перекрывает путь льдом."
+max_hp = 22
+max_mp = 32
+strength = 8
+magic = 6
+defense = 7
+resistance = 6
+speed = 10
+accuracy = 89
+luck = 5
+move_range = 3
+jump_height = 1
+weight_class = 1
+cold_resistance = 10
+action_ids = PackedStringArray("strike", "chill", "guard", "ice_wall", "lift_throw", "defend")
+battle_color = Color(0.478431, 0.85098, 0.690196, 1)
+prototype_roster_order = 1
+prototype_zone = 0
+prototype_next_at = 12.0

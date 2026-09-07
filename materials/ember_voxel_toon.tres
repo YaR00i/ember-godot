@@ -1,0 +1,10 @@
+[gd_resource type="ShaderMaterial" format=3 uid="uid://q5tmsa8drdch"]
+
+[ext_resource type="Shader" uid="uid://tcotm1jm2742" path="res://shaders/ember_voxel_toon.gdshader" id="1_yjyv3"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_yjyv3")
+shader_parameter/toon_steps = 4
+shader_parameter/band_floor = 0.19
+shader_parameter/local_light_softness = 1.0

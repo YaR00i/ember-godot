@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EmberCombatActionResource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_action_resource.gd" id="1_action"]
+[ext_resource type="Resource" path="res://content/combat/effects/forge_leap_move.tres" id="2_effect"]
+
+[resource]
+script = ExtResource("1_action")
+action_id = "forge_leap"
+display_name = "Кузнечный скачок"
+hint = "Рывком занимает свободную клетку, включая высокий уступ."
+requirements_text = "Свободная проходимая клетка в пределах 4 дальности, в линии обзора и с перепадом высоты не больше 4. Приземление вниз может нанести урон от падения."
+menu_group = 1
+element = 4
+target = 4
+effect = 11
+scaling = 0
+mp_cost = 5
+delay = 95
+range_cells = 4
+effect_steps = Array[Resource]([ExtResource("2_effect")])
+ui_color = Color(1, 0.67451, 0.352941, 1)

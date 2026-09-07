@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="EmberCombatActionResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_action_resource.gd" id="1_action"]
+
+[resource]
+script = ExtResource("1_action")
+action_id = "chill"
+display_name = "Холодный укол"
+hint = "По Wet создаёт Frozen."
+requirements_text = "Враг должен быть в пределах 2 клеток и в линии обзора. При попадании по Wet создаёт Frozen с учётом устойчивости цели."
+menu_group = 2
+element = 2
+effect = 2
+power = 3
+mp_cost = 5
+accuracy_modifier = 5
+scaling = 2
+delay = 110
+range_cells = 2
+ui_color = Color(0.662745, 0.933333, 1, 1)

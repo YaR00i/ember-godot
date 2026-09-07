@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3 uid="uid://bsq2saxtbrdu6"]
+
+[ext_resource type="Script" uid="uid://sctw08epm1a3" path="res://scripts/ember_action_resource.gd" id="1_qvewf"]
+
+[resource]
+script = ExtResource("1_qvewf")
+action_id = "sbx_planter_nw_actions"
+document = {
+"id": "sbx_planter_nw_actions",
+"nameRu": "Новая цепочка",
+"steps": [{
+"shopId": "village_kiosk",
+"type": "open_shop"
+}, {
+"flag": "test",
+"type": "set_flag",
+"value": true
+}]
+}

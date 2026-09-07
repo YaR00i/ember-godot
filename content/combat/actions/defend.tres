@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="EmberCombatActionResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_action_resource.gd" id="1_action"]
+
+[resource]
+script = ExtResource("1_action")
+action_id = "defend"
+display_name = "Защита"
+hint = "Завершает ход без атаки; следующий урон вдвое меньше."
+requirements_text = "Применяется на себя без проверки попадания. Защита действует до следующего полученного удара."
+element = 6
+target = 2
+effect = 7
+power = 0
+scaling = 0
+delay = 85
+range_cells = 0
+ui_color = Color(0.764706, 0.713725, 1, 1)

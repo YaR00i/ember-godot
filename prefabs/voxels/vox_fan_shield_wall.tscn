@@ -1,0 +1,14 @@
+[gd_scene format=3 uid="uid://b1vmiuuej44pk"]
+
+[ext_resource type="Script" path="res://scripts/ember_voxel_prop.gd" id="1_bth7p"]
+[ext_resource type="ArrayMesh" path="res://prefabs/voxels/meshes/vox_fan_shield_wall_block.res" id="2_7rjbr"]
+
+[node name="vox_fan_shield_wall" type="Node3D" unique_id=1116367645]
+script = ExtResource("1_bth7p")
+model_id = "vox_fan_shield_wall"
+metadata/ember_source_signature = "2a3804b1cb6363624d4a2162a2c1c2a275713c9f3d08e528764cf24e9fbc6181"
+
+[node name="Mesh" type="MeshInstance3D" parent="." unique_id=1812111015]
+transform = Transform3D(16, 0, 0, 0, 16, 0, 0, 0, 16, -8, 0, -8)
+mesh = ExtResource("2_7rjbr")
+metadata/ember_block_position = Vector3(-0.5, 0, -0.5)

@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EmberCombatActionResource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_action_resource.gd" id="1_action"]
+[ext_resource type="Resource" path="res://content/combat/effects/earth_raise_ground.tres" id="2_effect"]
+
+[resource]
+script = ExtResource("1_action")
+action_id = "earth_raise"
+display_name = "Вздыбить землю"
+hint = "Поднимает выбранную клетку и сразу меняет маршруты, дальность и обзор."
+requirements_text = "Клетка должна быть в пределах 3 клеток и в линии обзора; максимальная высота — 16. Изменение действует до конца боя."
+menu_group = 2
+element = 8
+target = 4
+effect = 11
+scaling = 0
+mp_cost = 4
+delay = 105
+range_cells = 3
+effect_steps = Array[Resource]([ExtResource("2_effect")])
+ui_color = Color(0.72549, 0.576471, 0.352941, 1)

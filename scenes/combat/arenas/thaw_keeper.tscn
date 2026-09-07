@@ -1,0 +1,9 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/prototypes/combat_grid_3d_world.tscn" id="1_world"]
+[ext_resource type="Resource" path="res://content/combat/battlefields/thaw_keeper.tres" id="2_field"]
+
+[node name="BattleArenaThawKeeper" instance=ExtResource("1_world")]
+editor_preview_enabled = true
+editor_preview_mode = 1
+battlefield = ExtResource("2_field")
