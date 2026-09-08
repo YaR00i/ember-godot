@@ -1,600 +1,234 @@
 # Ember Godot — технический handoff
 
-Актуально: 7 сентября 2026, editor v2.56.1, combat lab v2.57.2, gameplay v2.64.2.
+Актуально: 8 сентября 2026. Editor stop-line v2.56.1, gameplay v2.64.2.
 
-## Источник правды
+Документ описывает текущее устройство, owners и реальные долги. Полный прежний
+текст можно восстановить из монолитного Git checkpoint `20685ac`; это не
+детальная цепочка исторических commits. Журнал каждой версии здесь больше не
+ведётся. Ближайшая задача находится в `docs/EMBER_NOW.md`.
+
+## Источники правды
 
 Этот репозиторий владеет runtime, Godot editor plugins, сценами и новым
 контентом Ember. `../joi-conductor` — временный read-only архив legacy pack для
-явного одноразового импорта. Новые механики, модели, карты и документация
-решений создаются здесь.
+явного одноразового импорта. Новые механики, модели, карты и решения создаются
+здесь.
 
 Канонические документы:
 
+- текущая точка: `docs/EMBER_NOW.md`;
 - продукт и порядок: `docs/EMBER_PRODUCT_PLAN.md`;
-- игровой дизайн вертикального среза: `docs/EMBER_GAME_DESIGN.md`;
-- миграционные ворота: `docs/EMBER_JOI_EXIT_PLAN.md`;
-- полная проверка: `MIGRATION_TEST_PLAN.md`;
-- UX редактора: `docs/EMBER_EDITOR_UX_AUDIT.md`;
+- игровой дизайн: `docs/EMBER_GAME_DESIGN.md`;
+- рабочий процесс: `docs/EMBER_WORKFLOW.md`;
+- выход из JOI: `docs/EMBER_JOI_EXIT_PLAN.md`;
+- автоматические и ручные gates: `MIGRATION_TEST_PLAN.md`;
+- editor UX: `docs/EMBER_EDITOR_UX_AUDIT.md`;
 - addons и ownership: `docs/EMBER_ADDONS.md`.
 
-## Текущее состояние Surface Canvas
+## Неподвижные технические границы
 
-- v2.40: палитра, глобальное изменение/слияние образцов, локальная кисть и
-  пипетка используют один Resource/Undo owner.
-- v2.41: временное voxel-выделение — single, connected similar и all similar;
-  поиск и overlay распределены по кадрам.
-- v2.42: сохранённые группы `{id,name,indices,locked}`, выбор, замена состава,
-  защита и временная изоляция.
-- v2.43: Paint/Material применяют точную selection mask.
-- v2.44: компактная рейка из восьми семейств; формообразующие кисти используют
-  XZ-отпечаток selection, а shape commit очищает устаревшую маску.
-- v2.45: schema v4 добавляет сохранённый цвет authoring-группы; выбор группы
-  окрашивает transient overlay. Несколько групп можно скрыть только в текущем
-  editor view; derived preview сохраняет воду и никогда не пишет фильтр в `.tres`.
-- v2.46: выбранный образец разворачивается в 3/5/7 обычных palette colors.
-  Центральный цвет остаётся точным, voxel/water indices перенумеровываются одной
-  Undo-операцией, поэтому применение рампа само по себе не меняет внешний вид.
-- v2.47: большая 24×24 Surface измерена на реальном dense Resource. Schema
-  оставлена прежней; sparse-aware heightfield, reuse editor-only cache и native
-  terrain + canonical water overlay сокращают Canvas open/group/chunk hot paths.
-- v2.48: уход с Surface main screen использует Save/Discard/Cancel guard, а
-  закрытие Godot и общий Save — штатный external-data lifecycle. Camera, region,
-  slice, overlays и layer view хранятся per-Surface в editor layout, не в `.tres`.
-- Height slice, region editing, water level fill, bottom-only view, chunk preview,
-  Undo/Redo и save/discard/reopen уже имеют targeted tests.
+- Godot 4 Forward+ — единственный runtime и authoring target.
+- Карты принадлежат `.tscn`; canonical voxel-модель —
+  `content/voxel_models/*.tres` (`EmberVoxelModelResource`). Mesh, collision,
+  thumbnail, prefab и MeshLibrary являются производными данными.
+- Не создаются второй renderer, voxel editor, combat resolver, gameplay owner
+  или параллельная schema.
+- Preview и commit используют один расчёт. Editor-only selection, overlays,
+  camera и layout не сериализуются в gameplay Resource.
+- Collision, высота и navigation игрока/AI читают одну физическую поверхность.
+- Legacy JOI читается только importer-ом; новые runtime-зависимости запрещены.
 
-## Текущее состояние Ember Graph
+## Карта owners
 
-- v2.49: навигация по типу/Resource, обновление и основной Save находятся в
-  постоянной строке документа; локальные инструменты больше не меняют её высоту.
-- Arrange, clipboard, duplicate, dialogue groups и quest `Все связи` перенесены
-  в `Ещё…`; Quest focus показан как breadcrumb `Задание › …`.
-- Правый property editor имеет bounded minimum, а split ratio сохраняется через
-  Godot editor layout. Это editor-only state, документы и gameplay schema не
-  менялись.
-- `test_graph_workspace.gd` проверяет фиксированные 1280×720 и 1600×900,
-  сохранение split ratio и прежние save/Undo/discard contracts;
-  `test_graph_lifecycle.gd` сохраняет mount/unmount и Forward+ gate.
+### Voxel Surface и производные данные
 
-## Текущее состояние G1/G2
+- `scripts/ember_voxel_model_resource.gd` — canonical palette, voxels, groups,
+  water/fill и schema Surface.
+- `addons/ember_import/ember_voxel_sculpt_model.gd` — чистая editor-модель;
+  `ember_voxel_sculpt_actions.gd` — mutation/Undo; workspace только связывает UI.
+- `scripts/ember_voxel_surface_mesher.gd` и
+  `scripts/ember_voxel_surface_materials.gd` — visual projection.
+- `scripts/ember_voxel_surface_physics.gd` и
+  `scripts/ember_voxel_surface_projection.gd` — collision, height и world sample.
+- `content/world_surfaces/<map_id>_surface.tres` — canonical world Surface;
+  `content/combat/surfaces/*.tres` — visual Surface боевого поля.
 
-- v2.50 добавляет общий read-only отчёт для voxel/action/dialogue/item/shop/VN.
-  Он запускается вручную из `Ember Migration`, а JSON пишет только в `user://`.
-- Baseline: voxel 2 native / 175 legacy; action 13/4; dialogue 2/10; item 5/19;
-  shop 1/1; VN 2/29. Один legacy VN background потерял файл изображения.
-- Для 176 voxel props: 56 prefab ready, 32 stale, 88 missing. Неизвестных
-  scene-ссылок на voxel owner нет. Наличие prefab не считается migration parity.
-- `ember_content_migration_report.gd` ничего не пишет; targeted gate сверяет
-  SHA-256 Godot sources, prefab и frozen JOI archive до/после отчёта.
-- v2.51 добавляет отдельный read-only dashboard на 263 записи: раздел,
-  ownership/состояние, поиск по ID/error/scene и подробности выбранной записи.
-  Быстрый фильтр выделяет шесть legacy voxel-моделей из `agent_sandbox` как
-  первую проверочную партию. Он только формирует кандидатов и не запускает bulk
-  convert, не меняет report schema и не пишет canonical content.
-- v2.52 отделяет transient import preview от записи и требует strict parity до
-  mutation: grid/occupancy, metadata, vertices, normals, colors, indices и
-  collision source mesh. Шесть sandbox-моделей прошли 6/6 и перенесены одной
-  атомарной batch-операцией с Undo/Redo.
-- v2.55 добавляет второй фиксированный batch: семь `fan_town` моделей, у которых
-  prefab уже был ready. Все 7/7 прошли тот же read-only strict parity и теперь
-  принадлежат Godot Resource; scene paths, placement и schema не менялись.
-  Dashboard показывает отдельный фильтр и блокирует перенос до dry-run точного
-  списка. Forward+ кадр подтвердил прежние модели и восстановленный water shader.
-- Текущий voxel ownership: 15 native / 162 legacy. Все шесть scene-used sandbox
-  Resources совпадают с проверенным preview, их prefab ready; legacy sandbox
-  candidate queue пуста. Общий derived baseline теперь 63 ready / 25 stale /
-  88 missing. `fan_town` ready-batch также закрыт; остальные 25 scene-used
-  модели карты пока остаются отдельной очередью.
-- v2.56 измеряет эти 25 stale prefab без записи. Все 25 меняют канонический
-  набор видимых voxel-граней, 18 — ещё и collision; три emissive-модели меняют
-  свет/тени. Поэтому автоматический следующий batch обоснованно отклонён. Это
-  production art review после design Q&A, а не незакрытая функция редактора.
-- v2.56.1 делает обычный `ensure_saved()` идемпотентным: актуальный prefab
-  проходит validation и возвращается без повторной записи `.tscn/.res`.
-  Принудительная пересборка остаётся только у явной editor-команды и migration
-  mutation. Это не даёт внешнему тестовому процессу hot-reload-ить mesh, который
-  открыт в Forward+ viewport, и убирает renderer warning без смены schema.
+### Exploration, interactions и content
 
-## Текущее состояние G3 physical Surface
+- `scripts/ember_map_loader.gd` — загрузка карты и нативной Surface.
+- `scripts/ember_interact.gd`, `ember_interact_rules.gd` и
+  `ember_interaction_ui.gd` — scene-owned binding и запуск взаимодействия.
+- `scripts/ember_action_script.gd` — runtime action chain; `.tres`-источники
+  находятся в `content/action_scripts/`.
+- `scripts/ember_dialogue_resource.gd`, `ember_quest_resource.gd`,
+  `ember_item_resource.gd` и `ember_shop_resource.gd` — canonical Resources
+  соответствующих систем. Их catalogs остаются native-first.
+- `addons/ember_import/ember_graph_workspace.gd` — единый крупный authoring
+  workspace; специализированные editors/inspectors не владеют runtime state.
 
-- v2.54.2 устраняет повторный долгий import на старте редактора: отключённый
-  `at-icons` изолирован через `.gdignore`, поэтому его 3 708 editor-themed SVG
-  больше не участвуют в asset scan. Schema, gameplay assets и runtime не
-  меняются. Автоматизации не должны запускать live checkout с
-  `--headless --editor`; import smoke выполняется в отдельном checkout/cache.
-- v2.54 переносит тот же контракт на `fan_town`: canonical Surface 32×32,
-  grid 512×48×512, 12.0 MiB voxel bytes / около 16.0 MiB `.tres`. Load
-  1.0–1.3 с и save 0.14–0.17 с не обосновывают смену dense schema.
-- v2.54.1 исправляет регрессию water overlay после общего native backend.
-  Native mesh хранит вершины в локальных координатах чанка, а Surface water/foam
-  намеренно использует координаты полной карты для бесшовного shader pattern.
-  Поэтому только water-bearing chunks идут через прежний точный Surface mesher;
-  сухие чанки остаются native и сохраняют измеренное ускорение. Schema/save и
-  сами water materials не менялись. Тесты проверяют размер воды в первом Canvas
-  chunk и точное положение water surface в смещённом runtime chunk.
-- Общий native exact mesher обслуживает сухие чанки editor и world runtime с
-  прежним GDScript fallback; visual chunk `fan_town` снижен примерно 19–21 → 5–7 мс.
-  Heightfield строится в WorkerThreadPool и не блокирует игровой кадр; 64
-  collision-чанка 4×4 блока собираются примерно за 0.22 с pure work, худший
-  runtime chunk около 8 мс. Legacy collision живёт до атомарного переключения.
-- `test_fan_town_surface_profile.gd` сохраняет профиль только в `user://`,
-  `migrate_fan_town_surface.gd` по умолчанию dry-run, а фактическую сцену
-  проверяет `test_fan_town_surface_projection.gd`. Forward+ RTX 5070 завершил
-  1024 visual / 64 collision chunks без швов и ошибок.
-- v2.53 включает physical Surface только у `agent_sandbox`. Один существующий
-  `EmberVoxelModelResource` теперь даёт terrain visual, collision без воды,
-  точную высоту art-колонки и маршрут по gameplay-блокам. Новой schema,
-  NavMesh Resource или второй карты высот нет.
-- `authored_size_blocks = 24×24` хранится в `.tscn`, поэтому проверка sandbox
-  Surface больше не читает legacy map JSON. Пока нативная физика строится,
-  legacy collision остаётся активной; после полного rebuild 144 чанков она
-  атомарно выключается. При правке Resource старая нативная физика остаётся
-  активной до готовности замены.
-- Исходный полный collision-mesh: ~1.83 с, худший 4×4-block chunk ~134 мс.
-  Greedy top rectangles + padded height cache + 2×2-block chunks дали
-  ~1.11 с суммарно и 10–14 мс на худший chunk. Производный height cache строится
-  в том же проходе; route query после готовности сократился примерно 61 → <1 мс.
-- `test_world_surface_projection.gd` проверяет fallback switch, live rebuild,
-  save/reopen flags, PhysicsServer ray, floor sample и маршрут на реальном
-  sandbox Resource. Forward+ Vulkan кадр 1280×720 отрисован без ошибок.
+### Party, save и переход в бой
 
-Brush backend не дублировать: author-facing `Объём` разрешается в Add/Remove,
-`Рельеф` — в Up/Down × Solid/Shell через
-`addons/ember_import/ember_voxel_brush_profiles.gd`; commit остаётся в
-`ember_voxel_sculpt_actions.gd`.
+- `scripts/ember_explore_state.gd` — единственный mutable/save owner мира,
+  партии, общей сумки, флагов и прогресса.
+- `scripts/ember_party_state.gd` — чистая нормализация, derived stats, XP и
+  level-up; он ничего не сохраняет самостоятельно.
+- `scripts/ember_combat_transition.gd` — guarded-транзакция мир → бой → мир.
+  Бой получает глубокую копию предбоевого состояния и возвращает результат один
+  раз.
+- Save v2 хранит три ручных файла и отдельный autosave в
+  `user://ember-save-v2/ember_p1/`. Для каждого из четырёх постоянных героев
+  сохраняются level, XP, текущие HP/MP и пять слотов экипировки; derived stats
+  пересчитываются.
+- Одноразовая v1→v2 миграция сначала делает byte-identical backup. Удаление слота
+  также оставляет recovery-копию в `deleted_saves`.
 
-## Stop-line основного редактора
+### Combat
 
-Цветовой этап и профили sandbox/`fan_town` закрыты. Dense каналы sandbox
-занимают 9.84 MiB; load около 0.80 с, save около 0.13 с. Синхронный Canvas open
-сокращён примерно 0.79 → 0.12 с, group filter 0.71 → 0.019 с, exact chunk
-25.5 → 5.9–6.6 мс. Selection cap/overlay уже распределены по кадрам. Оснований для
-sparse/chunk persistence пока нет; воспроизводимый gate —
+- `scripts/prototypes/ember_combat_prototype.gd` — единственный pure resolver,
+  command preview/commit и stale-result guard.
+- `scripts/prototypes/ember_combat_terrain.gd` — общая математика высоты,
+  distance, LOS и terrain reactions.
+- `scripts/prototypes/ember_combat_grid.gd` — dense Battlefield navigation,
+  reachable/path, staged movement и positional planning.
+- `scripts/prototypes/ember_combat_lab.gd` — controller команды, targeting и HUD.
+- `scripts/prototypes/ember_combat_grid_3d_world.gd` и представления grid —
+  projection/animation, а не второй gameplay owner.
+- `scripts/prototypes/ember_combat_action_resource.gd`,
+  `ember_combat_effect_resource.gd`, `ember_combat_unit_resource.gd`,
+  `ember_battlefield_resource.gd` и `ember_encounter_resource.gd` — authoring
+  contracts; экземпляры находятся в `content/combat/`.
+
+## Текущее состояние editor и Surface
+
+Surface Canvas поддерживает палитру, локальную кисть и пипетку, selection,
+именованные/цветные группы, editor-only visibility, 3/5/7 palette ramps,
+height slice, region editing, sculpt, water fill, bottom-only view, chunk preview,
+Undo/Redo и guarded save/discard/reopen.
+
+Большая 24×24 Surface измерена на реальном dense Resource. Sparse-aware
+heightfield, editor-only cache и native chunk backend ускорили hot paths без
+смены schema. Подтверждённый профиль sandbox:
+
+- dense channels: 9.84 MiB;
+- load около 0.80 с, save около 0.13 с;
+- synchronous Canvas open около 0.12 с вместо 0.79 с;
+- group filter около 0.019 с вместо 0.71 с;
+- exact chunk около 5.9–6.6 мс вместо 25.5 мс.
+
+Оснований для sparse/chunk persistence нет. Воспроизводимый gate —
 `tools/test_surface_large_profile.gd`, подробности —
 `docs/EMBER_SURFACE_LARGE_PROFILE.md`.
 
+`agent_sandbox` и `fan_town` используют одну physical Surface для visual,
+collision и route heights. `fan_town` 32×32 хранит около 12 MiB voxel bytes;
+load 1.0–1.3 с и save 0.14–0.17 с не обосновывают новую schema. Native mesher
+обслуживает сухие чанки; water-bearing chunks сохраняют точную full-map
+координатную проекцию шейдера без швов. Новая физика заменяет legacy collision
+атомарно после полного rebuild.
+
 Surface Canvas, Ember Graph, Object Inspector и bounded migration dashboard
-считаются базово завершёнными. Дальнейший общий polish запрещён без конкретного
-production-сценария, который не удаётся выполнить текущими инструментами.
+находятся на stop-line. Общий polish не продолжается без конкретного production
+workflow, который текущие инструменты не закрывают.
 
-## Текущее состояние D1 vertical Combat Lab
+## Текущее состояние миграции G1/G2/G3
 
-- v2.57.2 применяет вторую ручную обратную связь. Подъём теперь является
-  projection-only состоянием подтверждённой цели: выбранный боец сразу плавно
-  оказывается над носителем, но canonical cell не меняется; выбор клетки
-  запускает только дугу броска и прежний точный commit.
-- Активные статусы проецируются над каждым бойцом отдельными цветными badges:
-  `▲` обозначает buff, `▼` — debuff, форма-иконка, русское имя и число показывают
-  тип и оставшиеся ходы. Общая status metadata добавлена к прежнему resolver;
-  новая gameplay schema или второй UI owner не создавались.
-- Переход между четырьмя сторонами камеры теперь плавный. Меню раздельно
-  блокирует горизонтальный поворот и вертикальный наклон; обе настройки можно
-  сочетать с плавным режимом сторон и инверсией. `F` перенесён в глобальный
-  input-маршрут Combat Lab, поэтому фокус работает независимо от GUI focus.
-- v2.57.1 применяет первую ручную обратную связь. Начальный кадр и reset
-  показывают всё поле вместо привязки к первому бойцу; последующие смены активного
-  юнита плавно двигают target камеры. Q/E освобождены, а меню `Камера` даёт
-  доступный без Home возврат к общему плану, инверсию Y, дискретную фиксацию
-  направлений и полную блокировку угла.
-- Для больших полей home view теперь хранит безопасную дистанцию, рассчитанную
-  по диагонали арены. Forward+ кадр на минимальном pitch подтвердил отсутствие
-  преждевременного пересечения/исчезновения ближних клеток.
-- Projection-only animation queue проигрывает staged/AI movement, подъём цели
-  над бойцом, дугу броска, короткий выпад, hit squash и defend pulse. Очередь
-  получает уже рассчитанные pure previews и не задерживает commit, не меняет
-  snapshot и не создаёт второй combat owner.
-- v2.57 добавляет два авторских dense-поля поверх прежнего
-  `EmberBattlefieldResource`: E4 10×8 и E5 16×12. На колонку по-прежнему
-  приходится одна проходимая высота; второй resolver, этажи и новая persistence
-  schema не создавались.
-- Канонические Unit/Action Resources получили только необходимые параметры
-  `Jump`, вес, дальность и допустимый вес броска. Jump, высотная дальность, LOS,
-  падение, толчок и подъём/бросок рассчитываются прежними pure terrain/resolver
-  модулями. Preview и commit применяют один заранее рассчитанный результат.
-- AI перебирает те же доступные маршруты, цели и клетки броска, что игрок. После
-  устранения повторного полного перебора клеток профиль 16×12 на локальном
-  headless gate составляет в среднем 0.39 мс для reachable, 0.39 мс для пути и
-  около 24 мс для AI-команды. Эти числа не обосновывают смену dense Battlefield.
-- Базовый v2.57 добавил 90-градусные стороны обзора и автоматический framing;
-  актуальный v2.57.1 перенёс стороны в toggle фиксации и освободил Q/E. Преграды
-  между камерой и активным бойцом используют отдельный полупрозрачный derived
-  tile с прежней collision; у бойцов есть видимый поверх геометрии контур.
-- Все связанные headless gates и отдельные обычный/low-angle Forward+ RTX 5070
-  captures прошли.
-- Этап 1 принят владельцем после ручной оценки масштаба клеток, MOVE/Jump,
-  читаемости камеры и двухшагового броска.
+Read-only report и dashboard показывают ownership, состояние prefab, usage и
+ошибки без записи canonical content. Strict dry-run сравнивает occupancy,
+metadata, mesh arrays и collision до разрешения ограниченной batch mutation.
 
-### V2.58.3 · постоянная партия, живой лидер и save v2
+Текущий voxel ownership: 15 native / 162 legacy. Derived baseline: 63 ready /
+25 stale / 88 missing. Шесть используемых sandbox-моделей и семь ready-моделей
+`fan_town` перенесены ограниченными Undo/Redo batches. Остальные 25 scene-used
+stale prefab меняют видимые грани, 18 — collision, поэтому их нельзя
+пересобирать вслепую; это будущая visual review по необходимости production-зоны.
 
-- `EmberExploreState` остаётся единственным mutable/save owner. Новый чистый
-  `EmberPartyState` нормализует четырёх постоянных героев: стабильный внутренний
-  `protagonist`, Миру, Орика и Сену. Временное поле `hp/max_hp/equipment` — только
-  compatibility-проекция протагониста для старых explore-сцен и не дублируется
-  в JSON.
-- Каждый герой хранит level, XP, текущие HP/MP и ровно пять слотов экипировки.
-  Максимумы и боевые статы вычисляются из Unit Resource, уровня и экипировки.
-  `EmberCombatUnitResource` получил базовый `max_mp`; добавлен авторский
-  `protagonist.tres`. В принятых аренах он занимает четвёртую deployment-точку,
-  поэтому прежняя учебная расстановка Миры/Орика/Сены не изменилась.
-- Три ручных файла лежат в `user://ember-save-v2/ember_p1/manual_0..2.json`,
-  отдельный `autosave.json` обновляется безопасными gameplay mutations.
-  Метаданные меню читаются без загрузки игрового состояния и показывают локацию,
-  время прохождения, живых героев и локальную дату записи.
-- Если v2 отсутствует, выбранный v1 читается один раз. До записи v2 исходный JSON
-  копируется byte-for-byte в `migration_backups/manual_<slot>_v1.json`; старый
-  файл остаётся на месте. HP протагониста переносится пропорционально новой шкале,
-  совместимая экипировка остаётся на нём, несовместимая возвращается в сумку,
-  спутники получают авторские стартовые состояния.
-- `EmberCombatTransition` передаёт в существующий resolver глубокую копию партии,
-  повтор боя заново использует предбоевой snapshot, а guarded result transaction
-  возвращает HP/MP и награду ровно один раз. Второй resolver или save owner не
-  создавался.
-- Мира, Орик и Сена теперь видимы на всех exploration-картах, которыми владеет
-  `fan_town.gd`. Это presentation-проекция одной постоянной партии, а не ещё три
-  контроллера: спутники воспроизводят безопасный путь лидера. `T` и HUD toggle
-  переключают точный «паровозик» и компактную живую формацию с разной скоростью
-  перестроения, дыханием/шагом и fallback в след у препятствия. Режим хранится
-  только в сессии и намеренно не расширяет save v2.
-- Текущая сумка получила четыре функциональные вкладки героев. `Q/E` выбирают
-  предыдущего/следующего независимо от GUI focus. Выбор сразу меняет активного
-  героя исследования; в закрытом мире `Tab` циклически делает то же самое.
-  Имя, HP, цвет и модель одного controller меняются на выбранного героя, а
-  прежний лидер занимает его место среди трёх presentation-спутников.
-- Активный лидер и режим строя остаются transient session state и не входят в
-  save v2. Переключение строя использует отдельный лёгкий signal вместо общего
-  `progress_changed`: 40 переключений в gate занимают около 0.14 мс и не
-  заставляют все двери/квестовые binding повторно проверять состояние. Четыре
-  простые модели создаются один раз при открытии карты, а не при каждом `Tab`.
-- Hotfix v2.58.3 устраняет доказанный I/O hot path живого переключения. Общий
-  editor-каталог по-прежнему умеет свежую discovery-загрузку, но fixed party
-  один раз получает process-local snapshot семи Unit Resources, а единственный
-  `EmberExploreState` — read-only snapshot item definitions на игровую сессию.
-  Party views нормализуют группу один раз на batch вместо повтора для каждой
-  вкладки. На том же gate 40 смен лидера сократились с 6.57 с до 10.2 мс,
-  40 полных обновлений инвентаря занимают около 191 мс. Save schema и текущие
-  HP/MP/equipment не кэшируются и остаются живыми canonical данными.
-- Arrival guard дополнен минимумом в три кадра: тяжёлый первый Surface-frame не
-  может целиком съесть короткое временное окно и сразу вернуть героя в дверь.
-- Pause menu показывает `Сохранить/Загрузить/Удалить` у трёх ручных слотов и
-  отдельное удаление автосейва. Удаление требует второго нажатия за пять секунд,
-  а перед ним точные байты переносятся в `deleted_saves`; миграционный backup v1
-  остаётся защищённым.
-- Это проверочный интерфейс этапа 2; визуальный production UI по-прежнему
-  принадлежит этапам 5–6.
-- Связанные headless gates включают `test_party_save_v2.gd`,
-  `test_party_followers.gd` и расширенный переход мир → бой → мир. Forward+
-  RTX 5070 captures подтверждают обе формы строя, читаемость слотов, удаления и
-  выбранной вкладки героя.
+`ensure_saved()` идемпотентен для актуального prefab. Принудительный rebuild
+разрешён только явной editor-командой или подтверждённой migration mutation.
+Отключённый `at-icons` изолирован через `.gdignore`; автоматизация не запускает
+live checkout с `--headless --editor`.
 
-### V2.59 · основа production-правил боя
+## Текущее состояние партии и exploration loop
 
-- Это первый законченный срез этапа 3, а не объявление всего этапа готовым.
-  Существующие `EmberCombatUnitResource` получили STR/MAG/DEF/RES/SPD/ACC/LUCK,
-  производные EVA/CRIT и четыре стихийных сопротивления. Action Resources
-  получили стоимость MP, модификатор точности и выбор STR/MAG scaling. Формулы
-  остаются в прежнем едином resolver; второго боя или параллельной схемы нет.
-- Только враждебное действие фиксирует два детерминированных броска во внутреннем
-  preview: попадание и крит. Повтор той же команды в том же snapshot не
-  перебрасывает результат. После уточнения v2.59.1 игрок не видит эти броски,
-  будущий крит и урон до commit; commit применяет скрыто зафиксированные
-  урон/статусы/движение и MP один раз. Устаревшая команда отклоняется.
-- Поддержка, защита, движение и механизмы остаются детерминированными. Промах
-  расходует ход и MP, но не накладывает статус, не толкает цель и не меняет
-  клетки. Падение остаётся отдельным точным уроном и не проходит повторно через
-  DEF/RES или critical scaling.
-- Уровень и экипировка пересчитывают production-характеристики через
-  `EmberPartyState`; save v2 по-прежнему хранит только level/XP/current HP/MP и
-  пять предметов. Бой получает их копию и возвращает текущие HP/MP прежним
-  guarded result route.
-- AI строит команду через тот же resolver: недоступное по MP действие не
-  рассматривается, а authored target/reaction priorities сохраняются. Он больше
-  не ранжирует варианты по скрытому будущему попаданию и не использует locked RNG
-  как нечестное знание.
-- V2.59.1 делит radial на основной уровень `Движение / Удар / Умения / Магия /
-  Защита` и вложенные страницы приёмов. Центральная плашка удалена; нижняя
-  карточка показывает стоимость, эффект и условия наведённого/focused действия.
-  Правый предбоевой текст не раскрывает шанс, бросок, попадание/промах, крит или
-  урон. 2D/3D-представление поля также не получает скрытые `cellChanges` и
-  forced movement до commit, поэтому визуально угадать будущий исход нельзя.
-  После commit фактический исход остаётся в журнале и запускает анимацию.
-- Unit Resources теперь авторски задают уровень, тип, размер, сопротивления
-  стихиям, сокращение Wet/Frozen/Burning и стойкость к толчку. Action Resources
-  задают группу меню, условия и силу отбрасывания. Верхняя правая карточка при
-  наведении на врага показывает эти знания вместе с HP и активными статусами.
-  Устойчивости детерминированы: они сокращают длительность эффекта, а стойкость
-  блокирует силу не выше своей. Дополнительного RNG и изменения save v2 нет.
-- V2.59.2 использует staged destination как presentation-only цель камеры.
-  Выбор клетки запускает прежний плавный `OrbitCamera.focus_on`; `F` до commit
-  фокусирует ту же новую позицию, а occlusion скрывает препятствия относительно
-  неё. Resolver остаётся на старой клетке до действия. Валидность destination
-  считается один раз при `configure`, а не через pathfinding в каждом кадре.
-- После v2.59.1 прошли все 14 combat gates и связанные Battlefield, Encounter и
-  party/save v2 gates — 17 скриптов суммарно. Forward+ RTX 5070 capture проверил
-  двухуровневый круг, нижнее описание и карточку изучения. Последний 16×12 замер:
-  reachable 0.65 мс, path 0.67 мс, AI 34.67 мс; оснований менять dense
-  Battlefield по-прежнему нет.
+Партия постоянна: протагонист, Мира, Орик и Сена. В мире выбранный лидер остаётся
+единственным controller, а трое спутников — presentation-проекция безопасного
+пути. `Tab` меняет лидера, `T` переключает живую формацию и «паровозик»; это
+session-only state и не расширяет save v2.
 
-### V2.60 · боевые предметы из общей сумки
+Inventory/equipment, shop, HP/consumables, quests, action chains, dialogue и
+переходы между картами существуют в graybox. Нативные catalogs являются
+основным путём; оставшиеся `EmberPack` fallback удаляются только вертикальными
+миграционными срезами после parity.
 
-- Существующие native Item Resources теперь авторски задают доступность в мире
-  и/или бою, восстановление HP/MP, воскрешение и боевую дальность. Это расширение
-  прежнего item-контракта, а не второй каталог или новая save schema.
-- При запуске встречи `EmberCombatTransition` передаёт в прежний resolver
-  глубокую копию общей сумки и native-описания находящихся в ней предметов.
-  Открытие меню и выбор цели ничего не тратят; commit допустимой цели уменьшает
-  ровно один стек и занимает полное действие. Повтор устаревшего commit не может
-  применить эффект или списать предмет второй раз.
-- Лечение и MP-восстановление разрешены только живой цели, которой эффект
-  действительно полезен; воскрешение — только павшему союзнику. Все предметы
-  детерминированы и подчиняются authored range/LOS. Тестовый набор Combat Lab:
-  две лечебные травы, чай HP+MP и одна редкая искра воскрешения до 1 HP.
-- При победе остаток сумки возвращается тому же `EmberExploreState` ровно один
-  раз вместе с HP/MP. Retry создаёт новый бой из предбоевого снимка и тем самым
-  возвращает потраченные припасы. Save остаётся v2: производные combat-команды и
-  item definitions не сериализуются.
-- В radial появился раздел `Предметы`: строки показывают иконку и остаток, а
-  нижняя карточка — эффект, дальность и условия применения. Срез прошёл все 15
-  `test_combat*.gd` и четыре связанные проверки item/inventory/party. Отдельный
-  Forward+ RTX 5070 кадр `combat_vertical_stage3_items.png` проверяет страницу
-  предметов и не выявил регрессии поля или HUD.
+## Текущее состояние Combat Lab
 
-#### V2.60.1 · адаптивный список команд вместо второго кольца
+Два dense-поля 10×8 и 16×12 используют одну проходимую высоту на колонку. Jump,
+height-aware range, LOS, падение, толчок, подъём/бросок, pathfinding и AI проходят
+через общие terrain/resolver rules. Последний измеренный E5 16×12 поиск целей
+для auto-approach занимает в среднем около 4.73 мс; оснований менять dense
+Battlefield нет.
 
-- Основное кольцо вокруг активного героя остаётся владельцем быстрых команд и
-  категорий `Умения / Магия / Предметы`. Категория больше не заменяет его вторым
-  кольцом: рядом открывается прокручиваемая панель со всеми строками категории.
-- Положение панели вычисляется из экранной позиции героя после проекции текущей
-  камеры. Она выбирает более свободную сторону кольца, ограничивается viewport и
-  использует hysteresis 120 px, чтобы не перескакивать при медленном движении
-  камеры около центра.
-- Строка показывает shortcut, иконку, имя, MP или количество. Недоступная
-  команда остаётся видимой и объясняет причину; hover/focus сохраняет прежнее
-  подробное описание снизу. `Esc/B` и видимая кнопка возвращают в кольцо, а при
-  выборе команды панель скрывается перед выбором цели.
-- Если вся категория недоступна, клавиатурный/геймпадный фокус переходит на
-  `Назад`, а не теряется. `test_combat_lab.gd` проверяет отсутствие второго
-  кольца, focus route и обе стороны размещения; все combat gates и Forward+
-  item capture проходят.
+Бой поддерживает:
 
-#### V2.60.2 · отдельный ввод масштаба для боя
+- постоянную партию, STR/MAG/DEF/RES/SPD/ACC/LUCK, derived EVA/CRIT, HP/MP,
+  equipment, XP/level-up и возврат результата в save v2;
+- единый hostile RNG, зафиксированный в preview и применяемый без reroll;
+  попадание, крит и урон не раскрываются игроку до commit;
+- детерминированные поддержку, лечение, предметы, механизмы и устойчивости;
+- Wet, Frozen, Burning, пар/проводимость, Землю и Ветер через reusable
+  `effect → action → unit` Resources;
+- три личных направления каждого героя и две authored парные техники с
+  фиксированным партнёром, радиусом, общей MP-ценой и задержкой;
+- предмет из общей сумки за полный ход с точным списанием одного stack;
+- равный XP всем четырём героям, сохранение дефицита HP/MP и возврат павшего с
+  1 HP после победы;
+- поэтапный UI `browse → confirm action → target → commit`, корректный cancel и
+  адаптивный список `Умения / Магия / Предметы` рядом с основным кольцом;
+- свободный плавный yaw при заблокированном pitch по умолчанию, отдельный
+  orthogonal toggle, независимые axis locks, authored camera values и отсутствие
+  mouse-wheel zoom во время боя;
+- общий auto-approach для ближней/дальней hostile-команды: достижимая позиция
+  завершает атаку, недоход останавливает героя и применяет Defend без расхода
+  выбранной атаки.
 
-- Общий `OrbitCamera` получил author-facing флаг `mouse_wheel_zoom_enabled` с
-  безопасным default `true`. Только боевой `CameraRig` задаёт его как `false`,
-  поэтому колесо больше не приближает и не отдаляет поле во время боя.
-- `orthographic_size`, min/max, `zoom_step` и editor preview не удалялись:
-  стартовый ракурс по-прежнему настраивается в Inspector. Surface Canvas и
-  другие редакторские камеры сохраняют прежний zoom-ввод.
-- `test_combat_lab.gd` посылает реальные wheel events и проверяет неизменный
-  размер, а `test_combat_camera_rig_preview.gd` подтверждает, что authored
-  значение объектива всё ещё применяется.
+Projection-only animation queue показывает движение, подъём, дугу броска,
+выпад, hit squash и defend pulse после уже рассчитанного preview. Status badges
+показывают тип и длительность buff/debuff. Эти проекции не мутируют snapshot.
 
-### V2.61 · равный XP и level-up через прежний party/save owner
+Единая нативная библиотека `эффекты / умения и магия / герои и существа`
+создаёт, дублирует и связывает canonical `.tres`, блокируя save при validation
+errors. Новая низкоуровневая операция всё ещё требует реализации и targeted
+resolver test; редактор не генерирует gameplay-код.
 
-- `EmberEncounterResource.victory_xp` хранит одну авторскую награду за победу;
-  `colored_crossing_demo` выдаёт 35 XP каждому герою. Inspector показывает её в
-  сводке, validation запрещает встречу без положительной награды.
-- `EmberPartyState` остаётся единственной чистой математикой прогрессии. Все
-  четыре постоянных героя, включая павших, получают одинаковый XP. Временный
-  баланс-порог равен `30 + (level - 1) × 15`, максимум — 99-й уровень; эти числа
-  меняются без смены save schema.
-- При level-up текущие HP/MP растут только на прирост максимума, поэтому прежний
-  дефицит сохраняется. После победы павший возвращается ровно с 1 HP; поражение
-  не выдаёт XP и не поднимает героя.
-- `EmberCombatResult` строит preview XP/level-up тем же helper, которым
-  `EmberExploreState` применяет результат. Существующий transaction guard в
-  `EmberCombatTransition` устанавливается до mutation, поэтому двойной Enter/
-  Continue не может начислить опыт повторно.
-- Save остаётся v2: уже существующие `level/xp/hp/mp/equipment` сохраняются и
-  переоткрываются, производные параметры не пишутся. Новый gate
-  `test_party_progression.gd`, result/transition/save проверки и Forward+ кадр
-  `combat_vertical_stage3_progression.png` прошли.
+## Следующий технический срез
 
-### V2.62.1 · позиционная связка двух парных техник
+Актуальный порядок всегда берётся из `docs/EMBER_NOW.md`. Ближайший кандидат —
+расширение существующего positional planner на непарные support/heal/item/cell/
+lift commands и battle-only удержание поднятой цели. Парные техники остаются на
+своём authored-радиусе и не входят в этот срез. Точный UI-порядок после lift-цели
+и запрет обычных direct/cell/AOE/status effects по удерживаемой цели зафиксированы
+в GDD. Это ещё не реализовано и не разрешает второй resolver или изменение
+schema.
 
-- Существующий `EmberCombatActionResource` получил только authored-ссылку на
-  фиксированного партнёра, его MP-cost и задержку. Нового resolver, владельца
-  очереди или save-поля не появилось; stable id прежней `duo_pulse` сохранён.
-- `Грозовая связка` доступна Сене, если Мира жива и имеет 6 MP, а цель Wet.
-  Удар проходит по другим мокрым врагам той же проводящей области. `Паровой
-  пробой` доступен протагонисту, если Орик жив и имеет 6 MP, а цель Frozen;
-  техника снимает Frozen и применяет authored force 3.
-- Каждая техника авторски задаёт `partner_range_cells`; текущий кандидат для
-  обеих пар — 3 клетки. Используется та же height-aware distance, что у боевых
-  действий. Проверяется позиция инициатора после staged movement, поэтому вход
-  в радиус может сразу открыть технику в том же ходу. При commit правило
-  проверяется повторно, а MP и задержка списываются с обоих ровно один раз.
-- Адаптивная панель показывает суммарную цену `8+6 MP`, имя партнёра и точную
-  дистанцию `текущая/радиус`. При hover поле показывает клетки связки, партнёр
-  получает зелёный/красный контур, указатель и подпись `в радиусе / вне
-  радиуса`. В 3D оба участника дают короткий синхронный импульс перед атакой.
-  Inspector также показывает pair metadata Resource.
-- Targeted resolver/resource/UI/animation gates и Forward+ кадр
-  `combat_vertical_stage3_pairs.png` закрепляют условия, расходы, timeline,
-  stale-commit guard и фактическую композицию. Числа MP/power/delay остаются
-  кандидатами ручного баланса.
+## Известные долги
 
-### V2.63 · промежуточный authoring-срез Земли, Ветра и боевого контента
+- Нативных voxel Resources значительно меньше legacy-моделей; generated prefab
+  не доказывает ownership.
+- Physical world Surface есть у sandbox и `fan_town`, battle Surface — у
+  `colored_crossing`; остальные карты ещё используют legacy terrain.
+- Несколько catalog/loader классов всё ещё используют `EmberPack`; новые вызовы
+  туда запрещены.
+- 25 scene-used stale voxel prefab требуют visual review перед миграцией.
+- Поражение/Retry и предбоевая расстановка ещё не закрыты production-правилами.
+- Первый малый сквозной D3-участок ещё не собран.
+- Финальный запуск без физически доступного sibling JOI не пройден.
 
-- `EmberCombatEffectResource` — переиспользуемый шаг, а не второй resolver. Он
-  описывает одну из пяти операций: наложить/снять статус, толкнуть, изменить
-  клетку или распространить состояние. `EmberCombatActionResource.effect_steps`
-  хранит упорядоченные внешние ссылки; старые stable presets продолжают работать
-  и могут получить дополнительные шаги без массовой миграции 12 действий.
-- Добавлены элементы `earth`, сопротивления Air/Earth и цель `cell`. Три
-  неназначенных action-кандидата — `earth_raise`, `earth_wall`, `wind_spread` —
-  используют семь общих effect fixtures. Standalone Combat Lab временно
-  добавляет их только в runtime-копию Миры; Unit Resources утверждённой партии
-  не изменены.
-- Earth пишет `elevation/blocked/tags` только в `resolved.cellChanges`. Commit
-  применяет patch к battle state, поэтому прежние movement/Jump/LOS/AI сразу
-  видят тот же результат; Battlefield/Surface Resource и save v2 не мутируются.
-  Текущая длительность — до конца боя, максимум высоты остаётся 16 и stacked
-  floors не вводятся.
-- Wind читает выбранный источник и детерминированно распространяет только
-  авторские `spread_status_ids/spread_cell_tags` в height-aware радиусе. Текущий
-  fixture переносит Wet/Burning на любых соседних бойцов и Wet на проходимые
-  клетки, с прежними status resistances.
-- `Ember Graph → Бойцы и приёмы` и пункт `Ember: Open Combat Content` открывают
-  единую нативную библиотеку `эффекты / умения и магия / герои и существа`.
-  Можно искать, создавать и дублировать canonical `.tres`; Action Inspector
-  назначает/сортирует эффекты через Ctrl+Z, Unit Inspector уже назначает сами
-  действия, а явная кнопка сохранения блокирует Resource с validation errors.
-  Низкоуровневая новая операция всё ещё требует targeted resolver
-  реализации — это сознательная защита parity preview/commit.
-- `test_combat_effect_library.gd` проверяет catalog, validation, save/reopen,
-  pure preview, Earth commit в общий terrain/pathfinding, Wind status/cell
-  spread, Inspector Undo и центральный workspace. Связанные action/unit/grid/
-  lab/prototype/graph gates остаются обязательными.
-
-### V2.63.1 · рабочая компоновка библиотеки боя
-
-- Каталог заменил слитый многострочный `ItemList` на `Tree` с отдельными
-  колонками `Название / ID / Связи`, цветным типовым маркером, validation-state
-  и tooltip. Поиск учитывает описание и связи, а счётчики назначений строятся
-  один раз на refresh вместо повторного обхода каталогов для каждой строки.
-- Resizable split теперь держит каталог слева и sticky-карточку выбранного
-  Resource справа. В карточке постоянно доступны `Inspector`, `Сохранить` и
-  `Создать копию`; ниже находятся редактирование и переходы по реальным связям
-  effect → action → unit. Двойной клик открывает canonical `.tres` в Inspector.
-- Добавлены Ctrl+F/N/D/S, явные normal/selected/error состояния, подписанная
-  create-форма и компактные swatch/icon frames. Container minimums проходят
-  1600×900 и обязательный 1280×720 без отдельной темы или второго UI-owner.
-- `capture_combat_content_library.gd` создаёт четыре воспроизводимых native
-  кадра для effect/action/unit и compact layout; interactive editor-theme
-  проверка кликов и фокуса остаётся ручным Approval B.
-
-### V2.64 · полный набор личных действий героев
-
-- У каждого постоянного героя теперь ровно три личных направления из GDD.
-  Искатель получил `Кузнечный скачок` и рискованный `Накал`, Мира — дорогое
-  точечное лечение, Орик — ледяную преграду, Сена — дистанционную активацию
-  узла и тяжёлую `Перегрузку`. Ошибочное временное назначение огненного
-  `Уголька` Сене снято; парные и общие команды остаются отдельными.
-- Общая библиотека эффектов расширена только тремя необходимыми операциями:
-  фиксированное лечение, особое перемещение применяющего и активация authored
-  focus-узла. Они проходят через прежний pure preview/commit resolver; действие
-  по клетке, terrain patch, MP, timeline и анимация не получили второго owner.
-- `Накал` живёт в прежнем статусном словаре: на два следующих хода атакующие
-  действия получают +2 authored power, пока входящий урон увеличен на 25%.
-  Любое завершённое действие сокращает длительность. `Кузнечный скачок`
-  допускает перепад до четырёх высот, не занимает focus/blocked/occupied клетку
-  и корректно объединяется с staged movement. Лечение Миры восстанавливает 12
-  HP за 10 MP и не выбирает полностью здоровую цель.
-- `Дальний контакт` помечает канонический focus активированным ровно один раз;
-  3D-узел меняет янтарный сигнал на зелёный. `Перегрузка` использует прежний
-  hostile RNG, поэтому до commit показывает стоимость и условия, но не шанс,
-  крит или урон. Все числа остаются кандидатами ручного баланса.
-- Новый `test_combat_personal_actions.gd` закрепляет назначения, preview purity,
-  commit, staged move + leap, лечение, риск Накала, ледяную стену, одноразовый
-  узел и скрытый исход Перегрузки. Forward+ кадр
-  `combat_vertical_stage3_personal_actions.png` проверяет расширенный drawer.
-
-### V2.64.1 · глобальный поэтапный выбор боевой команды
-
-- HUD больше не подставляет первое допустимое действие в `_selected_action`.
-  Focus/hover хранится отдельно как presentation-only просматриваемая команда:
-  описание, authored range, допустимые бойцы/клетки и парный контекст видны на
-  поле, но targeting, resolver preview, MP и inventory ещё не запускаются.
-- Подтверждение строки переводит ту же команду в targeting. `Esc` и
-  `ui_cancel` очищают action, unit/cell/secondary target и lift-состояние, затем
-  открывают исходную категорию и возвращают фокус на ту же строку. Повторная
-  отмена закрывает список до корневого кольца. Self-target по-прежнему commit-ится
-  сразу после подтверждения.
-- Один controller обслуживает кольцо, адаптивный drawer, старый 2D diagnostic и
-  движение. Поле получает безопасный browse-action только для подсветки
-  authored допустимости; зависящие от скрытого hostile RNG изменения остаются
-  доступны лишь внутреннему preview после подтверждения цели. Resolver, Action
-  Resources, Battlefield и save v2 не менялись.
-- `test_combat_lab.gd` воспроизводит `focus → confirm → ui_cancel → restored
-  focus → ui_cancel`, проверяет отсутствие автоматически вооружённой команды и
-  различает HUD selection от 3D range projection. Все combat gates проходят;
-  capture добавил отдельные кадры browse и targeting.
-
-### V2.64.2 · камера и единый автоподход враждебных действий
-
-- `CameraRig` E2–E5 начинает бой со свободным плавным горизонтальным вращением
-  и заблокированным вертикальным наклоном. Ортогональные стороны остаются
-  отдельным toggle; независимые блокировки осей, authored pitch/distance/focus
-  и editor-preview не удалялись. Колесо мыши по-прежнему не масштабирует бой.
-- `ember_combat_grid.gd` поверх прежней dense Battlefield schema строит один
-  полный navigation field и ищет ближайшую позицию, с которой выбранная
-  hostile unit-action проходит range/height/LOS. Если она достижима за MOVE,
-  прежний `command_preview/commit` получает staged move + исходную атаку. Если
-  нет — маршрут обрезается на MOVE и тем же resolver применяется authored
-  `Defend`; исходная атака и её MP не расходуются.
-- Eligibility отделена от позиции только для обычных враждебных unit-actions.
-  MP, команда, тип/состояние цели, item, lift/throw и парные условия продолжают
-  проверяться каноническим resolver. Preview отдаёт проекциям только маршрут,
-  позицию атаки, конечную клетку и Attack/Defend intent, не раскрывая скрытые
-  hit/crit/damage.
-- HUD, 3D и diagnostic 2D используют один target-set за refresh. Поле рисует
-  маршрут и отдельный маркер `АТАКА · СТОП` либо `ЗАЩИТА · СТОП`; старые
-  динамические radial-кнопки удаляются из дерева сразу, поэтому их имена и
-  keyboard/gamepad focus не конфликтуют в одном кадре.
-- `test_combat_grid.gd` закрывает melee, ranged, LOS, полную атаку, недоход с
-  защитой, отсутствие MP-spend и preview purity. `test_combat_lab.gd` проверяет
-  доступность далёкой цели и визуальный intent. На E5 16×12 новый общий поиск
-  целей занимает в среднем 4.73 ms; 17 combat gates и четыре соседних
-  Battlefield/Encounter/party/save gate проходят. Forward+ capture
-  `combat_vertical_stage3_auto_approach.png` проверяет путь, stop-cell и
-  различимый `ЗАЩИТА` intent в реальной 3D-проекции.
-
-Следующие этапы:
-
-1. подтверждённый владельцем `docs/EMBER_GAME_DESIGN.md` v1.1 считать текущим
-   design baseline;
-2. gameplay v2.58.3 с постоянной партией и save v2 принят владельцем;
-3. Камера/HUD v2.59.2, боевые предметы, адаптивная панель, XP/level-up v2.61,
-   позиционные парные техники v2.62.1 и authoring-путь v2.63.1 приняты
-   владельцем; полный набор личных действий v2.64 также принят, а поэтапный
-   выбор v2.64.1 встроен в текущий кандидат; вручную проверить камеру и
-   автоподход v2.64.2;
-4. перед Retry реализовать утверждённый v2.64.3: общий positional planner для
-   непарных союзных/cell/item-команд и battle-only связь удержания. Поднятую цель
-   нельзя атаковать; она пропускает ход, а носитель не двигается и выбирает
-   только `Бросить / Опустить / Удерживать и защищаться`. Сейчас это только
-   зафиксированный план, без изменения resolver или schema;
-5. после v2.64.3 закрыть поражение/Retry и предбоевую расстановку; затем собрать один
-   малый сквозной D3-участок поверх проверенного Surface-контракта;
-6. согласовать основные player-facing экраны на HTML-прототипе и перенести их в
-   один нативный Godot UI;
-7. собрать полный graybox затопленной кузницы, затем в его production-контексте
-   визуально утвердить только нужные stale prefab batches;
-8. после приёмки среза закрыть G4/G5 из exit plan.
-
-## Игровой дизайн вертикального среза
-
-Q&A по первому production-срезу собрана и принята в
-`docs/EMBER_GAME_DESIGN.md` v1.0.
-Документ фиксирует 45–50-минутную затопленную кузницу, постоянную группу из
-четырёх героев, исследование и обратимые механизмы, две обычные встречи,
-необязательного элитного противника, босса-стабилизацию, progression/save v2 и
-player-facing UI. Технические числа MOVE/Jump/дальности и параметры камеры
-намеренно остаются настраиваемыми до ручной приёмки Combat Lab.
-
-Реализованный кандидат этапа 1 ограничен существующими
-`EmberBattlefieldResource`, `EmberCombatTerrain`, `EmberCombatPrototype`, arena
-scene и AI preview. В него входят поля 10×8/16×12, Jump/LOS/падение,
-подъём-бросок, поворот камеры шагами 90 градусов и профиль AI/pathfinding. Save
-v2, production dungeon content и новый UI в этот риск-тест не входят.
-
-## Известные миграционные долги
-
-- Нативных voxel Resources пока значительно меньше legacy-моделей; generated
-  prefabs не считаются доказательством ownership.
-- Нативная world Surface есть у sandbox и `fan_town`, battle Surface — у
-  colored crossing; остальные legacy-карты ещё не переведены.
-- Несколько catalog/loader классов всё ещё используют `EmberPack`. Новые вызовы
-  туда запрещены; существующие удаляются вертикальными срезами после parity.
-- `agent_sandbox` и `fan_town` уже читают одну Surface для
-  visual/collision/route heights; остальные карты ещё используют legacy terrain.
-- Финальный тест с физически отсутствующим sibling JOI не пройден.
-
-## Запуск проверок
+## Проверки
 
 Godot console: `tools/godot/Godot_v4.7.2-stable_win64_console.exe`.
-Targeted сценарии находятся в `tools/test_*.gd`; fixture-ресурсы сохраняются в
-`user://`, авторские карты тестами не переписываются. После изменений Surface
-минимально прогонять связанные selection/groups/palette/slice/sculpt/Canvas и
-world projection tests, затем вручную проверять Forward+ viewport.
+Targeted scripts находятся в `tools/test_*.gd`; fixtures сохраняются в
+`user://`, авторские карты не перезаписываются. Актуальные suites и ручные gates
+перечислены в `MIGRATION_TEST_PLAN.md`.
+
+Рабочий checkout нельзя запускать через `--headless --editor`. Изменения UI,
+render, physics, input и игрового ощущения после headless gates проверяются в
+обычном Godot 4 Forward+.
