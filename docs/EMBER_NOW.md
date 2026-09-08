@@ -1,7 +1,7 @@
 # Ember — текущая точка
 
 Обновлено: 2026-09-09
-Git gameplay checkpoint: `e4b6b7e` (`main`); последний docs checkpoint: `1823262`
+Git gameplay checkpoint: `e4b6b7e` (`main`); каноническая глава: `647a882`
 
 Этот файл — короткая стартовая точка для нового Codex-thread. Он не заменяет
 GDD, продуктовый план, технический handoff или migration gates. Если здесь и в
