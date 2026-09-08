@@ -202,10 +202,10 @@ Forward+ проверка должна подтвердить отсутстви
 исчезающих chunks, неверной прозрачности и изменений collision из-за
 visual-only эффекта.
 
-## Активный gate: следующий positional slice
+## Combat Lab v2.64.4 positional/hold regression gate
 
-До реализации точный Task Contract сверяется с `docs/EMBER_NOW.md` и GDD.
-Минимальная приёмка следующего кандидата:
+Срез реализован в рабочем дереве после `2c38bc5`; до checkpoint остаётся ручная
+Forward+ приёмка. Regression gate сохраняет следующие критерии:
 
 1. непарные support/heal/item/cell/lift-команды используют тот же positional
    planner, что hostile-команды;
@@ -213,16 +213,24 @@ visual-only эффекта.
    cancel возвращает прежний focus;
 3. если применение недостижимо за MOVE, герой останавливается на предельной
    клетке и защищается без расхода MP/item/выбранного действия;
+   cell-target команда при этом не подсвечивает удалённую пустую клетку как
+   выполнимую: её область ограничена MOVE + authored range;
 4. подъём может завершиться удержанием; связь живёт только в battle snapshot;
 5. удерживаемую цель нельзя атаковать, она пропускает ход без накопления;
 6. носитель не перемещается и выбирает только `Бросить`, `Опустить` или
    `Удерживать и защищаться`;
-7. после выбора lift-цели UI предлагает `Бросить сейчас / Оставить поднятой`;
-   немедленный бросок только затем открывает выбор клетки приземления;
+7. первое подтверждение lift-цели проигрывает только presentation-подход и
+   подъём; затем доступны `Бросить / Опустить / Удерживать и защищаться`;
+   после завершения подъёма они появляются в кольце у носителя без отдельной
+   нижней/боковой панели; Cancel из выбора клетки броска возвращает это кольцо;
+   Cancel, включая середину подхода, возвращает исходный snapshot и presentation
+   без телепорта, сохраняя заранее выбранное M;
 8. гибель носителя детерминированно опускает цель на ближайшую допустимую клетку;
 9. stale preview не может списать ресурс или применить результат;
 10. AI и player route не расходятся;
-11. schema Action/Battlefield/save и owner resolver не меняются.
+11. 16×12 cell-target profile остаётся ниже 20 мс в среднем, а UI переиспользует
+    один расчёт на refresh;
+12. schema Action/Battlefield/save и owner resolver не меняются.
 
 Удерживаемая цель исключена из обычных direct/cell/AOE/status effects. Носитель
 получает эффекты штатно, они не переносятся на удерживаемого бойца, а гибель
@@ -233,6 +241,30 @@ visual-only эффекта.
 `test_combat_personal_actions.gd`; затем весь combat suite и соседние
 transition/party/save tests. Ручная приёмка — обычный Forward+ Combat Lab на
 обоих размерах поля.
+
+## ActionPlan regression gate (поверх v2.64.4)
+
+- `test_combat_action_plan.gd`: strike/ranged/support/heal/item/lift/cell/spread/
+  self/movement; путь заканчивается в stop; MOVE+range; явное M в исходной
+  клетке; revival через occupant; stale context; один commit.
+- `test_combat_lab.gd`: menu movement/cast/filtered targets; hover A-B-A и
+  cell footprint без клика; недопустимая B не сохраняет executable preview;
+  3D roots/input и 2D buttons сохраняют instance IDs; public preview не содержит
+  скрытых результатов; полный и прерванный lift approach/cancel.
+- `test_combat_vertical_animation.gd`: M не проигрывается повторно перед lift;
+  cancel сохраняет staged M; throw, duo и defend presentation продолжают работать.
+- Затем все `test_combat*.gd`, `test_battlefield*.gd`, `test_encounter*.gd`,
+  `test_party*.gd`, `test_*save*.gd` последовательно (shared user:// fixtures).
+- Обычный Forward+ render smoke обеих арен выполнен на RTX 5070, без editor/import.
+  Ручной gate остаётся открытым: реальная мышь и геймпад, hover границы дальности,
+  цвет fallback/invalid, M, lift cancel в пути и после подъёма, три финальных
+  варианта, читаемость HUD и непрерывность анимации на 10×8/16×12.
+
+Команда targeted test (из checkout; путь exe можно заменить локальным):
+
+```powershell
+& C:/Users/novos/Projects/ember-godot/tools/godot/Godot_v4.7.2-stable_win64_console.exe --headless --path . --script res://tools/test_combat_action_plan.gd
+```
 
 ## Migration gates
 

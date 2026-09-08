@@ -82,6 +82,7 @@ func _run_and_quit() -> void:
 	hud.call("_select_action", "lift_throw")
 	world.emit_signal("cell_chosen", Vector2i(0, 4), "orik")
 	await create_timer(0.3).timeout
+	hud.call("_choose_lift_throw")
 	var selection_state := hud.call("_selection_state") as Dictionary
 	var landing_cells := Combat.valid_secondary_cells(selection_state, "lift_throw", "orik")
 	var landing := Vector2i(-1, -1)
@@ -152,15 +153,7 @@ func _run_and_quit() -> void:
 		world.call("queue_action_animation", pair_state, pair_preview)
 		hud.set("_state", Combat.commit(pair_state, pair_preview))
 		hud.call("_refresh")
-		await create_timer(0.08).timeout
-		var sena := lab.find_child("CombatUnit_sena", true, false) as Node3D
-		mira = lab.find_child("CombatUnit_mira", true, false) as Node3D
-		if (
-			sena == null
-			or mira == null
-			or sena.scale.is_equal_approx(Vector3.ONE)
-			or mira.scale.is_equal_approx(Vector3.ONE)
-		):
+		if not await _observed_pair_scale(world, 0.4):
 			errors.append("pair technique did not visibly cue both participants")
 		await create_timer(0.5).timeout
 
@@ -182,6 +175,23 @@ func _observed_unit_scale(lab: Node, unit_name: String, duration: float) -> bool
 		elapsed += 0.02
 		var unit := lab.find_child(unit_name, true, false) as Node3D
 		if unit != null and not unit.scale.is_equal_approx(Vector3.ONE):
+			return true
+	return false
+
+
+func _observed_pair_scale(world: Node, duration: float) -> bool:
+	var elapsed := 0.0
+	var saw_sena := false
+	var saw_mira := false
+	while elapsed < duration:
+		await create_timer(0.02).timeout
+		elapsed += 0.02
+		var roots := world.get("_unit_roots") as Dictionary
+		var sena := roots.get("sena", null) as Node3D
+		var mira := roots.get("mira", null) as Node3D
+		saw_sena = saw_sena or (sena != null and not sena.scale.is_equal_approx(Vector3.ONE))
+		saw_mira = saw_mira or (mira != null and not mira.scale.is_equal_approx(Vector3.ONE))
+		if saw_sena and saw_mira:
 			return true
 	return false
 

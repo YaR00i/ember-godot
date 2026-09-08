@@ -5,6 +5,8 @@ extends Node3D
 ## The scene owns GridMap/camera/light nodes; combat legality stays in the resolver.
 
 signal cell_chosen(cell: Vector2i, unit_id: String)
+signal cell_hovered(cell: Vector2i)
+signal lift_presentation_finished
 
 const Combat = preload("res://scripts/prototypes/ember_combat_prototype.gd")
 const Grid = preload("res://scripts/prototypes/ember_combat_grid.gd")
@@ -37,6 +39,10 @@ const THROW_DURATION := 0.38
 @export var battlefield: EmberBattlefieldResource
 
 var _state: Dictionary = {}
+var _lift_presentation: Dictionary = {}
+var _overlay_cells: Dictionary = {}
+var _overlay_materials: Dictionary = {}
+var _lift_preview_tween: Tween
 var _selected_action := ""
 var _selected_target := ""
 var _pending_cell := Vector2i(-1, -1)
@@ -184,6 +190,16 @@ func projected_item_at(cell: Vector2i) -> int:
 	return _grid_map.get_cell_item(_map_cell(cell))
 
 
+func update_action_preview(preview: Dictionary, target: String, cell: Vector2i, secondary: Vector2i) -> void:
+	_preview = preview
+	_selected_target = target
+	_target_cell = cell
+	_secondary_cell = secondary
+	for child in _overlay_root.get_children():
+		(child as Node3D).visible = false
+	_add_overlays()
+
+
 func screen_position_for_cell(cell: Vector2i) -> Vector2:
 	if _camera == null:
 		return Vector2(-1.0, -1.0)
@@ -289,6 +305,10 @@ func handle_camera_input(event: InputEvent) -> bool:
 	)
 
 
+func hover_cell_at(screen_position: Vector2) -> void:
+	cell_hovered.emit(_pick_cell(screen_position))
+
+
 func choose_cell_at(screen_position: Vector2) -> bool:
 	var cell := _pick_cell(screen_position)
 	if not Grid.is_inside(_state, cell):
@@ -311,6 +331,8 @@ func focus_active_unit(smooth: bool = true) -> bool:
 	return _focus_active_unit(smooth)
 
 func _rebuild_projection() -> void:
+	if _lift_preview_tween != null:
+		_lift_preview_tween.kill()
 	if _grid_map == null:
 		return
 	var previous_positions := _capture_unit_positions()
@@ -325,6 +347,7 @@ func _rebuild_projection() -> void:
 	_grid_map.clear()
 	_clear_children(_dynamic_root)
 	_clear_children(_overlay_root)
+	_overlay_cells.clear()
 	_clear_children(_pair_context_root)
 	_unit_roots.clear()
 	_unit_target_positions.clear()
@@ -399,7 +422,9 @@ func _add_units(previous_positions: Dictionary = {}) -> void:
 	var active_id := Combat.current_unit_id(_state)
 	var active := Combat.unit_definition(_state, active_id)
 	var active_cell: Vector2i = active.get("cell", Vector2i(-1, -1))
-	var reachable := Grid.reachable_cells(_state, active_id)
+	var reachable: Array = _preview.get("movementCells", [])
+	if not _preview.has("movementCells"):
+		reachable = Grid.reachable_cells(_state, active_id)
 	var staged := (
 		_pending_cell != Vector2i(-1, -1)
 		and _pending_cell != active_cell
@@ -414,13 +439,19 @@ func _add_units(previous_positions: Dictionary = {}) -> void:
 		var planned := staged and unit_id == active_id
 		if planned:
 			cell = _pending_cell
+		if unit_id == active_id and _is_lift_selection_active():
+			cell = _lift_presentation.get("destination", cell)
 		var root := Node3D.new()
 		root.name = "CombatUnit_%s" % unit_id
 		var final_position := _world_position(cell, UNIT_Y_OFFSET)
+		var carrier_id := Combat.carrier_id_for(_state, unit_id)
+		if not carrier_id.is_empty():
+			var carrier := Combat.unit_definition(_state, carrier_id)
+			final_position = _world_position(
+				carrier.get("cell", Vector2i.ZERO), UNIT_Y_OFFSET
+			) + Vector3.UP * 1.45
 		if unit_id == _lifted_target_id and _is_lift_selection_active():
-			var carrier_cell := active_cell
-			if staged:
-				carrier_cell = _pending_cell
+			var carrier_cell: Vector2i = _lift_presentation.get("destination", active_cell)
 			final_position = _world_position(carrier_cell, UNIT_Y_OFFSET) + Vector3.UP * 1.45
 		root.position = previous_positions.get(unit_id, final_position)
 		_dynamic_root.add_child(root)
@@ -452,7 +483,8 @@ func _add_units(previous_positions: Dictionary = {}) -> void:
 		root.add_child(water_contact)
 		var label := Label3D.new()
 		label.text = "%s%s\n%d/%d" % [
-			str(unit.get("name", unit_id)), " · план" if planned else "",
+			str(unit.get("name", unit_id)),
+			(" · удерживается" if not carrier_id.is_empty() else (" · план" if planned else "")),
 			int(unit.get("hp", 0)), int(unit.get("maxHp", 0)),
 		]
 		label.position.y = 0.7
@@ -466,11 +498,87 @@ func _add_units(previous_positions: Dictionary = {}) -> void:
 
 
 func _is_lift_selection_active() -> bool:
-	return (
-		not _lifted_target_id.is_empty()
-		and _selected_target == _lifted_target_id
-		and str(Combat.command_definition(_state, _selected_action).get("effect", "")) == "lift_throw"
-	)
+	return not _lift_presentation.is_empty() and not _lifted_target_id.is_empty()
+
+
+func begin_lift_presentation(plan: Dictionary) -> void:
+	if not bool(plan.get("willExecute", false)):
+		return
+	_lift_presentation = plan.duplicate(true)
+	var actor := _unit_roots.get(str(plan.get("actorId", ""))) as Node3D
+	var target := _unit_roots.get(str(plan.get("occupantId", ""))) as Node3D
+	if not is_instance_valid(actor) or not is_instance_valid(target):
+		_lift_presentation = {}
+		lift_presentation_finished.emit()
+		return
+	_lift_preview_tween = create_tween()
+	var previous := actor.position
+	var path: Array = plan.get("movementPath", []).duplicate()
+	var start_index := 0
+	for index in path.size():
+		if actor.position.distance_to(_world_position(path[index], UNIT_Y_OFFSET)) < 0.02:
+			start_index = index
+	path = path.slice(start_index)
+	_lift_presentation["presentationPath"] = path
+	for raw_cell in path:
+		var position := _world_position(raw_cell, UNIT_Y_OFFSET)
+		if previous.distance_to(position) > 0.01:
+			_lift_preview_tween.tween_method(_set_arc_position.bind(actor, previous, position, 0.16), 0.0, 1.0, MOVE_DURATION_PER_CELL)
+		previous = position
+	var lifted := previous + Vector3.UP * 1.45
+	_lift_preview_tween.tween_method(_set_arc_position.bind(target, target.position, lifted, 0.18), 0.0, 1.0, LIFT_DURATION)
+	_unit_target_positions[str(plan.get("actorId", ""))] = previous
+	_unit_target_positions[str(plan.get("occupantId", ""))] = lifted
+	_lift_preview_tween.finished.connect(_emit_lift_presentation_finished)
+
+
+func _emit_lift_presentation_finished() -> void:
+	if not _lift_presentation.is_empty():
+		lift_presentation_finished.emit()
+
+
+func lift_presentation_busy() -> bool:
+	return _lift_preview_tween != null and _lift_preview_tween.is_running()
+
+
+func cancel_lift_presentation() -> void:
+	if _lift_presentation.is_empty():
+		return
+	if _lift_preview_tween != null:
+		_lift_preview_tween.kill()
+	var actor := _unit_roots.get(str(_lift_presentation.get("actorId", ""))) as Node3D
+	var target := _unit_roots.get(str(_lift_presentation.get("occupantId", ""))) as Node3D
+	_lift_preview_tween = create_tween()
+	if is_instance_valid(target):
+		var origin := _world_position(_lift_presentation.get("applicationCell"), UNIT_Y_OFFSET)
+		_lift_preview_tween.tween_method(_set_arc_position.bind(target, target.position, origin, 0.18), 0.0, 1.0, LIFT_DURATION)
+	if is_instance_valid(actor):
+		var path: Array = _lift_presentation.get("presentationPath", []).duplicate()
+		# Find the reached segment so cancellation halfway through approach never
+		# walks the still-unvisited tail. Start at the actual interpolated position.
+		var nearest := 0
+		var distance := INF
+		for index in path.size():
+			var candidate := actor.position.distance_to(_world_position(path[index], UNIT_Y_OFFSET))
+			if candidate < distance:
+				distance = candidate
+				nearest = index
+		path = path.slice(0, nearest + 1)
+		path.reverse()
+		var previous := actor.position
+		for raw_cell in path:
+			var position := _world_position(raw_cell, UNIT_Y_OFFSET)
+			if previous.distance_to(position) > 0.01:
+				_lift_preview_tween.tween_method(_set_arc_position.bind(actor, previous, position, 0.16), 0.0, 1.0, MOVE_DURATION_PER_CELL)
+			previous = position
+	await _lift_preview_tween.finished
+	_lift_presentation = {}
+
+
+func finish_lift_presentation() -> void:
+	if _lift_preview_tween != null:
+		_lift_preview_tween.kill()
+	_lift_presentation = {}
 
 
 func _add_status_badges(root: Node3D, unit_id: String, unit: Dictionary) -> void:
@@ -572,7 +680,21 @@ func _play_action_animations(animations: Array, generation: int) -> void:
 				)
 				if lift_tween != null:
 					await lift_tween.finished
-		elif effect == "defend":
+		elif effect in ["held_throw", "held_lower"]:
+			var release := resolved.get("releaseHold", {}) as Dictionary
+			var held_id := str(release.get("targetId", ""))
+			var held_root := _unit_roots.get(held_id) as Node3D
+			var held_destination = (resolved.get("moves", {}) as Dictionary).get(held_id)
+			if is_instance_valid(held_root) and held_destination is Vector2i:
+				var release_tween := _arc_tween_to(
+					held_root,
+					_world_position(held_destination, UNIT_Y_OFFSET),
+					0.42 if effect == "held_throw" else 0.28,
+					0.85 if effect == "held_throw" else 0.18,
+				)
+				if release_tween != null:
+					await release_tween.finished
+		elif effect in ["defend", "held_guard"]:
 			var defend_tween := _pulse_tween(actor_root, 1.16)
 			if defend_tween != null:
 				await defend_tween.finished
@@ -812,7 +934,9 @@ func _add_deployment_marker(cell: Vector2i, text: String, color: Color) -> void:
 func _add_overlays() -> void:
 	var active_id := Combat.current_unit_id(_state)
 	var active := Combat.unit_definition(_state, active_id)
-	var reachable := Grid.reachable_cells(_state, active_id)
+	var reachable: Array = _preview.get("movementCells", [])
+	if not _preview.has("movementCells"):
+		reachable = Grid.reachable_cells(_state, active_id)
 	var valid_targets := _valid_targets_from_staged_state()
 	var valid_target_cells := _valid_target_cells_from_staged_state()
 	var approach_destination: Vector2i = _preview.get(
@@ -823,14 +947,10 @@ func _add_overlays() -> void:
 	for raw_cell in _preview.get("approachPath", []):
 		if raw_cell is Vector2i:
 			approach_path.append(raw_cell)
-	var secondary_cells: Array[Vector2i] = []
-	if (
-		str(Combat.command_definition(_state, _selected_action).get("effect", "")) == "lift_throw"
-		and not _selected_target.is_empty()
-	):
-		var staged := Grid.stage_move(_state, _pending_cell)
-		if not staged.is_empty():
-			secondary_cells = Combat.valid_secondary_cells(staged, _selected_action, _selected_target)
+	var secondary_cells: Array = _preview.get("secondaryCells", [])
+	if not _preview.has("secondaryCells") and str(Combat.command_definition(_state, _selected_action).get("effect", "")) == "lift_throw" and not _selected_target.is_empty():
+		secondary_cells = Grid.approach_secondary_cells(_state, _selected_action, _selected_target, _pending_cell)
+
 	for y in int((_state.get("grid", {}) as Dictionary).get("height", Grid.HEIGHT)):
 		for x in int((_state.get("grid", {}) as Dictionary).get("width", Grid.WIDTH)):
 			var cell := Vector2i(x, y)
@@ -851,7 +971,7 @@ func _add_overlays() -> void:
 				color = Color(0.58, 0.86, 1.0, 0.52)
 			elif cell == _pending_cell and cell != active.get("cell", Vector2i(-1, -1)):
 				color = Color(1.0, 0.78, 0.25, 0.56)
-			elif _move_mode and cell in reachable and not Grid.is_focus_cell(_state, cell):
+			elif (_move_mode or not _selected_action.is_empty()) and cell in reachable and not Grid.is_focus_cell(_state, cell):
 				color = Color(0.35, 0.95, 0.57, 0.36)
 			elif cell in secondary_cells:
 				color = (
@@ -865,9 +985,15 @@ func _add_overlays() -> void:
 					if cell == _target_cell
 					else Color(0.72, 0.57, 0.25, 0.30)
 				)
+			if color.a <= 0.0 and cell in _preview.get("castCells", []):
+				color = Color(0.45, 0.61, 0.90, 0.14)
+			if cell in _preview.get("footprint", []):
+				color = Color(0.95, 0.69, 0.28, 0.42)
+			if cell == _preview.get("applicationCell", Combat.INVALID_CELL) and not bool(_preview.get("ok", true)):
+				color = Color(0.95, 0.22, 0.28, 0.50)
 			var occupant := _display_occupant(cell)
 			if not occupant.is_empty() and occupant in valid_targets:
-				color = Color(1.0, 1.0, 1.0, 0.34) if color.a <= 0.0 else color
+				color = Color(1.0, 0.80, 0.36, 0.38) if cell not in approach_path and cell != approach_destination else color
 			if color.a > 0.0:
 				_add_overlay(cell, color)
 	if approach_destination != Combat.INVALID_CELL and Grid.is_inside(_state, approach_destination):
@@ -1008,20 +1134,30 @@ func _pair_selection_state() -> Dictionary:
 
 
 func _add_overlay(cell: Vector2i, color: Color) -> void:
-	var instance := MeshInstance3D.new()
-	instance.name = "CombatOverlay_%s" % Grid.cell_key(cell).replace(":", "_")
-	var plane := PlaneMesh.new()
-	plane.size = Vector2(CELL_SIZE * 0.86, CELL_SIZE * 0.86)
-	plane.material = _material(color, true, true)
-	instance.mesh = plane
-	instance.position = _world_position(cell, TILE_HEIGHT * 0.58)
-	_overlay_root.add_child(instance)
+	var instance := _overlay_cells.get(cell) as MeshInstance3D
+	if not is_instance_valid(instance):
+		instance = MeshInstance3D.new()
+		instance.name = "CombatOverlay_%s" % Grid.cell_key(cell).replace(":", "_")
+		var plane := PlaneMesh.new()
+		plane.size = Vector2(CELL_SIZE * 0.86, CELL_SIZE * 0.86)
+		instance.mesh = plane
+		instance.position = _world_position(cell, TILE_HEIGHT * 0.58)
+		_overlay_root.add_child(instance)
+		_overlay_cells[cell] = instance
+	if not _overlay_materials.has(color):
+		_overlay_materials[color] = _material(color, true, true)
+	instance.material_override = _overlay_materials[color]
+	instance.visible = true
 
 
 func _add_approach_stop_marker(cell: Vector2i, fallback_defend: bool) -> void:
 	var color := Color("b5a5ff") if fallback_defend else Color("79d8a3")
-	var ring := MeshInstance3D.new()
-	ring.name = "CombatApproachStopRing"
+	var ring := _overlay_root.get_node_or_null("CombatApproachStopRing") as MeshInstance3D
+	if ring == null:
+		ring = MeshInstance3D.new()
+		ring.name = "CombatApproachStopRing"
+		_overlay_root.add_child(ring)
+	ring.visible = true
 	var torus := TorusMesh.new()
 	torus.inner_radius = CELL_SIZE * (0.23 if fallback_defend else 0.30)
 	torus.outer_radius = CELL_SIZE * 0.41
@@ -1030,11 +1166,14 @@ func _add_approach_stop_marker(cell: Vector2i, fallback_defend: bool) -> void:
 	torus.material = _material(color, true, true)
 	ring.mesh = torus
 	ring.position = _world_position(cell, TILE_HEIGHT * 0.88)
-	_overlay_root.add_child(ring)
-	var label := Label3D.new()
-	label.name = "CombatApproachStopLabel"
+	var label := _overlay_root.get_node_or_null("CombatApproachStopLabel") as Label3D
+	if label == null:
+		label = Label3D.new()
+		label.name = "CombatApproachStopLabel"
+		_overlay_root.add_child(label)
+	label.visible = true
 	label.text = "%s · СТОП %s" % [
-		"◆ ЗАЩИТА" if fallback_defend else "⚔ АТАКА",
+		"◆ ЗАЩИТА" if fallback_defend else "ДЕЙСТВИЕ",
 		Grid.cell_label(cell),
 	]
 	label.position = _world_position(cell, 1.28)
@@ -1044,7 +1183,6 @@ func _add_approach_stop_marker(cell: Vector2i, fallback_defend: bool) -> void:
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.no_depth_test = true
 	label.modulate = color
-	_overlay_root.add_child(label)
 
 
 func _add_cell_label(cell: Vector2i) -> void:
@@ -1086,8 +1224,13 @@ func _valid_targets_from_staged_state() -> Array[String]:
 func _valid_target_cells_from_staged_state() -> Array[Vector2i]:
 	if _selected_action.is_empty():
 		return []
-	var staged := Grid.stage_move(_state, _pending_cell)
-	return [] if staged.is_empty() else Combat.valid_target_cells(staged, _selected_action)
+	if _preview.has("validTargetCells"):
+		var preview_cells: Array[Vector2i] = []
+		for raw_cell in _preview.get("validTargetCells", []):
+			if raw_cell is Vector2i:
+				preview_cells.append(raw_cell)
+		return preview_cells
+	return Grid.approach_target_cells(_state, _selected_action, _pending_cell)
 
 
 func _map_cell(cell: Vector2i) -> Vector3i:
@@ -1202,7 +1345,7 @@ func _display_occupant(cell: Vector2i) -> String:
 	if (
 		_pending_cell != Vector2i(-1, -1)
 		and _pending_cell != origin
-		and _pending_cell in Grid.reachable_cells(_state, active_id)
+		and _pending_focus_valid
 	):
 		if cell == origin:
 			return ""

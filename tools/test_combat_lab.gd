@@ -4,6 +4,7 @@ extends SceneTree
 const LAB_SCENE := preload("res://scenes/combat_lab.tscn")
 const Grid3D = preload("res://scripts/prototypes/ember_combat_grid_3d_world.gd")
 const Combat = preload("res://scripts/prototypes/ember_combat_prototype.gd")
+const Grid = preload("res://scripts/prototypes/ember_combat_grid.gd")
 
 
 func _init() -> void:
@@ -32,6 +33,9 @@ func _run_and_quit() -> void:
 	var enemy_info_panel := lab.find_child("CombatEnemyInfoPanel", true, false) as PanelContainer
 	var enemy_info := lab.find_child("CombatEnemyInfo", true, false) as RichTextLabel
 	var confirm := lab.find_child("CombatConfirm", true, false) as Button
+	var lift_choice := lab.find_child("CombatLiftChoice", true, false) as HBoxContainer
+	var lift_throw_now := lab.find_child("CombatLiftThrowNow", true, false) as Button
+	var lift_keep_held := lab.find_child("CombatLiftKeepHeld", true, false) as Button
 	var console_input := lab.find_child("CombatConsoleInput", true, false) as LineEdit
 	var pause_overlay := lab.find_child("CombatPauseOverlay", true, false) as ColorRect
 	var mode_picker := lab.find_child("CombatEncounterMode", true, false) as OptionButton
@@ -117,6 +121,14 @@ func _run_and_quit() -> void:
 		errors.append("standalone lab did not expose six hero actions, three candidate element actions and three shared items")
 	elif actions.visible:
 		errors.append("3D HUD still shows the duplicate sidebar action list instead of radial commands")
+	if (
+		lift_choice == null or lift_throw_now == null or lift_keep_held == null
+		or lift_throw_now.text != "Бросить"
+		or lift_keep_held.text.replace("\n", " ") != "Удерживать и защищаться"
+	):
+		errors.append("lift completion callbacks are not wired")
+	elif lift_choice.visible:
+		errors.append("legacy bottom-right lift choice row is still visible")
 	var radial := lab.find_child("CombatRadialMenu", true, false) as Control
 	var drawer := lab.find_child("CombatCommandDrawer", true, false) as PanelContainer
 	if radial == null or not radial.visible or radial.get_child_count() < 7:
@@ -606,6 +618,181 @@ func _run_and_quit() -> void:
 		hud.call("_submit_console_command", "reset")
 		if Combat.outcome(hud.call("state_snapshot")) != "active":
 			errors.append("reset console command did not restore the encounter snapshot")
+	var hold_state := Grid.initial_state()
+	var hold_units := hold_state.get("units", {}) as Dictionary
+	for raw_id in hold_units:
+		var unit := hold_units[raw_id] as Dictionary
+		unit["hp"] = int(unit.get("maxHp", 1)) if str(raw_id) in ["mira", "wisp"] else 0
+		unit["nextAt"] = 0.0 if str(raw_id) == "mira" else 100.0
+		hold_units[raw_id] = unit
+	(hold_units["mira"] as Dictionary)["cell"] = Vector2i(2, 2)
+	(hold_units["wisp"] as Dictionary)["cell"] = Vector2i(3, 2)
+	hold_state["units"] = hold_units
+	_lock_hit_seed(hold_state, "lift_throw", "wisp")
+	var lift_approach_state := hold_state.duplicate(true)
+	var lift_approach_units := lift_approach_state.get("units", {}) as Dictionary
+	(lift_approach_units["mira"] as Dictionary)["cell"] = Vector2i(0, 2)
+	(lift_approach_units["wisp"] as Dictionary)["cell"] = Vector2i(4, 2)
+	(lift_approach_units["mira"] as Dictionary)["moveRange"] = 3
+	lift_approach_state["units"] = lift_approach_units
+	hud.set("_state", lift_approach_state)
+	hud.set("_encounter_mode", "grid")
+	hud.set("_field_view_mode", "3d")
+	hud.set("_pending_actor_id", "")
+	hud.set("_pending_cell", Combat.INVALID_CELL)
+	hud.call("_refresh")
+	hud.call("_select_action", "lift_throw")
+	# Hover must change the cell plan without rebuilding scene-owned units,
+	# input surface, GridMap or cached navigation data.
+	var stable_actor := (world.get("_unit_roots") as Dictionary).get("mira") as Node3D
+	var stable_actor_id := stable_actor.get_instance_id()
+	var stable_input_id := field.get_child(0).get_instance_id()
+	var snapshot_hash := hash(hud.get("_state"))
+	hud.call("_on_grid_cell_hovered", Vector2i(4, 2))
+	var hover_a := (hud.get("_action_plan") as Dictionary).duplicate(true)
+	hud.call("_on_grid_cell_hovered", Vector2i(0, 2))
+	var hover_b := hud.get("_action_plan") as Dictionary
+	if not hover_a.get("ok", false) or hover_b.get("ok", true) or hover_b.get("reason", "").is_empty():
+		errors.append("hover A to incompatible B did not replace the plan and reason")
+	if (world.get("_unit_roots") as Dictionary).get("mira").get_instance_id() != stable_actor_id or field.get_child(0).get_instance_id() != stable_input_id:
+		errors.append("hover rebuilt units or input surface")
+	if hash(hud.get("_state")) != snapshot_hash:
+		errors.append("hover changed gameplay snapshot")
+	hud.call("_on_grid_cell_hovered", Vector2i(4, 2))
+	if hash(hud.get("_action_plan")) != hash(hover_a):
+		errors.append("hover A-B-A did not recover identical preview")
+	hud.call("_select_target", "wisp")
+	await process_frame
+	await process_frame
+	if radial.visible:
+		errors.append("lift completion radial appeared before the pickup animation finished")
+	var approach_preview := hud.get("_current_preview") as Dictionary
+	var approach_positions := world.get("_unit_target_positions") as Dictionary
+	var wisp_origin: Vector3 = world.call("_world_position", Vector2i(4, 2), 0.42)
+	if (
+		not bool(approach_preview.get("approachWillExecute", false))
+		or approach_preview.get("approachDestination", Combat.INVALID_CELL) != Vector2i(3, 2)
+		or approach_preview.get("approachPath", []).size() != 4
+	):
+		errors.append("lift target selection did not expose the carrier approach route")
+	var moving_roots := world.get("_unit_roots") as Dictionary
+	if (moving_roots["wisp"] as Node3D).position.distance_to(wisp_origin) > 0.01:
+		errors.append("lift target moved before approach completed")
+	await create_timer(1.5).timeout
+	if hash(hud.get("_state")) != hash(lift_approach_state):
+		errors.append("lift presentation mutated battle state")
+	var carrier_root := moving_roots["mira"] as Node3D
+	var held_root := moving_roots["wisp"] as Node3D
+	if carrier_root.position.distance_to(world.call("_world_position", Vector2i(3, 2), 0.42)) > 0.01 or held_root.position.y <= carrier_root.position.y:
+		errors.append("lift presentation did not finish approach before pickup")
+	if (
+		not radial.visible
+		or lab.find_child("CombatRadial_lift_finish_throw", true, false) == null
+		or lab.find_child("CombatRadial_lift_finish_lower", true, false) == null
+		or lab.find_child("CombatRadial_lift_finish_hold", true, false) == null
+		or lift_choice.visible
+	):
+		errors.append("finished pickup did not replace the bottom row with the three radial choices")
+	var expected_lift_radial_center: Vector2 = world.call("screen_position_for_cell", Vector2i(3, 2))
+	var actual_lift_radial_center := radial.position + radial.size * 0.5
+	if actual_lift_radial_center.distance_to(expected_lift_radial_center) > 3.0:
+		errors.append("lift completion radial was not centred on the carrier's approach destination")
+	await hud._cancel_radial_targeting()
+	if hash(hud.get("_state")) != hash(lift_approach_state):
+		errors.append("lift cancellation mutated battle state")
+
+	hud.call("_select_action", "lift_throw")
+	hud.call("_select_target", "wisp")
+	await create_timer(0.06).timeout
+	var mid_actor := (world.get("_unit_roots") as Dictionary)["mira"] as Node3D
+	var mid_position := mid_actor.position
+	hud.call("_cancel_radial_targeting")
+	if mid_actor.position.distance_to(mid_position) > 0.001:
+		errors.append("cancel during approach teleported the actor")
+	await create_timer(1.1).timeout
+	var returned_actor := (world.get("_unit_roots") as Dictionary)["mira"] as Node3D
+	if returned_actor.position.distance_to(world.call("_world_position", Vector2i(0, 2), 0.42)) > 0.02 or hash(hud.get("_state")) != hash(lift_approach_state):
+		errors.append("cancel during approach did not restore original presentation and snapshot")
+
+	var cells_state := lift_approach_state.duplicate(true)
+	(cells_state.units.mira.actions as Array).append("earth_wall")
+	hud.set("_state", cells_state)
+	hud.call("_refresh")
+	hud.set("_browsed_command_id", "earth_wall")
+	var menu_preview := hud.call("_public_field_preview", "earth_wall") as Dictionary
+	if menu_preview.get("movementCells", []).is_empty() or menu_preview.get("castCells", []).is_empty() or menu_preview.get("validTargetCells", []).is_empty():
+		errors.append("menu hover does not expose movement, cast envelope and filtered cells")
+	hud.call("_select_action", "earth_wall")
+	hud.call("_on_grid_cell_hovered", Vector2i(1, 2))
+	var cell_a := (hud.get("_action_plan") as Dictionary).duplicate(true)
+	hud.call("_on_grid_cell_hovered", Vector2i(2, 2))
+	var cell_b := hud.get("_action_plan") as Dictionary
+	if not cell_a.ok or not cell_b.ok or cell_a.applicationCell == cell_b.applicationCell or cell_a.footprint == cell_b.footprint:
+		errors.append("cell hover A-B left stale center or footprint")
+	var public_plan := hud.call("_public_field_preview", "earth_wall") as Dictionary
+	for secret in ["hit", "hitChance", "critical", "critChance", "damage", "cellChanges", "resolved"]:
+		if public_plan.has(secret):
+			errors.append("projection received hidden combat result: " + secret)
+	hud.set("_field_view_mode", "2d")
+	hud.call("_refresh")
+	var diagnostic := field.get_child(0)
+	var stable_button_id := diagnostic.get_child(0).get_instance_id()
+	diagnostic.emit_signal("cell_hovered", Vector2i(1, 2))
+	diagnostic.emit_signal("cell_hovered", Vector2i(2, 2))
+	if (hud.get("_action_plan") as Dictionary).get("applicationCell") != Vector2i(2, 2) or diagnostic.get_child(0).get_instance_id() != stable_button_id:
+		errors.append("2D hover did not update its plan in place")
+
+	await hud._cancel_radial_targeting()
+
+	hud.set("_state", hold_state)
+	hud.set("_encounter_mode", "grid")
+	hud.set("_field_view_mode", "3d")
+	hud.set("_pending_actor_id", "")
+	hud.set("_pending_cell", Combat.INVALID_CELL)
+	hud.call("_refresh")
+	hud.call("_select_action", "lift_throw")
+	hud.call("_select_target", "wisp")
+	await process_frame
+	await process_frame
+	await create_timer(0.8).timeout
+	var projected_units := world.get("_unit_roots") as Dictionary
+	var preview_carrier := projected_units.get("mira", null) as Node3D
+	var preview_held := projected_units.get("wisp", null) as Node3D
+	var radial_throw := lab.find_child("CombatRadial_lift_finish_throw", true, false) as Button
+	var radial_lower := lab.find_child("CombatRadial_lift_finish_lower", true, false) as Button
+	var radial_hold := lab.find_child("CombatRadial_lift_finish_hold", true, false) as Button
+	if (
+		not radial.visible
+		or radial_throw == null
+		or radial_lower == null
+		or radial_hold == null
+		or lift_choice == null
+		or lift_choice.visible
+	):
+		errors.append("selecting a lift target did not expose only the three character-centred radial choices")
+	if preview_carrier == null or preview_held == null or preview_held.position.y <= preview_carrier.position.y:
+		errors.append("lift choice preview did not project the target above its carrier")
+	if radial_throw != null:
+		if not bool(hud.call("_activate_radial_number", 1)):
+			errors.append("lift completion radial did not accept its numeric shortcut")
+		await process_frame
+		if str(hud.get("_lift_choice")) != "throw" or not bool(hud.get("_radial_targeting")) or radial.visible:
+			errors.append("Throw did not leave the lift radial for landing-cell targeting")
+		hud.call("_cancel_radial_targeting")
+		await process_frame
+		await process_frame
+		radial_hold = lab.find_child("CombatRadial_lift_finish_hold", true, false) as Button
+		if not radial.visible or not str(hud.get("_lift_choice")).is_empty() or radial_hold == null:
+			errors.append("cancel from landing targeting did not return to the lift completion radial")
+	if radial_hold != null:
+		radial_hold.pressed.emit()
+		await process_frame
+		var held_snapshot := hud.call("state_snapshot") as Dictionary
+		if Combat.held_target_id(held_snapshot, "mira") != "wisp":
+			errors.append("Keep held UI did not commit the battle-only hold relation")
+		var held_commands := Combat.command_ids_for_current_actor(held_snapshot, false)
+		if held_commands != [Combat.HELD_THROW_COMMAND, Combat.HELD_LOWER_COMMAND, Combat.HELD_GUARD_COMMAND]:
+			errors.append("carrier UI did not switch to the three synthetic hold commands")
 	lab.free()
 	if not errors.is_empty():
 		printerr("FAIL combat lab")
@@ -620,6 +807,7 @@ func _run_and_quit() -> void:
 	print("  distant hostile targets preview an exact stop cell and Defend fallback without mutation")
 	print("  command focus previews range; confirm enters targeting; Cancel restores the source list")
 	print("  root radial + adaptive Skills/Magic/Items drawer preserve hidden outcomes")
+	print("  lift pickup opens only the carrier-centred Throw/Lower/Hold radial")
 	print("  Esc/B step back through targeting and command menus before pause")
 	print("  E3 projects elevation and Frozen changes; 2D remains a diagnostic view")
 	quit(0)

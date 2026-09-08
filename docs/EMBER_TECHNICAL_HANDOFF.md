@@ -1,6 +1,6 @@
 # Ember Godot — технический handoff
 
-Актуально: 8 сентября 2026. Editor stop-line v2.56.1, gameplay v2.64.2.
+Актуально: 8 сентября 2026. Editor stop-line v2.56.1, gameplay v2.64.4.
 
 Документ описывает текущее устройство, owners и реальные долги. Полный прежний
 текст можно восстановить из монолитного Git checkpoint `20685ac`; это не
@@ -163,9 +163,10 @@ Inventory/equipment, shop, HP/consumables, quests, action chains, dialogue и
 
 Два dense-поля 10×8 и 16×12 используют одну проходимую высоту на колонку. Jump,
 height-aware range, LOS, падение, толчок, подъём/бросок, pathfinding и AI проходят
-через общие terrain/resolver rules. Последний измеренный E5 16×12 поиск целей
-для auto-approach занимает в среднем около 4.73 мс; оснований менять dense
-Battlefield нет.
+через общие terrain/resolver rules. Последний измеренный E5 16×12 поиск unit-
+целей для auto-approach занимает около 5 мс. Исправленный поиск cell-целей
+занимает около 12 мс вместо 378 мс: он ограничен MOVE + authored range и один
+раз кэшируется на UI-refresh. Оснований менять dense Battlefield нет.
 
 Бой поддерживает:
 
@@ -186,9 +187,15 @@ Battlefield нет.
 - свободный плавный yaw при заблокированном pitch по умолчанию, отдельный
   orthogonal toggle, независимые axis locks, authored camera values и отсутствие
   mouse-wheel zoom во время боя;
-- общий auto-approach для ближней/дальней hostile-команды: достижимая позиция
-  завершает атаку, недоход останавливает героя и применяет Defend без расхода
-  выбранной атаки.
+- общий positional auto-approach для непарных hostile/support/heal/item/cell/
+  lift-команд: достижимая позиция завершает выбранную команду, а недоход
+  останавливает героя и применяет Defend без расхода MP, item или команды;
+- cell-target действия подсвечивают только клетки, где эффект выполним в этот
+  ход после MOVE; lift-target остаётся на месте до завершения presentation-подхода;
+- battle-only связь удержания без новых authored Resources: поднятая цель не
+  занимает клетку и пропускает очередь, а носитель получает только синтетические
+  `Бросить / Опустить / Удерживать и защищаться`; player и AI используют одну
+  legality/preview реализацию.
 
 Projection-only animation queue показывает движение, подъём, дугу броска,
 выпад, hit squash и defend pulse после уже рассчитанного preview. Status badges
@@ -199,15 +206,58 @@ Projection-only animation queue показывает движение, подъ�
 errors. Новая низкоуровневая операция всё ещё требует реализации и targeted
 resolver test; редактор не генерирует gameplay-код.
 
+### Единый ActionPlan поверх v2.64.4 (2026-09-08)
+
+`Grid.action_plan_context` кэширует navigation/movement fields и filters;
+`Grid.action_plan` принимает клетку и возвращает `originCell`, `movementPath`,
+`destination`, `applicationCell`, `effectCell`, `occupantId`, `cellContent`,
+`footprint`, `ok`, `reason`, `commitRule` и приватный `resolved`. Старые
+`approach_*_command_preview` — адаптеры этого входа. Выбранная AI-команда
+проходит тот же вход с фиксированной позицией; scoring AI не переписан.
+Существующий AI pursuit без authored команды сохраняет прежний movement-only
+resolver result. Все legality rules остаются в Combat/Terrain, пути — в Grid.
+
+HUD инвалидирует контекст при изменении snapshot или ручной клетки M, а смена
+действия выбирает отдельный кэш. Mouse/keyboard cell hover обновляет только план,
+подсказку и overlays. 3D переиспользует клеточные overlay meshes/materials;
+2D меняет стили существующих кнопок. Hover не вызывает `_refresh()`, rebuild
+GridMap/бойцов или polling. Public projection содержит только intent и footprint,
+без hit/crit/damage и без зависящих от скрытого исхода cellChanges.
+
+Первый lift-confirm сохраняет неизменяемый план и запускает отдельный Tween
+представления поверх тех же unit roots. Подход завершается перед поднятием.
+Cancel работает и во время подхода: цель возвращается, носитель идёт по уже
+пройденной части маршрута обратно; ранее выбранное M сохраняется. До final
+commit snapshot не меняется. Throw/Lower/Hold идут через тот же ActionPlan и
+Combat.preview/commit; повторная цель подъёма на стадии броска запрещена.
+Action/Effect/Battlefield/save schemas не менялись.
+
+После сигнала завершения presentation HUD показывает существующее круговое меню
+у фактической stop-cell носителя только с `Бросить / Опустить / Удержать +
+защита`; прежний `CombatLiftChoice` остаётся скрытым. Выход из выбора клетки
+броска возвращает это кольцо, а отмена уже из кольца откатывает presentation.
+Gameplay resolver и schema этим UI-маршрутом не меняются.
+
+Проверки: `test_combat_action_plan.gd` охватывает классы команд, M в исходной
+клетке, revival через клетку, fallback и stale context; `test_combat_lab.gd` —
+hover A-B-A, 2D без пересоздания кнопок, 3D без пересоздания units/input,
+скрытые поля, lift approach/cancel, включая отмену в середине пути.
+Baseline 16×12: cell-query 12.37 ms; после — 12.28 ms. Cached cell ActionPlan
+5.04 ms. Forward+ smoke на RTX 5070 подтвердил рендер обоих полей и
+обновление overlays; CPU обработчика hover около 9.8/18.1 ms (10×8/16×12).
+Замер с ожиданием кадра 29.1/35.5 ms не равен стоимости запроса или среднему FPS.
+Пройдено 24/24 combat/battlefield/encounter/party/save scripts (exit 0, без
+SCRIPT ERROR/ERROR); после финального UI wiring повторены lab/animation/view.
+Основной ActionPlan принят пользователем после ручной проверки в Forward+.
+После переноса lift-завершений в кольцо требуется коротко проверить его позицию,
+фокус и читаемость мышью/геймпадом.
+
 ## Следующий технический срез
 
-Актуальный порядок всегда берётся из `docs/EMBER_NOW.md`. Ближайший кандидат —
-расширение существующего positional planner на непарные support/heal/item/cell/
-lift commands и battle-only удержание поднятой цели. Парные техники остаются на
-своём authored-радиусе и не входят в этот срез. Точный UI-порядок после lift-цели
-и запрет обычных direct/cell/AOE/status effects по удерживаемой цели зафиксированы
-в GDD. Это ещё не реализовано и не разрешает второй resolver или изменение
-schema.
+Актуальный порядок всегда берётся из `docs/EMBER_NOW.md`. После ручной приёмки
+ActionPlan поверх v2.64.4 ближайшие кандидаты — Retry/defeat и deployment. Парные техники остаются
+на своём authored-радиусе; их auto-approach не был добавлен скрыто. Текущие
+Action/Battlefield/save schemas, один resolver и один navigation owner сохранены.
 
 ## Известные долги
 
