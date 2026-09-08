@@ -14,6 +14,9 @@ func _init() -> void:
 
 func _run_and_quit() -> void:
 	var errors: Array[String] = []
+	var progress := root.get_node_or_null("EmberExploreProgress") as EmberExploreState
+	if progress != null:
+		progress.set_battle_strategy(EmberPartyState.DEFAULT_BATTLE_STRATEGY)
 	var lab := LAB_SCENE.instantiate()
 	root.add_child(lab)
 	await process_frame
@@ -47,6 +50,14 @@ func _run_and_quit() -> void:
 	mode_picker.item_selected.emit(3)
 	await process_frame
 	await process_frame
+	var deployment_start := lab.find_child("CombatDeploymentReadyStart", true, false) as Button
+	if deployment_start == null or deployment_start.disabled:
+		errors.append("E4 default deployment cannot be confirmed through the visible Start button")
+	else:
+		deployment_start.pressed.emit()
+		await process_frame
+		if bool((hud.call("deployment_snapshot") as Dictionary).get("active", true)):
+			errors.append("E4 remained in deployment after the visible Start button was pressed")
 	var vertical_state := hud.call("state_snapshot") as Dictionary
 	var vertical_grid := vertical_state.get("grid", {}) as Dictionary
 	var vertical_field = world.get("battlefield")
@@ -202,11 +213,13 @@ func _run_and_quit() -> void:
 		errors.append("faded blocker tile is missing its mesh or collision")
 	else:
 		camera_rig.set_process(false)
-		var focus_position: Vector3 = world.call("_world_position", Vector2i(0, 2), 0.48)
-		camera.global_position = world.call("_world_position", Vector2i(9, 2), 0.0)
+		var focus_position: Vector3 = world.call("_world_position", active_cell, 0.48)
+		var blocker_position: Vector3 = world.call("_world_position", Vector2i(4, 2), 0.39)
+		camera.global_position = focus_position + (blocker_position - focus_position) * 2.5
 		camera.look_at(focus_position, Vector3.UP)
 		world.call("_update_occlusion", true)
-		if int(world.call("projected_item_at", Vector2i(4, 2))) != TileLibrary.ITEM_BLOCKED_FADED:
+		var occlusion_item := int(world.call("projected_item_at", Vector2i(4, 2)))
+		if occlusion_item != TileLibrary.ITEM_BLOCKED_FADED:
 			errors.append("a blocker between camera and active unit did not become transparent")
 		camera_rig.set_process(true)
 

@@ -38,6 +38,8 @@ func _run() -> void:
 	mira["mp"] = 9
 	state.party["mira"] = mira
 	state.playtime_seconds = 3723.0
+	var strategy: Array[String] = ["mira", "protagonist", "sena", "orik"]
+	state.set_battle_strategy(strategy)
 	for slot in EmberExploreState.MANUAL_SLOT_COUNT:
 		if not state.save_slot(slot):
 			errors.append("manual slot %d could not be written" % (slot + 1))
@@ -54,6 +56,8 @@ func _run() -> void:
 		if payload.has("hp") or payload.has("maxHp") or payload.has("equipment"):
 			errors.append("save v2 duplicated leader/derived state at the top level")
 		var saved_party: Dictionary = payload.get("party", {})
+		if payload.get("battleStrategy", []) != strategy:
+			errors.append("save v2 did not serialize the ordered battle strategy")
 		if saved_party.size() != 4:
 			errors.append("save v2 did not serialize all four heroes")
 		for hero_id in EmberPartyState.HERO_IDS:
@@ -83,8 +87,16 @@ func _run() -> void:
 			or (loaded_mira.get("equipment", {}) as Dictionary).get("weapon") != "funeral_polearm"
 		):
 			errors.append("hero level/XP/HP/MP/equipment changed after reopen")
+		if loaded.combat_strategy_snapshot() != strategy:
+			errors.append("battle strategy changed after save/reopen")
+
+	var default_strategy := EmberPartyState.DEFAULT_BATTLE_STRATEGY
+	for malformed in [null, {}, [], ["mira"], ["mira", "mira", "orik", "sena"], ["mira", "protagonist", "orik", "unknown"]]:
+		if EmberPartyState.normalize_battle_strategy(malformed) != default_strategy:
+			errors.append("malformed battle strategy did not fall back to legacy party order")
 
 	_test_v1_migration(root_path, errors)
+	_test_strategy_payload_compat(root_path, errors)
 	_test_combat_copy(loaded, errors)
 	_test_progression_save(loaded, errors)
 	_test_save_deletion(state, errors)
@@ -102,8 +114,46 @@ func _run() -> void:
 	print("  v1 migrates once with an exact backup and returns invalid gear to the bag")
 	print("  battle uses copies and returns party HP/MP plus shared inventory through one owner")
 	print("  post-battle XP/levels and fallen-at-1 state survive save/reopen in v2")
+	print("  optional battleStrategy is strict, backward-compatible and survives save/reopen")
 	print("  deleting a slot archives its exact bytes before removing it")
 	quit(0)
+
+
+func _test_strategy_payload_compat(root_path: String, errors: Array[String]) -> void:
+	var fixture := EmberExploreState.new()
+	fixture.storage_root = root_path.path_join("strategy-v2")
+	fixture.reset_new_game()
+	var payload := fixture.capture_save("manual", 0)
+	payload.erase("battleStrategy")
+	if not _write_payload(fixture.save_path(0), payload):
+		errors.append("old save v2 strategy fixture could not be written")
+	else:
+		var old_loaded := EmberExploreState.new()
+		old_loaded.storage_root = fixture.storage_root
+		if not old_loaded.load_slot(0) or old_loaded.combat_strategy_snapshot() != EmberPartyState.DEFAULT_BATTLE_STRATEGY:
+			errors.append("old save v2 without battleStrategy did not keep legacy party order")
+		old_loaded.free()
+	payload = fixture.capture_save("manual", 1)
+	payload["battleStrategy"] = ["mira", "mira", "orik", "sena"]
+	if not _write_payload(fixture.save_path(1), payload):
+		errors.append("malformed save v2 strategy fixture could not be written")
+	else:
+		var malformed_loaded := EmberExploreState.new()
+		malformed_loaded.storage_root = fixture.storage_root
+		if not malformed_loaded.load_slot(1) or malformed_loaded.combat_strategy_snapshot() != EmberPartyState.DEFAULT_BATTLE_STRATEGY:
+			errors.append("malformed save v2 battleStrategy did not keep legacy party order")
+		malformed_loaded.free()
+	fixture.free()
+
+
+func _write_payload(path: String, payload: Dictionary) -> bool:
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(path.get_base_dir()))
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
+		return false
+	file.store_string(JSON.stringify(payload, "  "))
+	file.close()
+	return true
 
 
 func _test_v1_migration(root_path: String, errors: Array[String]) -> void:

@@ -37,6 +37,17 @@ GDD, продуктовый план, технический handoff или migr
   Forward+ на RTX 5070 дошёл до load-only окна без renderer/script errors, а
   in-engine capture подтвердил компоновку и видимый focus первого слота.
   Ручная приёмка мышью/геймпадом подтверждена пользователем 8 сентября 2026.
+- Поверх `4951f4e` в рабочем дереве предбоевая расстановка расширена одним
+  сохраняемым порядком группы в save v2 без координат и новой schema. На поле с
+  extra `party_deployment_cells` preset применяется до UI: компактное ready-окно
+  предлагает начать бой или открыть детальную расстановку; зона и hero tools
+  появляются только во втором режиме. Reset возвращает persisted strategy,
+  Defeat Retry — точный confirmed placement с новым seed, обычный Lab Reset —
+  strategy и ready. Exact-N `colored_crossing_demo` игнорирует preset и остаётся
+  фиксированным. Исправлена stale staged-проекция первого/current героя; regression
+  проверяет его реальную 3D-позицию. Все 20 combat tests и связанные save,
+  inventory, party progression и Battlefield gates зелёные; обычные Vulkan
+  Forward+ captures ready/inventory прошли. Ручная input/save-reopen приёмка открыта.
 - Workflow Phase A/B создаёт короткую точку входа и отделяет актуальные
   канонические документы от истории, сохранённой в Git. Gameplay, Resources,
   schema и runtime эти фазы не меняют.
@@ -46,9 +57,9 @@ GDD, продуктовый план, технический handoff или migr
 
 ## Следующий игровой срез
 
-Defeat/Retry gate закрыт. Следующий короткий срез — предбоевая расстановка.
-Затем нужен один небольшой сквозной D3 production-
-участок. Парный auto-approach остаётся отдельным будущим решением:
+Предбоевая расстановка реализована и ждёт ручной приёмки. После неё нужен один
+небольшой сквозной D3 production-участок. Парный auto-approach остаётся
+отдельным будущим решением:
 парные техники по-прежнему используют собственный authored-радиус партнёра.
 Большой player-facing UI согласуется позже отдельным HTML-прототипом перед
 переносом в Godot.
@@ -75,6 +86,7 @@ Defeat/Retry gate закрыт. Следующий короткий срез —
 
 Для текущего v2.64.4 regression gate минимум:
 
+- `tools/test_combat_prebattle_deployment.gd`;
 - `tools/test_combat_action_plan.gd`, `tools/test_combat_grid.gd`;
 - `tools/test_combat_defeat_retry.gd`, `tools/test_combat_encounter_transition.gd`;
 - `tools/test_combat_prototype.gd`;

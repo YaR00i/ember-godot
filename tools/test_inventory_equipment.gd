@@ -3,6 +3,7 @@ extends SceneTree
 ## agent_sandbox wiring over the existing EmberExploreState.
 
 const SANDBOX_SCENE := "res://scenes/agent_sandbox.tscn"
+const VISUAL_ARG := "--visual"
 
 
 func _init() -> void:
@@ -105,6 +106,18 @@ func _test_ui_contract(state: EmberExploreState, errors: Array[String]) -> void:
 	ui.open()
 	if not ui.is_open() or not ui.blocks_movement():
 		errors.append("open inventory overlay did not block movement")
+	var strategy_section := ui.find_child("InventoryStrategySection", true, false)
+	var strategy_save := ui.find_child("InventoryStrategySave", true, false) as Button
+	var original_strategy := state.combat_strategy_snapshot()
+	ui.call("_select_strategy_row", 1)
+	if not ui.move_strategy_hero(-1):
+		errors.append("inventory Strategy could not reorder the selected hero")
+	elif state.combat_strategy_snapshot() != original_strategy:
+		errors.append("inventory Strategy mutated the preset before explicit save")
+	elif strategy_section == null or strategy_save == null or strategy_save.disabled:
+		errors.append("inventory does not expose a functional Strategy save section")
+	elif not ui.save_strategy() or state.combat_strategy_snapshot()[0] != original_strategy[1]:
+		errors.append("explicit Strategy save did not commit through EmberExploreState")
 	if not ui.select_item("funeral_polearm"):
 		errors.append("inventory UI could not select the returned polearm")
 	else:
@@ -150,6 +163,12 @@ func _test_live_wiring(errors: Array[String]) -> void:
 	inventory_ui.open()
 	if not player._ui_blocks_movement():
 		errors.append("live player movement is not blocked by inventory")
+	if VISUAL_ARG in OS.get_cmdline_user_args():
+		await process_frame
+		await process_frame
+		var capture_path := "user://inventory_strategy.png"
+		var capture_error := root.get_texture().get_image().save_png(capture_path)
+		print("CAPTURE inventory strategy: ", ProjectSettings.globalize_path(capture_path), " error=", capture_error)
 	var inventory_switch_started := Time.get_ticks_usec()
 	for probe in 40:
 		inventory_ui.select_next_hero()

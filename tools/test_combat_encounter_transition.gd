@@ -25,6 +25,8 @@ func _run() -> void:
 	persistent_mira["mp"] = 13
 	progress.party["mira"] = persistent_mira
 	progress.inventory["herb"] = 2
+	var transition_strategy: Array[String] = ["sena", "orik", "mira", "protagonist"]
+	progress.set_battle_strategy(transition_strategy)
 	EmberCombatTransition.clear_for_test()
 	if change_scene_to_file(SOURCE_SCENE) != OK:
 		errors.append("could not open exploration fixture")
@@ -35,12 +37,15 @@ func _run() -> void:
 		var before_herbs := int(progress.inventory.get("herb", 0))
 		var before_tea := int(progress.inventory.get("qingxin_tea", 0))
 		var error := EmberCombatTransition.change_scene(self, ENCOUNTER_ID, progress)
+		progress.set_battle_strategy(["protagonist", "mira", "orik", "sena"])
 		if error != OK:
 			errors.append("encounter transition rejected a valid authored battle")
 		else:
 			await scene_changed
 			await process_frame
 			var hud := current_scene.find_child("CombatHUD", true, false)
+			if EmberCombatTransition.active_strategy_snapshot() != transition_strategy:
+				errors.append("combat transition did not keep a deep process-local strategy copy")
 			var state: Dictionary = hud.call("state_snapshot") if hud != null else {}
 			if str(state.get("encounterId", "")) != ENCOUNTER_ID:
 				errors.append("Combat Lab did not consume the pending encounter")

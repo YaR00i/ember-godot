@@ -41,6 +41,146 @@ static func initial_state(
 	return state
 
 
+## Pre-battle deployment is process-local combat setup. The Battlefield's
+## ordered party cells remain the only authored owner: the first active-party
+## entries are defaults and any remaining entries widen the legal setup zone.
+static func deployment_hero_ids(state: Dictionary) -> Array[String]:
+	var result: Array[String] = []
+	for raw_id in state.get("units", {}):
+		var unit_id := str(raw_id)
+		if str(Combat.unit_definition(state, unit_id).get("team", "")) == "hero":
+			result.append(unit_id)
+	return result
+
+
+static func deployment_enabled(
+	state: Dictionary,
+	allowed_cells: Array[Vector2i],
+) -> bool:
+	var hero_count := deployment_hero_ids(state).size()
+	return hero_count > 0 and allowed_cells.size() > hero_count
+
+
+static func deployment_default_placement(
+	state: Dictionary,
+	allowed_cells: Array[Vector2i],
+) -> Dictionary:
+	var result := {}
+	var hero_ids := deployment_hero_ids(state)
+	for index in mini(hero_ids.size(), allowed_cells.size()):
+		result[hero_ids[index]] = allowed_cells[index]
+	return result
+
+
+static func deployment_strategy_placement(
+	state: Dictionary,
+	allowed_cells: Array[Vector2i],
+	strategy: Array[String],
+) -> Dictionary:
+	var heroes := deployment_hero_ids(state)
+	var ordered: Array[String] = []
+	for hero_id in strategy:
+		if hero_id in heroes and hero_id not in ordered:
+			ordered.append(hero_id)
+	for hero_id in heroes:
+		if hero_id not in ordered:
+			ordered.append(hero_id)
+	var result := {}
+	for index in mini(ordered.size(), allowed_cells.size()):
+		result[ordered[index]] = allowed_cells[index]
+	return result
+
+
+static func deployment_validation_errors(
+	state: Dictionary,
+	allowed_cells: Array[Vector2i],
+	placement: Dictionary,
+) -> Array[String]:
+	var errors: Array[String] = []
+	var occupied := {}
+	for hero_id in deployment_hero_ids(state):
+		if not placement.has(hero_id) or not placement[hero_id] is Vector2i:
+			errors.append("Для героя %s не выбрана клетка." % hero_id)
+			continue
+		var cell := placement[hero_id] as Vector2i
+		if not is_inside(state, cell):
+			errors.append("Клетка %s находится вне поля." % cell_label(cell))
+		elif cell not in allowed_cells:
+			errors.append("Клетка %s не входит в зону расстановки." % cell_label(cell))
+		elif is_blocked(state, cell):
+			errors.append("Клетка %s заблокирована." % cell_label(cell))
+		elif is_focus_cell(state, cell):
+			errors.append("Клетка %s занята фокусом поля." % cell_label(cell))
+		else:
+			var enemy_id := _deployment_enemy_at(state, cell)
+			if not enemy_id.is_empty():
+				errors.append("Клетка %s занята врагом." % cell_label(cell))
+		if occupied.has(cell):
+			errors.append("Клетка %s назначена нескольким героям." % cell_label(cell))
+		else:
+			occupied[cell] = hero_id
+	return errors
+
+
+static func deployment_move(
+	state: Dictionary,
+	allowed_cells: Array[Vector2i],
+	placement: Dictionary,
+	hero_id: String,
+	target_cell: Vector2i,
+) -> Dictionary:
+	if hero_id not in deployment_hero_ids(state):
+		return {"ok": false, "error": "Герой не участвует в этом бою."}
+	if not is_inside(state, target_cell):
+		return {"ok": false, "error": "Клетка находится вне поля."}
+	if target_cell not in allowed_cells:
+		return {"ok": false, "error": "Клетка не входит в зону расстановки."}
+	if is_blocked(state, target_cell):
+		return {"ok": false, "error": "Клетка заблокирована."}
+	if is_focus_cell(state, target_cell):
+		return {"ok": false, "error": "Клетка занята фокусом поля."}
+	if not _deployment_enemy_at(state, target_cell).is_empty():
+		return {"ok": false, "error": "Клетка занята врагом."}
+	if not placement.has(hero_id) or not placement[hero_id] is Vector2i:
+		return {"ok": false, "error": "У героя нет исходной клетки для перестановки."}
+	var next := placement.duplicate(true)
+	var origin := next[hero_id] as Vector2i
+	var swapped_id := ""
+	for other_id in deployment_hero_ids(state):
+		if other_id != hero_id and next.get(other_id, Combat.INVALID_CELL) == target_cell:
+			swapped_id = other_id
+			break
+	next[hero_id] = target_cell
+	if not swapped_id.is_empty():
+		next[swapped_id] = origin
+	var errors := deployment_validation_errors(state, allowed_cells, next)
+	if not errors.is_empty():
+		return {"ok": false, "error": errors[0]}
+	return {"ok": true, "placement": next, "swappedHeroId": swapped_id}
+
+
+static func with_deployment(state: Dictionary, placement: Dictionary) -> Dictionary:
+	var result := state.duplicate(true)
+	var units := result.get("units", {}) as Dictionary
+	for hero_id in deployment_hero_ids(result):
+		if not placement.has(hero_id) or not placement[hero_id] is Vector2i:
+			continue
+		var unit := units.get(hero_id, {}) as Dictionary
+		unit["cell"] = placement[hero_id]
+		units[hero_id] = unit
+	result["units"] = units
+	return result
+
+
+static func _deployment_enemy_at(state: Dictionary, cell: Vector2i) -> String:
+	for raw_id in state.get("units", {}):
+		var unit_id := str(raw_id)
+		var unit := Combat.unit_definition(state, unit_id)
+		if str(unit.get("team", "")) == "enemy" and unit.get("cell", Combat.INVALID_CELL) == cell:
+			return unit_id
+	return ""
+
+
 static func field_mutation_state(
 	field: EmberBattlefieldResource = DEFAULT_E3_FIELD,
 	rng_seed: int = 1,

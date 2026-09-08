@@ -65,6 +65,12 @@ var _unit_roots: Dictionary = {}
 var _unit_target_positions: Dictionary = {}
 var _projection_field_id := ""
 var _animation_generation := 0
+var _deployment_active := false
+var _prebattle_active := false
+var _deployment_allowed_cells: Array[Vector2i] = []
+var _deployment_selected_hero_id := ""
+var _deployment_placement: Dictionary = {}
+var _deployment_hover_cell := Combat.INVALID_CELL
 
 @onready var _grid_map := get_node("CombatGridMap") as GridMap
 @onready var _camera := get_node("CameraRig/CombatCamera3D") as Camera3D
@@ -168,6 +174,7 @@ func configure(
 	secondary_cell: Vector2i = Combat.INVALID_CELL,
 	lifted_target_id: String = "",
 	target_cell: Vector2i = Combat.INVALID_CELL,
+	deployment: Dictionary = {},
 ) -> void:
 	_state = state
 	_selected_action = selected_action
@@ -179,6 +186,12 @@ func configure(
 	_secondary_cell = secondary_cell
 	_lifted_target_id = lifted_target_id
 	_target_cell = target_cell
+	_deployment_active = bool(deployment.get("active", false))
+	_prebattle_active = bool(deployment.get("prebattleActive", _deployment_active))
+	_deployment_allowed_cells.assign(deployment.get("allowedCells", []))
+	_deployment_selected_hero_id = str(deployment.get("selectedHeroId", ""))
+	_deployment_placement = (deployment.get("placement", {}) as Dictionary).duplicate(true)
+	_deployment_hover_cell = deployment.get("hoverCell", Combat.INVALID_CELL)
 	if is_inside_tree() and _grid_map != null:
 		_update_camera_context()
 		_rebuild_projection()
@@ -230,6 +243,21 @@ func editor_cell_corners(cell: Vector2i) -> PackedVector3Array:
 
 func projected_occupant_at(cell: Vector2i) -> String:
 	return _display_occupant(cell)
+
+
+func update_deployment_cursor(cell: Vector2i) -> void:
+	_deployment_hover_cell = cell
+	if is_inside_tree() and is_instance_valid(_overlay_root):
+		_refresh_deployment_cursor()
+
+
+func deployment_cursor_snapshot() -> Dictionary:
+	var marker := _overlay_root.get_node_or_null("CombatDeploymentCursor") as Node3D
+	return {
+		"active": _deployment_active,
+		"cell": _deployment_hover_cell,
+		"visible": marker != null and marker.visible,
+	}
 
 
 func set_pair_context_action(action_id: String) -> void:
@@ -313,6 +341,9 @@ func choose_cell_at(screen_position: Vector2) -> bool:
 	var cell := _pick_cell(screen_position)
 	if not Grid.is_inside(_state, cell):
 		return false
+	if _deployment_active:
+		cell_chosen.emit(cell, Grid.occupant_id(_state, cell))
+		return true
 	var actual_occupant := Grid.occupant_id(_state, cell)
 	if _move_mode:
 		var actor_id := Combat.current_unit_id(_state)
@@ -366,6 +397,9 @@ func _rebuild_projection() -> void:
 	_add_units(previous_positions if can_animate else {})
 	if Engine.is_editor_hint():
 		_add_deployment_markers()
+	elif _deployment_active:
+		_add_prebattle_deployment_markers()
+	_refresh_deployment_cursor()
 	_add_overlays()
 	_refresh_pair_context()
 	_update_occlusion(true)
@@ -426,7 +460,8 @@ func _add_units(previous_positions: Dictionary = {}) -> void:
 	if not _preview.has("movementCells"):
 		reachable = Grid.reachable_cells(_state, active_id)
 	var staged := (
-		_pending_cell != Vector2i(-1, -1)
+		not _prebattle_active
+		and _pending_cell != Vector2i(-1, -1)
 		and _pending_cell != active_cell
 		and _pending_cell in reachable
 	)
@@ -905,6 +940,71 @@ func _add_deployment_markers() -> void:
 		)
 
 
+func _add_prebattle_deployment_markers() -> void:
+	for cell in _deployment_allowed_cells:
+		var color := Color("35dcea")
+		var text := Grid.cell_label(cell)
+		for raw_id in _deployment_placement:
+			var hero_id := str(raw_id)
+			if _deployment_placement[hero_id] == cell and hero_id == _deployment_selected_hero_id:
+				color = Color("d9ffff")
+				text = "ВЫБРАН"
+				break
+		_add_deployment_marker(cell, text, color)
+
+
+func _refresh_deployment_cursor() -> void:
+	var root := _overlay_root.get_node_or_null("CombatDeploymentCursor") as Node3D
+	if not _deployment_active or not Grid.is_inside(_state, _deployment_hover_cell):
+		if root != null:
+			root.visible = false
+		return
+	var occupant_id := Grid.occupant_id(_state, _deployment_hover_cell)
+	var occupant := Combat.unit_definition(_state, occupant_id)
+	var valid := (
+		_deployment_hover_cell in _deployment_allowed_cells
+		and not Grid.is_blocked(_state, _deployment_hover_cell)
+		and not Grid.is_focus_cell(_state, _deployment_hover_cell)
+		and (occupant.is_empty() or str(occupant.get("team", "")) == "hero")
+	)
+	var color := Color("e8ffff") if valid else Color("ff6677")
+	if root == null:
+		root = Node3D.new()
+		root.name = "CombatDeploymentCursor"
+		var ring := MeshInstance3D.new()
+		ring.name = "Ring"
+		var torus := TorusMesh.new()
+		torus.inner_radius = CELL_SIZE * 0.31
+		torus.outer_radius = CELL_SIZE * 0.48
+		torus.rings = 24
+		torus.ring_segments = 10
+		ring.mesh = torus
+		root.add_child(ring)
+		var label := Label3D.new()
+		label.name = "Label"
+		label.font_size = 34
+		label.outline_size = 9
+		label.pixel_size = 0.0038
+		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		root.add_child(label)
+		root.set_meta("valid_material", _material(Color("e8ffff"), true, true))
+		root.set_meta("invalid_material", _material(Color("ff6677"), true, true))
+		_overlay_root.add_child(root)
+	root.visible = true
+	root.position = _world_position(_deployment_hover_cell, TILE_HEIGHT * 0.96)
+	var ring := root.get_node("Ring") as MeshInstance3D
+	ring.material_override = root.get_meta(
+		"valid_material" if valid else "invalid_material"
+	) as Material
+	var label := root.get_node("Label") as Label3D
+	label.text = "%s · %s" % [
+		"ЦЕЛЬ" if valid else "НЕДОСТУПНО",
+		Grid.cell_label(_deployment_hover_cell),
+	]
+	label.position = Vector3(0.0, 0.72, 0.0)
+	label.modulate = color
+
+
 func _add_deployment_marker(cell: Vector2i, text: String, color: Color) -> void:
 	if not battlefield.contains(cell):
 		return
@@ -932,6 +1032,8 @@ func _add_deployment_marker(cell: Vector2i, text: String, color: Color) -> void:
 
 
 func _add_overlays() -> void:
+	if _deployment_active:
+		return
 	var active_id := Combat.current_unit_id(_state)
 	var active := Combat.unit_definition(_state, active_id)
 	var reachable: Array = _preview.get("movementCells", [])
@@ -1005,7 +1107,12 @@ func _refresh_pair_context() -> void:
 		return
 	_clear_children(_pair_context_root)
 	_reset_pair_outlines()
-	if _pair_context_action.is_empty() or _state.is_empty() or not _state.has("grid"):
+	if (
+		_deployment_active
+		or _pair_context_action.is_empty()
+		or _state.is_empty()
+		or not _state.has("grid")
+	):
 		return
 	var pair_state := _pair_selection_state()
 	var context := Combat.duo_partner_context(pair_state, _pair_context_action)
@@ -1343,7 +1450,8 @@ func _display_occupant(cell: Vector2i) -> String:
 	var active := Combat.unit_definition(_state, active_id)
 	var origin: Vector2i = active.get("cell", Vector2i(-1, -1))
 	if (
-		_pending_cell != Vector2i(-1, -1)
+		not _prebattle_active
+		and _pending_cell != Vector2i(-1, -1)
 		and _pending_cell != origin
 		and _pending_focus_valid
 	):

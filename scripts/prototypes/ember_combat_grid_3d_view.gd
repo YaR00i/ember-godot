@@ -45,11 +45,12 @@ func configure(
 	preview: Dictionary = {},
 	secondary_cell: Vector2i = Vector2i(-999999, -999999),
 	target_cell: Vector2i = Vector2i(-999999, -999999),
+	deployment: Dictionary = {},
 ) -> void:
 	if _world != null:
 		_world.call(
 			"configure", state, selected_action, selected_target, pending_cell, move_mode,
-			preview, secondary_cell, "", target_cell,
+			preview, secondary_cell, "", target_cell, deployment,
 		)
 
 
@@ -67,6 +68,19 @@ func pick_cell_at(screen_position: Vector2) -> Vector2i:
 
 func projected_occupant_at(cell: Vector2i) -> String:
 	return str(_world.call("projected_occupant_at", cell)) if _world != null else ""
+
+
+func update_deployment_cursor(cell: Vector2i) -> void:
+	if _world != null:
+		_world.call("update_deployment_cursor", cell)
+
+
+func deployment_cursor_snapshot() -> Dictionary:
+	return (
+		_world.call("deployment_cursor_snapshot") as Dictionary
+		if _world != null
+		else {"active": false, "cell": Vector2i(-1, -1), "visible": false}
+	)
 
 
 func set_pair_context_action(action_id: String) -> void:

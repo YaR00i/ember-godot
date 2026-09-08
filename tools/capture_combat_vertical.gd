@@ -38,6 +38,11 @@ func _capture_and_quit() -> void:
 	mode_picker.item_selected.emit(3)
 	await process_frame
 	await process_frame
+	var deployment_hud := lab.find_child("CombatHUD", true, false) as Control
+	if deployment_hud != null:
+		deployment_hud.call("_select_deployment_hero", "mira")
+		deployment_hud.call("_on_grid_cell_hovered", Vector2i(1, 2))
+		await process_frame
 	await create_timer(0.45).timeout
 	var error := root.get_texture().get_image().save_png(OUTPUT_PATH)
 	if error != OK:
@@ -67,6 +72,7 @@ func _capture_and_quit() -> void:
 	var hud := lab.find_child("CombatHUD", true, false) as Control
 	var world := lab as Node3D
 	if hud != null:
+		hud.call("_confirm_deployment")
 		hud.call("_console_add_status", "wisp", "wet", 2)
 		hud.call("_console_add_status", "raider", "burning", 2)
 		hud.call("_refresh")
@@ -234,6 +240,7 @@ func _capture_and_quit() -> void:
 		mode_picker.item_selected.emit(3)
 		await process_frame
 		await process_frame
+		hud.call("_confirm_deployment")
 		var progression_state := hud.call("state_snapshot") as Dictionary
 		var progression_units: Dictionary = progression_state.get("units", {})
 		for raw_id in progression_units:
@@ -258,6 +265,7 @@ func _capture_and_quit() -> void:
 		mode_picker.item_selected.emit(3)
 		await process_frame
 		await process_frame
+		hud.call("_confirm_deployment")
 		var approach_state := (hud.call("state_snapshot") as Dictionary).duplicate(true)
 		var approach_units := approach_state.get("units", {}) as Dictionary
 		for raw_id in approach_units:

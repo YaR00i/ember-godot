@@ -294,6 +294,45 @@ party/save scripts. Ручная Forward+ приёмка проверяет по
 Текущий gate пройден: 27/27 связанных scripts, Vulkan Forward+ capture и ручной
 mouse/gamepad сценарий подтверждены 8 сентября 2026.
 
+## Pre-battle deployment gate
+
+`EmberBattlefieldResource.party_deployment_cells` остаётся единственным authored
+owner: первые N клеток задают начальную позицию N героев, а лишние клетки в том
+же массиве включают расстановку и образуют разрешённую зону. Ровно N клеток
+автоматически пропускают фазу, поэтому `colored_crossing_demo` остаётся
+фиксированным первым боем. Для ручной демонстрации E4 расширяет только зону
+`vertical_forge_10x8`, не меняя первые четыре позиции.
+
+Gate требует:
+
+1. сохранённая стратегия (только порядок hero IDs, без координат) применяется к
+   первым N authored cells до UI; старый/отсутствующий/битый save v2 сохраняет
+   прежний порядок, transition передаёт deep copy, direct Lab использует autoload;
+2. ready-окно содержит ровно `НАЧАТЬ БОЙ` и `ИЗМЕНИТЬ СТРАТЕГИЮ`; поле и союзники
+   видны полностью, а зона, hero tools, timeline, radial commands, AI, action
+   commit и расход RNG скрыты/заблокированы;
+3. Edit открывает детальный режим: mouse и стандартный grid cursor выбирают героя
+   и свободную клетку; занятая героем клетка делает swap, а
+   blocked/focus/enemy/out-of-zone отклоняются;
+4. `Сбросить` возвращает persisted strategy, `Начать бой` доступно только для
+   полного уникального placement и убирает phase-only UI/markers;
+5. confirmed manual placement остаётся только в процессе боя и не меняет preset;
+6. defeat Retry восстанавливает confirmed custom placement, party, inventory и
+   поле с новым seed без повторного открытия расстановки; обычный Lab Reset
+   возвращает persisted strategy и открывает ready снова; exact-N игнорирует
+   preset и автоматически пропускает ready/edit.
+
+Узкий gate — `tools/test_combat_prebattle_deployment.gd`; непосредственно
+связанные `test_combat_lab.gd`, `test_combat_encounter_transition.gd`,
+`test_combat_defeat_retry.gd`, `test_encounter_resource.gd`,
+`test_battlefield_resource.gd` и дополнительный `test_combat_grid.gd` проходят.
+Все 20 `test_combat*.gd`, `test_party_save_v2.gd`,
+`test_inventory_equipment.gd`, `test_party_progression.gd` и
+`test_battlefield_resource.gd` проходят. Обычные Vulkan Forward+ captures E4 и
+inventory прошли без script/renderer errors и подтвердили полностью видимое поле,
+ready с двумя actions и встроенный Strategy section. Ручная приёмка реальной
+мышью/клавиатурой/геймпадом и menu save/reopen остаётся открытой.
+
 ## Migration gates
 
 ### G1/G2 — content ownership

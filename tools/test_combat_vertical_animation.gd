@@ -12,6 +12,9 @@ func _init() -> void:
 
 func _run_and_quit() -> void:
 	var errors: Array[String] = []
+	var progress := root.get_node_or_null("EmberExploreProgress") as EmberExploreState
+	if progress != null:
+		progress.set_battle_strategy(EmberPartyState.DEFAULT_BATTLE_STRATEGY)
 	var lab := LAB_SCENE.instantiate()
 	root.add_child(lab)
 	await process_frame
@@ -27,6 +30,7 @@ func _run_and_quit() -> void:
 	mode_picker.item_selected.emit(3)
 	await process_frame
 	await process_frame
+	await _confirm_default_deployment(lab, hud, errors, "initial E4 selection")
 	hud.call("_console_add_status", "wisp", "wet", 2)
 	hud.call("_console_add_status", "mira", "guard", 2)
 	hud.call("_refresh")
@@ -134,6 +138,7 @@ func _run_and_quit() -> void:
 
 	hud.call("_reset_lab")
 	await create_timer(0.36).timeout
+	await _confirm_default_deployment(lab, hud, errors, "pair-animation reset")
 	var pair_state := (hud.call("state_snapshot") as Dictionary).duplicate(true)
 	var pair_units: Dictionary = pair_state.get("units", {})
 	for raw_id in pair_units:
@@ -159,11 +164,29 @@ func _run_and_quit() -> void:
 
 	hud.call("_reset_lab")
 	await create_timer(0.36).timeout
+	await _confirm_default_deployment(lab, hud, errors, "defend reset")
+	var defender_id := Combat.current_unit_id(hud.call("state_snapshot"))
 	hud.call("_select_action", "defend")
-	if not await _observed_unit_scale(lab, "CombatUnit_mira", 0.24):
+	if not await _observed_unit_scale(lab, "CombatUnit_%s" % defender_id, 0.24):
 		errors.append("defend did not produce the lightweight squash/pulse feedback")
 
 	_finish(lab, errors)
+
+
+func _confirm_default_deployment(
+	lab: Node, hud: Control, errors: Array[String], context: String
+) -> void:
+	var deployment_start := lab.find_child("CombatDeploymentReadyStart", true, false) as Button
+	if deployment_start == null or deployment_start.disabled:
+		errors.append("E4 default deployment cannot be confirmed after %s" % context)
+		return
+	deployment_start.pressed.emit()
+	await process_frame
+	await process_frame
+	await create_timer(0.36).timeout
+	hud.get_viewport().gui_release_focus()
+	if bool((hud.call("deployment_snapshot") as Dictionary).get("active", true)):
+		errors.append("E4 remained in deployment after Start was pressed after %s" % context)
 
 
 func _observed_unit_scale(lab: Node, unit_name: String, duration: float) -> bool:

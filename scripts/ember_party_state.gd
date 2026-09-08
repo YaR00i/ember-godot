@@ -7,10 +7,24 @@ const UnitCatalog := preload("res://scripts/prototypes/ember_combat_unit_catalog
 
 const LEADER_ID := "protagonist"
 const HERO_IDS: Array[String] = [LEADER_ID, "mira", "orik", "sena"]
+const DEFAULT_BATTLE_STRATEGY: Array[String] = ["mira", "orik", "sena", LEADER_ID]
 const MAX_LEVEL := 99
 
 static var _unit_cache_ready := false
 static var _units_by_id: Dictionary = {}
+
+
+static func normalize_battle_strategy(raw: Variant) -> Array[String]:
+	## A strategy stores party order only. Battlefield Resources remain the sole
+	## spatial owner and map this order onto their first authored party cells.
+	var source: Array = raw if typeof(raw) == TYPE_ARRAY else []
+	var result: Array[String] = []
+	for raw_id in source:
+		var hero_id := str(raw_id).strip_edges()
+		if hero_id not in HERO_IDS or hero_id in result:
+			return DEFAULT_BATTLE_STRATEGY.duplicate()
+		result.append(hero_id)
+	return result if result.size() == HERO_IDS.size() else DEFAULT_BATTLE_STRATEGY.duplicate()
 
 
 static func new_game(items: Dictionary = {}) -> Dictionary:

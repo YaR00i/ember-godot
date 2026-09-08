@@ -24,6 +24,11 @@ var _move_mode := false
 var _preview: Dictionary = {}
 var _secondary_cell := Combat.INVALID_CELL
 var _target_cell := Combat.INVALID_CELL
+var _deployment_active := false
+var _prebattle_active := false
+var _deployment_allowed_cells: Array[Vector2i] = []
+var _deployment_selected_hero_id := ""
+var _deployment_hover_cell := Combat.INVALID_CELL
 
 
 func configure(
@@ -35,6 +40,7 @@ func configure(
 	preview: Dictionary = {},
 	secondary_cell: Vector2i = Combat.INVALID_CELL,
 	target_cell: Vector2i = Combat.INVALID_CELL,
+	deployment: Dictionary = {},
 ) -> void:
 	_state = state
 	_selected_action = selected_action
@@ -44,6 +50,11 @@ func configure(
 	_preview = preview
 	_secondary_cell = secondary_cell
 	_target_cell = target_cell
+	_deployment_active = bool(deployment.get("active", false))
+	_prebattle_active = bool(deployment.get("prebattleActive", _deployment_active))
+	_deployment_allowed_cells.assign(deployment.get("allowedCells", []))
+	_deployment_selected_hero_id = str(deployment.get("selectedHeroId", ""))
+	_deployment_hover_cell = deployment.get("hoverCell", Combat.INVALID_CELL)
 	_rebuild()
 
 
@@ -60,7 +71,8 @@ func _rebuild() -> void:
 	var active_cell: Vector2i = active.get("cell", Vector2i(-1, -1))
 	var reachable := Grid.reachable_cells(_state, active_id)
 	var has_staged_move := (
-		_pending_cell != Vector2i(-1, -1)
+		not _prebattle_active
+		and _pending_cell != Vector2i(-1, -1)
 		and _pending_cell != active_cell
 		and _pending_cell in reachable
 	)
@@ -81,7 +93,11 @@ func _rebuild() -> void:
 			var actual_occupant := Grid.occupant_id(_state, cell)
 			var staged_origin := has_staged_move and cell == active_cell
 			var staged_destination := has_staged_move and cell == _pending_cell
-			var display_occupant := active_id if staged_destination else Grid.action_occupant_id(_state, _selected_action, cell)
+			var display_occupant := (
+				Grid.occupant_id(_state, cell)
+				if _deployment_active
+				else (active_id if staged_destination else Grid.action_occupant_id(_state, _selected_action, cell))
+			)
 			if staged_origin:
 				display_occupant = ""
 			var button := Button.new()
@@ -95,9 +111,18 @@ func _rebuild() -> void:
 			button.tooltip_text = _cell_tooltip(
 				cell, display_occupant, staged_origin, staged_destination
 			)
-			var background := _cell_color(cell)
+			var background := (
+				Color("17636d") if _deployment_active and cell in _deployment_allowed_cells
+				else _cell_color(cell)
+			)
 			var border := background.lightened(0.28)
-			if cell == approach_destination:
+			if (
+				_deployment_active
+				and not _deployment_selected_hero_id.is_empty()
+				and display_occupant == _deployment_selected_hero_id
+			):
+				border = Color("d9ffff")
+			elif cell == approach_destination:
 				border = Color("b5a5ff") if approach_fallback else Color("79d8a3")
 			elif staged_destination:
 				border = Color("ffd76d")
@@ -124,7 +149,9 @@ func _rebuild() -> void:
 			button.add_theme_color_override("font_color", Color("e7edf7"))
 			button.add_theme_color_override("font_hover_color", Color.WHITE)
 			button.add_theme_color_override("font_disabled_color", Color("aeb9cb"))
-			if _move_mode:
+			if _deployment_active:
+				button.disabled = cell not in _deployment_allowed_cells
+			elif _move_mode:
 				button.disabled = (
 					cell not in reachable
 					or (not actual_occupant.is_empty() and actual_occupant != active_id)
@@ -142,7 +169,10 @@ func _rebuild() -> void:
 			button.set_meta("cell", cell)
 			button.set_meta("base_text", button.text)
 			add_child(button)
-	update_action_preview(_preview, _selected_target, _target_cell, _secondary_cell)
+	if _deployment_active:
+		update_deployment_cursor(_deployment_hover_cell)
+	else:
+		update_action_preview(_preview, _selected_target, _target_cell, _secondary_cell)
 
 
 func _valid_targets_from_staged_state() -> Array[String]:
@@ -334,3 +364,28 @@ func update_action_preview(preview: Dictionary, target: String, cell: Vector2i, 
 		button.text = str(button.get_meta("base_text")) + suffix
 		button.add_theme_stylebox_override("normal", _style(_cell_color(at).darkened(0.26), border, 2))
 		button.add_theme_stylebox_override("disabled", _style(_cell_color(at).darkened(0.16), border, 1))
+
+
+func update_deployment_cursor(cell: Vector2i) -> void:
+	_deployment_hover_cell = cell
+	for child in get_children():
+		var button := child as Button
+		if button == null:
+			continue
+		var at: Vector2i = button.get_meta("cell")
+		var allowed := at in _deployment_allowed_cells
+		var background := Color("17636d") if allowed else _cell_color(at)
+		var border := background.lightened(0.28)
+		var width := 2
+		var suffix := ""
+		if at == _deployment_hover_cell:
+			border = Color("e8ffff") if allowed else Color("ff6677")
+			width = 4
+			suffix = "\n◆ КУРСОР"
+		button.text = str(button.get_meta("base_text")) + suffix
+		button.add_theme_stylebox_override("normal", _style(background.darkened(0.26), border, width))
+		button.add_theme_stylebox_override("disabled", _style(background.darkened(0.16), border, width))
+
+
+func deployment_cursor_cell() -> Vector2i:
+	return _deployment_hover_cell

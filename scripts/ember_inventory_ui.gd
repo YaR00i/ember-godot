@@ -12,6 +12,9 @@ var _mode := MODE_BAG
 var _bag_index := 0
 var _slot_index := 0
 var _hero_index := 0
+var _strategy_index := 0
+var _strategy_draft: Array[String] = []
+var _strategy_signature := ""
 var _feedback := ""
 var _view: Dictionary = {}
 var _title: Label
@@ -21,6 +24,8 @@ var _bag: Label
 var _detail: Label
 var _help: Label
 var _hero_buttons: Array[Button] = []
+var _strategy_rows: VBoxContainer
+var _strategy_save: Button
 
 
 func _ready() -> void:
@@ -47,6 +52,8 @@ func open() -> void:
 	_mode = MODE_BAG
 	_bag_index = 0
 	_slot_index = 0
+	_strategy_index = 0
+	_strategy_draft = progress_state.combat_strategy_snapshot()
 	_feedback = ""
 	visible = true
 	_refresh()
@@ -131,6 +138,9 @@ func view_state() -> Dictionary:
 		"bag": _bag.text if _bag else "",
 		"detail": _detail.text if _detail else "",
 		"feedback": _feedback,
+		"strategyDraft": _strategy_draft.duplicate(),
+		"strategyIndex": _strategy_index,
+		"savedStrategy": progress_state.combat_strategy_snapshot() if progress_state else [],
 	}
 
 
@@ -169,7 +179,68 @@ func _refresh() -> void:
 		button.add_theme_color_override("font_color", Color("182234") if selected else Color("e9eef8"))
 	_refresh_equipment()
 	_refresh_bag(rows)
+	_refresh_strategy()
 	_refresh_detail(rows)
+
+
+func _refresh_strategy() -> void:
+	if _strategy_rows == null:
+		return
+	var party_names := {}
+	for member in progress_state.party_view():
+		party_names[str(member.get("heroId", ""))] = str(member.get("nameRu", ""))
+	_strategy_index = clampi(_strategy_index, 0, maxi(0, _strategy_draft.size() - 1))
+	var signature := "%s|%d|%s" % [_strategy_draft, _strategy_index, party_names]
+	_strategy_save.disabled = _strategy_draft == progress_state.combat_strategy_snapshot()
+	if signature == _strategy_signature:
+		return
+	_strategy_signature = signature
+	for child in _strategy_rows.get_children():
+		child.queue_free()
+	for index in _strategy_draft.size():
+		var hero_id := _strategy_draft[index]
+		var row := Button.new()
+		row.name = "InventoryStrategyHero_%s" % hero_id
+		row.text = "%s%d. %s" % ["▶ " if index == _strategy_index else "", index + 1, party_names.get(hero_id, hero_id)]
+		row.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		row.pressed.connect(_select_strategy_row.bind(index))
+		_strategy_rows.add_child(row)
+
+
+func _select_strategy_row(index: int) -> void:
+	_strategy_index = clampi(index, 0, maxi(0, _strategy_draft.size() - 1))
+	_refresh()
+
+
+func move_strategy_hero(delta: int) -> bool:
+	if _strategy_draft.is_empty() or delta == 0:
+		return false
+	var target := clampi(_strategy_index + delta, 0, _strategy_draft.size() - 1)
+	if target == _strategy_index:
+		return false
+	var hero_id := _strategy_draft[_strategy_index]
+	_strategy_draft.remove_at(_strategy_index)
+	_strategy_draft.insert(target, hero_id)
+	_strategy_index = target
+	_feedback = "Порядок изменён — подтвердите сохранение."
+	_refresh()
+	return true
+
+
+func save_strategy() -> bool:
+	if progress_state == null:
+		return false
+	var previous := progress_state.combat_strategy_snapshot()
+	progress_state.set_battle_strategy(_strategy_draft)
+	if not progress_state.save_slot(progress_state.active_slot):
+		progress_state.set_battle_strategy(previous)
+		_feedback = "Не удалось сохранить стратегию."
+		_refresh()
+		return false
+	_strategy_draft = progress_state.combat_strategy_snapshot()
+	_feedback = "Стратегия сохранена."
+	_refresh()
+	return true
 
 
 func _refresh_equipment() -> void:
@@ -241,7 +312,7 @@ func _refresh_detail(rows: Array) -> void:
 		if not _feedback.is_empty():
 			text += "\n%s" % _feedback
 	_detail.text = text
-	_help.text = "Q/E — герой · A/D — экипировка/сумка · W/S — выбор · F — использовать/надеть/снять · I или Esc — закрыть"
+	_help.text = "Q/E — герой · A/D — экипировка/сумка · W/S — выбор · F — использовать/надеть/снять · Стратегия: строка, ↑/↓, Сохранить · I или Esc — закрыть"
 
 
 func _bag_rows() -> Array:
@@ -359,6 +430,40 @@ func _build_panel() -> void:
 	_bag.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_bag.add_theme_font_size_override("font_size", 18)
 	columns.add_child(_bag)
+	var strategy_panel := VBoxContainer.new()
+	strategy_panel.name = "InventoryStrategySection"
+	strategy_panel.custom_minimum_size = Vector2(250, 0)
+	strategy_panel.add_theme_constant_override("separation", 6)
+	columns.add_child(strategy_panel)
+	var strategy_title := Label.new()
+	strategy_title.text = "СТРАТЕГИЯ"
+	strategy_title.add_theme_font_size_override("font_size", 18)
+	strategy_panel.add_child(strategy_title)
+	_strategy_rows = VBoxContainer.new()
+	_strategy_rows.add_theme_constant_override("separation", 3)
+	strategy_panel.add_child(_strategy_rows)
+	var strategy_controls := HBoxContainer.new()
+	strategy_controls.add_theme_constant_override("separation", 5)
+	strategy_panel.add_child(strategy_controls)
+	var strategy_up := Button.new()
+	strategy_up.name = "InventoryStrategyUp"
+	strategy_up.text = "↑"
+	strategy_up.tooltip_text = "Поднять выбранного героя"
+	strategy_up.pressed.connect(move_strategy_hero.bind(-1))
+	strategy_controls.add_child(strategy_up)
+	var strategy_down := Button.new()
+	strategy_down.name = "InventoryStrategyDown"
+	strategy_down.text = "↓"
+	strategy_down.tooltip_text = "Опустить выбранного героя"
+	strategy_down.pressed.connect(move_strategy_hero.bind(1))
+	strategy_controls.add_child(strategy_down)
+	_strategy_save = Button.new()
+	_strategy_save.name = "InventoryStrategySave"
+	_strategy_save.text = "Сохранить"
+	_strategy_save.tooltip_text = "Сохранить порядок в текущий слот"
+	_strategy_save.pressed.connect(save_strategy)
+	_strategy_save.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	strategy_controls.add_child(_strategy_save)
 	_detail = Label.new()
 	_detail.add_theme_font_size_override("font_size", 17)
 	_detail.add_theme_color_override("font_color", Color(0.88, 0.91, 1.0))

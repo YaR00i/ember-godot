@@ -34,6 +34,7 @@ var _encounter_mode := "grid"
 var _authored_encounter: EmberEncounterResource
 var _party_snapshot: Dictionary = {}
 var _inventory_snapshot: Dictionary = {}
+var _strategy_snapshot: Array[String] = []
 var _field_view_mode := "3d"
 var _selected_action := ""
 var _selected_target := ""
@@ -129,6 +130,23 @@ var _pause_resume: Button
 var _transition_in_progress := false
 var _defeat_load_open := false
 var _battle_seed_serial := 0
+var _deployment_active := false
+var _deployment_ready := false
+var _deployment_editing := false
+var _deployment_allowed_cells: Array[Vector2i] = []
+var _deployment_placement: Dictionary = {}
+var _strategy_deployment: Dictionary = {}
+var _confirmed_deployment: Dictionary = {}
+var _deployment_selected_hero_id := ""
+var _deployment_selecting_cell := false
+var _deployment_panel: PanelContainer
+var _deployment_hero_list: VBoxContainer
+var _deployment_feedback: Label
+var _deployment_start: Button
+var _deployment_reset: Button
+var _deployment_ready_panel: PanelContainer
+var _deployment_ready_start: Button
+var _deployment_ready_edit: Button
 
 
 func _ready() -> void:
@@ -144,6 +162,11 @@ func _ready() -> void:
 	_authored_encounter = EmberCombatTransition.consume_encounter()
 	_party_snapshot = EmberCombatTransition.active_party_snapshot()
 	_inventory_snapshot = EmberCombatTransition.active_inventory_snapshot()
+	_strategy_snapshot = EmberCombatTransition.active_strategy_snapshot()
+	if _strategy_snapshot.is_empty():
+		var progress := get_node_or_null("/root/EmberExploreProgress") as EmberExploreState
+		if progress != null:
+			_strategy_snapshot = progress.combat_strategy_snapshot()
 	if not external_3d_world_path.is_empty():
 		_external_3d_world = get_node_or_null(external_3d_world_path) as Node3D
 		if (
@@ -183,6 +206,19 @@ func _process(_delta: float) -> void:
 
 func state_snapshot() -> Dictionary:
 	return _state.duplicate(true)
+
+
+func deployment_snapshot() -> Dictionary:
+	return {
+		"active": _deployment_active,
+		"ready": _deployment_ready,
+		"editing": _deployment_editing,
+		"allowedCells": _deployment_allowed_cells.duplicate(),
+		"placement": _deployment_placement.duplicate(true),
+		"confirmedPlacement": _confirmed_deployment.duplicate(true),
+		"selectedHeroId": _deployment_selected_hero_id,
+		"selectingCell": _deployment_selecting_cell,
+	}
 
 
 func _build_ui() -> void:
@@ -235,6 +271,8 @@ func _build_ui() -> void:
 	_command_panel.offset_bottom = -18
 	add_child(_command_panel)
 
+	_build_deployment_panel()
+
 	_build_ability_info_panel()
 	_build_enemy_info_panel()
 
@@ -252,6 +290,112 @@ func _build_ui() -> void:
 	_build_result_overlay()
 	_build_pause_overlay()
 	_build_fade_overlay()
+
+
+func _build_deployment_panel() -> void:
+	_build_deployment_ready_panel()
+	_deployment_panel = PanelContainer.new()
+	_deployment_panel.name = "CombatDeploymentPanel"
+	_deployment_panel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	_deployment_panel.offset_left = -430
+	_deployment_panel.offset_top = -500
+	_deployment_panel.offset_right = -16
+	_deployment_panel.offset_bottom = -18
+	_deployment_panel.add_theme_stylebox_override(
+		"panel", _panel_style(Color(0.035, 0.12, 0.16, 0.94), Color("35dcea"))
+	)
+	var margin := MarginContainer.new()
+	for side in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
+		margin.add_theme_constant_override(side, 16)
+	_deployment_panel.add_child(margin)
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 10)
+	margin.add_child(content)
+	var title := Label.new()
+	title.name = "CombatDeploymentTitle"
+	title.text = "РАССТАНОВКА"
+	title.add_theme_font_size_override("font_size", 25)
+	title.modulate = Color("8cf7ff")
+	content.add_child(title)
+	var hint := Label.new()
+	hint.text = "Выберите героя, затем свободную бирюзовую клетку.\nКлик по занятой героем клетке меняет их местами."
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.modulate = COLOR_MUTED
+	content.add_child(hint)
+	_deployment_hero_list = VBoxContainer.new()
+	_deployment_hero_list.name = "CombatDeploymentHeroes"
+	_deployment_hero_list.add_theme_constant_override("separation", 6)
+	content.add_child(_deployment_hero_list)
+	_deployment_feedback = Label.new()
+	_deployment_feedback.name = "CombatDeploymentFeedback"
+	_deployment_feedback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_deployment_feedback.modulate = Color("b8f8ff")
+	content.add_child(_deployment_feedback)
+	var buttons := HBoxContainer.new()
+	buttons.add_theme_constant_override("separation", 8)
+	content.add_child(buttons)
+	_deployment_reset = Button.new()
+	_deployment_reset.name = "CombatDeploymentReset"
+	_deployment_reset.text = "Сбросить"
+	_deployment_reset.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_deployment_reset.pressed.connect(_reset_deployment)
+	buttons.add_child(_deployment_reset)
+	_deployment_start = Button.new()
+	_deployment_start.name = "CombatDeploymentStart"
+	_deployment_start.text = "Начать бой"
+	_deployment_start.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_deployment_start.pressed.connect(_confirm_deployment)
+	buttons.add_child(_deployment_start)
+	_deployment_panel.visible = false
+	add_child(_deployment_panel)
+
+
+func _build_deployment_ready_panel() -> void:
+	_deployment_ready_panel = PanelContainer.new()
+	_deployment_ready_panel.name = "CombatDeploymentReadyPanel"
+	_deployment_ready_panel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	_deployment_ready_panel.offset_left = -390
+	_deployment_ready_panel.offset_top = -190
+	_deployment_ready_panel.offset_right = -18
+	_deployment_ready_panel.offset_bottom = -22
+	_deployment_ready_panel.add_theme_stylebox_override(
+		"panel", _panel_style(Color(0.035, 0.08, 0.12, 0.94), Color("35dcea"))
+	)
+	var margin := MarginContainer.new()
+	for side in ["margin_left", "margin_top", "margin_right", "margin_bottom"]:
+		margin.add_theme_constant_override(side, 14)
+	_deployment_ready_panel.add_child(margin)
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 8)
+	margin.add_child(content)
+	var title := Label.new()
+	title.text = "ГРУППА ГОТОВА"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 22)
+	title.modulate = Color("8cf7ff")
+	content.add_child(title)
+	var hint := Label.new()
+	hint.text = "Сохранённая стратегия уже применена."
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.modulate = COLOR_MUTED
+	content.add_child(hint)
+	var buttons := HBoxContainer.new()
+	buttons.add_theme_constant_override("separation", 8)
+	content.add_child(buttons)
+	_deployment_ready_start = Button.new()
+	_deployment_ready_start.name = "CombatDeploymentReadyStart"
+	_deployment_ready_start.text = "НАЧАТЬ БОЙ"
+	_deployment_ready_start.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_deployment_ready_start.pressed.connect(_confirm_deployment)
+	buttons.add_child(_deployment_ready_start)
+	_deployment_ready_edit = Button.new()
+	_deployment_ready_edit.name = "CombatDeploymentReadyEdit"
+	_deployment_ready_edit.text = "ИЗМЕНИТЬ СТРАТЕГИЮ"
+	_deployment_ready_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_deployment_ready_edit.pressed.connect(_enter_deployment_edit)
+	buttons.add_child(_deployment_ready_edit)
+	_deployment_ready_panel.visible = false
+	add_child(_deployment_ready_panel)
 
 
 func _build_header() -> Control:
@@ -813,9 +957,11 @@ func _build_fade_overlay() -> void:
 	add_child(_fade_overlay)
 
 
-func _reset_lab() -> void:
+func _reset_lab(reopen_deployment: bool = true, retry_confirmed: bool = false) -> void:
 	_canceling_lift = false
 	_lift_menu_ready = false
+	if not retry_confirmed:
+		_confirmed_deployment = {}
 	if _external_3d_world != null:
 		_external_3d_world.call("finish_lift_presentation")
 	_refresh_mode_copy()
@@ -839,6 +985,38 @@ func _reset_lab() -> void:
 	_state = Combat.with_inventory(
 		_state, battle_inventory, _combat_item_definitions(battle_inventory)
 	)
+	var deployment_field := (
+		_authored_encounter.battlefield if _authored_encounter != null else laboratory_field
+	)
+	_deployment_allowed_cells.clear()
+	if deployment_field != null:
+		_deployment_allowed_cells.assign(deployment_field.party_deployment_cells)
+	var defaults := Grid.deployment_default_placement(_state, _deployment_allowed_cells)
+	var customizable := Grid.deployment_enabled(_state, _deployment_allowed_cells)
+	_strategy_deployment = (
+		Grid.deployment_strategy_placement(
+			_state,
+			_deployment_allowed_cells,
+			EmberPartyState.normalize_battle_strategy(_strategy_snapshot),
+		)
+		if customizable
+		else defaults
+	)
+	if retry_confirmed and not _confirmed_deployment.is_empty():
+		_deployment_placement = _confirmed_deployment.duplicate(true)
+	else:
+		_deployment_placement = _strategy_deployment.duplicate(true)
+	_state = Grid.with_deployment(_state, _deployment_placement)
+	_deployment_active = (
+		reopen_deployment
+		and customizable
+	)
+	_deployment_ready = _deployment_active
+	_deployment_editing = false
+	_deployment_selected_hero_id = ""
+	_deployment_selecting_cell = false
+	if _deployment_active:
+		_deployment_feedback.text = "Выберите героя для размещения."
 	if _external_3d_world != null:
 		if _external_3d_world.has_method("request_camera_overview"):
 			_external_3d_world.call("request_camera_overview")
@@ -861,11 +1039,14 @@ func _reset_lab() -> void:
 	_selection_origin_page = "root"
 	_selection_origin_action = ""
 	_hovered_unit_id = ""
+	_pair_hover_action = ""
 	_pending_actor_id = ""
 	_manual_move_selected = false
 	_pending_cell = Vector2i(-1, -1)
 	_transition_in_progress = false
 	_refresh()
+	if _deployment_ready:
+		call_deferred("_focus_deployment_ready")
 
 
 func _add_lab_effect_actions(unit_id: String, action_ids: Array[String]) -> void:
@@ -884,6 +1065,167 @@ func _add_lab_effect_actions(unit_id: String, action_ids: Array[String]) -> void
 	_state["units"] = units
 
 
+func _refresh_deployment_ui() -> void:
+	if _deployment_panel == null or _deployment_ready_panel == null:
+		return
+	_deployment_ready_panel.visible = _deployment_ready
+	_deployment_panel.visible = _deployment_editing
+	var errors := Grid.deployment_validation_errors(
+		_state, _deployment_allowed_cells, _deployment_placement
+	)
+	_deployment_ready_start.disabled = not errors.is_empty()
+	if not _deployment_editing:
+		return
+	_clear(_deployment_hero_list)
+	for hero_id in Grid.deployment_hero_ids(_state):
+		var unit := Combat.unit_definition(_state, hero_id)
+		var cell: Vector2i = _deployment_placement.get(hero_id, Combat.INVALID_CELL)
+		var button := Button.new()
+		button.name = "CombatDeploymentHero_%s" % hero_id
+		button.text = "%s  ·  %s" % [str(unit.get("name", hero_id)), Grid.cell_label(cell)]
+		button.toggle_mode = true
+		button.button_pressed = hero_id == _deployment_selected_hero_id
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.custom_minimum_size = Vector2(0, 50)
+		button.pressed.connect(_select_deployment_hero.bind(hero_id))
+		_deployment_hero_list.add_child(button)
+	_deployment_start.disabled = not errors.is_empty()
+	if not errors.is_empty():
+		_deployment_feedback.text = errors[0]
+
+
+func _select_deployment_hero(hero_id: String) -> void:
+	if not _deployment_editing or hero_id not in Grid.deployment_hero_ids(_state):
+		return
+	_deployment_selected_hero_id = hero_id
+	_deployment_selecting_cell = true
+	_hover_cell = _deployment_placement.get(hero_id, Combat.INVALID_CELL)
+	_deployment_feedback.text = "%s: выберите бирюзовую клетку на поле. Esc/B — назад." % str(
+		Combat.unit_definition(_state, hero_id).get("name", hero_id)
+	)
+	_refresh()
+
+
+func _place_selected_hero(cell: Vector2i) -> bool:
+	if not _deployment_editing or _deployment_selected_hero_id.is_empty():
+		return false
+	var moved := Grid.deployment_move(
+		_state,
+		_deployment_allowed_cells,
+		_deployment_placement,
+		_deployment_selected_hero_id,
+		cell,
+	)
+	if not bool(moved.get("ok", false)):
+		_deployment_feedback.text = str(moved.get("error", "Клетка недоступна."))
+		_refresh()
+		return false
+	_deployment_placement = (moved.get("placement", {}) as Dictionary).duplicate(true)
+	_state = Grid.with_deployment(_state, _deployment_placement)
+	_hover_cell = cell
+	var swapped_id := str(moved.get("swappedHeroId", ""))
+	_deployment_feedback.text = (
+		"Герои поменялись местами."
+		if not swapped_id.is_empty()
+		else "%s размещён на %s." % [
+			str(Combat.unit_definition(_state, _deployment_selected_hero_id).get("name", _deployment_selected_hero_id)),
+			Grid.cell_label(cell),
+		]
+	)
+	_refresh()
+	return true
+
+
+func _reset_deployment() -> void:
+	if not _deployment_editing:
+		return
+	_deployment_placement = _strategy_deployment.duplicate(true)
+	_state = Grid.with_deployment(_state, _deployment_placement)
+	_deployment_selected_hero_id = ""
+	_deployment_selecting_cell = false
+	_hover_cell = Combat.INVALID_CELL
+	_deployment_feedback.text = "Возвращена сохранённая стратегия."
+	_refresh()
+	call_deferred("_focus_first_deployment_hero")
+
+
+func _confirm_deployment() -> bool:
+	if not _deployment_active:
+		return false
+	var errors := Grid.deployment_validation_errors(
+		_state, _deployment_allowed_cells, _deployment_placement
+	)
+	if not errors.is_empty():
+		_deployment_feedback.text = errors[0]
+		_refresh()
+		return false
+	_confirmed_deployment = _deployment_placement.duplicate(true)
+	_state = Grid.with_deployment(_state, _confirmed_deployment)
+	var actor_id := Combat.current_unit_id(_state)
+	_pending_actor_id = actor_id
+	_pending_cell = Combat.unit_definition(_state, actor_id).get("cell", Combat.INVALID_CELL)
+	_manual_move_selected = false
+	_move_mode = false
+	_deployment_active = false
+	_deployment_ready = false
+	_deployment_editing = false
+	_deployment_selected_hero_id = ""
+	_deployment_selecting_cell = false
+	_hover_cell = Combat.INVALID_CELL
+	_refresh()
+	call_deferred("_focus_first_radial_button")
+	return true
+
+
+func _return_deployment_focus() -> void:
+	_deployment_selecting_cell = false
+	var hero_id := _deployment_selected_hero_id
+	_deployment_selected_hero_id = ""
+	_hover_cell = Combat.INVALID_CELL
+	_deployment_feedback.text = "Выберите героя для размещения."
+	_refresh()
+	call_deferred("_focus_deployment_hero", hero_id)
+
+
+func _enter_deployment_edit() -> void:
+	if not _deployment_ready:
+		return
+	_deployment_ready = false
+	_deployment_editing = true
+	_deployment_feedback.text = "Выберите героя для размещения."
+	_refresh()
+	call_deferred("_focus_first_deployment_hero")
+
+
+func _focus_deployment_ready() -> void:
+	if _deployment_ready and _deployment_ready_start != null and _deployment_ready_start.is_inside_tree():
+		_deployment_ready_start.grab_focus()
+
+
+func _focus_first_deployment_hero() -> void:
+	if (
+		not is_inside_tree()
+		or not _deployment_editing
+		or _deployment_hero_list == null
+		or not _deployment_hero_list.is_inside_tree()
+	):
+		return
+	for child in _deployment_hero_list.get_children():
+		if child is Button and child.is_inside_tree() and not (child as Button).disabled:
+			(child as Button).grab_focus()
+			return
+
+
+func _focus_deployment_hero(hero_id: String) -> void:
+	if not _deployment_editing:
+		return
+	var button := find_child("CombatDeploymentHero_%s" % hero_id, true, false) as Button
+	if button != null and button.is_inside_tree():
+		button.grab_focus()
+	else:
+		_focus_first_deployment_hero()
+
+
 func _refresh() -> void:
 	_invalidate_plan_cache()
 	_ensure_selection()
@@ -897,6 +1239,14 @@ func _refresh() -> void:
 	_refresh_enemy_info()
 	_refresh_result_overlay()
 	_sync_camera_controls()
+	_refresh_deployment_ui()
+	_timeline_panel.visible = not _deployment_active
+	_console_panel.visible = not _deployment_active
+	_command_panel.visible = not _deployment_active
+	_reset_button.visible = not _deployment_active and _authored_encounter == null
+	_ability_info_panel.visible = not _deployment_active and _ability_info_panel.visible
+	_enemy_info_panel.visible = not _deployment_active and _enemy_info_panel.visible
+	_footer.visible = not _deployment_active
 
 
 func _invalidate_plan_cache() -> void:
@@ -907,13 +1257,22 @@ func _invalidate_plan_cache() -> void:
 	_action_target_cache.clear()
 	_action_target_cell_cache.clear()
 	_plan_contexts.clear()
-	_hover_cell = Combat.INVALID_CELL
+	if not _deployment_active:
+		_hover_cell = Combat.INVALID_CELL
 
 
 func _ensure_selection() -> void:
 	if Combat.outcome(_state) != "active":
 		_clear_selected_action_state()
 		_browsed_command_id = ""
+		return
+	if _deployment_active:
+		_clear_selected_action_state()
+		_browsed_command_id = ""
+		_pending_actor_id = ""
+		_pending_cell = Combat.INVALID_CELL
+		_manual_move_selected = false
+		_move_mode = false
 		return
 	var actor_id := Combat.current_unit_id(_state)
 	var actor := Combat.unit_definition(_state, actor_id)
@@ -1050,6 +1409,7 @@ func _refresh_field() -> void:
 				_selected_secondary_cell,
 				_lifted_target_id,
 				_selected_target_cell,
+				_deployment_projection(),
 			)
 			_sync_pair_context_visual()
 			return
@@ -1069,7 +1429,8 @@ func _refresh_field() -> void:
 			_field_row.add_child(grid_view)
 		grid_view.configure(
 			_state, field_action, field_target, _pending_cell, field_move_mode,
-			_public_field_preview(field_action), _selected_secondary_cell, _selected_target_cell
+			_public_field_preview(field_action), _selected_secondary_cell, _selected_target_cell,
+			_deployment_projection(),
 		)
 		if grid_view.has_method("set_pair_context_action"):
 			grid_view.call("set_pair_context_action", _active_pair_context_action())
@@ -1115,6 +1476,17 @@ func _refresh_field() -> void:
 		_field_row.add_child(card)
 
 
+func _deployment_projection() -> Dictionary:
+	return {
+		"active": _deployment_editing,
+		"prebattleActive": _deployment_active,
+		"allowedCells": _deployment_allowed_cells,
+		"placement": _deployment_placement,
+		"selectedHeroId": _deployment_selected_hero_id,
+		"hoverCell": _hover_cell,
+	}
+
+
 func _field_preview_action() -> String:
 	if not _selected_action.is_empty():
 		return _selected_action
@@ -1137,7 +1509,8 @@ func _public_field_preview(field_action: String) -> Dictionary:
 		result["castCells"] = context.get("castCells", [])
 		if field_action == _selected_action or _move_mode:
 			for key in ["applicationCell", "effectCell", "footprint", "ok", "reason", "commitRule"]:
-				result[key] = _action_plan.get(key)
+				if _action_plan.has(key):
+					result[key] = _action_plan[key]
 	for key in [
 		"requestedActionId",
 		"approachTargetId",
@@ -1273,6 +1646,13 @@ func _rebuild_action_plan() -> void:
 
 
 func _on_grid_cell_hovered(cell: Vector2i) -> void:
+	if _deployment_editing:
+		if _deployment_selecting_cell and cell != _hover_cell:
+			_hover_cell = cell
+			_update_deployment_cursor_projection(cell)
+		return
+	if _deployment_active:
+		return
 	if _canceling_lift or not _radial_targeting or (not _move_mode and _selected_action.is_empty()) or cell == _hover_cell:
 		return
 	_hover_cell = cell
@@ -1299,6 +1679,17 @@ func _on_grid_cell_hovered(cell: Vector2i) -> void:
 		_target_hint.text += "\n" + str(_action_plan.get("reason", ""))
 	_refresh_predicted_timeline()
 	_update_hover_projection(_public_field_preview(_selected_action))
+
+
+func _update_deployment_cursor_projection(cell: Vector2i) -> void:
+	if _external_3d_world != null and _external_3d_world.visible:
+		if _external_3d_world.has_method("update_deployment_cursor"):
+			_external_3d_world.call("update_deployment_cursor", cell)
+		return
+	if _field_row.get_child_count() == 1:
+		var view := _field_row.get_child(0)
+		if view.has_method("update_deployment_cursor"):
+			view.call("update_deployment_cursor", cell)
 
 
 func _update_hover_projection(projection: Dictionary) -> void:
@@ -1748,6 +2139,7 @@ func _refresh_radial_actions() -> void:
 	var outcome := Combat.outcome(_state)
 	if (
 		outcome != "active"
+		or _deployment_active
 		or not _is_grid_mode()
 		or _field_view_mode != "3d"
 		or (_radial_targeting and not lift_finish_menu)
@@ -2315,7 +2707,7 @@ func _refresh_log() -> void:
 
 
 func _select_action(action_id: String) -> void:
-	if _canceling_lift or not _lifted_target_id.is_empty():
+	if _deployment_active or _canceling_lift or not _lifted_target_id.is_empty():
 		return
 	_selection_origin_page = _radial_page
 	_selection_origin_action = action_id
@@ -2380,7 +2772,7 @@ func _select_target(unit_id: String) -> void:
 
 
 func _confirm_action() -> void:
-	if _lift_input_busy():
+	if _deployment_active or _lift_input_busy():
 		return
 	if _external_3d_world != null:
 		_external_3d_world.call("finish_lift_presentation")
@@ -2643,7 +3035,7 @@ func _refresh_mode_copy() -> void:
 
 
 func _toggle_move_mode() -> void:
-	if not _lifted_target_id.is_empty() or _canceling_lift:
+	if _deployment_active or not _lifted_target_id.is_empty() or _canceling_lift:
 		return
 	if not _is_grid_mode() or Combat.outcome(_state) != "active":
 		return
@@ -2678,6 +3070,16 @@ func _cancel_pending_move() -> void:
 
 
 func _on_grid_cell_chosen(cell: Vector2i, unit_id: String) -> void:
+	if _deployment_active:
+		if not _deployment_editing:
+			return
+		if _deployment_selected_hero_id.is_empty():
+			var unit := Combat.unit_definition(_state, unit_id)
+			if str(unit.get("team", "")) == "hero":
+				_select_deployment_hero(unit_id)
+			return
+		_place_selected_hero(cell)
+		return
 	if _canceling_lift or not _radial_targeting:
 		return
 	if _move_mode:
@@ -2764,6 +3166,8 @@ func _cancel_radial_targeting() -> void:
 
 
 func _advance_enemy_turns() -> void:
+	if _deployment_active:
+		return
 	for _safety in 12:
 		if Combat.outcome(_state) != "active":
 			return
@@ -2827,7 +3231,7 @@ func _retry_encounter() -> void:
 	if _transition_in_progress:
 		return
 	_defeat_load_open = false
-	_reset_lab()
+	_reset_lab(false, true)
 
 
 func _open_defeat_load_choices() -> void:
@@ -3158,6 +3562,41 @@ func _unhandled_input(event: InputEvent) -> void:
 	var cancel_requested: bool = event.is_action_pressed("ui_cancel") or (
 		event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE
 	)
+	if _deployment_active:
+		if cancel_requested:
+			if _deployment_editing and _deployment_selecting_cell:
+				_return_deployment_focus()
+			get_viewport().set_input_as_handled()
+			return
+		if _deployment_editing and _deployment_selecting_cell:
+			var deployment_direction := Vector2i.ZERO
+			if event.is_action_pressed("ui_left"):
+				deployment_direction = Vector2i.LEFT
+			elif event.is_action_pressed("ui_right"):
+				deployment_direction = Vector2i.RIGHT
+			elif event.is_action_pressed("ui_up"):
+				deployment_direction = Vector2i.UP
+			elif event.is_action_pressed("ui_down"):
+				deployment_direction = Vector2i.DOWN
+			if deployment_direction != Vector2i.ZERO:
+				var cursor := _hover_cell
+				if not Grid.is_inside(_state, cursor):
+					cursor = _deployment_placement.get(
+						_deployment_selected_hero_id, Vector2i.ZERO
+					)
+				if Grid.is_inside(_state, cursor + deployment_direction):
+					_on_grid_cell_hovered(cursor + deployment_direction)
+				get_viewport().set_input_as_handled()
+				return
+			if event.is_action_pressed("ui_accept") and Grid.is_inside(_state, _hover_cell):
+				_place_selected_hero(_hover_cell)
+				get_viewport().set_input_as_handled()
+				return
+		if _deployment_editing and event is InputEventKey and event.pressed and not event.echo:
+			if event.keycode == KEY_R:
+				_reset_deployment()
+			get_viewport().set_input_as_handled()
+		return
 	if cancel_requested:
 		if _pause_overlay != null and _pause_overlay.visible:
 			_close_pause_menu()

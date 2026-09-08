@@ -278,10 +278,51 @@ party progression и save v2 gates также проходят; весь сог�
 clipping и видимый focus первого доступного слота. Реальный mouse/gamepad input
 принят пользователем 8 сентября 2026.
 
+### Предбоевая расстановка (рабочее дерево 2026-09-08)
+
+Расстановка продолжает существующий Battlefield owner без новой schema.
+`party_deployment_cells[0..N-1]` задают default positions активных героев; если
+в массиве есть дополнительные клетки, весь массив становится разрешённой зоной
+и Combat Lab открывает process-local prebattle phase. При ровно N клетках фаза
+пропускается, поэтому `colored_crossing_demo` остаётся фиксированным обучающим
+боем. У E4 `vertical_forge_10x8` сохранены прежние первые четыре позиции и
+добавлена широкая зона слева для демонстрации.
+
+Save v2 без повышения версии получил optional `battleStrategy`: это строгий
+порядок четырёх hero IDs, нормализуемый `EmberPartyState`. Отсутствующее или
+битое значение возвращает прежний combat roster order
+`mira → orik → sena → protagonist`, поэтому старые saves не меняют authored
+расстановку. `EmberExploreState` остаётся единственным mutable/save owner;
+инвентарь редактирует draft и применяет его только кнопкой сохранения.
+`EmberCombatTransition` передаёт глубокую process-local копию вместе с party и
+inventory, а direct Lab читает тот же persisted preset из autoload без ownership.
+
+Чистые eligibility/default/strategy/validate/move/swap/apply функции живут в
+`EmberCombatGrid`. На поле с extra cells стратегия применяется до UI. Сначала
+HUD показывает компактное окно ровно с `НАЧАТЬ БОЙ` и `ИЗМЕНИТЬ СТРАТЕГИЮ` над
+полностью видимым полем без зоны и hero tools; оба режима блокируют timeline,
+commands, AI, commit и RNG. Второе действие открывает прежний детальный режим с
+бирюзовой зоной, mouse/standard focus/grid cursor, move/swap и Reset к persisted
+strategy. 3D/2D projections получают только phase context; staged combat
+projection явно отключена во всём prebattle, включая current actor.
+
+Defeat Retry пересобирает прежние party/inventory/field с новым seed, применяет
+последний confirmed placement и не открывает фазу снова. Обычный Lab Reset во
+время active battle очищает confirmed choice, возвращает persisted strategy и
+снова открывает ready. Exact-N поля игнорируют preset и оба режима.
+Encounter/Unit/Action/Battlefield Resources не изменялись.
+
+Все 20 `test_combat*.gd`, save/inventory/party progression/Battlefield gates и
+два обычных Vulkan Forward+ запуска прошли. Captures подтвердили компактный ready
+над полностью видимым полем и встроенный раздел «Стратегия» без clipping.
+Реальная ручная приёмка мышью/клавиатурой/геймпадом и save/reopen через меню ещё
+не заявлена.
+
 ## Следующий технический срез
 
-Актуальный порядок всегда берётся из `docs/EMBER_NOW.md`. Defeat/Retry gate
-закрыт; следующий кандидат — предбоевая расстановка. Парные
+Актуальный порядок всегда берётся из `docs/EMBER_NOW.md`. Предбоевая расстановка
+реализована и ждёт ручной приёмки; следующий кандидат после неё — малый D3
+production-участок. Парные
 техники остаются на своём authored-радиусе; их auto-approach не был добавлен
 скрыто. Текущие Action/Battlefield/save schemas, один resolver и один navigation
 owner сохранены.
@@ -295,7 +336,7 @@ owner сохранены.
 - Несколько catalog/loader классов всё ещё используют `EmberPack`; новые вызовы
   туда запрещены.
 - 25 scene-used stale voxel prefab требуют visual review перед миграцией.
-- Предбоевая расстановка ещё не закрыта production-правилами.
+- Предбоевая расстановка ждёт ручной приёмки реального input/ощущения.
 - Первый малый сквозной D3-участок ещё не собран.
 - Финальный запуск без физически доступного sibling JOI не пройден.
 

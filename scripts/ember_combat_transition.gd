@@ -15,6 +15,8 @@ static var _pending_party_snapshot: Dictionary = {}
 static var _active_party_snapshot: Dictionary = {}
 static var _pending_inventory_snapshot: Dictionary = {}
 static var _active_inventory_snapshot: Dictionary = {}
+static var _pending_strategy_snapshot: Array[String] = []
+static var _active_strategy_snapshot: Array[String] = []
 static var _result_applied := false
 
 
@@ -33,8 +35,10 @@ static func change_scene(
 	_pending_encounter_id = encounter.encounter_id
 	_pending_party_snapshot = progress.combat_party_snapshot() if progress != null else {}
 	_pending_inventory_snapshot = progress.combat_inventory_snapshot() if progress != null else {}
+	_pending_strategy_snapshot = progress.combat_strategy_snapshot() if progress != null else []
 	_active_party_snapshot = {}
 	_active_inventory_snapshot = {}
+	_active_strategy_snapshot = []
 	_return_scene_path = tree.current_scene.scene_file_path
 	_result_applied = false
 	_return_steps.clear()
@@ -53,6 +57,8 @@ static func consume_encounter() -> EmberEncounterResource:
 	_pending_party_snapshot = {}
 	_active_inventory_snapshot = _pending_inventory_snapshot.duplicate(true)
 	_pending_inventory_snapshot = {}
+	_active_strategy_snapshot = _pending_strategy_snapshot.duplicate()
+	_pending_strategy_snapshot = []
 	_result_applied = false
 	return Catalog.definition(_active_encounter_id)
 
@@ -63,6 +69,10 @@ static func active_party_snapshot() -> Dictionary:
 
 static func active_inventory_snapshot() -> Dictionary:
 	return _active_inventory_snapshot.duplicate(true)
+
+
+static func active_strategy_snapshot() -> Array[String]:
+	return _active_strategy_snapshot.duplicate()
 
 
 static func finish(
@@ -109,6 +119,7 @@ static func finish(
 	_active_encounter_id = ""
 	_active_party_snapshot = {}
 	_active_inventory_snapshot = {}
+	_active_strategy_snapshot = []
 	_return_scene_path = ""
 	if return_path.is_empty() or not ResourceLoader.exists(return_path):
 		_return_action_id = ""
@@ -175,6 +186,8 @@ static func abandon_active_encounter() -> void:
 	_active_party_snapshot = {}
 	_pending_inventory_snapshot = {}
 	_active_inventory_snapshot = {}
+	_pending_strategy_snapshot = []
+	_active_strategy_snapshot = []
 	_return_scene_path = ""
 	_return_action_id = ""
 	_return_steps.clear()

@@ -31,6 +31,7 @@ var restore_enabled := true
 var inventory: Dictionary = {}
 var shop_stock: Dictionary = {}
 var party: Dictionary = {}
+var battle_strategy: Array[String] = []
 var equipment: Dictionary = {}
 var opened_chests: Array = []
 var flags: Dictionary = {}
@@ -69,6 +70,7 @@ func reset_new_game() -> void:
 	inventory = {EmberEconomy.WALLET_ITEM_ID: STARTING_COINS}
 	shop_stock = {}
 	party = EmberPartyState.new_game(_items())
+	battle_strategy = EmberPartyState.normalize_battle_strategy([])
 	_sync_compatibility_from_party()
 	opened_chests = []
 	flags = {}
@@ -540,6 +542,16 @@ func combat_inventory_snapshot() -> Dictionary:
 	return EmberEconomy.compact_counts(inventory)
 
 
+func combat_strategy_snapshot() -> Array[String]:
+	return EmberPartyState.normalize_battle_strategy(battle_strategy).duplicate()
+
+
+func set_battle_strategy(raw: Variant) -> Array[String]:
+	battle_strategy = EmberPartyState.normalize_battle_strategy(raw)
+	progress_changed.emit()
+	return battle_strategy.duplicate()
+
+
 func apply_combat_result(
 	combat_state: Dictionary,
 	autosave := true,
@@ -622,6 +634,7 @@ func adopt_loaded_save(source: EmberExploreState) -> void:
 	inventory = source.inventory.duplicate(true)
 	shop_stock = source.shop_stock.duplicate(true)
 	party = source.party.duplicate(true)
+	battle_strategy = source.battle_strategy.duplicate()
 	equipment = source.equipment.duplicate(true)
 	opened_chests = source.opened_chests.duplicate(true)
 	flags = source.flags.duplicate(true)
@@ -693,6 +706,7 @@ func _apply_v2_payload(data: Dictionary, pending_restore: bool) -> void:
 	flags = _parse_flags(data.get("flags", {}))
 	var normalized := EmberPartyState.normalize(data.get("party", {}), items)
 	party = normalized.get("party", {}).duplicate(true)
+	battle_strategy = EmberPartyState.normalize_battle_strategy(data.get("battleStrategy", []))
 	for item_id in normalized.get("returnedItems", []):
 		inventory = EmberEconomy.grant_items(inventory, [str(item_id)], items)
 	playtime_seconds = maxf(0.0, float(data.get("playtimeSeconds", 0.0)))
@@ -722,6 +736,7 @@ func capture_save(save_kind := "manual", slot := active_slot) -> Dictionary:
 		"elev": pos.y,
 		"inventory": EmberEconomy.compact_counts(inventory),
 		"party": EmberPartyState.serialize(party, _items()),
+		"battleStrategy": EmberPartyState.normalize_battle_strategy(battle_strategy),
 		"openedChests": _parse_string_array(opened_chests),
 		"shopStock": _parse_shop_stock(shop_stock),
 		"flags": _parse_flags(flags),
@@ -907,6 +922,7 @@ func _migrate_legacy_slot(slot: int) -> bool:
 	opened_chests = _parse_string_array(legacy.get("openedChests", []))
 	flags = _parse_flags(legacy.get("flags", {}))
 	party = EmberPartyState.new_game(items)
+	battle_strategy = EmberPartyState.normalize_battle_strategy([])
 	var leader: Dictionary = party.get(EmberPartyState.LEADER_ID, {})
 	leader["equipment"] = _parse_equipment(legacy.get("equipment", {}))
 	party[EmberPartyState.LEADER_ID] = leader
