@@ -612,6 +612,33 @@ func load_autosave() -> bool:
 	return _load_v2_path(autosave_path(), "autosave", -1)
 
 
+func adopt_loaded_save(source: EmberExploreState) -> void:
+	## Commit a save that was already parsed and normalized by another instance of
+	## this owner. Combat transitions use this as the second phase of loading so a
+	## corrupt save or rejected scene change cannot partially mutate live progress.
+	if source == null:
+		return
+	active_slot = source.active_slot
+	inventory = source.inventory.duplicate(true)
+	shop_stock = source.shop_stock.duplicate(true)
+	party = source.party.duplicate(true)
+	equipment = source.equipment.duplicate(true)
+	opened_chests = source.opened_chests.duplicate(true)
+	flags = source.flags.duplicate(true)
+	hp = source.hp
+	max_hp = source.max_hp
+	playtime_seconds = source.playtime_seconds
+	_map_id = source._map_id
+	_restore_pending = source._restore_pending
+	_saved_map_id = source._saved_map_id
+	_saved_x = source._saved_x
+	_saved_y = source._saved_y
+	_saved_elev = source._saved_elev
+	_saved_tile = source._saved_tile.duplicate(true)
+	economy_changed.emit()
+	progress_changed.emit()
+
+
 func load_latest_available() -> bool:
 	var newest := {"savedAtMs": -1, "kind": "", "slot": active_slot}
 	var auto_meta := autosave_metadata()

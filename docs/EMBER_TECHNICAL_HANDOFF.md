@@ -249,15 +249,42 @@ Baseline 16×12: cell-query 12.37 ms; после — 12.28 ms. Cached cell Actio
 Пройдено 24/24 combat/battlefield/encounter/party/save scripts (exit 0, без
 SCRIPT ERROR/ERROR); после финального UI wiring повторены lab/animation/view.
 Основной ActionPlan принят пользователем после ручной проверки в Forward+.
-После переноса lift-завершений в кольцо требуется коротко проверить его позицию,
-фокус и читаемость мышью/геймпадом.
+После переноса lift-завершений позиция, фокус и читаемость кольца дополнительно
+приняты пользователем в реальном бою 8 сентября 2026.
+
+### Production defeat/Retry lifecycle (2026-09-08)
+
+Поверх checkpoint `4569f64` поражение отделено от persistent result commit:
+`EmberCombatTransition.finish` принимает defeat как некоммитируемый исход, а
+боевой HUD больше не возвращает нулевые HP/MP и потраченную сумку в мир. Retry
+переиспользует уже существующие process-local party/inventory snapshots и
+authored deployment, полностью пересобирает battle snapshot и создаёт новый RNG
+seed; видимого предбоевого save slot и новой schema нет.
+
+Вместо прежнего `Вернуться` defeat-modal предлагает `Повторить` или
+`Загрузить сохранение`. Load-only панель показывает metadata трёх ручных слотов
+и автосейва; загрузку и восстановление сцены по-прежнему выполняет единственный
+`EmberExploreState`, а transition только проверяет target scene, меняет сцену и
+очищает process-local combat handoff после успешного запуска. Пустой/недоступный
+слот не уничтожает активную возможность Retry.
+
+`test_combat_defeat_retry.gd` проверяет запрет defeat commit, неизменность
+persistent owner и файлов сохранений после Retry, точное восстановление party,
+inventory и deployment, новый seed, focus load-only панели, ручной слот,
+автосейв и очистку handoff. Связанные combat lab, encounter transition, result,
+party progression и save v2 gates также проходят; весь согласованный набор —
+27/27 scripts. Обычный Vulkan Forward+ на RTX 5070 дошёл до load-only состояния
+без renderer/script errors. In-engine capture 2560×1440 подтвердил отсутствие
+clipping и видимый focus первого доступного слота. Реальный mouse/gamepad input
+принят пользователем 8 сентября 2026.
 
 ## Следующий технический срез
 
-Актуальный порядок всегда берётся из `docs/EMBER_NOW.md`. После ручной приёмки
-ActionPlan поверх v2.64.4 ближайшие кандидаты — Retry/defeat и deployment. Парные техники остаются
-на своём authored-радиусе; их auto-approach не был добавлен скрыто. Текущие
-Action/Battlefield/save schemas, один resolver и один navigation owner сохранены.
+Актуальный порядок всегда берётся из `docs/EMBER_NOW.md`. Defeat/Retry gate
+закрыт; следующий кандидат — предбоевая расстановка. Парные
+техники остаются на своём authored-радиусе; их auto-approach не был добавлен
+скрыто. Текущие Action/Battlefield/save schemas, один resolver и один navigation
+owner сохранены.
 
 ## Известные долги
 
@@ -268,7 +295,7 @@ Action/Battlefield/save schemas, один resolver и один navigation owner 
 - Несколько catalog/loader классов всё ещё используют `EmberPack`; новые вызовы
   туда запрещены.
 - 25 scene-used stale voxel prefab требуют visual review перед миграцией.
-- Поражение/Retry и предбоевая расстановка ещё не закрыты production-правилами.
+- Предбоевая расстановка ещё не закрыта production-правилами.
 - Первый малый сквозной D3-участок ещё не собран.
 - Финальный запуск без физически доступного sibling JOI не пройден.
 

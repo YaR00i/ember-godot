@@ -204,8 +204,9 @@ visual-only эффекта.
 
 ## Combat Lab v2.64.4 positional/hold regression gate
 
-Срез реализован в рабочем дереве после `2c38bc5`; до checkpoint остаётся ручная
-Forward+ приёмка. Regression gate сохраняет следующие критерии:
+Срез зафиксирован в checkpoint `4569f64`; дополнительная ручная проверка кольца
+завершений подъёма принята пользователем. Regression gate сохраняет следующие
+критерии:
 
 1. непарные support/heal/item/cell/lift-команды используют тот же positional
    planner, что hostile-команды;
@@ -265,6 +266,33 @@ transition/party/save tests. Ручная приёмка — обычный Forw
 ```powershell
 & C:/Users/novos/Projects/ember-godot/tools/godot/Godot_v4.7.2-stable_win64_console.exe --headless --path . --script res://tools/test_combat_action_plan.gd
 ```
+
+## Production defeat/Retry gate
+
+Поражение авторской встречи не является persistent result commit. Gate требует:
+
+1. defeat-modal предлагает `Повторить` и `Загрузить сохранение`, а не возврат в
+   мир с нулевыми HP или потраченной сумкой;
+2. Retry восстанавливает точные предбоевые party, inventory, authored deployment
+   и исходное состояние поля, но создаёт новый RNG seed;
+3. Retry не меняет `EmberExploreState`, не пишет ручной слот/автосейв и не
+   применяет XP, награды, flags или combat counters;
+4. load-only панель показывает три ручных слота и отдельный автосейв по metadata
+   существующего save v2 owner; пустые слоты недоступны;
+5. успешная загрузка открывает сохранённую сцену и очищает process-local combat
+   handoff; ошибка сохраняет defeat-modal и возможность Retry;
+6. победа по-прежнему применяет результат ровно один раз; authored Action,
+   Battlefield и save schemas не меняются.
+
+Минимальный gate — `tools/test_combat_defeat_retry.gd`, затем
+`test_combat_lab.gd`, `test_combat_encounter_transition.gd`,
+`test_combat_result_bridge.gd`, `test_party_progression.gd`,
+`test_party_save_v2.gd`, весь `tools/test_combat*.gd` и соседние encounter/
+party/save scripts. Ручная Forward+ приёмка проверяет поражение после расхода MP
+и предмета, Retry, новый seed, выбор ручного слота/автосейва, Esc-назад и focus
+мышью/клавиатурой/геймпадом.
+Текущий gate пройден: 27/27 связанных scripts, Vulkan Forward+ capture и ручной
+mouse/gamepad сценарий подтверждены 8 сентября 2026.
 
 ## Migration gates
 

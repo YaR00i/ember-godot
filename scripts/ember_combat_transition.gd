@@ -73,6 +73,11 @@ static func finish(
 ) -> Error:
 	if tree == null or outcome not in ["victory", "defeat"]:
 		return ERR_INVALID_DATA
+	# A defeated attempt is never a persistent result. The defeat screen must
+	# either rebuild the active encounter from its pre-battle copies or load an
+	# existing save through `load_save`; only victory crosses this commit point.
+	if outcome == "defeat":
+		return ERR_UNAVAILABLE
 	if _result_applied:
 		return ERR_ALREADY_IN_USE
 	var encounter := Catalog.definition(_active_encounter_id)
@@ -112,6 +117,70 @@ static func finish(
 	return tree.change_scene_to_file(return_path)
 
 
+static func load_save(
+	tree: SceneTree,
+	progress: EmberExploreState,
+	save_kind: String,
+	slot := -1,
+) -> Error:
+	if tree == null or progress == null or _active_encounter_id.is_empty():
+		return ERR_INVALID_DATA
+	var metadata := {}
+	if save_kind == "autosave":
+		metadata = progress.autosave_metadata()
+	elif save_kind == "manual":
+		metadata = progress.slot_metadata(slot)
+	else:
+		return ERR_INVALID_DATA
+	if not bool(metadata.get("exists", false)):
+		return ERR_FILE_NOT_FOUND
+	# Parse, migrate and normalize through the existing save owner, but keep the
+	# live autoload untouched until both the save and destination scene are valid.
+	var staged := EmberExploreState.new()
+	staged.active_slot = progress.active_slot
+	staged.storage_root = progress.storage_root
+	staged.legacy_storage_root = progress.legacy_storage_root
+	staged.persistence_enabled = progress.persistence_enabled
+	staged.restore_enabled = progress.restore_enabled
+	var loaded := (
+		staged.load_autosave()
+		if save_kind == "autosave"
+		else staged.load_slot(slot)
+	)
+	if not loaded:
+		staged.free()
+		return ERR_FILE_CORRUPT
+	var target_path := staged.resume_scene_path()
+	if target_path.is_empty() or not ResourceLoader.exists(target_path):
+		staged.free()
+		return ERR_FILE_NOT_FOUND
+	var target_scene := ResourceLoader.load(target_path) as PackedScene
+	if target_scene == null:
+		staged.free()
+		return ERR_CANT_OPEN
+	var error := tree.change_scene_to_packed(target_scene)
+	if error != OK:
+		staged.free()
+		return error
+	progress.adopt_loaded_save(staged)
+	staged.free()
+	abandon_active_encounter()
+	return OK
+
+
+static func abandon_active_encounter() -> void:
+	_pending_encounter_id = ""
+	_active_encounter_id = ""
+	_pending_party_snapshot = {}
+	_active_party_snapshot = {}
+	_pending_inventory_snapshot = {}
+	_active_inventory_snapshot = {}
+	_return_scene_path = ""
+	_return_action_id = ""
+	_return_steps.clear()
+	_result_applied = false
+
+
 static func consume_return_action() -> String:
 	var result := _return_action_id
 	_return_action_id = ""
@@ -127,13 +196,4 @@ static func consume_return_steps() -> Array[Dictionary]:
 
 
 static func clear_for_test() -> void:
-	_pending_encounter_id = ""
-	_active_encounter_id = ""
-	_pending_party_snapshot = {}
-	_active_party_snapshot = {}
-	_pending_inventory_snapshot = {}
-	_active_inventory_snapshot = {}
-	_return_scene_path = ""
-	_return_action_id = ""
-	_return_steps.clear()
-	_result_applied = false
+	abandon_active_encounter()

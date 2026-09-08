@@ -118,11 +118,16 @@ var _result_title: Label
 var _result_body: Label
 var _result_continue: Button
 var _result_retry: Button
-var _result_return: Button
+var _result_load: Button
+var _result_load_panel: VBoxContainer
+var _result_load_feedback: Label
+var _result_load_buttons: Array[Button] = []
+var _result_load_back: Button
 var _fade_overlay: ColorRect
 var _pause_overlay: ColorRect
 var _pause_resume: Button
 var _transition_in_progress := false
+var _defeat_load_open := false
 var _battle_seed_serial := 0
 
 
@@ -655,7 +660,7 @@ func _build_result_overlay() -> void:
 	_result_overlay.add_child(center)
 	var panel := PanelContainer.new()
 	panel.name = "CombatResultPanel"
-	panel.custom_minimum_size = Vector2(560, 330)
+	panel.custom_minimum_size = Vector2(680, 440)
 	panel.add_theme_stylebox_override("panel", _panel_style(Color("182234"), COLOR_ACCENT))
 	center.add_child(panel)
 	var margin := MarginContainer.new()
@@ -676,6 +681,7 @@ func _build_result_overlay() -> void:
 	_result_body.add_theme_font_size_override("font_size", 18)
 	_result_body.modulate = COLOR_TEXT
 	content.add_child(_result_body)
+	_build_result_load_panel(content)
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	content.add_child(spacer)
@@ -689,18 +695,55 @@ func _build_result_overlay() -> void:
 	_result_retry.custom_minimum_size = Vector2(155, 48)
 	_result_retry.pressed.connect(_retry_encounter)
 	buttons.add_child(_result_retry)
-	_result_return = Button.new()
-	_result_return.name = "CombatResultReturn"
-	_result_return.text = "Вернуться"
-	_result_return.custom_minimum_size = Vector2(155, 48)
-	_result_return.pressed.connect(_return_from_encounter)
-	buttons.add_child(_result_return)
+	_result_load = Button.new()
+	_result_load.name = "CombatResultLoad"
+	_result_load.text = "Загрузить сохранение"
+	_result_load.custom_minimum_size = Vector2(210, 48)
+	_result_load.pressed.connect(_open_defeat_load_choices)
+	buttons.add_child(_result_load)
 	_result_continue = Button.new()
 	_result_continue.name = "CombatResultContinue"
 	_result_continue.text = "Продолжить · Enter"
 	_result_continue.custom_minimum_size = Vector2(190, 48)
 	_result_continue.pressed.connect(_return_from_encounter)
 	buttons.add_child(_result_continue)
+
+
+func _build_result_load_panel(parent: VBoxContainer) -> void:
+	_result_load_panel = VBoxContainer.new()
+	_result_load_panel.name = "CombatDefeatLoadPanel"
+	_result_load_panel.add_theme_constant_override("separation", 8)
+	_result_load_panel.visible = false
+	parent.add_child(_result_load_panel)
+	var title := Label.new()
+	title.text = "ВЫБЕРИТЕ СОХРАНЕНИЕ"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.modulate = COLOR_ACCENT
+	_result_load_panel.add_child(title)
+	for slot in EmberExploreState.MANUAL_SLOT_COUNT:
+		var button := Button.new()
+		button.name = "CombatDefeatLoadSlot%d" % (slot + 1)
+		button.custom_minimum_size = Vector2(0, 44)
+		button.pressed.connect(_load_defeat_save.bind("manual", slot))
+		_result_load_panel.add_child(button)
+		_result_load_buttons.append(button)
+	var autosave := Button.new()
+	autosave.name = "CombatDefeatLoadAutosave"
+	autosave.custom_minimum_size = Vector2(0, 44)
+	autosave.pressed.connect(_load_defeat_save.bind("autosave", -1))
+	_result_load_panel.add_child(autosave)
+	_result_load_buttons.append(autosave)
+	_result_load_feedback = Label.new()
+	_result_load_feedback.name = "CombatDefeatLoadFeedback"
+	_result_load_feedback.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_result_load_feedback.modulate = COLOR_ENEMY
+	_result_load_panel.add_child(_result_load_feedback)
+	_result_load_back = Button.new()
+	_result_load_back.name = "CombatDefeatLoadBack"
+	_result_load_back.text = "Назад · Esc"
+	_result_load_back.custom_minimum_size = Vector2(0, 44)
+	_result_load_back.pressed.connect(_close_defeat_load_choices)
+	_result_load_panel.add_child(_result_load_back)
 
 
 func _build_pause_overlay() -> void:
@@ -2193,7 +2236,11 @@ func _refresh_result_overlay() -> void:
 	var outcome := Combat.outcome(_state)
 	_result_overlay.visible = outcome != "active"
 	if not _result_overlay.visible:
+		_defeat_load_open = false
+		_result_load_panel.visible = false
 		return
+	if outcome != "defeat" or _authored_encounter == null:
+		_defeat_load_open = false
 	_result_title.text = "ПОБЕДА" if outcome == "victory" else "ПОРАЖЕНИЕ"
 	_result_title.modulate = COLOR_ACCENT if outcome == "victory" else COLOR_ENEMY
 	var encounter_name := (
@@ -2203,7 +2250,7 @@ func _refresh_result_overlay() -> void:
 		"%s завершена. Нажмите «Продолжить»: результат применится один раз, затем вы вернётесь туда, где начался бой."
 		% encounter_name
 		if outcome == "victory" and _authored_encounter != null
-		else ("%s завершена поражением. Можно повторить бой или вернуться в локацию." % encounter_name
+		else ("%s завершена поражением. Можно повторить точное предбоевое состояние или загрузить сохранение." % encounter_name
 		if _authored_encounter != null
 		else "%s завершена. Это лабораторный бой — прогресс мира не изменяется." % encounter_name)
 	)
@@ -2234,11 +2281,22 @@ func _refresh_result_overlay() -> void:
 			detail_lines.append("Награда после возврата: %s" % ", ".join(reward_parts))
 		if not detail_lines.is_empty():
 			_result_body.text += "\n\n" + "\n".join(detail_lines)
-	_result_continue.visible = outcome == "victory" and _authored_encounter != null
-	_result_return.visible = outcome == "defeat" and _authored_encounter != null
-	_result_retry.visible = not _transition_in_progress
+	_result_load_panel.visible = _defeat_load_open
+	if _defeat_load_open:
+		_refresh_defeat_load_choices()
+	_result_continue.visible = (
+		outcome == "victory" and _authored_encounter != null and not _defeat_load_open
+	)
+	_result_load.visible = (
+		outcome == "defeat" and _authored_encounter != null and not _defeat_load_open
+	)
+	_result_retry.visible = (
+		(outcome == "defeat" or _authored_encounter == null) and not _defeat_load_open
+	)
 	_set_result_buttons_disabled(_transition_in_progress)
-	if _result_continue.visible and not _transition_in_progress:
+	if _defeat_load_open and not _transition_in_progress:
+		_focus_first_defeat_save()
+	elif _result_continue.visible and not _transition_in_progress:
 		_result_continue.grab_focus()
 	elif _result_retry.visible and not _transition_in_progress:
 		_result_retry.grab_focus()
@@ -2749,7 +2807,7 @@ func _return_from_encounter() -> void:
 	if _authored_encounter == null or _transition_in_progress:
 		return
 	var outcome := Combat.outcome(_state)
-	if outcome == "active":
+	if outcome != "victory":
 		return
 	get_tree().paused = false
 	_transition_in_progress = true
@@ -2768,7 +2826,99 @@ func _return_from_encounter() -> void:
 func _retry_encounter() -> void:
 	if _transition_in_progress:
 		return
+	_defeat_load_open = false
 	_reset_lab()
+
+
+func _open_defeat_load_choices() -> void:
+	if (
+		_transition_in_progress
+		or _authored_encounter == null
+		or Combat.outcome(_state) != "defeat"
+	):
+		return
+	_defeat_load_open = true
+	_result_load_feedback.text = ""
+	_refresh_result_overlay()
+
+
+func _close_defeat_load_choices() -> void:
+	if _transition_in_progress or not _defeat_load_open:
+		return
+	_defeat_load_open = false
+	_refresh_result_overlay()
+
+
+func _refresh_defeat_load_choices() -> void:
+	if _result_load_buttons.size() != EmberExploreState.MANUAL_SLOT_COUNT + 1:
+		return
+	var progress := get_node_or_null("/root/EmberExploreProgress") as EmberExploreState
+	for slot in EmberExploreState.MANUAL_SLOT_COUNT:
+		var metadata := progress.slot_metadata(slot) if progress != null else {}
+		var button := _result_load_buttons[slot]
+		button.text = _save_choice_text("Слот %d" % (slot + 1), metadata)
+		button.disabled = _transition_in_progress or not bool(metadata.get("exists", false))
+	var autosave_metadata := progress.autosave_metadata() if progress != null else {}
+	var autosave_button := _result_load_buttons[EmberExploreState.MANUAL_SLOT_COUNT]
+	autosave_button.text = _save_choice_text("Автосейв", autosave_metadata)
+	autosave_button.disabled = (
+		_transition_in_progress or not bool(autosave_metadata.get("exists", false))
+	)
+
+
+func _save_choice_text(title: String, metadata: Dictionary) -> String:
+	if not bool(metadata.get("exists", false)):
+		return "%s · пусто" % title
+	var saved_at := str(metadata.get("savedAtText", "")).replace("T", " ")
+	if saved_at.length() > 16:
+		saved_at = saved_at.left(16)
+	var migration := " · будет обновлён с v1" if bool(metadata.get("migrationPending", false)) else ""
+	return "%s · %s · герои %d/%d · %s%s" % [
+		title,
+		str(metadata.get("mapId", "локация")),
+		int(metadata.get("aliveCount", 0)),
+		int(metadata.get("partyCount", 0)),
+		saved_at,
+		migration,
+	]
+
+
+func _focus_first_defeat_save() -> void:
+	for button in _result_load_buttons:
+		if button.visible and not button.disabled:
+			button.grab_focus()
+			return
+	_result_load_back.grab_focus()
+
+
+func _load_defeat_save(save_kind: String, slot: int) -> void:
+	if (
+		_transition_in_progress
+		or _authored_encounter == null
+		or Combat.outcome(_state) != "defeat"
+	):
+		return
+	var progress := get_node_or_null("/root/EmberExploreProgress") as EmberExploreState
+	if progress == null:
+		_result_load_feedback.text = "Хранилище сохранений недоступно."
+		return
+	_transition_in_progress = true
+	_set_result_buttons_disabled(true)
+	await _fade_out()
+	var error := EmberCombatTransition.load_save(
+		get_tree(), progress, save_kind, slot
+	)
+	if error == OK:
+		return
+	_transition_in_progress = false
+	_result_load_feedback.text = (
+		"Сохранение не найдено."
+		if error == ERR_FILE_NOT_FOUND
+		else "Не удалось загрузить сохранение (код %d)." % error
+	)
+	_set_result_buttons_disabled(false)
+	await _fade_in()
+	_focus_first_defeat_save()
 
 
 func _open_pause_menu() -> void:
@@ -2967,7 +3117,13 @@ func _submit_console_command(raw_command: String) -> void:
 func _set_result_buttons_disabled(disabled: bool) -> void:
 	_result_continue.disabled = disabled
 	_result_retry.disabled = disabled
-	_result_return.disabled = disabled
+	_result_load.disabled = disabled
+	for button in _result_load_buttons:
+		button.disabled = disabled
+	if _result_load_back != null:
+		_result_load_back.disabled = disabled
+	if not disabled and _defeat_load_open:
+		_refresh_defeat_load_choices()
 
 
 func _fade_in() -> void:
@@ -3005,6 +3161,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if cancel_requested:
 		if _pause_overlay != null and _pause_overlay.visible:
 			_close_pause_menu()
+		elif _defeat_load_open:
+			_close_defeat_load_choices()
 		elif _console_input != null and get_viewport().gui_get_focus_owner() == _console_input:
 			_console_input.release_focus()
 		elif Combat.outcome(_state) == "active" and (
@@ -3013,7 +3171,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_cancel_radial_targeting()
 		elif Combat.outcome(_state) == "active" and _radial_page != "root":
 			_open_radial_page("root")
-		else:
+		elif Combat.outcome(_state) == "active":
 			_open_pause_menu()
 		get_viewport().set_input_as_handled()
 		return
@@ -3062,11 +3220,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	var outcome := Combat.outcome(_state)
 	if outcome != "active":
-		if event.keycode == KEY_R:
+		if (
+			event.keycode == KEY_R
+			and not _defeat_load_open
+			and (outcome == "defeat" or _authored_encounter == null)
+		):
 			_retry_encounter()
 			get_viewport().set_input_as_handled()
 			return
-		if event.keycode == KEY_ENTER and _authored_encounter != null:
+		if event.keycode == KEY_ENTER and outcome == "victory" and _authored_encounter != null:
 			_return_from_encounter()
 			get_viewport().set_input_as_handled()
 		return

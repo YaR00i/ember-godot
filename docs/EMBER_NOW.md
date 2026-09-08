@@ -1,7 +1,7 @@
 # Ember — текущая точка
 
 Обновлено: 2026-09-08  
-Git checkpoint: `2c38bc5` (`main`/`origin/main`; v2.64.4 пока находится в рабочем дереве)
+Git checkpoint: `4569f64` (`main`/`origin/main`; defeat/Retry-срез пока находится в рабочем дереве)
 
 Этот файл — короткая стартовая точка для нового Codex-thread. Он не заменяет
 GDD, продуктовый план, технический handoff или migration gates. Если здесь и в
@@ -21,14 +21,22 @@ GDD, продуктовый план, технический handoff или migr
   Исправляющий срез ограничил cell-target preview реальными MOVE + range,
   сохранил цель подъёма на месте до подхода и сократил measured 16×12 cell-query
   примерно с 378 мс до 12 мс без смены schema.
-- Поверх v2.64.4 реализован единый клеточный ActionPlan: живой hover,
+- В checkpoint `4569f64` зафиксирован единый клеточный ActionPlan: живой hover,
   movement/cast envelope, точный stop/fallback, общий вход player/AI-команд,
-  обратимый presentation-подход и подъём. Срез находится в рабочем дереве без commit;
-  24/24 combat/battlefield/encounter/party/save scripts прошли, обычный Forward+
-  smoke обоих полей выполнен, а основной сценарий принят пользователем вручную.
-  Завершения поднятия перенесены из отдельной панели в кольцо у носителя; их
-  позиция и фокус требуют короткой повторной проверки. Технический контракт и
-  измерения — в `EMBER_TECHNICAL_HANDOFF.md`, gates — в `MIGRATION_TEST_PLAN.md`.
+  обратимый presentation-подход и подъём. 24/24 combat/battlefield/encounter/
+  party/save scripts прошли, обычный Forward+ smoke обоих полей выполнен, а
+  основной сценарий принят пользователем вручную. Завершения поднятия перенесены
+  из отдельной панели в кольцо у носителя; позиция, фокус и читаемость кольца
+  дополнительно приняты пользователем в реальном бою 8 сентября 2026.
+- Поверх `4569f64` в рабочем дереве закрыт production lifecycle поражения:
+  неудачная попытка не может применить HP/MP, предметы, флаги или награды к миру;
+  Retry восстанавливает предбоевые party/inventory/deployment и создаёт новый
+  RNG seed; вместо возврата с поражением можно выбрать один из трёх ручных
+  слотов или автосейв. Новый сквозной gate и связанные transition/result/party/
+  save tests прошли; 27/27 связанных regression scripts зелёные. Обычный
+  Forward+ на RTX 5070 дошёл до load-only окна без renderer/script errors, а
+  in-engine capture подтвердил компоновку и видимый focus первого слота.
+  Ручная приёмка мышью/геймпадом подтверждена пользователем 8 сентября 2026.
 - Workflow Phase A/B создаёт короткую точку входа и отделяет актуальные
   канонические документы от истории, сохранённой в Git. Gameplay, Resources,
   schema и runtime эти фазы не меняют.
@@ -38,10 +46,9 @@ GDD, продуктовый план, технический handoff или migr
 
 ## Следующий игровой срез
 
-Сначала завершить короткую ручную проверку кольца завершений подъёма.
-Ближайшие кандидаты после неё — правила Retry/defeat и
-предбоевая расстановка. Затем нужен один небольшой сквозной D3
-production-участок. Парный auto-approach остаётся отдельным будущим решением:
+Defeat/Retry gate закрыт. Следующий короткий срез — предбоевая расстановка.
+Затем нужен один небольшой сквозной D3 production-
+участок. Парный auto-approach остаётся отдельным будущим решением:
 парные техники по-прежнему используют собственный authored-радиус партнёра.
 Большой player-facing UI согласуется позже отдельным HTML-прототипом перед
 переносом в Godot.
@@ -69,6 +76,7 @@ production-участок. Парный auto-approach остаётся отде�
 Для текущего v2.64.4 regression gate минимум:
 
 - `tools/test_combat_action_plan.gd`, `tools/test_combat_grid.gd`;
+- `tools/test_combat_defeat_retry.gd`, `tools/test_combat_encounter_transition.gd`;
 - `tools/test_combat_prototype.gd`;
 - `tools/test_combat_lab.gd`;
 - `tools/test_combat_items.gd`, `tools/test_combat_personal_actions.gd`,
