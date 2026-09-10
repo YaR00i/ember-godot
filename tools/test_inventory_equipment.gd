@@ -32,6 +32,30 @@ func _run() -> int:
 	_test_state_contract(state, errors)
 	_test_save_round_trip(state, errors)
 	await _test_ui_contract(state, errors)
+	state.set_active_hero_ids(["mira", "orik"], false)
+	var full_party := state.combat_party_snapshot()
+	var full_inventory := state.inventory.duplicate(true)
+	for result in [state.equip_item_for_member("protagonist", "spirit_bolt"), state.unequip_slot_for_member("sena", "weapon"), state.use_item_on_member("sena", "herb", false)]:
+		if bool(result.get("ok", false)):
+			errors.append("inactive hero accepted inventory mutation")
+	if state.party != full_party or state.inventory != full_inventory or not state.inventory_view_for_member("sena").is_empty():
+		errors.append("inactive inventory guard changed owner state or exposed absent hero")
+	var active_ui := EmberInventoryUi.new()
+	active_ui.progress_state = state
+	root.add_child(active_ui)
+	active_ui.open()
+	if active_ui.select_next_hero() != "orik" or active_ui.select_next_hero() != "mira":
+		errors.append("pair inventory selection escaped active roster")
+	state.set_active_hero_ids(["orik", "mira"], false)
+	if active_ui.view_state().get("heroId") != "mira" or state.exploration_leader_id != "mira":
+		errors.append("roster reorder desynchronized open bag and world leader")
+	var original_strategy := state.combat_strategy_snapshot()
+	active_ui.move_strategy_hero(1)
+	active_ui.save_strategy()
+	var full_strategy := state.combat_strategy_snapshot()
+	if full_strategy.size() != 4 or full_strategy.find("sena") != original_strategy.find("sena") or full_strategy.find("protagonist") != original_strategy.find("protagonist"):
+		errors.append("active strategy rearrangement lost inactive saved positions")
+	active_ui.free()
 	await _test_live_wiring(errors)
 	state.free()
 	if not errors.is_empty():

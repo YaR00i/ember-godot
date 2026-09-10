@@ -34,6 +34,12 @@ func _run() -> void:
 
 func _test_pure_deployment(errors: Array[String]) -> void:
 	var exact_state := Grid.initial_state(E2_FIELD, 41)
+	var pair := EmberEncounterCatalog.definition("colored_crossing_demo").initial_state({}, 41, ["mira", "orik"])
+	var pair_allowed: Array[Vector2i] = []
+	pair_allowed.assign(E2_FIELD.party_deployment_cells)
+	var pair_placement := Grid.deployment_strategy_placement(pair, pair_allowed, ["sena", "orik", "protagonist", "mira"])
+	if not Grid.deployment_enabled(pair, pair_allowed) or pair_placement.size() != 2 or not Grid.deployment_validation_errors(pair, pair_allowed, pair_placement).is_empty():
+		errors.append("pair on four authored cells did not expose valid extra deployment zone")
 	var exact_allowed: Array[Vector2i] = []
 	exact_allowed.assign(E2_FIELD.party_deployment_cells)
 	if Grid.deployment_enabled(exact_state, exact_allowed):

@@ -6,6 +6,7 @@ const EncounterPanel := preload("res://addons/ember_import/ember_encounter_inspe
 const UnitPanel := preload("res://addons/ember_import/ember_combat_unit_inspector_panel.gd")
 const ActionPanel := preload("res://addons/ember_import/ember_combat_action_inspector_panel.gd")
 const EffectPanel := preload("res://addons/ember_import/ember_combat_effect_inspector_panel.gd")
+const StatusPanel := preload("res://addons/ember_import/ember_combat_status_inspector_panel.gd")
 const AiProfilePanel := preload("res://addons/ember_import/ember_combat_ai_profile_inspector_panel.gd")
 const LootTablePanel := preload("res://addons/ember_import/ember_combat_loot_table_inspector_panel.gd")
 
@@ -23,6 +24,7 @@ func _can_handle(object: Object) -> bool:
 		object is EmberEncounterResource
 		or object is EmberCombatUnitResource
 		or object is EmberCombatActionResource
+		or _is_combat_status(object)
 		or _is_combat_effect(object)
 		or object is EmberCombatAiProfileResource
 		or object is EmberCombatLootTableResource
@@ -30,6 +32,11 @@ func _can_handle(object: Object) -> bool:
 
 
 func _parse_begin(object: Object) -> void:
+	if _is_combat_status(object):
+		var status_panel := StatusPanel.new() as VBoxContainer
+		status_panel.call("setup", object as Resource)
+		add_custom_control(status_panel)
+		return
 	if object is EmberCombatLootTableResource:
 		var loot_panel := LootTablePanel.new() as EmberCombatLootTableInspectorPanel
 		loot_panel.setup(object as EmberCombatLootTableResource, _editor_interface, _undo_redo)
@@ -86,4 +93,12 @@ func _is_combat_effect(object: Object) -> bool:
 		object is Resource
 		and object.get_script() != null
 		and str((object.get_script() as Script).resource_path) == "res://scripts/prototypes/ember_combat_effect_resource.gd"
+	)
+
+
+func _is_combat_status(object: Object) -> bool:
+	return (
+		object is Resource
+		and object.get_script() != null
+		and str((object.get_script() as Script).resource_path) == "res://scripts/prototypes/ember_combat_status_resource.gd"
 	)

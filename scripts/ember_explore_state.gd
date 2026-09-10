@@ -31,6 +31,9 @@ var restore_enabled := true
 var inventory: Dictionary = {}
 var shop_stock: Dictionary = {}
 var party: Dictionary = {}
+var active_hero_ids: Array[String] = EmberPartyState.HERO_IDS.duplicate()
+# Process-local transaction guard, owned/cleared by CombatTransition.
+var combat_party_locked := false
 var battle_strategy: Array[String] = []
 var equipment: Dictionary = {}
 var opened_chests: Array = []
@@ -70,6 +73,7 @@ func reset_new_game() -> void:
 	inventory = {EmberEconomy.WALLET_ITEM_ID: STARTING_COINS}
 	shop_stock = {}
 	party = EmberPartyState.new_game(_items())
+	active_hero_ids = EmberPartyState.HERO_IDS.duplicate()
 	battle_strategy = EmberPartyState.normalize_battle_strategy([])
 	_sync_compatibility_from_party()
 	opened_chests = []
@@ -97,7 +101,7 @@ func set_party_follow_mode(value: String) -> void:
 
 func set_exploration_leader(hero_id: String) -> bool:
 	var clean_id := hero_id.strip_edges()
-	if clean_id not in EmberPartyState.HERO_IDS:
+	if clean_id not in active_hero_ids:
 		return false
 	if exploration_leader_id == clean_id:
 		return true
@@ -107,11 +111,27 @@ func set_exploration_leader(hero_id: String) -> bool:
 
 
 func next_exploration_leader() -> String:
-	var index := EmberPartyState.HERO_IDS.find(exploration_leader_id)
+	var index := active_hero_ids.find(exploration_leader_id)
 	if index < 0:
 		index = 0
-	set_exploration_leader(EmberPartyState.HERO_IDS[(index + 1) % EmberPartyState.HERO_IDS.size()])
+	set_exploration_leader(active_hero_ids[(index + 1) % active_hero_ids.size()])
 	return exploration_leader_id
+
+
+func set_active_hero_ids(raw: Variant, autosave := true) -> bool:
+	if combat_party_locked or not EmberPartyState.valid_active_hero_ids(raw):
+		return false
+	active_hero_ids = EmberPartyState.normalize_active_hero_ids(raw)
+	_ensure_active_leader()
+	progress_changed.emit()
+	if autosave:
+		save_autosave()
+	return true
+
+
+func _ensure_active_leader() -> void:
+	if exploration_leader_id not in active_hero_ids:
+		set_exploration_leader(active_hero_ids[0])
 
 
 func set_world_context(map_id: String, player: Node3D, tile_size: float) -> void:
@@ -298,6 +318,8 @@ func inventory_view() -> Dictionary:
 
 
 func inventory_view_for_member(hero_id: String) -> Dictionary:
+	if hero_id not in active_hero_ids:
+		return {}
 	_sync_party_from_compatibility()
 	var items := _items()
 	var member := EmberPartyState.member_view(party, hero_id, items)
@@ -309,7 +331,7 @@ func inventory_view_for_member(hero_id: String) -> Dictionary:
 
 func party_view() -> Array[Dictionary]:
 	_sync_party_from_compatibility()
-	return EmberPartyState.views(party, _items())
+	return EmberPartyState.views(party, _items(), active_hero_ids)
 
 
 func party_member_view(hero_id: String) -> Dictionary:
@@ -322,6 +344,8 @@ func equip_item(item_id: String) -> Dictionary:
 
 
 func equip_item_for_member(hero_id: String, item_id: String) -> Dictionary:
+	if hero_id not in active_hero_ids:
+		return {"ok": false, "reason": "missing_hero", "inventory": inventory.duplicate(true)}
 	_sync_party_from_compatibility()
 	if hero_id not in EmberPartyState.HERO_IDS:
 		return {"ok": false, "reason": "missing_hero", "inventory": inventory.duplicate(true)}
@@ -345,6 +369,8 @@ func unequip_slot(slot: String) -> Dictionary:
 
 
 func unequip_slot_for_member(hero_id: String, slot: String) -> Dictionary:
+	if hero_id not in active_hero_ids:
+		return {"ok": false, "reason": "missing_hero", "inventory": inventory.duplicate(true)}
 	_sync_party_from_compatibility()
 	if hero_id not in EmberPartyState.HERO_IDS:
 		return {"ok": false, "reason": "missing_hero", "inventory": inventory.duplicate(true)}
@@ -364,6 +390,8 @@ func use_item(item_id: String, autosave := true) -> Dictionary:
 
 
 func use_item_on_member(hero_id: String, item_id: String, autosave := true) -> Dictionary:
+	if hero_id not in active_hero_ids:
+		return {"ok": false, "reason": "missing_hero", "inventory": inventory.duplicate(true)}
 	_sync_party_from_compatibility()
 	if hero_id not in EmberPartyState.HERO_IDS:
 		return {"ok": false, "reason": "missing_hero", "inventory": inventory.duplicate(true)}
@@ -634,6 +662,7 @@ func adopt_loaded_save(source: EmberExploreState) -> void:
 	inventory = source.inventory.duplicate(true)
 	shop_stock = source.shop_stock.duplicate(true)
 	party = source.party.duplicate(true)
+	active_hero_ids = source.active_hero_ids.duplicate()
 	battle_strategy = source.battle_strategy.duplicate()
 	equipment = source.equipment.duplicate(true)
 	opened_chests = source.opened_chests.duplicate(true)
@@ -648,6 +677,7 @@ func adopt_loaded_save(source: EmberExploreState) -> void:
 	_saved_y = source._saved_y
 	_saved_elev = source._saved_elev
 	_saved_tile = source._saved_tile.duplicate(true)
+	_ensure_active_leader()
 	economy_changed.emit()
 	progress_changed.emit()
 
@@ -707,11 +737,13 @@ func _apply_v2_payload(data: Dictionary, pending_restore: bool) -> void:
 	var normalized := EmberPartyState.normalize(data.get("party", {}), items)
 	party = normalized.get("party", {}).duplicate(true)
 	battle_strategy = EmberPartyState.normalize_battle_strategy(data.get("battleStrategy", []))
+	active_hero_ids = EmberPartyState.normalize_active_hero_ids(data.get("activeHeroIds", null))
 	for item_id in normalized.get("returnedItems", []):
 		inventory = EmberEconomy.grant_items(inventory, [str(item_id)], items)
 	playtime_seconds = maxf(0.0, float(data.get("playtimeSeconds", 0.0)))
 	_sync_compatibility_from_party()
 	_remember_saved_payload(data, pending_restore)
+	_ensure_active_leader()
 	economy_changed.emit()
 	progress_changed.emit()
 
@@ -736,6 +768,7 @@ func capture_save(save_kind := "manual", slot := active_slot) -> Dictionary:
 		"elev": pos.y,
 		"inventory": EmberEconomy.compact_counts(inventory),
 		"party": EmberPartyState.serialize(party, _items()),
+		"activeHeroIds": active_hero_ids.duplicate(),
 		"battleStrategy": EmberPartyState.normalize_battle_strategy(battle_strategy),
 		"openedChests": _parse_string_array(opened_chests),
 		"shopStock": _parse_shop_stock(shop_stock),
@@ -923,6 +956,7 @@ func _migrate_legacy_slot(slot: int) -> bool:
 	flags = _parse_flags(legacy.get("flags", {}))
 	party = EmberPartyState.new_game(items)
 	battle_strategy = EmberPartyState.normalize_battle_strategy([])
+	active_hero_ids = EmberPartyState.HERO_IDS.duplicate()
 	var leader: Dictionary = party.get(EmberPartyState.LEADER_ID, {})
 	leader["equipment"] = _parse_equipment(legacy.get("equipment", {}))
 	party[EmberPartyState.LEADER_ID] = leader
@@ -977,7 +1011,8 @@ func _metadata_from_payload(data: Dictionary, kind: String, slot: int) -> Dictio
 	if typeof(party_raw) == TYPE_DICTIONARY:
 		party_count = 0
 		alive_count = 0
-		for hero_id in EmberPartyState.HERO_IDS:
+		var saved_active := EmberPartyState.normalize_active_hero_ids(data.get("activeHeroIds", null))
+		for hero_id in saved_active:
 			var raw_member: Variant = party_raw.get(hero_id, {})
 			if typeof(raw_member) != TYPE_DICTIONARY:
 				continue
@@ -985,7 +1020,7 @@ func _metadata_from_payload(data: Dictionary, kind: String, slot: int) -> Dictio
 			var member_hp := int(raw_member.get("hp", 0))
 			if member_hp > 0:
 				alive_count += 1
-			if hero_id == EmberPartyState.LEADER_ID:
+			if hero_id == saved_active[0]:
 				leader_hp = member_hp
 	return {
 		"exists": true,

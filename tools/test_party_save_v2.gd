@@ -96,6 +96,7 @@ func _run() -> void:
 			errors.append("malformed battle strategy did not fall back to legacy party order")
 
 	_test_v1_migration(root_path, errors)
+	_test_active_party(root_path, errors)
 	_test_strategy_payload_compat(root_path, errors)
 	_test_combat_copy(loaded, errors)
 	_test_progression_save(loaded, errors)
@@ -154,6 +155,54 @@ func _write_payload(path: String, payload: Dictionary) -> bool:
 	file.store_string(JSON.stringify(payload, "  "))
 	file.close()
 	return true
+
+
+func _test_active_party(root_path: String, errors: Array[String]) -> void:
+	var state := EmberExploreState.new()
+	state.storage_root = root_path.path_join("active")
+	state.reset_new_game()
+	state.hp = 8
+	var original := state.combat_party_snapshot()
+	for count in range(1, 5):
+		var ids: Array[String] = []
+		ids.assign(["mira", "orik", "sena", "protagonist"].slice(0, count))
+		if not state.set_active_hero_ids(ids, false) or state.party_view().size() != count:
+			errors.append("setter rejected valid roster %d" % count)
+		if state.party != original:
+			errors.append("roster setter changed full party data")
+		state.save_slot(0)
+		if state.slot_metadata(0).get("partyCount") != count:
+			errors.append("save metadata counted inactive heroes")
+		var loaded := EmberExploreState.new()
+		loaded.storage_root = state.storage_root
+		loaded.reset_new_game()
+		loaded.exploration_leader_changed.connect(func(_id): loaded.party_view())
+		if not loaded.load_slot(0) or loaded.active_hero_ids != ids or loaded.party != original:
+			errors.append("active roster/data changed during load with synchronous observer")
+		var adopted := EmberExploreState.new()
+		adopted.reset_new_game()
+		adopted.exploration_leader_changed.connect(func(_id): adopted.party_view())
+		adopted.adopt_loaded_save(loaded)
+		if adopted.active_hero_ids != ids or adopted.party != original or adopted.exploration_leader_id not in ids:
+			errors.append("adopt lost active roster/data or kept an absent leader")
+		adopted.free()
+		loaded.free()
+	state.set_active_hero_ids(["mira"], false)
+	for malformed in [null, {}, [], ["mira", "mira"], ["unknown"], [1], [" mira"], ["mira", "orik", "sena", "protagonist", "mira"]]:
+		if state.set_active_hero_ids(malformed, false) or state.active_hero_ids != ["mira"] or state.party != original:
+			errors.append("invalid setter mutated active roster/data")
+		var payload := state.capture_save()
+		payload["activeHeroIds"] = malformed
+		state._apply_v2_payload(payload, false)
+		if state.active_hero_ids != EmberPartyState.HERO_IDS:
+			errors.append("corrupt roster did not recover legacy four")
+		state.set_active_hero_ids(["mira"], false)
+	var legacy := state.capture_save()
+	legacy.erase("activeHeroIds")
+	state._apply_v2_payload(legacy, false)
+	if state.active_hero_ids != EmberPartyState.HERO_IDS:
+		errors.append("legacy save without activeHeroIds did not recover four")
+	state.free()
 
 
 func _test_v1_migration(root_path: String, errors: Array[String]) -> void:

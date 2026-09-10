@@ -10,6 +10,7 @@ const QuestEditor = preload("res://addons/ember_import/ember_quest_editor.gd")
 const QuestStore = preload("res://addons/ember_import/ember_quest_store.gd")
 
 signal rebuild_requested(prop: EmberVoxelProp)
+signal canvas_action_requested(prop: EmberVoxelProp, action: String)
 signal interact_save_requested(prop: EmberVoxelProp, values: Dictionary)
 signal interact_remove_requested(prop: EmberVoxelProp)
 signal chain_save_requested(prop: EmberVoxelProp, document: Dictionary)
@@ -111,6 +112,15 @@ func _build() -> void:
 
 
 func _build_actions() -> void:
+	if _prop != null:
+		var canvas_actions := VBoxContainer.new()
+		canvas_actions.name = "VoxelCanvasActions"
+		for entry in [["Редактировать в Canvas", "selected"], ["Редактировать общую модель…", "shared"], ["Создать экземпляр", "linked"], ["Создать независимую копию", "independent"]]:
+			var button := Button.new()
+			button.text = entry[0]
+			button.pressed.connect(func(): canvas_action_requested.emit(_prop, entry[1]))
+			canvas_actions.add_child(button)
+		add_child(canvas_actions)
 	var actions := HBoxContainer.new()
 	actions.name = "Actions"
 	if _prop != null and not bool(_snapshot.get("selectedIsOwner", true)):

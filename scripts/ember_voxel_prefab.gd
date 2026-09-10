@@ -85,7 +85,10 @@ static func validate_packed(model_id: String, packed: PackedScene) -> Dictionary
 
 	var collision := prop.get_node_or_null("Collision/Shape") as CollisionShape3D
 	if bool(model.get("physical", false)):
-		if collision == null or collision.shape == null:
+		if visual != null and visual.mesh != null and visual.mesh.get_surface_count() == 0:
+			if collision != null and collision.shape != null and not collision.disabled:
+				errors.append("пустая модель содержит активную коллизию")
+		elif collision == null or collision.shape == null:
 			errors.append("physical-модель без Collision/Shape")
 		else:
 			checks.append("Collision")
@@ -265,6 +268,27 @@ static func preview_source_revision(model_id: String) -> String:
 	]
 
 
+static func prepare_resource(resource: EmberVoxelModelResource, projection_cache: RefCounted = null) -> PackedScene:
+	## Same builder as ordinary prefabs, but no files/cache/live meshes are changed.
+	if resource == null or not resource.validation_errors().is_empty():
+		return null
+	var definition := resource.to_definition()
+	var model := model_of(definition)
+	var vw := 1.0 / float(resource.normalized_density())
+	var visual: ArrayMesh = projection_cache.build(model, vw) if projection_cache != null else _build_visual_mesh(resource.model_id, definition, vw, {})
+	if visual == null:
+		return null
+	_apply_visual_materials(visual)
+	var size := resource.grid_size()
+	var body := _body_mesh(resource.model_id, definition, model, vw, size)
+	var instance := _make_tree(resource.model_id, model, size, vw, 16.0, visual, body)
+	_set_pack_owner(instance, instance)
+	var packed := PackedScene.new()
+	var result := packed.pack(instance)
+	instance.free()
+	return packed if result == OK else null
+
+
 static func _write_prefab(model_id: String, tile_size: float, stats: Dictionary) -> PackedScene:
 	var prefab := load_json(model_id)
 	var model := model_of(prefab)
@@ -300,6 +324,9 @@ static func _write_prefab(model_id: String, tile_size: float, stats: Dictionary)
 		push_error("ember prefab: save failed %s (%s)" % [model_id, save_err])
 		return null
 	var from_disk := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_REPLACE) as PackedScene
+	if from_disk != null and Engine.is_editor_hint():
+		var editor_instance := from_disk.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE)
+		editor_instance.free()
 	return from_disk if from_disk else packed
 
 
@@ -408,7 +435,11 @@ static func _mesh_from_vox(
 static func _mesh_from_json(prefab: Dictionary, vw: float) -> ArrayMesh:
 	var mesh := VoxMesher.build_from_ember_model(model_of(prefab), vw)
 	if mesh.get_surface_count() == 0:
-		return null
+		var model := model_of(prefab)
+		var size := VoxMesher.ember_grid_size(model)
+		var values: Variant = model.get("voxels", [])
+		if not bool(prefab.get("_nativeGodotVoxel", false)) or values.size() != size.x * size.y * size.z:
+			return null
 	return mesh
 
 
@@ -468,10 +499,10 @@ static func _make_tree(
 	visual.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	if casts:
 		visual.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		if not suppress and shadow_mesh != null:
+		if not suppress:
 			var body_mi := MeshInstance3D.new()
 			body_mi.name = "ShadowBody"
-			body_mi.mesh = shadow_mesh
+			body_mi.mesh = shadow_mesh if shadow_mesh != null else ArrayMesh.new()
 			body_mi.position = inner_pos
 			body_mi.set_meta("ember_block_position", inner_pos)
 			body_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
@@ -487,7 +518,10 @@ static func _make_tree(
 		body.collision_mask = 0
 		var shape := CollisionShape3D.new()
 		shape.name = "Shape"
-		shape.shape = visual.mesh.create_trimesh_shape()
+		if visual.mesh.get_surface_count() > 0:
+			shape.shape = visual.mesh.create_trimesh_shape()
+		# Keep generated slots stable for authored descendants and Undo.
+		# A null shape has no physics; leave disabled as an instance override.
 		shape.position = inner_pos
 		shape.set_meta("ember_block_position", inner_pos)
 		body.add_child(shape)

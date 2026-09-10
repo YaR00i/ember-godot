@@ -192,6 +192,12 @@ func _run() -> void:
 			printerr(" - ", message)
 		quit(1)
 		return
+	await _test_pair_retry(progress, errors)
+	if not errors.is_empty():
+		for message in errors:
+			printerr("FAIL active Retry: ", message)
+		quit(1)
+		return
 	print("PASS combat defeat/retry")
 	print("  defeated attempts cannot commit HP/MP, inventory, flags or save writes")
 	print("  Retry restores pre-battle party/inventory/deployment with a new RNG seed")
@@ -200,6 +206,56 @@ func _run() -> void:
 	print("  R cannot bypass the load-only panel; Back keeps its focus contract")
 	print("  manual save and autosave both clear combat handoff and restore their scene")
 	quit(0)
+
+
+func _test_pair_retry(progress: EmberExploreState, errors: Array[String]) -> void:
+	progress.set_active_hero_ids(["mira", "orik"], false)
+	var party_before := progress.combat_party_snapshot()
+	var inventory_before := progress.combat_inventory_snapshot()
+	if EmberCombatTransition.change_scene(self, ENCOUNTER_ID, progress) != OK:
+		errors.append("pair battle was rejected")
+		return
+	await scene_changed
+	await process_frame
+	var hud := current_scene.find_child("CombatHUD", true, false)
+	if "--capture-active" in OS.get_cmdline_user_args():
+		await _capture_active("ready")
+	if not bool(hud.call("_confirm_deployment")):
+		errors.append("pair ready deployment could not be confirmed")
+	var first: Dictionary = hud.call("state_snapshot")
+	var placement := _hero_cells(first)
+	_force_spent_defeat(hud)
+	hud.call("_retry_encounter")
+	var retried: Dictionary = hud.call("state_snapshot")
+	if EmberPartyState.combat_hero_ids(retried) != ["mira", "orik"] or retried.get("rngSeed") == first.get("rngSeed"):
+		errors.append("Retry lost pair roster or reused seed")
+	if _hero_cells(retried) != placement or retried.get("inventory") != inventory_before:
+		errors.append("pair Retry lost confirmed placement or inventory")
+	for hero_id in ["mira", "orik"]:
+		if retried["units"][hero_id]["hp"] != party_before[hero_id]["hp"] or retried["units"][hero_id]["mp"] != party_before[hero_id]["mp"]:
+			errors.append("pair Retry did not restore HP/MP")
+	if progress.party != party_before or progress.inventory != inventory_before or progress.active_hero_ids != ["mira", "orik"]:
+		errors.append("pair Retry changed world")
+	if "--capture-active" in OS.get_cmdline_user_args():
+		await _capture_active("retry")
+	EmberCombatTransition.clear_for_test()
+
+
+func _capture_active(label: String) -> void:
+	await process_frame
+	await RenderingServer.frame_post_draw
+	var directory := "user://ember-tests/active-party-capture-%d" % Time.get_ticks_usec()
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(directory))
+	var path := directory.path_join("pair-%s.png" % label)
+	var error := root.get_texture().get_image().save_png(path)
+	print("CAPTURE active party: ", ProjectSettings.globalize_path(path), " error=", error)
+
+
+func _hero_cells(state: Dictionary) -> Dictionary:
+	var result := {}
+	for hero_id in EmberPartyState.combat_hero_ids(state):
+		result[hero_id] = state["units"][hero_id]["cell"]
+	return result
 
 
 func _set_party_values(progress: EmberExploreState, hp: int, mp: int) -> void:

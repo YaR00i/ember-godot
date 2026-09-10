@@ -4,6 +4,8 @@ extends Resource
 ## One reusable, authored effect step. Actions may compose several steps, while
 ## the combat resolver remains the only owner of their runtime semantics.
 
+const StatusCatalog := preload("res://scripts/prototypes/ember_combat_status_catalog.gd")
+
 enum Operation {
 	APPLY_STATUS,
 	REMOVE_STATUS,
@@ -131,10 +133,12 @@ func validation_errors() -> Array[String]:
 		Operation.APPLY_STATUS:
 			if not _valid_id(status_id):
 				errors.append("Для наложения укажите стабильный ID статуса.")
+			elif StatusCatalog.resource(status_id) == null:
+				errors.append("Статус %s отсутствует в боевом каталоге." % status_id)
 			if status_duration <= 0:
 				errors.append("Длительность статуса должна быть больше нуля.")
 		Operation.REMOVE_STATUS:
-			_validate_id_list(remove_status_ids, "Снимаемый статус", errors)
+			_validate_status_list(remove_status_ids, "Снимаемый статус", errors)
 			if remove_status_ids.is_empty():
 				errors.append("Добавьте хотя бы один снимаемый статус.")
 		Operation.PUSH:
@@ -151,7 +155,7 @@ func validation_errors() -> Array[String]:
 			):
 				errors.append("Изменение клетки пока ничего не меняет.")
 		Operation.SPREAD:
-			_validate_id_list(spread_status_ids, "Распространяемый статус", errors)
+			_validate_status_list(spread_status_ids, "Распространяемый статус", errors)
 			_validate_id_list(spread_cell_tags, "Распространяемый тег клетки", errors)
 			if spread_radius <= 0:
 				errors.append("Радиус распространения должен быть больше нуля.")
@@ -192,6 +196,14 @@ func _validate_id_list(values: PackedStringArray, label: String, errors: Array[S
 		elif seen.has(value):
 			errors.append("%s %s добавлен дважды." % [label, value])
 		seen[value] = true
+
+
+func _validate_status_list(values: PackedStringArray, label: String, errors: Array[String]) -> void:
+	_validate_id_list(values, label, errors)
+	for raw_value in values:
+		var value := str(raw_value).strip_edges()
+		if _valid_id(value) and StatusCatalog.resource(value) == null:
+			errors.append("%s %s отсутствует в боевом каталоге." % [label, value])
 
 
 func _valid_id(value: String) -> bool:

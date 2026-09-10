@@ -33,6 +33,7 @@ var _state: Dictionary
 var _encounter_mode := "grid"
 var _authored_encounter: EmberEncounterResource
 var _party_snapshot: Dictionary = {}
+var _active_hero_ids_snapshot: Array[String] = []
 var _inventory_snapshot: Dictionary = {}
 var _strategy_snapshot: Array[String] = []
 var _field_view_mode := "3d"
@@ -161,6 +162,7 @@ func _ready() -> void:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 	_authored_encounter = EmberCombatTransition.consume_encounter()
 	_party_snapshot = EmberCombatTransition.active_party_snapshot()
+	_active_hero_ids_snapshot = EmberCombatTransition.active_hero_ids_snapshot()
 	_inventory_snapshot = EmberCombatTransition.active_inventory_snapshot()
 	_strategy_snapshot = EmberCombatTransition.active_strategy_snapshot()
 	if _strategy_snapshot.is_empty():
@@ -969,7 +971,7 @@ func _reset_lab(reopen_deployment: bool = true, retry_confirmed: bool = false) -
 	_battle_seed_serial += 1
 	var battle_seed := int(Time.get_ticks_usec()) ^ (_battle_seed_serial * 7919)
 	_state = (
-		_authored_encounter.initial_state(_party_snapshot, battle_seed)
+		_authored_encounter.initial_state(_party_snapshot, battle_seed, _active_hero_ids_snapshot)
 		if _authored_encounter != null
 		else (Grid.field_mutation_state(null, battle_seed)
 		if _encounter_mode == "terrain"
@@ -2778,8 +2780,11 @@ func _confirm_action() -> void:
 		_external_3d_world.call("finish_lift_presentation")
 	if not bool(_current_preview.get("ok", false)) or Combat.outcome(_state) != "active":
 		return
+	var committed := Combat.commit(_state, _current_preview)
+	if int(committed.get("turn", 0)) == int(_state.get("turn", 0)):
+		return
 	_queue_world_animation(_state, _current_preview)
-	_state = Combat.commit(_state, _current_preview)
+	_state = committed
 	_clear_selected_action_state()
 	_browsed_command_id = ""
 	_selection_origin_page = "root"
@@ -3177,8 +3182,11 @@ func _advance_enemy_turns() -> void:
 		var command := Grid.enemy_command(_state) if _is_grid_mode() else Combat.enemy_command(_state)
 		if not bool(command.get("ok", false)):
 			return
+		var committed := Combat.commit(_state, command)
+		if int(committed.get("turn", 0)) == int(_state.get("turn", 0)):
+			return
 		_queue_world_animation(_state, command)
-		_state = Combat.commit(_state, command)
+		_state = committed
 
 
 func _queue_world_animation(before_state: Dictionary, resolved: Dictionary) -> void:

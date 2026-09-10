@@ -188,7 +188,7 @@ static func _voxel_domain() -> Dictionary:
 		var referenced_in: Array = references.get(model_id, [])
 		if not is_surface and ResourceLoader.exists(prefab_path):
 			var packed := ResourceLoader.load(
-				prefab_path, "", ResourceLoader.CACHE_MODE_REPLACE
+				prefab_path, "", ResourceLoader.CACHE_MODE_IGNORE
 			) as PackedScene
 			var validation: Dictionary = VoxelPrefab.validate_packed(model_id, packed)
 			for error in validation.get("errors", []):

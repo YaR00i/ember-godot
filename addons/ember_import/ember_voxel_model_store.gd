@@ -7,6 +7,118 @@ extends RefCounted
 const Catalog = preload("res://scripts/ember_voxel_catalog.gd")
 const Importer = preload("res://scripts/ember_voxel_legacy_importer.gd")
 const Parity = preload("res://addons/ember_import/ember_voxel_migration_parity.gd")
+static var _canvas_cache: Dictionary = {}
+
+
+static func install_prepared_asset(
+	source: EmberVoxelModelResource, packed: PackedScene,
+	source_path: String, prefab_path: String,
+) -> Dictionary:
+	## Editor save transaction. Stage both files before publishing either one.
+	## Live scene nodes/resources are applied only by the caller after success.
+	var paths := [source_path, prefab_path]
+	var previous := {}
+	var staged: Array[String] = []
+	var serialized: Array[String] = []
+	var serialization_root := "user://ember-editor-staging/%d-%d" % [OS.get_process_id(), Time.get_ticks_usec()]
+	var uids: Array[int] = []
+	var published: Array[String] = []
+	var signature := ""
+	for path in paths:
+		if FileAccess.file_exists(path.get_base_dir()):
+			return {"ok": false, "error": "Путь папки занят файлом: %s" % path.get_base_dir()}
+		previous[path] = FileAccess.get_file_as_bytes(path) if FileAccess.file_exists(path) else null
+		if DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(path.get_base_dir())) != OK:
+			return {"ok": false, "error": "Не удалось открыть папку сохранения: %s" % path}
+		# Windows does not treat dot-prefixed files as hidden. Use an unrecognized
+		# extension so background scans cannot index a temporary .tres/.tscn.
+		staged.append(path.get_base_dir().path_join("." + path.get_file() + ".canvas-stage-%d.tmp" % Time.get_ticks_usec()))
+		serialized.append(serialization_root.path_join(path.get_file()))
+		var uid := EmberVoxelPrefab.resource_uid_from_header(path)
+		uids.append(ResourceUID.create_id() if uid == ResourceUID.INVALID_ID else uid)
+	if DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(serialization_root)) != OK:
+		return {"ok": false, "error": "Не удалось создать временную папку сериализации."}
+	# ResourceSaver notifies the editor asynchronously even for hidden res://
+	# files. Serialize outside its index, then copy beside the final destination
+	# for same-filesystem atomic publication (user:// may be on another drive).
+	var result := ResourceSaver.save(source, serialized[0])
+	if result == OK:
+		result = ResourceSaver.set_uid(serialized[0], uids[0])
+	if result == OK:
+		var node := packed.instantiate()
+		# Replays may receive a PackedScene previously serialized to a staging
+		# path. Never repack it into itself or retain that path as inheritance.
+		node.scene_file_path = ""
+		packed = PackedScene.new()
+		signature = (EmberVoxelPrefab.BUILD_CONTRACT + ":" + FileAccess.get_sha256(serialized[0]) + ":json-only").sha256_text()
+		node.set_meta(EmberVoxelPrefab.SOURCE_SIGNATURE_META, signature)
+		result = packed.pack(node)
+		node.free()
+	if result == OK:
+		result = ResourceSaver.save(packed, serialized[1])
+	if result == OK:
+		result = ResourceSaver.set_uid(serialized[1], uids[1])
+	if result == OK:
+		for index in paths.size():
+			result = DirAccess.copy_absolute(ProjectSettings.globalize_path(serialized[index]), ProjectSettings.globalize_path(staged[index]))
+			if result != OK:
+				break
+	if result == OK:
+		for index in paths.size():
+			result = DirAccess.rename_absolute(ProjectSettings.globalize_path(staged[index]), ProjectSettings.globalize_path(paths[index]))
+			if result != OK:
+				break
+			published.append(paths[index])
+	if result != OK:
+		for path in published:
+			if previous[path] != null:
+				var file := FileAccess.open(path, FileAccess.WRITE)
+				if file != null:
+					file.store_buffer(previous[path])
+				else:
+					return {"ok": false, "error": "Ошибка восстановления %s; исходные bytes остаются в транзакции." % path, "recovery": previous}
+			elif FileAccess.file_exists(path):
+				DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	for path in staged:
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+		if FileAccess.file_exists(path + ".uidren"):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(path + ".uidren"))
+	# Editor preview/folding workers can read ResourceSaver paths after several
+	# frames. Keep this recoverable user cache for the editor's full lifetime;
+	# deleting it on a guessed deferred frame races those background readers.
+	if not Engine.is_editor_hint():
+		_cleanup_serialization(serialized, serialization_root)
+	if result == OK:
+		for index in paths.size():
+			ResourceUID.set_id(uids[index], paths[index]) if ResourceUID.has_id(uids[index]) else ResourceUID.add_id(uids[index], paths[index])
+		EmberVoxelPrefab.begin_import()
+		# Install new cache identities, never mutate cached mesh/shape resources
+		# before the scene transaction applies its explicit per-instance snapshots.
+		for path in paths:
+			var saved_resource := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
+			if saved_resource != null:
+				# CACHE_MODE_IGNORE can retain the path without registering in cache;
+				# clear it so take_over_path does not short-circuit on an equal path.
+				saved_resource.resource_path = ""
+				saved_resource.take_over_path(path)
+				_canvas_cache[path] = saved_resource
+				if saved_resource is PackedScene and Engine.is_editor_hint():
+					# Editor comparisons need the published SceneState's path cache,
+					# including saves that rebind an existing node to this prefab.
+					var cache_instance := (saved_resource as PackedScene).instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE)
+					cache_instance.free()
+		packed = _canvas_cache.get(prefab_path, packed) as PackedScene
+	return {"ok": result == OK, "error": error_string(result), "packed": packed, "signature": signature}
+
+
+static func _cleanup_serialization(paths: Array[String], directory: String) -> void:
+	# Runtime tests have no editor preview readers and can remove exact files.
+	for path in paths:
+		for candidate in [path, path + ".uidren"]:
+			if FileAccess.file_exists(candidate):
+				DirAccess.remove_absolute(ProjectSettings.globalize_path(candidate))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(directory))
 
 
 static func owner(model_id: String) -> String:

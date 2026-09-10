@@ -4,7 +4,7 @@ extends Resource
 ## Godot-owned editable source for one Ember voxel model.
 ## Meshes, collisions, thumbnails and PackedScenes are derived build products.
 
-const SCHEMA_VERSION := 4
+const SCHEMA_VERSION := 5
 const WORLD_SURFACE_DIRECTORY := "res://content/world_surfaces"
 
 @export_category("Identity")
@@ -41,6 +41,13 @@ const WORLD_SURFACE_DIRECTORY := "res://content/world_surfaces"
 ## Named selection sets for the Godot authoring workflow. Runtime rendering and
 ## physics ignore these indices; locked sets are enforced by Surface Canvas.
 @export var voxel_groups: Array[Dictionary] = []
+
+@export_category("Merge parts")
+## Exclusive provenance, independent of overlapping/optional selection groups.
+## Zero means Added; positive values index merge_parts (one based).
+## Empty channels keep old resources fully compatible.
+@export var merge_parts: PackedStringArray = PackedStringArray()
+@export var voxel_part_ids := PackedInt32Array()
 
 @export_category("Physics and light")
 @export var physical := true
@@ -91,6 +98,19 @@ func validation_errors() -> Array[String]:
 	if palette.size() < 2 or palette.size() > 256:
 		errors.append("palette must contain 2..256 colors")
 	var expected := grid_size().x * grid_size().y * grid_size().z
+	if merge_parts.is_empty() != voxel_part_ids.is_empty():
+		errors.append("merge parts and ownership must be populated together")
+	if not voxel_part_ids.is_empty():
+		if voxel_part_ids.size() != expected:
+			errors.append("voxel_part_ids must match the voxel grid")
+		else:
+			for index in voxel_part_ids.size():
+				if voxel_part_ids[index] < 0 or voxel_part_ids[index] > merge_parts.size():
+					errors.append("voxel part id is outside the parts library")
+					break
+				if index < voxels.size() and voxels[index] == 0 and voxel_part_ids[index] != 0:
+					errors.append("empty voxels cannot belong to a merge part")
+					break
 	if voxels.size() != expected:
 		errors.append("voxels has %d values; expected %d" % [voxels.size(), expected])
 	var channels := {
@@ -159,6 +179,8 @@ func to_definition() -> Dictionary:
 		"surfaceFillMaterials": Array(surface_fill_materials),
 		"surfaceFillPalette": Array(surface_fill_palette),
 		"voxelGroups": voxel_groups.duplicate(true),
+		"mergeParts": Array(merge_parts),
+		"voxelPartIds": Array(voxel_part_ids),
 		"material": material.duplicate(true),
 		"physical": physical,
 		"emissiveCastsLight": emissive_casts_light,

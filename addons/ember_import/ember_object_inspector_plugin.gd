@@ -6,6 +6,7 @@ extends EditorInspectorPlugin
 const InspectorPanel = preload("res://addons/ember_import/ember_object_inspector_panel.gd")
 
 var _rebuild_callback: Callable
+var canvas_callback: Callable
 var _interact_save_callback: Callable
 var _interact_remove_callback: Callable
 var _chain_save_callback: Callable
@@ -70,6 +71,8 @@ func _parse_begin(object: Object) -> void:
 func build_panel(object: Object) -> EmberObjectInspectorPanel:
 	var panel := InspectorPanel.new() as EmberObjectInspectorPanel
 	panel.setup(object, EmberObjectInspectorModel.snapshot(object))
+	if canvas_callback.is_valid():
+		panel.canvas_action_requested.connect(canvas_callback)
 	if _rebuild_callback.is_valid():
 		panel.rebuild_requested.connect(_on_rebuild_requested)
 	if _interact_save_callback.is_valid():

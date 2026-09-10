@@ -220,6 +220,8 @@ func _build_followers() -> void:
 
 
 func _refresh_labels() -> void:
+	# Membership can change while the current leader stays the same.
+	_sync_active_roster()
 	var views_by_id := {}
 	if progress_state != null:
 		for view in progress_state.party_view():
@@ -249,13 +251,14 @@ func _sync_active_roster() -> void:
 		var visual := _visuals.get(hero_id) as Node3D
 		if visual == null:
 			continue
-		visual.visible = hero_id != active_hero_id
+		visual.visible = hero_id != active_hero_id and (progress_state == null or hero_id in progress_state.active_hero_ids)
 		if visual.visible:
 			_followers.append(visual)
 
 
 func _normalized_hero_id(hero_id: String) -> String:
-	return hero_id if hero_id in PartyState.HERO_IDS else PartyState.LEADER_ID
+	var ids := progress_state.active_hero_ids if progress_state != null else PartyState.HERO_IDS
+	return hero_id if hero_id in ids else ids[0]
 
 
 func _hero_color(hero_id: String) -> Color:

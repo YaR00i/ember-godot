@@ -22,6 +22,7 @@ const COMBAT_ARENA_E2_SCENE := "res://scenes/combat/arenas/colored_crossing.tscn
 const COMBAT_ARENA_E3_SCENE := "res://scenes/combat/arenas/thaw_keeper.tscn"
 const SURFACE_MAIN_SCREEN := "Surface Canvas"
 const SURFACE_WORKSPACE_NODE := "EmberSurfaceCanvasWorkspace"
+var _voxel_object_toolbar: HBoxContainer
 const GRAPH_LAYOUT_SECTION := "EmberGraph"
 const GRAPH_LAYOUT_WORKSPACE := "workspace_layout"
 
@@ -29,6 +30,7 @@ var _dock: VBoxContainer
 var _confirm: ConfirmationDialog
 var _voxel_gizmo: EditorNode3DGizmoPlugin
 var _trigger_gizmo: EditorNode3DGizmoPlugin
+var _walk_surface_gizmo: EditorNode3DGizmoPlugin
 var _object_inspector: EditorInspectorPlugin
 var _camera_rig_inspector: EditorInspectorPlugin
 var _battlefield_inspector: EditorInspectorPlugin
@@ -43,10 +45,80 @@ var _world_surface_toolbar: Control
 var _interact_actions: EmberObjectInspectorActions
 var _graph_workspace: EmberGraphWorkspace
 var _last_selected_voxel: EmberVoxelProp
+var _last_duplicate_step := Vector3.ZERO
 var _last_selected_trigger: EmberInteract
 
 
 func _enter_tree() -> void:
+	add_tool_menu_item("Ember: Новая voxel-форма…", _new_voxel_shape)
+	add_tool_menu_item("Ember: Точная voxel-расстановка…", _place_voxel_selection)
+	name = "EmberImportPlugin"
+	_voxel_object_toolbar = HBoxContainer.new()
+	var create_object := Button.new()
+	create_object.text = "+ Объект"
+	create_object.pressed.connect(_new_voxel_shape)
+	_voxel_object_toolbar.add_child(create_object)
+	var edit_object := Button.new()
+	edit_object.text = "Объект / сборка в Canvas"
+	edit_object.tooltip_text = "Выберите voxel-объект или группу секций. Сборка открывается общим редактируемым холстом."
+	edit_object.pressed.connect(func():
+		var selection := EditorInterface.get_selection().get_selected_nodes()
+		if selection.size() == 1 and selection[0] is EmberVoxelProp:
+			_voxel_canvas_action(selection[0],"selected")
+			return
+		if selection.size() == 1 and selection[0] is Node3D and not selection[0] is EmberVoxelProp:
+			_open_voxel_assembly(selection[0])
+			return
+		if is_instance_valid(_last_selected_voxel):
+			_voxel_canvas_action(_last_selected_voxel, "selected")
+		else:
+			push_warning("Сначала выберите voxel-объект в сцене.")
+	)
+	_voxel_object_toolbar.add_child(edit_object)
+	var place_object := Button.new()
+	place_object.text = "Точная расстановка…"
+	place_object.tooltip_text = "Координаты и смещения в voxel, pivot, привязка и поворот выбранного объекта или сборки."
+	place_object.pressed.connect(_place_voxel_selection)
+	_voxel_object_toolbar.add_child(place_object)
+	var more := MenuButton.new()
+	more.text = "Ещё…"
+	more.tooltip_text = "Преобразование простой формы и разрезание большого voxel-объекта."
+	more.get_popup().add_item("Форму в voxel…",0)
+	more.get_popup().add_item("Разрезать на секции…",1)
+	more.get_popup().add_separator()
+	more.get_popup().add_item("Собрать в группу",2)
+	more.get_popup().add_item("Разгруппировать",3)
+	more.get_popup().add_item("Дублировать со смещением…",4)
+	more.get_popup().add_item("Повторить дублирование",5)
+	more.get_popup().add_item("Склеить voxel-детали…",8)
+	more.get_popup().add_item("Разобрать склейку…",9)
+	more.get_popup().add_separator()
+	more.get_popup().add_item("Поверхность прохода…",6)
+	more.get_popup().add_check_item("Показать поверхности прохода",7)
+	more.get_popup().set_item_checked(more.get_popup().get_item_index(7), true)
+	more.get_popup().id_pressed.connect(func(id: int):
+		if id == 0:
+			_convert_voxel_form()
+		elif id == 1:
+			_split_voxel_object()
+		elif id == 6:
+			_walk_surface_selected()
+		elif id in [8,9]:
+			_merge_voxel_selected(id == 9)
+		elif id == 7:
+			var index := more.get_popup().get_item_index(7)
+			var enabled := not more.get_popup().is_item_checked(index)
+			more.get_popup().set_item_checked(index, enabled)
+			_walk_surface_gizmo.set("show_surfaces", enabled)
+			var root := EditorInterface.get_edited_scene_root()
+			if root != null:
+				for node in root.find_children("*", "StaticBody3D", true, false):
+					node.update_gizmos()
+		else:
+			_scene_assembly_command(id)
+	)
+	_voxel_object_toolbar.add_child(more)
+	add_control_to_container(EditorPlugin.CONTAINER_SPATIAL_EDITOR_MENU, _voxel_object_toolbar)
 	_configure_fullscreen_playtest()
 	add_tool_menu_item("Ember: Reimport map from pack…", _ask_reimport)
 	add_tool_menu_item("Ember: Open Combat Lab", _open_combat_lab)
@@ -59,6 +131,8 @@ func _enter_tree() -> void:
 	add_node_3d_gizmo_plugin(_voxel_gizmo)
 	_trigger_gizmo = EmberStandaloneTriggerGizmo.new()
 	add_node_3d_gizmo_plugin(_trigger_gizmo)
+	_walk_surface_gizmo = preload("res://addons/ember_import/ember_walk_surface_gizmo.gd").new()
+	add_node_3d_gizmo_plugin(_walk_surface_gizmo)
 	_dock = EmberToolsDock.new()
 	# Keep this identity distinct from the legacy right-slot dock name "Ember".
 	# Godot restores dock placement by Control.name from editor_layout.cfg.
@@ -114,6 +188,7 @@ func _enter_tree() -> void:
 		_save_quest_from_inspector,
 	)
 	add_inspector_plugin(_object_inspector)
+	_object_inspector.canvas_callback = _voxel_canvas_action
 	_camera_rig_inspector = EmberCameraRigInspector.new()
 	_camera_rig_inspector.configure(get_editor_interface())
 	add_inspector_plugin(_camera_rig_inspector)
@@ -169,6 +244,11 @@ func _configure_fullscreen_playtest() -> void:
 
 
 func _exit_tree() -> void:
+	if is_instance_valid(_voxel_object_toolbar):
+		remove_control_from_container(EditorPlugin.CONTAINER_SPATIAL_EDITOR_MENU, _voxel_object_toolbar)
+		_voxel_object_toolbar.queue_free()
+	remove_tool_menu_item("Ember: Новая voxel-форма…")
+	remove_tool_menu_item("Ember: Точная voxel-расстановка…")
 	remove_tool_menu_item("Ember: Reimport map from pack…")
 	remove_tool_menu_item("Ember: Open Combat Lab")
 	remove_tool_menu_item("Ember: Open Combat Content")
@@ -187,6 +267,9 @@ func _exit_tree() -> void:
 	if _trigger_gizmo:
 		remove_node_3d_gizmo_plugin(_trigger_gizmo)
 		_trigger_gizmo = null
+	if _walk_surface_gizmo:
+		remove_node_3d_gizmo_plugin(_walk_surface_gizmo)
+		_walk_surface_gizmo = null
 	if _object_inspector:
 		remove_inspector_plugin(_object_inspector)
 		_object_inspector = null
@@ -351,8 +434,79 @@ func _open_surface_from_inspector(surface: EmberVoxelModelResource) -> void:
 	_open_surface_canvas(surface, save_path if not save_path.is_empty() else surface.resource_path)
 
 
+func _voxel_canvas_action(prop: EmberVoxelProp, action: String) -> void:
+	if not is_instance_valid(prop):
+		return
+	if action == "linked":
+		_duplicate_voxel_prop(prop)
+		return
+	if action == "shared":
+		var confirm := ConfirmationDialog.new()
+		confirm.title = "Общая voxel-модель"
+		confirm.dialog_text = "Сохранение изменит общую модель и связанные экземпляры. Сначала сохраните и закройте другие вкладки сцен. Для изменения только этого объекта выберите «Редактировать в Canvas»."
+		confirm.ok_button_text = "Редактировать общую модель"
+		get_editor_interface().get_base_control().add_child(confirm)
+		confirm.confirmed.connect(func():
+			_open_voxel_object(prop, true)
+			confirm.queue_free()
+		)
+		confirm.canceled.connect(confirm.queue_free)
+		confirm.popup_centered(Vector2i(620, 160))
+		return
+	if action == "independent":
+		var session := preload("res://addons/ember_import/ember_voxel_object_session.gd").new()
+		if not session.open(prop, get_editor_interface().get_edited_scene_root(), get_undo_redo()) or not session.create_independent_copy():
+			push_warning(session.error)
+		return
+	_open_voxel_object(prop, false)
+
+
+func _open_voxel_assembly(group: Node3D) -> void:
+	# A converted pier may still have its original StaticBody wrapper.
+	while group.get_child_count() == 1 and group.get_child(0) is Node3D:
+		if group.get_child(0) is EmberVoxelProp:
+			_open_voxel_object(group.get_child(0),false)
+			return
+		group = group.get_child(0)
+	var session := preload("res://addons/ember_import/ember_voxel_assembly_session.gd").new()
+	if not session.open(group,EditorInterface.get_edited_scene_root(),get_undo_redo()):
+		push_warning(session.error)
+		return
+	var workspace := EditorInterface.get_editor_main_screen().find_child(SURFACE_WORKSPACE_NODE,true,false) as EmberVoxelSculptWorkspace
+	if workspace == null:
+		push_warning("Surface Canvas отключён.")
+		return
+	workspace.open_object(session)
+	EditorInterface.set_main_screen_editor(SURFACE_MAIN_SCREEN)
+
+func _open_voxel_object(prop: EmberVoxelProp, shared: bool) -> void:
+	if not is_instance_valid(prop):
+		return
+	var session := preload("res://addons/ember_import/ember_voxel_object_session.gd").new()
+	if not session.open(prop, get_editor_interface().get_edited_scene_root(), get_undo_redo(), shared):
+		push_warning(session.error)
+		return
+	var workspace := EditorInterface.get_editor_main_screen().find_child(SURFACE_WORKSPACE_NODE, true, false) as EmberVoxelSculptWorkspace
+	if workspace == null:
+		push_warning("Surface Canvas отключён. Включите его editor plugin.")
+		return
+	workspace.open_object(session)
+	EditorInterface.set_main_screen_editor(SURFACE_MAIN_SCREEN)
+
+
 func _open_world_surface(map: EmberMapLoader, region_blocks: Rect2i) -> void:
 	if map == null or _graph_workspace == null:
+		return
+	if not map.hydrate_legacy_regions:
+		var native_surface := map.resolved_visual_surface()
+		if native_surface == null:
+			push_warning("Ember Surface: у этой native-карты нет подходящей voxel Surface. Простые формы редактируются в сцене; их преобразование в Surface не поддерживается.")
+			return
+		var native_path := EmberVoxelSculptModel.surface_save_path(native_surface, native_surface.resource_path)
+		_open_surface_canvas(native_surface, native_path, region_blocks)
+		return
+	if not FileAccess.file_exists(EmberPack.map_path(map.map_id)):
+		push_warning("Ember Surface: исходная геометрия карты %s не найдена" % map.map_id)
 		return
 	var raw: Variant = EmberPack.parse_json_file(EmberPack.map_path(map.map_id))
 	if typeof(raw) != TYPE_DICTIONARY:
@@ -744,6 +898,159 @@ func _migrate_voxel_batch_from_dashboard(model_ids: Array[String]) -> void:
 func _on_voxel_model_changed(model_id: String) -> void:
 	if _dock:
 		_dock.call_deferred("accept_voxel_migration_change", model_id)
+
+
+func _new_voxel_shape() -> void:
+	var root := EditorInterface.get_edited_scene_root() as Node3D
+	if root == null:
+		push_warning("Откройте 3D-сцену для создания voxel-формы.")
+		return
+	var parent := root.get_node_or_null("Map/Props") as Node3D
+	if parent == null:
+		parent = root
+	var start := root.find_child("PlayerStart", true, false) as Node3D
+	if start == null:
+		start = root.find_child("player_start", true, false) as Node3D
+	var position := parent.to_local(start.global_position) if start != null else Vector3.ZERO
+	var dialog := preload("res://addons/ember_import/ember_voxel_shape_dialog.gd").new()
+	EditorInterface.get_base_control().add_child(dialog)
+	dialog.created.connect(func(prop: EmberVoxelProp):
+		_voxel_canvas_action(prop, "selected")
+		dialog.queue_free()
+	)
+	dialog.canceled.connect(dialog.queue_free)
+	var map := root.get_node_or_null("Map") as EmberMapLoader
+	dialog.open_for(root, parent, get_undo_redo(), position, map.imported_tile_size if map != null and map.imported_tile_size > 0 else 16.0)
+
+
+func _merge_voxel_selected(separating: bool) -> void:
+	var workspace := EditorInterface.get_editor_main_screen().find_child(SURFACE_WORKSPACE_NODE,true,false) as EmberVoxelSculptWorkspace
+	if workspace != null and workspace.has_unsaved_changes():
+		push_warning("Сначала сохраните или отмените изменения Canvas, затем склейте детали.")
+		return
+	var dialog := preload("res://addons/ember_import/ember_voxel_merge_dialog.gd").new()
+	EditorInterface.get_base_control().add_child(dialog)
+	dialog.canceled.connect(dialog.queue_free)
+	dialog.open_merge(EditorInterface.get_selection().get_selected_nodes(),EditorInterface.get_edited_scene_root(),get_undo_redo(),separating)
+
+
+func _walk_surface_selected() -> void:
+	var selected := EditorInterface.get_selection().get_selected_nodes()
+	if selected.size() != 1 or not selected[0] is Node3D:
+		push_warning("Выберите одну группу настила, объект или существующую поверхность прохода.")
+		return
+	var dialog := preload("res://addons/ember_import/ember_walk_surface_dialog.gd").new()
+	EditorInterface.get_base_control().add_child(dialog)
+	dialog.canceled.connect(dialog.queue_free)
+	dialog.applied.connect(dialog.queue_free)
+	if not dialog.open_for(selected[0], EditorInterface.get_edited_scene_root(), get_undo_redo()):
+		push_warning(dialog._status.text)
+		dialog.queue_free()
+
+func _scene_assembly_command(command: int) -> void:
+	var selected := EditorInterface.get_selection().get_selected_nodes()
+	var root := EditorInterface.get_edited_scene_root()
+	var operation := preload("res://addons/ember_import/ember_voxel_scene_assembly.gd").new()
+	if command == 2:
+		if operation.group(selected, root, get_undo_redo()) == null:
+			push_warning(operation.error)
+		return
+	if command == 3:
+		if selected.size() != 1 or not selected[0] is Node3D:
+			push_warning("Выберите одну группу voxel-деталей.")
+		elif not operation.ungroup(selected[0], root, get_undo_redo()):
+			push_warning(operation.error)
+		return
+	if selected.size() != 1 or not selected[0] is EmberVoxelProp:
+		push_warning("Для дублирования выберите одну voxel-деталь, не всю группу.")
+		return
+	if command == 5:
+		if _last_duplicate_step.is_zero_approx():
+			push_warning("Сначала выполните «Дублировать со смещением…». Повтор создаёт одну копию выбранной детали с прежним мировым шагом.")
+		elif not operation.prepare_copies(selected[0], root, _last_duplicate_step, 1) or operation.commit_copies(get_undo_redo()).is_empty():
+			push_warning(operation.error)
+		return
+	var dialog := preload("res://addons/ember_import/ember_voxel_duplicate_dialog.gd").new()
+	EditorInterface.get_base_control().add_child(dialog)
+	dialog.canceled.connect(dialog.queue_free)
+	dialog.created.connect(func(step: Vector3):
+		_last_duplicate_step = step
+		dialog.queue_free()
+	)
+	if not dialog.open_for(selected[0], root, get_undo_redo()):
+		push_warning(dialog._status.text)
+		dialog.queue_free()
+
+func _place_voxel_selection() -> void:
+	var selected := EditorInterface.get_selection().get_selected_nodes()
+	if selected.size() != 1 or not selected[0] is Node3D:
+		push_warning("Выберите один voxel-объект или существующую группу его частей.")
+		return
+	var root := EditorInterface.get_edited_scene_root()
+	var session := preload("res://addons/ember_import/ember_voxel_placement_session.gd").new()
+	if not session.open(selected[0],root,get_undo_redo()):
+		push_warning(session.error)
+		return
+	var dialog := preload("res://addons/ember_import/ember_voxel_placement_dialog.gd").new()
+	EditorInterface.get_base_control().add_child(dialog)
+	dialog.canceled.connect(dialog.queue_free)
+	dialog.applied.connect(func(target: Node3D):
+		var editor_selection := EditorInterface.get_selection()
+		editor_selection.clear()
+		editor_selection.add_node(target)
+		dialog.queue_free()
+	)
+	if not dialog.open_for(session):
+		dialog.queue_free()
+		push_warning("Не удалось открыть точную voxel-расстановку.")
+
+
+func _split_voxel_object() -> void:
+	var selected := EditorInterface.get_selection().get_selected_nodes()
+	if selected.size() != 1 or not selected[0] is EmberVoxelProp:
+		push_warning("Выберите один voxel-объект. Для простой формы сначала выполните «Форму в voxel…».")
+		return
+	var dialog := preload("res://addons/ember_import/ember_voxel_split_dialog.gd").new()
+	EditorInterface.get_base_control().add_child(dialog)
+	dialog.canceled.connect(dialog.queue_free)
+	dialog.open_split(selected[0],EditorInterface.get_edited_scene_root(),get_undo_redo())
+
+func _convert_voxel_form() -> void:
+	var selected := EditorInterface.get_selection().get_selected_nodes()
+	if selected.size() != 1:
+		push_warning("Выберите одну простую форму или её контейнер в дереве сцены.")
+		return
+	var root := EditorInterface.get_edited_scene_root()
+	var conversion := preload("res://addons/ember_import/ember_voxel_primitive_conversion.gd")
+	var inspection := conversion.inspect(selected[0],root)
+	if inspection.get("alignable",false):
+		var target_ref := weakref(selected[0])
+		var root_ref := weakref(root)
+		var prompt := ConfirmationDialog.new()
+		prompt.title = "Совместить коллизию"
+		prompt.dialog_text = inspection.error
+		prompt.get_ok_button().text = "Совместить коллизию с моделью"
+		EditorInterface.get_base_control().add_child(prompt)
+		prompt.confirmed.connect(func():
+			if conversion.align_collision(target_ref.get_ref(),root_ref.get_ref(),get_undo_redo()):
+				push_warning("Коллизия совмещена. Нажмите «Форму в voxel…» повторно. Ctrl+Z отменяет совмещение.")
+			else:
+				push_warning("Объект или сцена изменились: совмещение отменено. Выберите форму заново.")
+			prompt.queue_free()
+		)
+		prompt.canceled.connect(prompt.queue_free)
+		prompt.popup_centered()
+		return
+	var dialog := preload("res://addons/ember_import/ember_voxel_conversion_dialog.gd").new()
+	EditorInterface.get_base_control().add_child(dialog)
+	dialog.created.connect(func(prop: EmberVoxelProp):
+		_voxel_canvas_action(prop,"selected")
+		dialog.queue_free()
+	)
+	dialog.canceled.connect(dialog.queue_free)
+	var map := root.get_node_or_null("Map") as EmberMapLoader
+	if not dialog.open_conversion(selected[0],root,get_undo_redo(),map.imported_tile_size if map != null and map.imported_tile_size > 0 else 16.0):
+		dialog.queue_free()
 
 
 func _create_voxel_prop(model_id: String, anchor: Node3D) -> void:

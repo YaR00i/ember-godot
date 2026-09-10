@@ -1,3 +1,4 @@
+@tool
 class_name EmberVoxelProp
 extends Node3D
 ## Instance of a voxel PackedScene on an authored map.
@@ -15,7 +16,7 @@ const WaterContact := preload("res://scripts/ember_water_contact_3d.gd")
 
 
 func _ready() -> void:
-	if not water_contact_enabled:
+	if Engine.is_editor_hint() or not water_contact_enabled:
 		return
 	var contact: Node3D = WaterContact.new()
 	contact.name = "WaterContact"

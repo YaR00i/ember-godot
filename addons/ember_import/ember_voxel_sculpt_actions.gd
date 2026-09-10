@@ -6,10 +6,51 @@ extends RefCounted
 signal source_changed(indices: PackedInt32Array)
 
 var _undo_redo: Object
+var active_part := 0
+
+func _record_parts(resource: EmberVoxelModelResource, before: PackedByteArray, after: PackedByteArray, indices: PackedInt32Array, applied := false) -> void:
+	if resource.voxel_part_ids.is_empty():
+		return
+	var owners := preload("res://addons/ember_import/ember_voxel_parts.gd").stroke(resource,before,after,active_part,indices)
+	_add_undo_property(resource, &"voxel_part_ids", resource.voxel_part_ids.duplicate())
+	_add_do_property(resource, &"voxel_part_ids", owners)
+	if applied:
+		resource.voxel_part_ids = owners
+
+func apply_fragment(resource: EmberVoxelModelResource, plan: Dictionary) -> bool:
+	if _undo_redo == null or plan.has("error") or not plan.has("properties"):
+		return false
+	for key in plan.before:
+		if resource.get(key) != plan.before[key]:
+			return false
+	_create_action("Voxel · " + str(plan.label), resource)
+	for key in plan.properties:
+		_add_do_property(resource, key, plan.properties[key])
+		_add_undo_property(resource, key, plan.before[key])
+	_add_do_method_with_args(self, &"_notify_source_changed", [resource, PackedInt32Array()])
+	_add_undo_method_with_args(self, &"_notify_source_changed", [resource, PackedInt32Array()])
+	_commit_action()
+	return true
 
 
 func configure(undo_redo: Object) -> void:
 	_undo_redo = undo_redo
+
+
+func grow_canvas(resource: EmberVoxelModelResource, size: Vector3i) -> Dictionary:
+	var result := preload("res://addons/ember_import/ember_voxel_canvas_growth.gd").plan(resource, size)
+	if result.has("error"):
+		return result
+	if _undo_redo == null:
+		return {"error": "История Undo недоступна"}
+	_create_action("Voxel · расширить холст", resource)
+	for key in result.properties:
+		_add_do_property(resource, key, result.properties[key])
+		_add_undo_property(resource, key, resource.get(key))
+	_add_do_method_with_args(self, &"_notify_source_changed", [resource, PackedInt32Array()])
+	_add_undo_method_with_args(self, &"_notify_source_changed", [resource, PackedInt32Array()])
+	_commit_action()
+	return result
 
 
 func apply_palette(resource: EmberVoxelModelResource, operation: Dictionary) -> Dictionary:
@@ -61,6 +102,7 @@ func apply_stroke(resource: EmberVoxelModelResource, changes: Dictionary) -> boo
 	if before == after:
 		return false
 	_create_action("Voxel Surface · мазок (%d voxels)" % changes.size(), resource)
+	_record_parts(resource,before,after,PackedInt32Array(changes.keys()))
 	_add_do_property(resource, &"voxels", after)
 	_add_undo_property(resource, &"voxels", before)
 	var indices := PackedInt32Array()
@@ -81,6 +123,7 @@ func commit_applied_stroke(
 	if resource == null or _undo_redo == null or before == after:
 		return false
 	_create_action("Voxel Surface · непрерывный мазок (%d voxels)" % indices.size(), resource)
+	_record_parts(resource,before,after,indices,true)
 	_add_do_property(resource, &"voxels", after)
 	_add_undo_property(resource, &"voxels", before)
 	_add_do_method_with_args(self, &"_notify_source_changed", [resource, indices])
@@ -166,7 +209,7 @@ func reset_pilot(resource: EmberVoxelModelResource) -> bool:
 		&"palette", &"voxels", &"material", &"emissive", &"shine",
 		&"transparency", &"transmittance",
 		&"surface_fill_levels", &"surface_fill_materials", &"surface_fill_palette",
-		&"voxel_groups",
+		&"voxel_groups", &"merge_parts", &"voxel_part_ids",
 	]:
 		_add_do_property(resource, property_name, fresh.get(property_name))
 		_add_undo_property(resource, property_name, resource.get(property_name))

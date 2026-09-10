@@ -18,6 +18,9 @@ static var _active_inventory_snapshot: Dictionary = {}
 static var _pending_strategy_snapshot: Array[String] = []
 static var _active_strategy_snapshot: Array[String] = []
 static var _result_applied := false
+static var _party_ids_snapshot: Array[String] = []
+static var _locked_progress: WeakRef
+static var last_start_error := ""
 
 
 static func change_scene(
@@ -25,9 +28,23 @@ static func change_scene(
 	encounter_id: String,
 	progress: EmberExploreState = null,
 ) -> Error:
+	last_start_error = ""
+	if not _pending_encounter_id.is_empty() or not _active_encounter_id.is_empty():
+		last_start_error = "Боевая встреча уже выполняется."
+		return ERR_ALREADY_IN_USE
 	var encounter := Catalog.definition(encounter_id)
-	if tree == null or encounter == null or not encounter.validation_errors().is_empty():
+	if tree == null or encounter == null:
+		last_start_error = "Встреча содержит некорректные данные."
 		return ERR_INVALID_DATA
+	var validation := encounter.validation_errors()
+	if not validation.is_empty():
+		last_start_error = "\n".join(validation)
+		return ERR_INVALID_DATA
+	if progress != null:
+		var roster_errors := encounter.active_party_errors(progress.active_hero_ids)
+		if not roster_errors.is_empty():
+			last_start_error = "\n".join(roster_errors)
+			return ERR_INVALID_DATA
 	if not encounter.can_start(progress):
 		return ERR_ALREADY_EXISTS
 	if tree.current_scene == null or tree.current_scene.scene_file_path.is_empty():
@@ -36,6 +53,10 @@ static func change_scene(
 	_pending_party_snapshot = progress.combat_party_snapshot() if progress != null else {}
 	_pending_inventory_snapshot = progress.combat_inventory_snapshot() if progress != null else {}
 	_pending_strategy_snapshot = progress.combat_strategy_snapshot() if progress != null else []
+	_party_ids_snapshot = progress.active_hero_ids.duplicate() if progress != null else []
+	if progress != null:
+		_locked_progress = weakref(progress)
+		progress.combat_party_locked = true
 	_active_party_snapshot = {}
 	_active_inventory_snapshot = {}
 	_active_strategy_snapshot = []
@@ -65,6 +86,19 @@ static func consume_encounter() -> EmberEncounterResource:
 
 static func active_party_snapshot() -> Dictionary:
 	return _active_party_snapshot.duplicate(true)
+
+
+static func active_hero_ids_snapshot() -> Array[String]:
+	return _party_ids_snapshot.duplicate()
+
+
+static func _unlock_party() -> void:
+	if _locked_progress != null:
+		var progress := _locked_progress.get_ref() as EmberExploreState
+		if progress != null:
+			progress.combat_party_locked = false
+	_locked_progress = null
+	_party_ids_snapshot = []
 
 
 static func active_inventory_snapshot() -> Dictionary:
@@ -118,6 +152,7 @@ static func finish(
 	var return_path := _return_scene_path
 	_active_encounter_id = ""
 	_active_party_snapshot = {}
+	_unlock_party()
 	_active_inventory_snapshot = {}
 	_active_strategy_snapshot = []
 	_return_scene_path = ""
@@ -180,6 +215,7 @@ static func load_save(
 
 
 static func abandon_active_encounter() -> void:
+	_unlock_party()
 	_pending_encounter_id = ""
 	_active_encounter_id = ""
 	_pending_party_snapshot = {}

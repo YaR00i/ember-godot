@@ -14,6 +14,43 @@ static var _unit_cache_ready := false
 static var _units_by_id: Dictionary = {}
 
 
+static func valid_active_hero_ids(raw: Variant) -> bool:
+	if typeof(raw) != TYPE_ARRAY or raw.is_empty() or raw.size() > HERO_IDS.size():
+		return false
+	var seen: Array[String] = []
+	for value in raw:
+		if typeof(value) != TYPE_STRING or value not in HERO_IDS or value in seen:
+			return false
+		seen.append(value)
+	return true
+
+
+static func normalize_active_hero_ids(raw: Variant) -> Array[String]:
+	# Missing/corrupt saves recover the complete legacy roster, never a partial
+	# guessed story state. Runtime setters validate before calling this helper.
+	var result: Array[String] = []
+	result.assign(raw if valid_active_hero_ids(raw) else HERO_IDS)
+	return result
+
+
+static func active_strategy(raw: Variant, active_ids: Array[String]) -> Array[String]:
+	var result: Array[String] = []
+	for hero_id in normalize_battle_strategy(raw):
+		if hero_id in active_ids:
+			result.append(hero_id)
+	return result
+
+
+static func merge_active_strategy(raw: Variant, active_order: Array[String]) -> Array[String]:
+	var result := normalize_battle_strategy(raw)
+	var index := 0
+	for slot in result.size():
+		if result[slot] in active_order:
+			result[slot] = active_order[index]
+			index += 1
+	return result
+
+
 static func normalize_battle_strategy(raw: Variant) -> Array[String]:
 	## A strategy stores party order only. Battlefield Resources remain the sole
 	## spatial owner and map this order onto their first authored party cells.
@@ -104,10 +141,10 @@ static func _member_view_from_normalized(
 	return result
 
 
-static func views(raw: Variant, items: Dictionary = {}) -> Array[Dictionary]:
+static func views(raw: Variant, items: Dictionary = {}, hero_ids: Array[String] = HERO_IDS) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	var normalized: Dictionary = normalize(raw, items).get("party", {})
-	for hero_id in HERO_IDS:
+	for hero_id in hero_ids:
 		result.append(_member_view_from_normalized(normalized, hero_id, items))
 	return result
 
@@ -213,7 +250,7 @@ static func apply_combat_result(
 		result[hero_id] = member
 		fallen_heroes[hero_id] = returned_hp <= 0
 	if xp_reward > 0:
-		result = (grant_equal_xp(result, xp_reward, items).get("party", {}) as Dictionary)
+		result = (grant_equal_xp(result, xp_reward, items, combat_hero_ids(combat_state)).get("party", {}) as Dictionary)
 	if victory:
 		for hero_id in HERO_IDS:
 			if not bool(fallen_heroes.get(hero_id, false)):
@@ -237,11 +274,12 @@ static func grant_equal_xp(
 	raw_party: Variant,
 	xp_gain: int,
 	items: Dictionary = {},
+	hero_ids: Array[String] = HERO_IDS,
 ) -> Dictionary:
 	var party_data: Dictionary = normalize(raw_party, items).get("party", {})
 	var clean_gain := maxi(0, xp_gain)
 	var rows: Array[Dictionary] = []
-	for hero_id in HERO_IDS:
+	for hero_id in hero_ids:
 		var member: Dictionary = party_data.get(hero_id, {})
 		var level_before := clampi(int(member.get("level", 1)), 1, MAX_LEVEL)
 		var xp_before := maxi(0, int(member.get("xp", 0)))
@@ -316,7 +354,12 @@ static func combat_progression_preview(
 			"equipment": EmberEquipment.normalize(unit.get("equipment", {})),
 		}
 		fallen_heroes[hero_id] = int(unit.get("hp", 0)) <= 0
-	var progression := grant_equal_xp(party_data, xp_gain, items)
+	var progression := grant_equal_xp(party_data, xp_gain, items, combat_hero_ids(combat_state))
+	# A preview describes participants only; normalization must not invent rows
+	# or members for heroes who stayed outside this battle.
+	for hero_id in HERO_IDS:
+		if not party_data.has(hero_id):
+			(progression["party"] as Dictionary).erase(hero_id)
 	if victory:
 		var progressed_party: Dictionary = progression.get("party", {})
 		var rows: Array = progression.get("rows", [])
@@ -334,6 +377,15 @@ static func combat_progression_preview(
 		progression["party"] = progressed_party
 		progression["rows"] = rows
 	return progression
+
+
+static func combat_hero_ids(combat_state: Dictionary) -> Array[String]:
+	var result: Array[String] = []
+	var units: Dictionary = combat_state.get("units", {})
+	for hero_id in HERO_IDS:
+		if units.has(hero_id) and str((units[hero_id] as Dictionary).get("team", "")) == "hero":
+			result.append(hero_id)
+	return result
 
 
 static func equipment_allowed(item: Dictionary, hero_id: String) -> bool:

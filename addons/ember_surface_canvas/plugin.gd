@@ -17,6 +17,10 @@ func _enter_tree() -> void:
 	_workspace = SurfaceWorkspace.new() as EmberVoxelSculptWorkspace
 	_workspace.name = "EmberSurfaceCanvasWorkspace"
 	_workspace.setup(get_editor_interface(), get_undo_redo(), _view_store)
+	_workspace.create_object_callback = func():
+		var importer := get_parent().get_node_or_null("EmberImportPlugin")
+		if importer != null:
+			importer.call("_new_voxel_shape")
 	EditorInterface.get_editor_main_screen().add_child(_workspace)
 	_make_visible(false)
 

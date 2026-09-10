@@ -12,11 +12,13 @@ var _mode := MODE_BAG
 var _bag_index := 0
 var _slot_index := 0
 var _hero_index := 0
+var _roster_snapshot: Array[String] = []
 var _strategy_index := 0
 var _strategy_draft: Array[String] = []
 var _strategy_signature := ""
 var _feedback := ""
 var _view: Dictionary = {}
+var _item_definitions: Dictionary = {}
 var _title: Label
 var _stats: Label
 var _equipment: Label
@@ -29,6 +31,7 @@ var _strategy_save: Button
 
 
 func _ready() -> void:
+	_item_definitions = EmberInteractionContent.item_definitions()
 	if progress_state == null:
 		progress_state = get_node_or_null("/root/EmberExploreProgress") as EmberExploreState
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -47,13 +50,13 @@ func _exit_tree() -> void:
 func open() -> void:
 	if progress_state == null:
 		return
-	var active_index := PartyState.HERO_IDS.find(progress_state.exploration_leader_id)
+	var active_index := progress_state.active_hero_ids.find(progress_state.exploration_leader_id)
 	_hero_index = active_index if active_index >= 0 else 0
 	_mode = MODE_BAG
 	_bag_index = 0
 	_slot_index = 0
 	_strategy_index = 0
-	_strategy_draft = progress_state.combat_strategy_snapshot()
+	_strategy_draft = PartyState.active_strategy(progress_state.combat_strategy_snapshot(), progress_state.active_hero_ids)
 	_feedback = ""
 	visible = true
 	_refresh()
@@ -152,6 +155,12 @@ func _on_progress_changed() -> void:
 func _refresh() -> void:
 	if progress_state == null:
 		return
+	if _roster_snapshot != progress_state.active_hero_ids:
+		_roster_snapshot = progress_state.active_hero_ids.duplicate()
+		_hero_index = maxi(0, _roster_snapshot.find(progress_state.exploration_leader_id))
+	_hero_index = clampi(_hero_index, 0, progress_state.active_hero_ids.size() - 1)
+	if _strategy_draft.size() != progress_state.active_hero_ids.size() or not _strategy_draft.all(func(id): return id in progress_state.active_hero_ids):
+		_strategy_draft = PartyState.active_strategy(progress_state.combat_strategy_snapshot(), progress_state.active_hero_ids)
 	_view = progress_state.inventory_view_for_member(_hero_id())
 	var rows := _bag_rows()
 	_bag_index = clampi(_bag_index, 0, maxi(0, rows.size() - 1))
@@ -171,7 +180,10 @@ func _refresh() -> void:
 	var party_views := progress_state.party_view()
 	for index in _hero_buttons.size():
 		var button := _hero_buttons[index]
-		var hero_id := PartyState.HERO_IDS[index]
+		button.visible = index < progress_state.active_hero_ids.size()
+		if not button.visible:
+			continue
+		var hero_id := progress_state.active_hero_ids[index]
 		var member: Dictionary = party_views[index] if index < party_views.size() else {}
 		var selected := index == _hero_index
 		button.text = "%s%s" % ["▶ " if selected else "", str(member.get("nameRu", hero_id))]
@@ -179,19 +191,19 @@ func _refresh() -> void:
 		button.add_theme_color_override("font_color", Color("182234") if selected else Color("e9eef8"))
 	_refresh_equipment()
 	_refresh_bag(rows)
-	_refresh_strategy()
+	_refresh_strategy(party_views)
 	_refresh_detail(rows)
 
 
-func _refresh_strategy() -> void:
+func _refresh_strategy(party_views: Array[Dictionary]) -> void:
 	if _strategy_rows == null:
 		return
 	var party_names := {}
-	for member in progress_state.party_view():
+	for member in party_views:
 		party_names[str(member.get("heroId", ""))] = str(member.get("nameRu", ""))
 	_strategy_index = clampi(_strategy_index, 0, maxi(0, _strategy_draft.size() - 1))
 	var signature := "%s|%d|%s" % [_strategy_draft, _strategy_index, party_names]
-	_strategy_save.disabled = _strategy_draft == progress_state.combat_strategy_snapshot()
+	_strategy_save.disabled = _strategy_draft == PartyState.active_strategy(progress_state.combat_strategy_snapshot(), progress_state.active_hero_ids)
 	if signature == _strategy_signature:
 		return
 	_strategy_signature = signature
@@ -231,13 +243,13 @@ func save_strategy() -> bool:
 	if progress_state == null:
 		return false
 	var previous := progress_state.combat_strategy_snapshot()
-	progress_state.set_battle_strategy(_strategy_draft)
+	progress_state.set_battle_strategy(PartyState.merge_active_strategy(previous, _strategy_draft))
 	if not progress_state.save_slot(progress_state.active_slot):
 		progress_state.set_battle_strategy(previous)
 		_feedback = "Не удалось сохранить стратегию."
 		_refresh()
 		return false
-	_strategy_draft = progress_state.combat_strategy_snapshot()
+	_strategy_draft = PartyState.active_strategy(progress_state.combat_strategy_snapshot(), progress_state.active_hero_ids)
 	_feedback = "Стратегия сохранена."
 	_refresh()
 	return true
@@ -245,7 +257,7 @@ func save_strategy() -> bool:
 
 func _refresh_equipment() -> void:
 	var eq: Dictionary = _view.get("equipment", {})
-	var items := EmberInteractionContent.item_definitions()
+	var items := _item_definitions
 	var lines: Array[String] = []
 	for index in range(EmberEquipment.SLOTS.size()):
 		var slot := EmberEquipment.SLOTS[index]
@@ -341,11 +353,12 @@ func _set_mode(mode: String) -> void:
 
 
 func _hero_id() -> String:
-	return PartyState.HERO_IDS[clampi(_hero_index, 0, PartyState.HERO_IDS.size() - 1)]
+	var ids := progress_state.active_hero_ids if progress_state != null else PartyState.HERO_IDS
+	return ids[clampi(_hero_index, 0, ids.size() - 1)]
 
 
 func _select_hero(index: int) -> void:
-	_hero_index = posmod(index, PartyState.HERO_IDS.size())
+	_hero_index = posmod(index, progress_state.active_hero_ids.size() if progress_state != null else PartyState.HERO_IDS.size())
 	if progress_state != null:
 		progress_state.set_exploration_leader(_hero_id())
 	_feedback = ""

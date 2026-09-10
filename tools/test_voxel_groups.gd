@@ -28,7 +28,7 @@ func _run() -> void:
 	var indices := PackedInt32Array([_index(resource, Vector3i(2, 1, 2)), _index(resource, Vector3i(3, 1, 2))])
 	selection.call("set_selection", indices)
 	workspace.call("_apply_group_operation", {"kind": "create", "name": "Берег"})
-	_check(resource.voxel_groups.size() == 1 and resource.schema_version == 4, "create did not persist canonical group/schema")
+	_check(resource.voxel_groups.size() == 1 and resource.schema_version == EmberVoxelModelResource.SCHEMA_VERSION, "create did not persist canonical group/schema")
 	_check(str(resource.voxel_groups[0].id) == "берег" and resource.voxel_groups[0].indices == indices, "create lost unicode name or members")
 	_check(resource.voxel_groups[0].color is Color, "create did not assign group color")
 	_check(workspace.has_unsaved_changes() and undo.has_undo(), "group creation missing dirty/Undo")

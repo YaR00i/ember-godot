@@ -311,15 +311,22 @@ static func cell_for_local_point(
 func _surface_grid_for_map(map: EmberMapLoader) -> Dictionary:
 	if not is_instance_valid(map):
 		return {}
-	var raw: Variant = EmberPack.parse_json_file(EmberPack.map_path(map.map_id))
-	if typeof(raw) == TYPE_DICTIONARY:
-		return EmberTileMesher.surface_grid(raw as Dictionary)
-	if map.visual_surface != null:
+	# Existing imported maps retain their authored legacy height grid for picking.
+	if map.hydrate_legacy_regions:
+		var path := EmberPack.map_path(map.map_id)
+		if FileAccess.file_exists(path):
+			var raw: Variant = EmberPack.parse_json_file(path)
+			if typeof(raw) == TYPE_DICTIONARY:
+				return EmberTileMesher.surface_grid(raw as Dictionary)
+	var surface := map.resolved_visual_surface()
+	if surface != null:
 		return {
-			"width": map.visual_surface.size_blocks.x,
-			"depth": map.visual_surface.size_blocks.z,
+			"width": surface.size_blocks.x,
+			"depth": surface.size_blocks.z,
 			"heights": PackedInt32Array(),
 		}
+	# Native primitive grayboxes do not have a voxel Surface to select. Opening
+	# their scene must not attempt an implicit import from the legacy archive.
 	return {}
 
 

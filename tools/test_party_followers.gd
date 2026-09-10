@@ -101,6 +101,23 @@ func _run_and_quit() -> void:
 			errors.append("party mode toggle did not return to formation")
 		if player.party_followers != followers:
 			errors.append("existing player does not route the party mode shortcut")
+		var old_position := player.global_position
+		progress.set_active_hero_ids(["mira"], false)
+		if int(followers.view_state().get("count", -1)) != 0 or player.controlled_hero_id != "mira":
+			errors.append("solo Mira retained phantom followers or wrong leader")
+		progress.set_active_hero_ids(["mira", "orik"], false)
+		if int(followers.view_state().get("count", -1)) != 1:
+			errors.append("same-leader membership change failed to rebuild followers")
+		if "--capture-active" in OS.get_cmdline_user_args():
+			await _capture_active("world")
+			var inventory_ui := sandbox.get_node("CanvasLayer/InventoryUI") as EmberInventoryUi
+			inventory_ui.open()
+			await _capture_active("inventory")
+			inventory_ui.close()
+		progress.next_exploration_leader()
+		progress.set_active_hero_ids(["mira"], false)
+		if player.controlled_hero_id != "mira" or progress.next_exploration_leader() != "mira" or player.global_position != old_position:
+			errors.append("removed leader/solo Tab moved player or selected absent hero")
 	sandbox.free()
 	if not errors.is_empty():
 		printerr("FAIL party followers")
@@ -114,3 +131,13 @@ func _run_and_quit() -> void:
 	print("  40 live leader switches: %d us" % leader_switch_micros)
 	print("  formation lives around the safe trail; train replays ordered positions")
 	quit(0)
+
+
+func _capture_active(label: String) -> void:
+	await process_frame
+	await RenderingServer.frame_post_draw
+	var directory := "user://ember-tests/active-party-capture-%d" % Time.get_ticks_usec()
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(directory))
+	var path := directory.path_join("pair-%s.png" % label)
+	var error := root.get_texture().get_image().save_png(path)
+	print("CAPTURE active party: ", ProjectSettings.globalize_path(path), " error=", error)

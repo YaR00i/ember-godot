@@ -63,7 +63,7 @@ func step(budget := 256) -> void:
 		return
 	for iteration in maxi(1, budget):
 		var cell: Vector3i
-		if _mode == 2:
+		if _mode == 2 or _mode == 3:
 			var extent := Vector3i(_box.size)
 			if _scan >= extent.x * extent.y * extent.z:
 				done = true
@@ -94,6 +94,30 @@ func step(budget := 256) -> void:
 			if not _visited.has(next):
 				_visited[next] = true
 				_queue.append(neighbor)
+
+func start_box(resource: EmberVoxelModelResource, low: Vector3i, high: Vector3i, region := Rect2i(), height := -1) -> void:
+	indices.clear()
+	done = false
+	error = ""
+	_scan = 0
+	_maximum = LIMIT
+	if resource == null:
+		_fail("Нет модели")
+		return
+	_size = resource.grid_size()
+	_values = resource.voxels
+	if _values.size() != _size.x * _size.y * _size.z:
+		_fail("Некорректная сетка")
+		return
+	var density := resource.normalized_density()
+	var rect := Rect2i(0,0,_size.x,_size.z)
+	if region.has_area():
+		rect = rect.intersection(Rect2i(region.position*density,region.size*density))
+	_box = AABB(Vector3(rect.position.x,0,rect.position.y),Vector3(rect.size.x,Bounds.visible_size(_size,height).y,rect.size.y))
+	_box = _box.intersection(AABB(Vector3(low.min(high)), Vector3(high.max(low)-low.min(high)+Vector3i.ONE)))
+	_mode = 3
+	_matches.resize(resource.palette.size())
+	_matches.fill(1)
 
 
 static func cell_of(index: int, size: Vector3i) -> Vector3i:

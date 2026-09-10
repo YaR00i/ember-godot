@@ -37,6 +37,15 @@ enum ViewAction {
 
 signal status_changed(message: String, color: Color)
 
+var _object_session: RefCounted
+var _extraction_go_to_3d := false
+var _scene_context: Node3D
+var _context_controls: HFlowContainer
+var _context_toggle: CheckButton
+var _context_opacity: SpinBox
+var _context_refresh: Button
+var _context_poll := 0.0
+
 var _editor_interface: EditorInterface
 var _actions: EmberVoxelSculptActions
 var _resource: EmberVoxelModelResource
@@ -49,6 +58,13 @@ var _saved_surface_fill_materials := PackedByteArray()
 var _saved_surface_fill_palette := PackedByteArray()
 var _saved_voxel_groups: Array[Dictionary] = []
 var _saved_schema_version := 1
+var _saved_size_blocks := Vector3i.ONE
+var _saved_height_voxels := 16
+var _saved_growth_channels := {}
+var _part_selector: OptionButton
+var _displayed_grid := Vector3i.ZERO
+var _grow_button: Button
+var create_object_callback: Callable
 var _navigation_guard: ConfirmationDialog
 var _view_store: RefCounted
 var _show_grid := true
@@ -82,6 +98,8 @@ var _palette_panel: VBoxContainer
 var _displayed_palette := PackedColorArray()
 var _picking_color := false
 var _selection_panel: VBoxContainer
+var _selection_interaction: Control
+var _stamp_panel: VBoxContainer
 var _groups_panel: VBoxContainer
 var _displayed_groups: Array[Dictionary] = []
 var _locked_indices: Dictionary = {}
@@ -183,6 +201,11 @@ func _on_workspace_visibility_changed() -> void:
 
 
 func _process(delta: float) -> void:
+	if is_instance_valid(_scene_context) and _scene_context.visible:
+		_context_poll += delta
+		if _context_poll >= 0.5:
+			_context_poll = 0.0
+			_sync_context_frame()
 	_drain_preview_chunk()
 	_flush_pending_stroke_position()
 	if not _stroke_active or _relief_hold_center == Model.INVALID_CELL:
@@ -208,6 +231,9 @@ func _process(delta: float) -> void:
 
 func _input(event: InputEvent) -> void:
 	if not is_visible_in_tree():
+		return
+	if event is InputEventKey and is_instance_valid(_selection_interaction) and _selection_interaction.handle(event):
+		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_ESCAPE and is_instance_valid(_selection_panel) and (_selection_panel.active or _selection_panel.busy()):
@@ -315,6 +341,36 @@ func open_surface(
 	_open_surface_unchecked(resource, resource_path, initial_region_blocks)
 
 
+func open_object(session: RefCounted) -> void:
+	ensure_ui()
+	_flush_pending_stroke_position()
+	_finish_stroke()
+	if has_unsaved_changes():
+		_navigation_guard.request(_resource.display_name, _open_object_after_navigation.bind(session))
+		return
+	_open_object_unchecked(session)
+
+
+func _open_object_after_navigation(session: RefCounted) -> void:
+	# Saving the outgoing shared model may have changed the incoming source.
+	# Resolve its fresh draft only after that transaction has finished.
+	if not session.refresh_before_open():
+		_set_status(session.error, true)
+		return
+	_open_object_unchecked(session)
+
+
+func _open_object_unchecked(session: RefCounted) -> void:
+	_open_surface_unchecked(session.draft, "")
+	_object_session = session
+	_context_controls.visible = true
+	_grow_button.visible = session.can_grow_canvas()
+	_title.text = "CANVAS · %s" % session.draft.display_name
+	_resource_path_label.text = session.label()
+	_play_owner_button.visible = false
+	_set_status(session.label() + " · файлы появятся только после сохранения правок")
+
+
 func request_close(continuation: Callable, cancel: Callable) -> void:
 	ensure_ui()
 	_flush_pending_stroke_position()
@@ -358,12 +414,21 @@ func _open_surface_unchecked(
 	resource: EmberVoxelModelResource, resource_path: String,
 	initial_region_blocks := Rect2i(),
 ) -> void:
+	if _object_session != null:
+		_object_session.release_projection_cache()
+	_object_session = null
+	_context_controls.visible = false
+	_context_toggle.set_pressed_no_signal(false)
+	_toggle_scene_context(false)
+	_grow_button.visible = false
 	_disconnect_resource()
 	_cancel_ramp_anchor(false)
 	_region_select_button.set_pressed_no_signal(false)
 	_region_anchor_block = Vector2i(-1, -1)
 	_region_preview_blocks = Rect2i()
 	_resource = resource
+	if _actions != null:
+		_actions.active_part = 0
 	_resource_path = resource_path
 	if _resource == null:
 		_set_status("Surface Canvas Resource не загрузился", true)
@@ -376,6 +441,10 @@ func _open_surface_unchecked(
 	_saved_surface_fill_palette = _resource.surface_fill_palette.duplicate()
 	_saved_voxel_groups = _resource.voxel_groups.duplicate(true)
 	_saved_schema_version = _resource.schema_version
+	_saved_size_blocks = _resource.size_blocks
+	_saved_height_voxels = _resource.height_voxels
+	_capture_growth_channels()
+	_displayed_grid = _resource.grid_size()
 	_show_grid = true
 	_show_region = true
 	_slice_height = -1
@@ -456,12 +525,16 @@ func has_unsaved_changes() -> bool:
 		_resource != null
 		and (
 			_resource.voxels != _saved_voxels
+			or _resource.size_blocks != _saved_size_blocks
+			or _resource.height_voxels != _saved_height_voxels
 			or _resource.palette != _saved_palette
 			or _resource.transparency != _saved_transparency
 			or _resource.surface_fill_levels != _saved_surface_fill_levels
 			or _resource.surface_fill_materials != _saved_surface_fill_materials
 			or _resource.surface_fill_palette != _saved_surface_fill_palette
 			or _resource.voxel_groups != _saved_voxel_groups
+			or _resource.voxel_part_ids != _saved_growth_channels.get("voxel_part_ids", PackedInt32Array())
+			or _resource.merge_parts != _saved_growth_channels.get("merge_parts", PackedStringArray())
 			or _resource.schema_version != _saved_schema_version
 		)
 	)
@@ -527,6 +600,10 @@ func discard_changes() -> void:
 	if _resource == null:
 		return
 	_resource.voxels = _saved_voxels.duplicate()
+	_resource.size_blocks = _saved_size_blocks
+	_resource.height_voxels = _saved_height_voxels
+	for channel in _saved_growth_channels:
+		_resource.set(channel, _saved_growth_channels[channel].duplicate())
 	_resource.palette = _saved_palette.duplicate()
 	_resource.transparency = _saved_transparency.duplicate()
 	_resource.surface_fill_levels = _saved_surface_fill_levels.duplicate()
@@ -537,6 +614,7 @@ func discard_changes() -> void:
 	_resource.emit_changed()
 	_refresh_palette()
 	_refresh_groups()
+	_sync_canvas_dimensions()
 	_rebuild_visual()
 	show_current_status()
 
@@ -564,7 +642,7 @@ func _build() -> void:
 	root.add_theme_constant_override("separation", 6)
 	add_child(root)
 
-	var header := HBoxContainer.new()
+	var header := HFlowContainer.new()
 	header.name = "VoxelSculptHeader"
 	header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_theme_constant_override("separation", 6)
@@ -577,6 +655,18 @@ func _build() -> void:
 	_title.clip_text = true
 	_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	header.add_child(_title)
+	var create_object := Button.new()
+	create_object.text = "+ Объект"
+	create_object.pressed.connect(func():
+		if create_object_callback.is_valid():
+			request_close(create_object_callback, Callable())
+	)
+	header.add_child(create_object)
+	_grow_button = Button.new()
+	_grow_button.text = "Расширить холст…"
+	_grow_button.visible = false
+	_grow_button.pressed.connect(_show_canvas_growth)
+	header.add_child(_grow_button)
 	_view_menu = MenuButton.new()
 	_view_menu.name = "VoxelSurfaceViewMenu"
 	_view_menu.text = "Вид"
@@ -624,6 +714,33 @@ func _build() -> void:
 	save.pressed.connect(_save)
 	header.add_child(save)
 
+	_context_controls = HFlowContainer.new()
+	_context_controls.visible = false
+	root.add_child(_context_controls)
+	_context_toggle = CheckButton.new()
+	_context_toggle.text = "Показать окружение"
+	_context_toggle.tooltip_text = "Снимок видимой геометрии сцены. Кисть меняет только выбранный объект. Свет остаётся студийным светом Canvas."
+	_context_toggle.toggled.connect(_toggle_scene_context)
+	_context_controls.add_child(_context_toggle)
+	_context_opacity = SpinBox.new()
+	_context_opacity.custom_minimum_size.x = 160
+	_context_opacity.prefix = "Фон"
+	_context_opacity.suffix = "%"
+	_context_opacity.min_value = 0
+	_context_opacity.max_value = 100
+	_context_opacity.step = 5
+	_context_opacity.value = 60
+	_context_opacity.editable = false
+	_context_opacity.value_changed.connect(func(value: float):
+		if is_instance_valid(_scene_context):
+			_scene_context.set_opacity(value / 100.0)
+	)
+	_context_controls.add_child(_context_opacity)
+	_context_refresh = Button.new()
+	_context_refresh.text = "Обновить окружение"
+	_context_refresh.disabled = true
+	_context_refresh.pressed.connect(_refresh_scene_context)
+	_context_controls.add_child(_context_refresh)
 	var tool_settings := HFlowContainer.new()
 	tool_settings.name = "VoxelSculptToolSettings"
 	tool_settings.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -882,14 +999,13 @@ func _build() -> void:
 
 	_viewport_container = SubViewportContainer.new()
 	_viewport_container.name = "VoxelSculptViewportContainer"
-	_viewport_container.custom_minimum_size = Vector2(420.0, 360.0)
+	_viewport_container.custom_minimum_size = Vector2(240.0, 240.0)
 	_viewport_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_viewport_container.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_viewport_container.focus_mode = Control.FOCUS_ALL
-	# Own the render-target dimensions explicitly. During main-screen relayout a
-	# stretched SubViewportContainer can briefly report a huge intermediate size,
-	# which asks Vulkan for a texture above the device limit.
-	_viewport_container.stretch = false
+	# Stretch decouples layout minimum from the previous render-target size.
+	# Otherwise opening a dock permanently locks the Canvas at its old width.
+	_viewport_container.stretch = true
 	_viewport_container.resized.connect(_sync_viewport_size)
 	_viewport_container.gui_input.connect(_on_viewport_input)
 	canvas_area.add_child(_viewport_container)
@@ -927,8 +1043,16 @@ func _build() -> void:
 	_selection_panel = SelectionPanel.new()
 	_selection_panel.activation_requested.connect(_toggle_voxel_selection)
 	_selection_panel.paint_requested.connect(_paint_voxel_selection)
+	_selection_panel.transform_requested.connect(_transform_voxel_selection)
+	_selection_panel.extract_requested.connect(_extract_voxel_selection)
 	_selection_panel.selection_changed.connect(func(has_selection: bool) -> void: _groups_panel.set_can_create(has_selection))
 	sidebar.add_child(_selection_panel)
+	_selection_interaction = preload("res://addons/ember_import/ember_voxel_selection_interaction.gd").new()
+	_viewport_container.add_child(_selection_interaction)
+	_selection_interaction.setup(self)
+	_stamp_panel = preload("res://addons/ember_import/ember_voxel_stamp_panel.gd").new()
+	sidebar.add_child(_stamp_panel)
+	_stamp_panel.setup(self)
 	sidebar.add_child(HSeparator.new())
 	_groups_panel = GroupsPanel.new()
 	_groups_panel.operation_requested.connect(_apply_group_operation)
@@ -936,6 +1060,12 @@ func _build() -> void:
 	_groups_panel.isolate_requested.connect(_set_group_isolation)
 	_groups_panel.visibility_requested.connect(_set_hidden_group_indices)
 	sidebar.add_child(_groups_panel)
+	_part_selector = OptionButton.new()
+	_part_selector.fit_to_longest_item = false
+	_part_selector.clip_text = true
+	_part_selector.tooltip_text = "К какой части склейки относятся новые воксели. Существующие воксели сохраняют свою часть; группы выделения от этого не меняются."
+	_part_selector.item_selected.connect(func(index: int): _actions.active_part = index)
+	sidebar.add_child(_part_selector)
 	sidebar.add_child(HSeparator.new())
 	_slice_control = SliceControl.new()
 	_slice_control.change_requested.connect(_on_height_slice_changed)
@@ -1085,6 +1215,10 @@ func _build_viewport() -> void:
 	_surface_root = Node3D.new()
 	_surface_root.name = "SurfaceChunks"
 	_viewport.add_child(_surface_root)
+	_scene_context = preload("res://addons/ember_import/ember_voxel_canvas_context.gd").new()
+	_scene_context.name = "ObjectSceneContext"
+	_scene_context.visible = false
+	_viewport.add_child(_scene_context)
 	_grid = MeshInstance3D.new()
 	_grid.name = "GameplayBlockOverlay"
 	_viewport.add_child(_grid)
@@ -1133,14 +1267,7 @@ func _sync_viewport_size() -> void:
 		maxi(1, roundi(_viewport_container.size.y)),
 	)
 	var largest := maxi(requested.x, requested.y)
-	if largest > MAX_VIEWPORT_DIMENSION:
-		var factor := float(MAX_VIEWPORT_DIMENSION) / float(largest)
-		requested = Vector2i(
-			maxi(1, floori(float(requested.x) * factor)),
-			maxi(1, floori(float(requested.y) * factor)),
-		)
-	if _viewport.size != requested:
-		_viewport.size = requested
+	_viewport_container.stretch_shrink = maxi(1, ceili(float(largest) / MAX_VIEWPORT_DIMENSION))
 
 
 func _refresh_palette() -> void:
@@ -1252,6 +1379,100 @@ func _toggle_voxel_selection() -> void:
 	_selection_panel.set_active(active)
 
 
+func _transform_voxel_selection() -> void:
+	_finish_palette_gesture()
+	if _resource == null or _selection_panel.busy():
+		return
+	_selection_interaction.begin_transform()
+
+func _extract_voxel_selection(cut: bool) -> void:
+	_finish_palette_gesture()
+	_finish_stroke()
+	if _resource == null or _selection_panel.busy():
+		return
+	if _selection_interaction.transforming or _selection_interaction.dragging:
+		_set_status("Сначала примените или отмените текущий жест (Enter / Esc)",true)
+		return
+	if has_unsaved_changes():
+		_set_status("Сначала сохраните правки Canvas. Выделение останется; затем повторите отделение.",true)
+		return
+	var extraction := preload("res://addons/ember_import/ember_voxel_extraction_session.gd").new()
+	var indices: PackedInt32Array = _selection_panel.selection_indices()
+	if not extraction.prepare(_object_session,_resource,indices,cut):
+		_set_status(extraction.error,true)
+		return
+	var source := _resource
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "Вырезать фрагмент" if cut else "Скопировать фрагмент"
+	dialog.dialog_text = "Выделено: %d vox → отдельный объект Fragment на том же месте.\n%s\nБез переключателя ниже вы продолжите работу в Canvas исходного объекта.\nОдно Undo отменяет операцию; файлы автоматически не удаляются." % [indices.size(),"Выбранные воксели исчезнут из исходного объекта." if cut else "Исходный объект останется без изменений; копия совпадёт с ним по положению."]
+	var go_to_3d := CheckBox.new()
+	go_to_3d.name = "ExtractionGoTo3D"
+	go_to_3d.text = "Перейти в 3D к новой детали"
+	go_to_3d.button_pressed = _extraction_go_to_3d
+	var content := VBoxContainer.new()
+	content.custom_minimum_size = Vector2(640,180)
+	var description := Label.new()
+	description.custom_minimum_size.x = 640
+	description.text = dialog.dialog_text
+	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	dialog.dialog_text = ""
+	dialog.add_child(content)
+	content.add_child(description)
+	content.add_child(go_to_3d)
+	var edit := _object_session
+	dialog.get_ok_button().text = "Вырезать" if cut else "Скопировать"
+	dialog.get_cancel_button().text = "Отмена"
+	dialog.dialog_hide_on_ok = false
+	dialog.confirmed.connect(func() -> void:
+		if _resource != source or has_unsaved_changes():
+			_set_status("Canvas изменился; откройте отделение заново",true)
+			dialog.queue_free()
+			return
+		var prop: EmberVoxelProp = extraction.commit(_actions._undo_redo)
+		if prop == null:
+			_set_status(extraction.error,true)
+			dialog.queue_free()
+			return
+		_selection_interaction.cancel_gesture()
+		_extraction_go_to_3d = go_to_3d.button_pressed
+		extraction.state_applied.connect(_refresh_extraction_canvas.bind(edit))
+		if not _extraction_go_to_3d:
+			_refresh_extraction_canvas(edit)
+			dialog.queue_free()
+			return
+		_disconnect_resource()
+		_object_session = null
+		_context_toggle.set_pressed_no_signal(false)
+		_toggle_scene_context(false)
+		_set_status("Фрагмент создан. Сохраните сцену в 3D; Ctrl+Z отменяет отделение.")
+		dialog.queue_free()
+		if Engine.is_editor_hint():
+			EditorInterface.set_main_screen_editor("3D")
+	)
+	dialog.canceled.connect(dialog.queue_free)
+	add_child(dialog)
+	dialog.popup_centered(Vector2i(680,300))
+
+func _refresh_extraction_canvas(edit: RefCounted) -> void:
+	if _object_session != edit:
+		return
+	if has_unsaved_changes():
+		_set_status("Состояние сцены изменилось через Undo/Redo. Черновик оставлен; перед сохранением откройте объект заново.",true)
+		return
+	var view := _capture_editor_view_state()
+	var context_visible := _context_toggle.button_pressed
+	if not edit.refresh_before_open():
+		_disconnect_resource()
+		_set_status("Сцена обновлена, но Canvas не удалось открыть: " + str(edit.error),true)
+		return
+	_open_object_unchecked(edit)
+	_restore_editor_view_state(view)
+	_context_toggle.button_pressed = context_visible
+	if Engine.is_editor_hint():
+		EditorInterface.get_selection().clear()
+		EditorInterface.get_selection().add_node(edit._target.get_ref())
+	_set_status("Canvas обновлён · фрагмент — отдельный объект в сцене · сохраните сцену в 3D")
+
 func _paint_voxel_selection(indices: PackedInt32Array) -> void:
 	_finish_palette_gesture()
 	if _resource == null or _palette.selected < 0:
@@ -1276,6 +1497,17 @@ func _paint_voxel_selection(indices: PackedInt32Array) -> void:
 
 
 func _refresh_groups(preferred_id := "") -> void:
+	if _part_selector != null:
+		_part_selector.clear()
+		_part_selector.visible = _resource != null and not _resource.merge_parts.is_empty()
+		_part_selector.add_item("Новые воксели → Добавленное")
+		if _resource != null:
+			for part in _resource.merge_parts:
+				_part_selector.add_item("Новые воксели → " + part)
+		_part_selector.disabled = _actions == null
+		if _actions != null:
+			_actions.active_part = clampi(_actions.active_part,0,_part_selector.item_count-1)
+			_part_selector.select(_actions.active_part)
 	if _resource == null:
 		_displayed_groups = []
 		_locked_indices.clear()
@@ -1722,6 +1954,9 @@ func _top_height(x: int, z: int) -> float:
 
 
 func _on_viewport_input(event: InputEvent) -> void:
+	if is_instance_valid(_selection_interaction) and _selection_interaction.handle(event):
+		accept_event()
+		return
 	if event is InputEventKey:
 		var key := event as InputEventKey
 		if key.pressed and not key.echo and key.keycode == KEY_V and not key.is_command_or_control_pressed():
@@ -1820,6 +2055,7 @@ func _pick_at(position: Vector2) -> Dictionary:
 		_camera.project_ray_origin(viewport_position),
 		_camera.project_ray_normal(viewport_position),
 		_slice_height,
+		_object_session != null and _selected_tool_id() == Model.TOOL_ADD,
 	)
 
 
@@ -2061,6 +2297,10 @@ func _select_option_metadata(option: OptionButton, value: Variant) -> void:
 
 func _update_tool_help(tool_id: int) -> void:
 	if not is_instance_valid(_info):
+		return
+	if is_instance_valid(_selection_interaction) and _selection_interaction._stamp != null:
+		_active_tool_label.text = "Штамп · " + ("добавить" if _selection_interaction._stamp_mode.selected == 0 else "заменить")
+		_info.text = "ЛКМ задаёт положение штампа. Enter применяет один отпечаток, Esc отменяет. Параметры — в панели штампа; пустоты не стирают объект."
 		return
 	var title := "Объём · добавить"
 	var help := "Добавляет материал перед видимой гранью. Протяните LMB; один жест отменяется одним Ctrl+Z."
@@ -2950,6 +3190,9 @@ func _dictionary_indices(values: Dictionary) -> PackedInt32Array:
 
 
 func _update_cursor(position: Vector2) -> void:
+	if is_instance_valid(_selection_panel) and _selection_panel.active:
+		_cursor.hide()
+		return
 	if _resource == null or _cursor == null or not is_visible_in_tree():
 		return
 	var pick := _pick_at(position)
@@ -3211,6 +3454,26 @@ func _save() -> bool:
 	_finish_stroke()
 	if _resource == null:
 		return false
+	if _object_session != null:
+		var result: Dictionary = _object_session.save(_resource)
+		if not bool(result.get("ok", false)):
+			_set_status(str(result.get("error", "Сохранение не завершено")), true)
+			return false
+		_resource_path = str(result.get("path", ""))
+		_saved_voxels = _resource.voxels.duplicate()
+		_saved_palette = _resource.palette.duplicate()
+		_saved_transparency = _resource.transparency.duplicate()
+		_saved_surface_fill_levels = _resource.surface_fill_levels.duplicate()
+		_saved_surface_fill_materials = _resource.surface_fill_materials.duplicate()
+		_saved_surface_fill_palette = _resource.surface_fill_palette.duplicate()
+		_saved_voxel_groups = _resource.voxel_groups.duplicate(true)
+		_saved_schema_version = _resource.schema_version
+		_saved_size_blocks = _resource.size_blocks
+		_saved_height_voxels = _resource.height_voxels
+		_capture_growth_channels()
+		_resource_path_label.text = _object_session.label() + " · " + _resource_path
+		_set_status("Модель и коллизия обновлены. Сохраните сцену обычным Ctrl+S в 3D.")
+		return true
 	var errors := _resource.validation_errors()
 	if not errors.is_empty():
 		_set_status("Сохранение остановлено · %s" % errors[0], true)
@@ -3255,6 +3518,9 @@ func _save() -> bool:
 	_saved_surface_fill_palette = _resource.surface_fill_palette.duplicate()
 	_saved_voxel_groups = _resource.voxel_groups.duplicate(true)
 	_saved_schema_version = _resource.schema_version
+	_saved_size_blocks = _resource.size_blocks
+	_saved_height_voxels = _resource.height_voxels
+	_capture_growth_channels()
 	if _editor_interface != null:
 		_editor_interface.get_resource_filesystem().scan()
 	_set_status(
@@ -3323,6 +3589,7 @@ func _play_owner_scene() -> void:
 
 
 func _on_source_changed(indices: PackedInt32Array) -> void:
+	_sync_canvas_dimensions()
 	if _resource != null and _resource.voxel_groups != _displayed_groups:
 		_refresh_groups(_groups_panel.selected_id())
 		_hidden_group_indices = _groups_panel.hidden_indices()
@@ -3338,6 +3605,120 @@ func _on_source_changed(indices: PackedInt32Array) -> void:
 		_refresh_palette()
 	_rebuild_visual(indices)
 	show_current_status()
+
+
+func _sync_canvas_dimensions() -> void:
+	if _resource == null or _resource.grid_size() == _displayed_grid:
+		return
+	_displayed_grid = _resource.grid_size()
+	for mesh in _chunk_meshes.values():
+		mesh.queue_free()
+	_chunk_meshes.clear()
+	_pending_preview_chunks.clear()
+	_edit_region_blocks = Rect2i(Vector2i.ZERO, Vector2i(_resource.size_blocks.x, _resource.size_blocks.z))
+	_slice_height = -1
+	_slice_control.configure(_displayed_grid.y)
+	_slice_control.restore_view(-1)
+	_selection_panel.clear_selection()
+	_surface_heightfield = PackedInt32Array()
+	_heightfield_source_voxels = PackedByteArray()
+	_cancel_ramp_anchor(false)
+	_sync_context_frame()
+
+
+func _toggle_scene_context(enabled: bool) -> void:
+	_context_opacity.editable = enabled
+	_context_refresh.disabled = not enabled
+	if not enabled:
+		_scene_context.visible = false
+		_scene_context.clear()
+		return
+	_refresh_scene_context()
+
+
+func _refresh_scene_context() -> void:
+	if _object_session == null:
+		return
+	var projection: Dictionary = _object_session.context_projection(_resource)
+	var report: Dictionary = projection if projection.has("error") else _scene_context.rebuild(projection.scene, projection.target, projection.frame)
+	if report.has("error"):
+		_context_toggle.set_pressed_no_signal(false)
+		_toggle_scene_context(false)
+		_set_status(str(report.error), true)
+		return
+	_scene_context.set_opacity(_context_opacity.value / 100.0)
+	_scene_context.visible = true
+	_set_status("Окружение: %d деталей · %.1f мс · только просмотр. После расстановки в 3D нажмите «Обновить окружение»." % [report.count, report.milliseconds])
+
+
+func _sync_context_frame() -> void:
+	if _object_session == null or not is_instance_valid(_scene_context) or not _scene_context.visible:
+		return
+	var projection: Dictionary = _object_session.context_projection(_resource)
+	if projection.has("error") or absf((projection.frame as Transform3D).basis.determinant()) < 0.000001:
+		_context_toggle.set_pressed_no_signal(false)
+		_toggle_scene_context(false)
+		_set_status(str(projection.get("error", "Нулевой масштаб объекта: окружение скрыто.")), true)
+		return
+	_scene_context.set_frame(projection.frame)
+
+
+func _capture_growth_channels() -> void:
+	for channel in ["emissive", "shine", "transmittance", "merge_parts", "voxel_part_ids"]:
+		_saved_growth_channels[channel] = _resource.get(channel).duplicate()
+
+
+func _show_canvas_growth() -> void:
+	if _object_session == null or _resource == null:
+		return
+	_flush_pending_stroke_position()
+	_finish_stroke()
+	var source := _resource
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "Расширить холст объекта"
+	dialog.get_ok_button().text = "Применить"
+	var box := VBoxContainer.new()
+	dialog.add_child(box)
+	var info := Label.new()
+	info.text = "Сейчас: %s vox. X/Z — симметрично, Y — вверх.\nГотовая геометрия не сдвигается и не растягивается." % source.grid_size()
+	box.add_child(info)
+	var controls: Array[SpinBox] = []
+	for axis in 3:
+		var row := HBoxContainer.new()
+		box.add_child(row)
+		var label := Label.new()
+		label.text = ["Ширина X", "Высота Y", "Глубина Z"][axis]
+		label.custom_minimum_size.x = 120
+		row.add_child(label)
+		var value := SpinBox.new()
+		value.min_value = source.grid_size()[axis]
+		value.max_value = 8 * source.normalized_density() if axis == 1 else 256
+		value.step = 1 if axis == 1 else source.normalized_density()
+		value.value = source.grid_size()[axis]
+		row.add_child(value)
+		controls.append(value)
+	var preview := Label.new()
+	box.add_child(preview)
+	var refresh := func(_unused := 0.0):
+		var size := Vector3i(controls[0].value, controls[1].value, controls[2].value)
+		var result := preload("res://addons/ember_import/ember_voxel_canvas_growth.gd").plan(source, size)
+		preview.text = str(result.error) if result.has("error") else "Будет: %s vox · добавлено пустых ячеек: %d" % [size, size.x * size.y * size.z - source.voxels.size()]
+		if not result.has("error") and size.x * size.y * size.z > preload("res://addons/ember_import/ember_voxel_shapes.gd").WARNING_CELLS:
+			preview.text += "\nБольшой холст: применение и сохранение могут занять несколько секунд."
+		dialog.get_ok_button().disabled = result.has("error")
+	for control in controls:
+		control.value_changed.connect(refresh)
+	dialog.confirmed.connect(func():
+		if _resource == source and _object_session != null:
+			var result := _actions.grow_canvas(source, Vector3i(controls[0].value, controls[1].value, controls[2].value))
+			if result.has("error"):
+				_set_status(str(result.error), true)
+		dialog.queue_free()
+	)
+	dialog.canceled.connect(dialog.queue_free)
+	add_child(dialog)
+	refresh.call()
+	dialog.popup_centered()
 
 
 func _disconnect_resource() -> void:

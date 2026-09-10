@@ -9,6 +9,8 @@ const SurfaceProjection := preload("res://scripts/ember_voxel_surface_projection
 @export_group("0 · Карта и тест")
 ## ID исходной карты в joi-conductor/content/ember/maps. Полный reimport затирает правки сцены.
 @export var map_id := "fan_town"
+## Native scenes author their regions directly and need no legacy pack hydration.
+@export var hydrate_legacy_regions := true
 ## Одна общая художественная поверхность карты. Выбранный прямоугольник в 3D
 ## является только областью редактирования и не создаёт отдельный Resource.
 @export var visual_surface: EmberVoxelModelResource:
@@ -403,6 +405,8 @@ func region_world(region_id: String) -> Vector3:
 
 
 func hydrate_region_runtime() -> void:
+	if not hydrate_legacy_regions:
+		return
 	var raw_map: Variant = EmberPack.parse_json_file(EmberPack.map_path(map_id))
 	if typeof(raw_map) != TYPE_DICTIONARY:
 		return
@@ -605,6 +609,10 @@ func _expected_world_surface_blocks() -> Vector2i:
 		return Vector2i(int(_stats.width), int(_stats.height))
 	if authored_size_blocks.x > 0 and authored_size_blocks.y > 0:
 		return authored_size_blocks
+	# Inspector deserialization can ask before authored_size_blocks is assigned.
+	# An unknown native footprint is valid here; it never implies legacy import.
+	if not hydrate_legacy_regions or not FileAccess.file_exists(EmberPack.map_path(map_id)):
+		return Vector2i.ZERO
 	var raw: Variant = EmberPack.parse_json_file(EmberPack.map_path(map_id))
 	if typeof(raw) != TYPE_DICTIONARY:
 		return Vector2i.ZERO

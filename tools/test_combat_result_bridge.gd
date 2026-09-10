@@ -9,6 +9,11 @@ func _init() -> void:
 	var errors: Array[String] = []
 	var encounter := Catalog.definition("colored_crossing_demo")
 	var state := encounter.initial_state() if encounter != null else {}
+	var pair := encounter.initial_state({}, 71, ["mira", "orik"])
+	pair["units"]["orik"]["hp"] = 0
+	var pair_report := Result.build(encounter, pair, "victory")
+	if pair_report.get("xpRows", []).size() != 2:
+		errors.append("pair result report contains inactive XP rows")
 	for raw_id in state.get("units", {}):
 		var unit: Dictionary = (state.get("units", {}) as Dictionary)[raw_id]
 		if str(unit.get("team", "")) == "enemy":

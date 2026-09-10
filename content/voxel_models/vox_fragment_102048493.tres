@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EmberVoxelModelResource" format=4]
+
+[ext_resource type="Script" uid="uid://de8sc1gkllwnb" path="res://scripts/ember_voxel_model_resource.gd" id="1_t21tg"]
+
+[resource]
+script = ExtResource("1_t21tg")
+model_id = "vox_fragment_102048493"
+display_name = "Новая форма · фрагмент"
+tags = PackedStringArray()
+height_voxels = 1
+palette = PackedColorArray(1, 1, 1, 0, 0.69803923, 0.47843137, 0.2784314, 1, 0.953125, 0.0986935, 0.010304037, 1)
+voxels = PackedByteArray("AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==")
+emissive = PackedByteArray()
+shine = PackedByteArray()
+transparency = PackedByteArray()
+transmittance = PackedByteArray()
+surface_fill_levels = PackedInt32Array()
+surface_fill_materials = PackedByteArray()
+surface_fill_palette = PackedByteArray()
+merge_parts = PackedStringArray()
+voxel_part_ids = PackedInt32Array()

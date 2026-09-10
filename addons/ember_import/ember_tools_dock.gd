@@ -689,7 +689,8 @@ func _prefab_state(model_id: String) -> String:
 	var path := EmberVoxelPrefab.prefab_path(model_id)
 	if not ResourceLoader.exists(path):
 		return "не создан"
-	var packed := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_REPLACE) as PackedScene
+	# Read-only inspection must not clear the SceneState of live instances.
+	var packed := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as PackedScene
 	var report := EmberVoxelPrefab.validate_packed(model_id, packed)
 	if bool(report["ok"]):
 		return "актуален · %s" % " + ".join(report["checks"])

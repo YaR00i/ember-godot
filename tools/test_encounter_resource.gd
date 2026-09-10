@@ -45,6 +45,21 @@ func _test_resource(encounter: EmberEncounterResource, errors: Array[String]) ->
 	if encounter.victory_xp != 35:
 		errors.append("encounter lost its authored equal-party XP reward")
 	var state := encounter.initial_state()
+	for count in range(1, 5):
+		var active: Array[String] = []
+		active.assign(["mira", "orik", "sena", "protagonist"].slice(0, count))
+		var partial := encounter.initial_state({}, 51, active)
+		if EmberPartyState.combat_hero_ids(partial).size() != count or not encounter.active_party_errors(active).is_empty():
+			errors.append("compatible active subset did not create exactly %d heroes" % count)
+	var incompatible := encounter.duplicate(true) as EmberEncounterResource
+	incompatible.party_unit_ids = PackedStringArray(["mira"])
+	if incompatible.active_party_errors(["orik"]).is_empty() or not incompatible.initial_state({}, 51, ["orik"]).is_empty():
+		errors.append("unsupported active hero was silently intersected")
+	incompatible = encounter.duplicate(true) as EmberEncounterResource
+	incompatible.battlefield = encounter.battlefield.duplicate(true) as EmberBattlefieldResource
+	incompatible.battlefield.party_deployment_cells.resize(1)
+	if incompatible.active_party_errors(["mira", "orik"]).is_empty() or not incompatible.initial_state({}, 51, ["mira", "orik"]).is_empty():
+		errors.append("insufficient cells were silently truncated")
 	var units: Dictionary = state.get("units", {})
 	if units.size() != encounter.party_unit_ids.size() + encounter.enemy_unit_ids.size():
 		errors.append("encounter roster did not become combat units")

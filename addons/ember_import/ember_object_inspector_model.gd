@@ -164,7 +164,9 @@ static func _collider_component(
 	var authored := bool(model.get("physical", false))
 	var shape := prop.get_node_or_null("Collision/Shape") as CollisionShape3D
 	var actual := shape != null and shape.shape != null
-	if authored != actual:
+	var voxels: Variant = model.get("voxels", [])
+	var empty: bool = voxels.size() > 0 and voxels.count(0) == voxels.size()
+	if (authored and not empty) != actual:
 		_diag(
 			diagnostics,
 			"error",
@@ -179,7 +181,7 @@ static func _collider_component(
 			{"label": "Generated", "value": _yes_no(actual), "source": "Derived"},
 			{
 				"label": "Shape",
-				"value": shape.shape.get_class() if actual else "—",
+				"value": shape.shape.get_class() if actual else ("Пустая модель · коллизия появится после лепки" if empty else "—"),
 				"source": "Derived",
 			},
 		],

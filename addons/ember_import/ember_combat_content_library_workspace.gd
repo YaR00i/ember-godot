@@ -1,21 +1,25 @@
 @tool
 class_name EmberCombatContentLibraryWorkspace
 extends VBoxContainer
-## Central browser for the same canonical effect/action/unit Resources used by
+## Central browser for the same canonical status/effect/action/unit Resources used by
 ## Inspector and runtime. It does not introduce a parallel document format.
 
+const StatusCatalog := preload("res://scripts/prototypes/ember_combat_status_catalog.gd")
 const EffectCatalog := preload("res://scripts/prototypes/ember_combat_effect_catalog.gd")
 const ActionCatalog := preload("res://scripts/prototypes/ember_combat_action_catalog.gd")
 const UnitCatalog := preload("res://scripts/prototypes/ember_combat_unit_catalog.gd")
+const StatusScript := preload("res://scripts/prototypes/ember_combat_status_resource.gd")
 const EffectScript := preload("res://scripts/prototypes/ember_combat_effect_resource.gd")
 const ActionScript := preload("res://scripts/prototypes/ember_combat_action_resource.gd")
 const UnitScript := preload("res://scripts/prototypes/ember_combat_unit_resource.gd")
+const StatusPanel := preload("res://addons/ember_import/ember_combat_status_inspector_panel.gd")
 const EffectPanel := preload("res://addons/ember_import/ember_combat_effect_inspector_panel.gd")
 const ActionPanel := preload("res://addons/ember_import/ember_combat_action_inspector_panel.gd")
 const UnitPanel := preload("res://addons/ember_import/ember_combat_unit_inspector_panel.gd")
 
-const KINDS := ["effect", "action", "unit"]
+const KINDS := ["status", "effect", "action", "unit"]
 const ROOTS := {
+	"status": "res://content/combat/statuses",
 	"effect": "res://content/combat/effects",
 	"action": "res://content/combat/actions",
 	"unit": "res://content/combat/units",
@@ -37,7 +41,7 @@ var _create_team: OptionButton
 var _create_team_label: Label
 var _duplicate_source: Resource
 var _selected_id := ""
-var _kind := "effect"
+var _kind := "status"
 var _usage_counts := {}
 
 
@@ -79,6 +83,7 @@ func _input(event: InputEvent) -> void:
 
 
 func refresh(preferred_id := "") -> void:
+	StatusCatalog.refresh()
 	EffectCatalog.refresh()
 	ActionCatalog.refresh()
 	if not preferred_id.is_empty():
@@ -110,13 +115,14 @@ func _build() -> void:
 	title.add_theme_font_size_override("font_size", 20)
 	heading.add_child(title)
 	var subtitle := Label.new()
-	subtitle.text = "Одна база для эффектов, приёмов, героев и противников"
+	subtitle.text = "Одна база для статусов, эффектов, приёмов, героев и противников"
 	subtitle.modulate = Color(0.62, 0.70, 0.80)
 	subtitle.add_theme_font_size_override("font_size", 12)
 	heading.add_child(subtitle)
 
 	_kind_tabs = TabBar.new()
 	_kind_tabs.name = "CombatContentKinds"
+	_kind_tabs.add_tab("Статусы")
 	_kind_tabs.add_tab("Эффекты")
 	_kind_tabs.add_tab("Умения и магия")
 	_kind_tabs.add_tab("Герои и существа")
@@ -310,6 +316,9 @@ func _on_kind_changed(index: int) -> void:
 func _resources() -> Array[Resource]:
 	var result: Array[Resource] = []
 	match _kind:
+		"status":
+			for status in StatusCatalog.resources():
+				result.append(status)
 		"effect":
 			result.assign(EffectCatalog.resources())
 		"action":
@@ -324,7 +333,9 @@ func _resources() -> Array[Resource]:
 func _resource_id(resource: Resource) -> String:
 	if resource == null:
 		return ""
-	return str(resource.get({"effect": "effect_id", "action": "action_id", "unit": "unit_id"}[_kind]))
+	return str(resource.get({
+		"status": "status_id", "effect": "effect_id", "action": "action_id", "unit": "unit_id",
+	}[_kind]))
 
 
 func _resource_name(resource: Resource) -> String:
@@ -388,6 +399,8 @@ func _refresh_list() -> void:
 
 func _usage_copy(resource: Resource) -> String:
 	var count := int(_usage_counts.get(_resource_id(resource), 0))
+	if _kind == "status":
+		return "%d эффект." % count
 	return "%d бойц." % count if _kind == "action" else "%d действ." % count
 
 
@@ -397,7 +410,11 @@ func _rebuild_usage_counts(resources: Array[Resource]) -> void:
 		_usage_counts[_resource_id(resource)] = (
 			(resource.get("action_ids") as PackedStringArray).size() if _kind == "unit" else 0
 		)
-	if _kind == "effect":
+	if _kind == "status":
+		for effect in EffectCatalog.resources():
+			for status_id in _effect_status_ids(effect):
+				_usage_counts[status_id] = int(_usage_counts.get(status_id, 0)) + 1
+	elif _kind == "effect":
 		for action in ActionCatalog.resources():
 			for step in action.effect_steps:
 				if step == null:
@@ -427,6 +444,7 @@ func _on_item_activated() -> void:
 
 func _selected_resource() -> Resource:
 	match _kind:
+		"status": return StatusCatalog.resource(_selected_id)
 		"effect": return EffectCatalog.resource(_selected_id)
 		"action": return ActionCatalog.resource(_selected_id)
 		"unit": return UnitCatalog.resource(_selected_id)
@@ -521,7 +539,7 @@ func _show_selected() -> void:
 	var save := Button.new()
 	save.name = "CombatContentSave"
 	save.text = "Сохранить"
-	save.tooltip_text = "Записать изменения выбранного эффекта, действия или бойца."
+	save.tooltip_text = "Записать изменения выбранного статуса, эффекта, действия или бойца."
 	save.disabled = resource.resource_path.is_empty()
 	save.pressed.connect(_save_resource.bind(resource))
 	toolbar.add_child(save)
@@ -532,6 +550,10 @@ func _show_selected() -> void:
 	duplicate.pressed.connect(_open_create_dialog.bind(true))
 	toolbar.add_child(duplicate)
 	match _kind:
+		"status":
+			var panel := StatusPanel.new() as VBoxContainer
+			panel.call("setup", resource)
+			_editor.add_child(_content_card(panel, accent))
 		"effect":
 			var panel := EffectPanel.new() as VBoxContainer
 			panel.call("setup", resource)
@@ -564,6 +586,8 @@ func _resource_accent(resource: Resource) -> Color:
 		return Color("8793a6")
 	if _kind == "unit":
 		return resource.get("battle_color") as Color
+	if _kind == "status":
+		return resource.get("ui_color") as Color
 	return resource.get("ui_color") as Color
 
 
@@ -580,6 +604,8 @@ func _resource_icon(resource: Resource, size: int) -> Texture2D:
 
 func _resource_kind_label(resource: Resource) -> String:
 	match _kind:
+		"status":
+			return "Статус · %s" % str(resource.call("kind_label"))
 		"effect":
 			return "Эффект · %s" % str(resource.call("operation_label"))
 		"action":
@@ -596,6 +622,8 @@ func _resource_kind_label(resource: Resource) -> String:
 
 func _usage_long(resource: Resource) -> String:
 	var count := int(_usage_counts.get(_resource_id(resource), 0))
+	if _kind == "status":
+		return "Используется в эффектах: %d" % count
 	if _kind == "effect":
 		return "Используется в действиях: %d" % count
 	if _kind == "action":
@@ -640,9 +668,13 @@ func _relations_card(resource: Resource, accent: Color) -> Control:
 	if relations.is_empty():
 		var empty := Label.new()
 		empty.text = (
-			"Этот эффект пока не используется."
-			if _kind == "effect"
-			else ("Действие пока никому не назначено." if _kind == "action" else "Бойцу пока не назначены действия.")
+			"Этот статус пока не используется."
+			if _kind == "status"
+			else (
+				"Этот эффект пока не используется."
+				if _kind == "effect"
+				else ("Действие пока никому не назначено." if _kind == "action" else "Бойцу пока не назначены действия.")
+			)
 		)
 		empty.modulate = Color(0.62, 0.68, 0.76)
 		box.add_child(empty)
@@ -664,7 +696,15 @@ func _relations_card(resource: Resource, accent: Color) -> Control:
 
 func _related_resources(resource: Resource) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	if _kind == "effect":
+	if _kind == "status":
+		var status_id := _resource_id(resource)
+		for effect in EffectCatalog.resources():
+			if status_id in _effect_status_ids(effect):
+				result.append({
+					"kind": "effect", "id": str(effect.get("effect_id")),
+					"label": str(effect.get("display_name")),
+				})
+	elif _kind == "effect":
 		var effect_id := _resource_id(resource)
 		for action in ActionCatalog.resources():
 			for step in action.effect_steps:
@@ -684,6 +724,21 @@ func _related_resources(resource: Resource) -> Array[Dictionary]:
 				"id": action_id,
 				"label": action.display_name if action != null else "⚠ %s" % action_id,
 			})
+	return result
+
+
+func _effect_status_ids(effect: Resource) -> Array[String]:
+	var result: Array[String] = []
+	if effect == null:
+		return result
+	var candidates: Array = []
+	candidates.append(str(effect.get("status_id")))
+	candidates.append_array(Array(effect.get("remove_status_ids")))
+	candidates.append_array(Array(effect.get("spread_status_ids")))
+	for raw_id in candidates:
+		var status_id := str(raw_id).strip_edges()
+		if not status_id.is_empty() and status_id not in result:
+			result.append(status_id)
 	return result
 
 
@@ -736,6 +791,7 @@ func _save_resource(resource: Resource) -> void:
 		_status.text = "Не удалось сохранить %s: %s" % [resource.resource_path, error_string(error)]
 		_status.modulate = Color("ff8d78")
 		return
+	StatusCatalog.refresh()
 	EffectCatalog.refresh()
 	ActionCatalog.refresh()
 	var saved_id := _resource_id(resource)
@@ -779,7 +835,9 @@ func _create_resource() -> void:
 		_status.text = "Не удалось создать Resource."
 		_status.modulate = Color("ff8d78")
 		return
-	resource.set({"effect": "effect_id", "action": "action_id", "unit": "unit_id"}[_kind], resource_id)
+	resource.set({
+		"status": "status_id", "effect": "effect_id", "action": "action_id", "unit": "unit_id",
+	}[_kind], resource_id)
 	resource.set("display_name", display_name)
 	if _kind == "unit" and _duplicate_source == null:
 		resource.set("team", _create_team.selected)
@@ -801,6 +859,10 @@ func _create_resource() -> void:
 
 func _blank_resource() -> Resource:
 	match _kind:
+		"status":
+			var status := StatusScript.new() as Resource
+			status.set("description", "Опишите состояние для автора боевого контента.")
+			return status
 		"effect":
 			var effect := EffectScript.new() as Resource
 			effect.set("description", "Опишите переиспользуемый результат эффекта.")

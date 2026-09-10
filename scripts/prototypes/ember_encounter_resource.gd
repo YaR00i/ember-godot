@@ -69,17 +69,36 @@ func validation_errors() -> Array[String]:
 	return errors
 
 
-func initial_state(party_snapshot: Dictionary = {}, rng_seed: int = 0) -> Dictionary:
+func active_party_errors(active_ids: Array[String]) -> Array[String]:
+	var errors: Array[String] = []
+	if not EmberPartyState.valid_active_hero_ids(active_ids):
+		errors.append("Активная группа должна содержать от 1 до 4 разных героев каталога.")
+		return errors
+	for hero_id in active_ids:
+		if hero_id not in party_unit_ids:
+			errors.append("Встреча не поддерживает активного героя: %s." % hero_id)
+	if battlefield == null or active_ids.size() > battlefield.party_deployment_cells.size():
+		errors.append("На поле недостаточно клеток для активной группы (%d)." % active_ids.size())
+	return errors
+
+
+func initial_state(party_snapshot: Dictionary = {}, rng_seed: int = 0, active_ids: Array[String] = []) -> Dictionary:
 	if battlefield == null:
 		return {}
+	if not active_ids.is_empty() and not active_party_errors(active_ids).is_empty():
+		return {}
+	var roster := PackedStringArray()
+	for hero_id in party_unit_ids:
+		if active_ids.is_empty() or hero_id in active_ids:
+			roster.append(hero_id)
 	var active_seed := rng_seed
 	if active_seed == 0:
 		active_seed = int(Time.get_ticks_usec()) ^ encounter_id.hash()
 	var state := Combat.initial_state(active_seed)
 	var source_units: Dictionary = state.get("units", {})
 	var units := {}
-	for index in party_unit_ids.size():
-		var unit_id := str(party_unit_ids[index])
+	for index in roster.size():
+		var unit_id := str(roster[index])
 		if not source_units.has(unit_id) or index >= battlefield.party_deployment_cells.size():
 			continue
 		var unit: Dictionary = (source_units[unit_id] as Dictionary).duplicate(true)

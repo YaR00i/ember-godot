@@ -8,6 +8,10 @@ const Terrain = preload("res://scripts/prototypes/ember_combat_terrain.gd")
 const UnitCatalog = preload("res://scripts/prototypes/ember_combat_unit_catalog.gd")
 const ActionCatalog = preload("res://scripts/prototypes/ember_combat_action_catalog.gd")
 const AiProfileCatalog = preload("res://scripts/prototypes/ember_combat_ai_profile_catalog.gd")
+const StatusRules = preload("res://scripts/prototypes/ember_combat_status_rules.gd")
+const DamageRules = preload("res://scripts/prototypes/ember_combat_damage_rules.gd")
+const EffectRules = preload("res://scripts/prototypes/ember_combat_effect_rules.gd")
+const StateSchema = preload("res://scripts/prototypes/ember_combat_state_schema.gd")
 const INVALID_CELL := Vector2i(-999999, -999999)
 const ITEM_COMMAND_PREFIX := "item:"
 const HELD_THROW_COMMAND := "__held_throw"
@@ -234,6 +238,10 @@ static func action_ids() -> PackedStringArray:
 
 static func unit_definition(state: Dictionary, unit_id: String) -> Dictionary:
 	return ((state.get("units", {}) as Dictionary).get(unit_id, {}) as Dictionary).duplicate(true)
+
+
+static func state_validation_errors(state: Dictionary) -> Array[String]:
+	return StateSchema.validation_errors(state)
 
 
 static func current_unit_id(state: Dictionary) -> String:
@@ -522,6 +530,9 @@ static func preview(
 	target_cell: Vector2i = INVALID_CELL,
 	lift_choice: String = "throw",
 ) -> Dictionary:
+	var state_error := StateSchema.first_error(state)
+	if not state_error.is_empty():
+		return _invalid_preview(state_error)
 	var actor_id := current_unit_id(state)
 	var actor := unit_definition(state, actor_id)
 	var action := command_definition(state, action_id)
@@ -823,6 +834,10 @@ static func preview(
 
 
 static func commit(state: Dictionary, resolved: Dictionary) -> Dictionary:
+	if not StateSchema.first_error(state).is_empty():
+		return state.duplicate(true)
+	if not StateSchema.first_result_error(resolved).is_empty():
+		return state.duplicate(true)
 	if not bool(resolved.get("ok", false)):
 		return state.duplicate(true)
 	if resolved.has("stateTurn") and int(resolved.get("stateTurn", -1)) != int(state.get("turn", 1)):
@@ -1219,16 +1234,23 @@ static func _ai_pursuit_preview(
 	var result := {
 		"ok": true,
 		"stateTurn": int(state.get("turn", 1)),
+		"stateHash": hash(state),
 		"actorId": actor_id,
 		"actionId": "",
 		"targetId": target_id,
 		"mpCost": 0,
+		"mpBefore": int(actor.get("mp", 0)),
+		"mpAfter": int(actor.get("mp", 0)),
 		"damage": {},
+		"fixedDamage": {},
 		"setStatuses": {},
 		"removeStatuses": {},
 		"moves": {},
 		"movementPath": best_path,
 		"cellChanges": {},
+		"restoreHp": {},
+		"restoreMp": {},
+		"inventoryCost": {},
 		"reaction": "Сближение",
 		"notes": ["Ход завершается без атаки."],
 		"movementOnly": true,
@@ -1507,47 +1529,11 @@ static func describe_preview(state: Dictionary, resolved: Dictionary) -> String:
 
 
 static func status_name(status_id: String) -> String:
-	return str(status_definition(status_id).get("name", status_id))
+	return StatusRules.display_name(status_id)
 
 
 static func status_definition(status_id: String) -> Dictionary:
-	return {
-		"wet": {
-			"name": "Мокрый",
-			"kind": "debuff",
-			"icon": "●",
-			"color": Color("65cfe1"),
-		},
-		"frozen": {
-			"name": "Заморозка",
-			"kind": "debuff",
-			"icon": "◆",
-			"color": Color("a9eeff"),
-		},
-		"burning": {
-			"name": "Горение",
-			"kind": "debuff",
-			"icon": "✦",
-			"color": Color("ff8a55"),
-		},
-		"guard": {
-			"name": "Защита",
-			"kind": "buff",
-			"icon": "■",
-			"color": Color("c3b6ff"),
-		},
-		"overheated": {
-			"name": "Накал",
-			"kind": "buff",
-			"icon": "✹",
-			"color": Color("ffb05f"),
-		},
-	}.get(status_id, {
-		"name": status_id,
-		"kind": "debuff",
-		"icon": "●",
-		"color": Color.WHITE,
-	}).duplicate(true)
+	return StatusRules.definition(status_id)
 
 
 static func _element_label(element_id: String) -> String:
@@ -1598,7 +1584,7 @@ static func _earliest_id(times: Dictionary) -> String:
 
 
 static func _has_status(unit: Dictionary, status_id: String) -> bool:
-	return int((unit.get("statuses", {}) as Dictionary).get(status_id, 0)) > 0
+	return StatusRules.has(unit, status_id)
 
 
 static func _zone_has_tag(state: Dictionary, zone_index: int, tag: String) -> bool:
@@ -1652,19 +1638,11 @@ static func _has_reaction_setup(
 
 
 static func _hit_chance(actor: Dictionary, target: Dictionary, action: Dictionary) -> int:
-	return clampi(
-		int(actor.get("acc", 90))
-		+ int(action.get("accuracyModifier", 0))
-		- int(target.get("eva", 0)),
-		60,
-		99,
-	)
+	return DamageRules.hit_chance(actor, target, action)
 
 
 static func _critical_chance(actor: Dictionary, action: Dictionary) -> int:
-	if int(action.get("power", 0)) <= 0:
-		return 0
-	return clampi(int(actor.get("crit", 5)), 0, 35)
+	return DamageRules.critical_chance(actor, action)
 
 
 static func _locked_roll(
@@ -1675,21 +1653,7 @@ static func _locked_roll(
 	secondary_cell: Vector2i,
 	channel: String,
 ) -> int:
-	var actor_cell: Variant = actor.get("cell", actor.get("zone", 0))
-	var target_cell: Variant = target.get("cell", target.get("zone", 0))
-	var key := "%d|%d|%s|%s|%s|%s|%s|%d:%d|%s" % [
-		int(state.get("rngSeed", 1)),
-		int(state.get("turn", 1)),
-		str(actor.get("id", "")),
-		str(action.get("id", "")),
-		str(target.get("id", "")),
-		str(actor_cell),
-		str(target_cell),
-		secondary_cell.x,
-		secondary_cell.y,
-		channel,
-	]
-	return posmod(key.hash(), 100) + 1
+	return DamageRules.locked_roll(state, actor, action, target, secondary_cell, channel)
 
 
 static func _finalize_action_damage(
@@ -1724,48 +1688,23 @@ static func _scaled_action_damage(
 	raw_power: int,
 	critical: bool,
 ) -> int:
-	var scaling := str(action.get("scaling", "strength"))
-	var offense := int(actor.get("mag", 1)) if scaling == "magic" else int(actor.get("str", 1))
-	var element_id := str(action.get("element", "physical"))
-	var defense_key := "def" if element_id == "physical" else "res"
-	var mitigation := floori(float(target.get(defense_key, 0)) * 0.35)
-	var amount := maxi(1, raw_power + floori(float(offense) * 0.5) - mitigation)
-	var resistance_percent := int(
-		(target.get("resistances", {}) as Dictionary).get(element_id, 0)
-	)
-	amount = maxi(0, roundi(float(amount) * float(100 - resistance_percent) / 100.0))
-	if _has_status(target, "overheated") and amount > 0:
-		amount = ceili(float(amount) * 1.25)
-	if critical and amount > 0:
-		amount = ceili(float(amount) * 1.5)
-	return amount
+	return DamageRules.scaled_action_damage(actor, target, action, raw_power, critical)
 
 
 static func _set_damage(resolved: Dictionary, unit_id: String, amount: int) -> void:
-	var damage: Dictionary = resolved.get("damage", {})
-	damage[unit_id] = maxi(0, amount)
-	resolved["damage"] = damage
+	DamageRules.set_damage(resolved, unit_id, amount)
 
 
 static func _add_damage(resolved: Dictionary, unit_id: String, amount: int) -> void:
-	var damage: Dictionary = resolved.get("damage", {})
-	damage[unit_id] = maxi(0, int(damage.get(unit_id, 0)) + amount)
-	resolved["damage"] = damage
+	DamageRules.add_damage(resolved, unit_id, amount)
 
 
 static func _add_fixed_damage(resolved: Dictionary, unit_id: String, amount: int) -> void:
-	_add_damage(resolved, unit_id, amount)
-	var fixed: Dictionary = resolved.get("fixedDamage", {})
-	fixed[unit_id] = maxi(0, int(fixed.get(unit_id, 0)) + amount)
-	resolved["fixedDamage"] = fixed
+	DamageRules.add_fixed_damage(resolved, unit_id, amount)
 
 
 static func _set_status(resolved: Dictionary, unit_id: String, status_id: String, duration: int) -> void:
-	var all_statuses: Dictionary = resolved.get("setStatuses", {})
-	var statuses: Dictionary = all_statuses.get(unit_id, {})
-	statuses[status_id] = maxi(int(statuses.get(status_id, 0)), maxi(1, duration))
-	all_statuses[unit_id] = statuses
-	resolved["setStatuses"] = all_statuses
+	StatusRules.set_status(resolved, unit_id, status_id, duration)
 
 
 static func _set_hostile_status(
@@ -1774,32 +1713,11 @@ static func _set_hostile_status(
 	status_id: String,
 	duration: int,
 ) -> bool:
-	var resistance := int(
-		(target.get("statusResistances", {}) as Dictionary).get(status_id, 0)
-	)
-	var applied_duration := maxi(0, duration - resistance)
-	if applied_duration <= 0:
-		(resolved.get("notes", []) as Array).append(
-			"Устойчивость цели блокирует эффект %s." % status_name(status_id)
-		)
-		return false
-	_set_status(resolved, str(target.get("id", "")), status_id, applied_duration)
-	if resistance > 0:
-		(resolved.get("notes", []) as Array).append(
-			"Устойчивость цели сокращает %s до %d хода." % [
-				status_name(status_id), applied_duration,
-			]
-		)
-	return true
+	return StatusRules.set_hostile_status(resolved, target, status_id, duration)
 
 
 static func _remove_status(resolved: Dictionary, unit_id: String, status_id: String) -> void:
-	var all_statuses: Dictionary = resolved.get("removeStatuses", {})
-	var statuses: Array = all_statuses.get(unit_id, [])
-	if status_id not in statuses:
-		statuses.append(status_id)
-	all_statuses[unit_id] = statuses
-	resolved["removeStatuses"] = all_statuses
+	StatusRules.remove_status(resolved, unit_id, status_id)
 
 
 static func _set_push(
@@ -1809,47 +1727,7 @@ static func _set_push(
 	target: Dictionary,
 	force: int,
 ) -> void:
-	if force <= int(target.get("pushResistance", 0)):
-		(resolved.get("notes", []) as Array).append(
-			"Устойчивость цели блокирует отбрасывание."
-		)
-		return
-	if state.has("grid") and actor.has("cell") and target.has("cell"):
-		var actor_cell: Vector2i = actor.get("cell", Vector2i.ZERO)
-		var target_cell: Vector2i = target.get("cell", Vector2i.ZERO)
-		var delta := target_cell - actor_cell
-		var direction := Vector2i.ZERO
-		if absi(delta.x) >= absi(delta.y) and delta.x != 0:
-			direction.x = signi(delta.x)
-		elif delta.y != 0:
-			direction.y = signi(delta.y)
-		var destination := target_cell + direction
-		if (
-			direction != Vector2i.ZERO
-			and _grid_inside(state, destination)
-			and not bool(_grid_cell_definition(state, destination).get("blocked", true))
-			and Terrain.can_force_move(state, target_cell, destination)
-			and _grid_occupant(state, destination).is_empty()
-		):
-			var moves: Dictionary = resolved.get("moves", {})
-			moves[str(target.get("id", ""))] = destination
-			resolved["moves"] = moves
-			var fall := Terrain.fall_damage(state, target_cell, destination)
-			if fall > 0:
-				_add_damage(resolved, str(target.get("id", "")), fall)
-				resolved["fallDamage"] = int(resolved.get("fallDamage", 0)) + fall
-				(resolved.get("notes", []) as Array).append(
-					"Столкновение с края наносит %d HP." % fall
-				)
-		return
-	var actor_zone := int(actor.get("zone", 0))
-	var target_zone := int(target.get("zone", 0))
-	var direction := 1 if target_zone >= actor_zone else -1
-	var destination := clampi(target_zone + direction, 0, ZONES.size() - 1)
-	if destination != target_zone:
-		var moves: Dictionary = resolved.get("moves", {})
-		moves[str(target.get("id", ""))] = destination
-		resolved["moves"] = moves
+	EffectRules.set_push(state, resolved, actor, target, force)
 
 
 static func _shares_conduction_area(
@@ -1857,29 +1735,11 @@ static func _shares_conduction_area(
 	first: Dictionary,
 	second: Dictionary,
 ) -> bool:
-	if state.has("grid") and first.has("cell") and second.has("cell"):
-		var first_group := str(_grid_cell_definition(state, first.get("cell", Vector2i.ZERO)).get("group", ""))
-		var second_group := str(_grid_cell_definition(state, second.get("cell", Vector2i.ZERO)).get("group", ""))
-		return not first_group.is_empty() and first_group == second_group
-	return int(first.get("zone", -1)) == int(second.get("zone", -2))
+	return EffectRules.shares_conduction_area(state, first, second)
 
 
 static func _field_power_bonus(state: Dictionary, actor: Dictionary, element: String) -> int:
-	if element != "fire" or not state.has("grid") or not actor.has("cell"):
-		return 0
-	var grid: Dictionary = state.get("grid", {})
-	var focus: Dictionary = grid.get("focus", {})
-	if str(focus.get("effect", "")) != "fire_power":
-		return 0
-	var focus_group := str(_grid_cell_definition(
-		state, focus.get("cell", Vector2i(-1, -1))
-	).get("group", ""))
-	var actor_group := str(_grid_cell_definition(
-		state, actor.get("cell", Vector2i(-1, -1))
-	).get("group", ""))
-	if focus_group.is_empty() or focus_group != actor_group:
-		return 0
-	return maxi(0, int(focus.get("bonus", 0)))
+	return EffectRules.field_power_bonus(state, actor, element)
 
 
 static func _grid_cell_definition(state: Dictionary, cell: Vector2i) -> Dictionary:
@@ -1897,26 +1757,11 @@ static func _change_linked_surface(
 	add_tags: Array[String],
 	remove_tags: Array[String],
 ) -> void:
-	var affected := linked_surface_cells(state, origin)
-	for cell in affected:
-		_set_cell_tags(state, resolved, cell, add_tags, remove_tags)
+	EffectRules.change_linked_surface(state, resolved, origin, add_tags, remove_tags)
 
 
 static func linked_surface_cells(state: Dictionary, origin: Vector2i) -> Array[Vector2i]:
-	var origin_group := str(_grid_cell_definition(state, origin).get("group", ""))
-	var affected: Array[Vector2i] = []
-	if origin_group.is_empty():
-		affected.append(origin)
-	else:
-		var grid: Dictionary = state.get("grid", {})
-		for raw_key in (grid.get("cells", {}) as Dictionary):
-			var definition: Dictionary = (grid.get("cells", {}) as Dictionary).get(raw_key, {})
-			if str(definition.get("group", "")) != origin_group:
-				continue
-			var parts := str(raw_key).split(":")
-			if parts.size() == 2:
-				affected.append(Vector2i(int(parts[0]), int(parts[1])))
-	return affected
+	return EffectRules.linked_surface_cells(state, origin)
 
 
 static func _set_cell_tags(
@@ -1926,22 +1771,7 @@ static func _set_cell_tags(
 	add_tags: Array[String],
 	remove_tags: Array[String],
 ) -> void:
-	var changes: Dictionary = resolved.get("cellChanges", {})
-	var key := Terrain.cell_key(cell)
-	var patch: Dictionary = (changes.get(key, {}) as Dictionary).duplicate(true)
-	var tags: Array[String] = []
-	var source_tags: Array = patch.get("tags", _grid_cell_definition(state, cell).get("tags", []))
-	for raw_tag in source_tags:
-		var tag := str(raw_tag)
-		if tag not in remove_tags and tag not in tags:
-			tags.append(tag)
-	for tag in add_tags:
-		if tag not in tags:
-			tags.append(tag)
-	patch["cell"] = cell
-	patch["tags"] = tags
-	changes[key] = patch
-	resolved["cellChanges"] = changes
+	EffectRules.set_cell_tags(state, resolved, cell, add_tags, remove_tags)
 
 
 static func _effect_steps_apply_to_cell(
@@ -1949,65 +1779,7 @@ static func _effect_steps_apply_to_cell(
 	action: Dictionary,
 	cell: Vector2i,
 ) -> bool:
-	var effects: Array = action.get("effects", [])
-	if effects.is_empty() or not _grid_inside(state, cell):
-		return false
-	var definition := _grid_cell_definition(state, cell)
-	var occupant_id := _grid_occupant(state, cell)
-	for raw_effect in effects:
-		var effect := raw_effect as Dictionary
-		match str(effect.get("operation", "")):
-			"apply_status", "push":
-				if occupant_id.is_empty():
-					return false
-			"remove_status":
-				if occupant_id.is_empty():
-					return false
-				var occupant := unit_definition(state, occupant_id)
-				var has_removable := false
-				for raw_status in effect.get("removeStatusIds", []):
-					if _has_status(occupant, str(raw_status)):
-						has_removable = true
-						break
-				if not has_removable:
-					return false
-			"cell_patch":
-				if _is_grid_focus_cell(state, cell):
-					return false
-				var block_mode := str(effect.get("blockMode", "keep"))
-				if block_mode == "block" and (
-					bool(definition.get("blocked", false)) or not occupant_id.is_empty()
-				):
-					return false
-				if block_mode == "open" and not bool(definition.get("blocked", false)):
-					return false
-				var next_elevation := int(definition.get("elevation", 0)) + int(
-					effect.get("elevationDelta", 0)
-				)
-				if next_elevation < 0 or next_elevation > 16:
-					return false
-			"spread":
-				if not _spread_source_available(state, cell, effect):
-					return false
-			"move_actor":
-				var actor_id := current_unit_id(state)
-				var actor := unit_definition(state, actor_id)
-				var actor_cell: Vector2i = actor.get("cell", INVALID_CELL)
-				if (
-					bool(definition.get("blocked", false))
-					or not occupant_id.is_empty()
-					or _is_grid_focus_cell(state, cell)
-					or cell == actor_cell
-					or absi(
-						int(definition.get("elevation", 0))
-						- int(_grid_cell_definition(state, actor_cell).get("elevation", 0))
-					) > int(effect.get("moveMaxHeightDelta", 0))
-				):
-					return false
-			"activate_focus":
-				if not _is_grid_focus_cell(state, cell) or "activated" in definition.get("tags", []):
-					return false
-	return true
+	return EffectRules.effect_steps_apply_to_cell(state, action, cell)
 
 
 static func _apply_authored_effects(
@@ -2018,247 +1790,11 @@ static func _apply_authored_effects(
 	action: Dictionary,
 	target_cell: Vector2i,
 ) -> void:
-	var cell := target_cell
-	if cell == INVALID_CELL and not target.is_empty():
-		cell = target.get("cell", INVALID_CELL)
-	for raw_effect in action.get("effects", []):
-		var effect := raw_effect as Dictionary
-		var effect_name := str(effect.get("name", effect.get("id", "Эффект")))
-		match str(effect.get("operation", "")):
-			"apply_status":
-				if not target.is_empty():
-					_set_hostile_status(
-						resolved, target, str(effect.get("statusId", "")),
-						int(effect.get("statusDuration", 1)),
-					)
-			"remove_status":
-				if not target.is_empty():
-					for raw_status in effect.get("removeStatusIds", []):
-						_remove_status(resolved, str(target.get("id", "")), str(raw_status))
-			"push":
-				if not target.is_empty():
-					_set_push(state, resolved, actor, target, int(effect.get("force", 0)))
-			"cell_patch":
-				_apply_cell_patch_effect(state, resolved, cell, effect)
-			"spread":
-				_apply_spread_effect(state, resolved, cell, effect)
-			"restore_hp":
-				if not target.is_empty():
-					var target_id := str(target.get("id", ""))
-					var healed := mini(
-						int(target.get("maxHp", 1)),
-						int(target.get("hp", 0)) + int(effect.get("restoreHpAmount", 0)),
-					)
-					(resolved["restoreHp"] as Dictionary)[target_id] = healed
-			"move_actor":
-				_apply_actor_move_effect(state, resolved, actor, cell)
-			"activate_focus":
-				_set_cell_tags(state, resolved, cell, ["activated"], [])
-				(resolved.get("notes", []) as Array).append(
-					"Узел %s активирован дистанционно." % _cell_label(cell)
-				)
-		if str(resolved.get("reaction", "")).is_empty():
-			resolved["reaction"] = effect_name
+	EffectRules.apply_authored_effects(state, resolved, actor, target, action, target_cell)
 
 
 static func _authored_effects_allow_unit_target(action: Dictionary, target: Dictionary) -> bool:
-	for raw_effect in action.get("effects", []):
-		var effect := raw_effect as Dictionary
-		if (
-			str(effect.get("operation", "")) == "restore_hp"
-			and int(target.get("hp", 0)) >= int(target.get("maxHp", 1))
-		):
-			return false
-	return true
-
-
-static func _apply_actor_move_effect(
-	state: Dictionary,
-	resolved: Dictionary,
-	actor: Dictionary,
-	destination: Vector2i,
-) -> void:
-	if destination == INVALID_CELL:
-		return
-	var actor_id := str(actor.get("id", ""))
-	var origin: Vector2i = actor.get("cell", INVALID_CELL)
-	var moves: Dictionary = resolved.get("moves", {})
-	moves[actor_id] = destination
-	resolved["moves"] = moves
-	resolved["movementPath"] = [origin, destination]
-	var fall := Terrain.fall_damage(state, origin, destination)
-	if fall > 0:
-		_add_fixed_damage(resolved, actor_id, fall)
-		resolved["fallDamage"] = int(resolved.get("fallDamage", 0)) + fall
-		(resolved.get("notes", []) as Array).append(
-			"Приземление ниже наносит %d HP." % fall
-		)
-
-
-static func _apply_cell_patch_effect(
-	state: Dictionary,
-	resolved: Dictionary,
-	cell: Vector2i,
-	effect: Dictionary,
-) -> void:
-	if cell == INVALID_CELL or not _grid_inside(state, cell):
-		return
-	var changes: Dictionary = resolved.get("cellChanges", {})
-	var key := Terrain.cell_key(cell)
-	var patch: Dictionary = (changes.get(key, {}) as Dictionary).duplicate(true)
-	var definition := _grid_cell_definition(state, cell)
-	patch["cell"] = cell
-	var elevation_delta := int(effect.get("elevationDelta", 0))
-	if elevation_delta != 0:
-		patch["elevation"] = clampi(
-			int(patch.get("elevation", definition.get("elevation", 0))) + elevation_delta,
-			0,
-			16,
-		)
-	var block_mode := str(effect.get("blockMode", "keep"))
-	if block_mode != "keep":
-		patch["blocked"] = block_mode == "block"
-	var tags: Array[String] = []
-	for raw_tag in patch.get("tags", definition.get("tags", [])):
-		var tag := str(raw_tag)
-		if tag not in effect.get("removeCellTags", []) and tag not in tags:
-			tags.append(tag)
-	for raw_tag in effect.get("addCellTags", []):
-		var tag := str(raw_tag)
-		if tag not in tags:
-			tags.append(tag)
-	if not effect.get("addCellTags", []).is_empty() or not effect.get("removeCellTags", []).is_empty():
-		patch["tags"] = tags
-	changes[key] = patch
-	resolved["cellChanges"] = changes
-	(resolved.get("notes", []) as Array).append(
-		"%s изменяет клетку %s до конца боя." % [
-			str(effect.get("name", "Эффект земли")), _cell_label(cell),
-		]
-	)
-
-
-static func _apply_spread_effect(
-	state: Dictionary,
-	resolved: Dictionary,
-	source_cell: Vector2i,
-	effect: Dictionary,
-) -> void:
-	if source_cell == INVALID_CELL or not _grid_inside(state, source_cell):
-		return
-	var source_statuses := _spread_source_statuses(state, resolved, source_cell, effect)
-	var source_tags := _spread_source_tags(state, resolved, source_cell, effect)
-	if source_statuses.is_empty() and source_tags.is_empty():
-		return
-	var radius := maxi(1, int(effect.get("spreadRadius", 1)))
-	var affected_cells := 0
-	var affected_units := 0
-	var grid: Dictionary = state.get("grid", {})
-	for y in int(grid.get("height", 0)):
-		for x in int(grid.get("width", 0)):
-			var cell := Vector2i(x, y)
-			if cell == source_cell or Terrain.action_distance(state, source_cell, cell) > radius:
-				continue
-			if bool(effect.get("spreadToCells", true)) and not source_tags.is_empty() and not bool(
-				_grid_cell_definition(state, cell).get("blocked", false)
-			):
-				_set_cell_tags(state, resolved, cell, source_tags, [])
-				affected_cells += 1
-			if not bool(effect.get("spreadToUnits", true)):
-				continue
-			var target_id := _grid_occupant(state, cell)
-			if target_id.is_empty():
-				continue
-			var target := unit_definition(state, target_id)
-			for status_id in source_statuses:
-				var duration := _spread_source_duration(
-					state, resolved, source_cell, status_id,
-					int(effect.get("spreadStatusDuration", 2)),
-				)
-				if _status_duration_after_preview(state, resolved, target_id, status_id) >= duration:
-					continue
-				if _set_hostile_status(resolved, target, status_id, duration):
-					affected_units += 1
-	(resolved.get("notes", []) as Array).append(
-		"Ветер распространяет стихию: %d клеток, %d наложений на бойцов." % [
-			affected_cells, affected_units,
-		]
-	)
-
-
-static func _spread_source_available(state: Dictionary, cell: Vector2i, effect: Dictionary) -> bool:
-	return (
-		not _spread_source_statuses(state, {}, cell, effect).is_empty()
-		or not _spread_source_tags(state, {}, cell, effect).is_empty()
-	)
-
-
-static func _spread_source_statuses(
-	state: Dictionary,
-	resolved: Dictionary,
-	cell: Vector2i,
-	effect: Dictionary,
-) -> Array[String]:
-	var result: Array[String] = []
-	var occupant_id := _grid_occupant(state, cell)
-	if occupant_id.is_empty():
-		return result
-	for raw_status in effect.get("spreadStatusIds", []):
-		var status_id := str(raw_status)
-		if _status_duration_after_preview(state, resolved, occupant_id, status_id) > 0:
-			result.append(status_id)
-	return result
-
-
-static func _spread_source_tags(
-	state: Dictionary,
-	resolved: Dictionary,
-	cell: Vector2i,
-	effect: Dictionary,
-) -> Array[String]:
-	var current: Array = _grid_cell_definition(state, cell).get("tags", [])
-	var patch: Dictionary = (resolved.get("cellChanges", {}) as Dictionary).get(
-		Terrain.cell_key(cell), {}
-	)
-	var tags: Array = patch.get("tags", current)
-	var result: Array[String] = []
-	for raw_tag in effect.get("spreadCellTags", []):
-		var tag := str(raw_tag)
-		if tag in tags:
-			result.append(tag)
-	return result
-
-
-static func _spread_source_duration(
-	state: Dictionary,
-	resolved: Dictionary,
-	cell: Vector2i,
-	status_id: String,
-	fallback: int,
-) -> int:
-	var occupant_id := _grid_occupant(state, cell)
-	var copied := (
-		_status_duration_after_preview(state, resolved, occupant_id, status_id)
-		if not occupant_id.is_empty()
-		else 0
-	)
-	return maxi(1, copied if copied > 0 else fallback)
-
-
-static func _status_duration_after_preview(
-	state: Dictionary,
-	resolved: Dictionary,
-	unit_id: String,
-	status_id: String,
-) -> int:
-	if unit_id.is_empty():
-		return 0
-	var pending: Dictionary = (resolved.get("setStatuses", {}) as Dictionary).get(unit_id, {})
-	if pending.has(status_id):
-		return int(pending[status_id])
-	if status_id in (resolved.get("removeStatuses", {}) as Dictionary).get(unit_id, []):
-		return 0
-	return int((unit_definition(state, unit_id).get("statuses", {}) as Dictionary).get(status_id, 0))
+	return EffectRules.authored_effects_allow_unit_target(action, target)
 
 
 static func _is_grid_focus_cell(state: Dictionary, cell: Vector2i) -> bool:
@@ -2342,14 +1878,7 @@ static func _apply_guard_preview(state: Dictionary, resolved: Dictionary) -> voi
 
 
 static func _decay_statuses(raw: Variant) -> Dictionary:
-	var result := {}
-	if typeof(raw) != TYPE_DICTIONARY:
-		return result
-	for raw_id in raw:
-		var remaining := int(raw[raw_id]) - 1
-		if remaining > 0:
-			result[str(raw_id)] = remaining
-	return result
+	return StatusRules.decay(raw)
 
 
 ## Geometric intent only: never read resolved damage, hit, crit or cell deltas.

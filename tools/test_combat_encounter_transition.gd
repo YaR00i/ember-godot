@@ -154,11 +154,71 @@ func _run() -> void:
 			printerr(" - ", message)
 		quit(1)
 		return
+	await _test_active_transition(progress, errors)
+	if not errors.is_empty():
+		for message in errors:
+			printerr("FAIL active encounter transition: ", message)
+		quit(1)
+		return
 	print("PASS encounter transition")
 	print("  radial battle HUD -> victory modal -> Continue returns to exploration")
 	print("  party XP/level-up, fallen-at-1 rule and spent inventory return once")
 	print("  repeated Continue cannot apply progression or grant rewards twice")
 	quit(0)
+
+
+func _test_active_transition(progress: EmberExploreState, errors: Array[String]) -> void:
+	progress.set_active_hero_ids(["orik"], false)
+	var encounter := EmberEncounterCatalog.definition(ENCOUNTER_ID)
+	var authored_roster := encounter.party_unit_ids.duplicate()
+	var world_scene := current_scene
+	var original_party := progress.combat_party_snapshot()
+	var original_inventory := progress.inventory.duplicate(true)
+	# Temporarily narrow only the cached in-memory fixture; never write the Resource.
+	encounter.party_unit_ids = PackedStringArray(["mira"])
+	var rejected := EmberCombatTransition.change_scene(self, ENCOUNTER_ID, progress)
+	encounter.party_unit_ids = authored_roster
+	if rejected != ERR_INVALID_DATA or EmberCombatTransition.last_start_error.is_empty():
+		errors.append("unsupported active roster did not return a readable transition failure")
+	if current_scene != world_scene or progress.combat_party_locked or progress.active_hero_ids != ["orik"] or progress.party != original_party or progress.inventory != original_inventory or not EmberCombatTransition.active_party_snapshot().is_empty():
+		errors.append("rejected transition mutated scene, world or handoff")
+	for roster in [["mira"], ["mira", "orik"]]:
+		progress.reset_new_game()
+		progress.set_active_hero_ids(roster, false)
+		var before := progress.combat_party_snapshot()
+		if EmberCombatTransition.change_scene(self, ENCOUNTER_ID, progress) != OK:
+			errors.append("active roster transition rejected")
+			return
+		if progress.set_active_hero_ids(["sena"], false):
+			errors.append("pending battle allowed roster mutation")
+		await scene_changed
+		await process_frame
+		var hud := current_scene.find_child("CombatHUD", true, false)
+		var state: Dictionary = hud.call("state_snapshot")
+		if EmberPartyState.combat_hero_ids(state).size() != roster.size() or progress.set_active_hero_ids(["sena"], false):
+			errors.append("active battle gained phantom heroes or allowed roster mutation")
+		var copy := EmberCombatTransition.active_hero_ids_snapshot()
+		copy.clear()
+		if EmberCombatTransition.active_hero_ids_snapshot() != roster:
+			errors.append("roster snapshot was not isolated")
+		for hero_id in state["units"]:
+			if state["units"][hero_id]["team"] == "enemy":
+				state["units"][hero_id]["hp"] = 0
+		var preview := EmberPartyState.combat_progression_preview(state, 35, true, EmberInteractionContent.item_definitions())
+		if EmberCombatTransition.finish(self, "victory", progress, state) != OK:
+			errors.append("active victory rejected")
+			return
+		await scene_changed
+		await process_frame
+		for hero_id in EmberPartyState.HERO_IDS:
+			if hero_id in roster:
+				if progress.party[hero_id] != preview["party"][hero_id]:
+					errors.append("active victory differs from preview")
+			elif progress.party[hero_id] != before[hero_id]:
+				errors.append("inactive persistent member changed on victory")
+		if progress.combat_party_locked:
+			errors.append("victory did not release roster lock")
+	EmberCombatTransition.clear_for_test()
 
 
 func _label_texts(root_node: Node) -> String:

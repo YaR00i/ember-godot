@@ -4,6 +4,9 @@ extends VBoxContainer
 const Selection = preload("res://addons/ember_import/ember_voxel_selection.gd")
 const DEFAULT_OVERLAY_COLOR := Color(1, 0.45, 0.05, 0.45)
 signal activation_requested
+signal transform_requested
+signal extract_requested(cut: bool)
+var _box_anchor := Vector3i(-1, -1, -1)
 signal paint_requested(indices: PackedInt32Array)
 signal selection_changed(has_selection: bool)
 var active := false
@@ -13,6 +16,8 @@ var _region := Rect2i()
 var _height := -1
 var _toggle: Button
 var _mode: OptionButton
+var _through: OptionButton
+var _depth: SpinBox
 var _operation: OptionButton
 var _tolerance: SpinBox
 var _status: Label
@@ -42,9 +47,24 @@ func _init() -> void:
 	_toggle.toggle_mode = true
 	_toggle.pressed.connect(func() -> void: activation_requested.emit())
 	add_child(_toggle)
-	_mode = _options(["Один воксель", "Связные похожего цвета", "Все похожего цвета"])
-	_mode.select(1)
+	_mode = _options(["Один воксель", "Связные похожего цвета", "Все похожего цвета", "Рамка · протяните мышью", "Рамка по поверхности"])
+	_mode.item_selected.connect(func(_index: int) -> void: _box_anchor = Vector3i(-1,-1,-1))
+	_mode.select(3)
+	_through = _options(["Рамка: видимая поверхность", "Рамка: насквозь"])
+	_depth = SpinBox.new()
+	_depth.min_value = 1
+	_depth.max_value = 256
+	_depth.value = 1
+	_depth.prefix = "Глубина внутрь · "
+	_depth.suffix = "vox"
+	_depth.tooltip_text = "Число слоёв внутрь от грани, с которой начат жест. Плоскость не огибает рельеф."
+	add_child(_depth)
+	_depth.hide()
+	_mode.item_selected.connect(func(index: int) -> void:
+		_depth.visible = index == 4
+		_through.visible = index != 4)
 	_operation = _options(["Новое выделение", "Добавить · Shift", "Вычесть · Ctrl"])
+	_operation.tooltip_text = "Операция меняет только выделение, не геометрию. Зажмите Shift или Ctrl ДО начала протягивания; без клавиш используется режим этого списка."
 	var row := HBoxContainer.new()
 	var label := Label.new()
 	label.text = "Допуск цвета %"
@@ -62,6 +82,19 @@ func _init() -> void:
 	_paint.text = "Окрасить выделенное"
 	_paint.pressed.connect(_request_paint)
 	add_child(_paint)
+	var transform_button := Button.new()
+	transform_button.text = "Перенос / копия / поворот…"
+	transform_button.pressed.connect(func() -> void:
+		if not busy() and not selected.is_empty():
+			transform_requested.emit())
+	add_child(transform_button)
+	for cutting in [true,false]:
+		var extract := Button.new()
+		extract.text = "Вырезать в новый объект…" if cutting else "Скопировать в новый объект…"
+		extract.pressed.connect(func() -> void:
+			if not busy() and not selected.is_empty():
+				extract_requested.emit(cutting))
+		add_child(extract)
 	_mask = CheckButton.new()
 	_mask.name = "VoxelSelectionMaskBrush"
 	_mask.text = "Кисть по выделению"
@@ -73,7 +106,7 @@ func _init() -> void:
 	add_child(clear)
 	var help := Label.new()
 	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	help.text = "Объём в рабочей области и срезе, включая внутренние воксели. Цвет и материал используют точные воксели; форма — их вертикальные колонки. Esc: отмена поиска / выход."
+	help.text = "Зажмите Shift ДО начала рамки, чтобы добавить участок к выделению; Ctrl — убрать участок из выделения, не удаляя воксели. Без клавиш действует режим списка выше. «Насквозь» включает внутренние и задние воксели. Перенос: Enter применяет, Esc отменяет."
 	add_child(help)
 	_update_status()
 
@@ -143,6 +176,17 @@ func choose(seed: Vector3i, shift := false, control := false) -> void:
 		return
 	_overlay_color = DEFAULT_OVERLAY_COLOR
 	_pending_operation = 2 if control else 1 if shift else _operation.selected
+	if _mode.selected == 3:
+		if _box_anchor.x < 0:
+			_box_anchor = seed
+			_update_status("Первый угол %s. Выберите противоположный угол объёма; Esc отменяет." % seed)
+			return
+		var low := _box_anchor.min(seed)
+		var high := _box_anchor.max(seed)
+		_box_anchor = Vector3i(-1,-1,-1)
+		_job = Selection.new()
+		_job.start_box(_resource, low, high, _region, _height)
+		return
 	_job = Selection.new()
 	_job.start(_resource, seed, _mode.selected, _tolerance.value / 100.0, _region, _height)
 	_update_status("Поиск… Esc отменяет; карта пока не меняется")
@@ -172,11 +216,13 @@ func _process(_delta: float) -> void:
 
 
 func cancel_search() -> void:
+	_box_anchor = Vector3i(-1,-1,-1)
 	_job = null
 	_update_status()
 
 
 func clear_selection() -> void:
+	_box_anchor = Vector3i(-1,-1,-1)
 	_job = null
 	_drawing = false
 	selected.clear()
@@ -232,6 +278,7 @@ func _begin_overlay() -> void:
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	material.albedo_color = _overlay_color
+	material.no_depth_test = true
 	mesh.material = material
 	var multi := MultiMesh.new()
 	multi.transform_format = MultiMesh.TRANSFORM_3D

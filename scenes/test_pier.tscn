@@ -1,0 +1,996 @@
+[gd_scene format=3 uid="uid://ct2d14u6i5fm0"]
+
+[ext_resource type="Script" uid="uid://dechqn8w4wnur" path="res://scripts/test_pier.gd" id="1"]
+[ext_resource type="Script" uid="uid://ctwn2o6mocfe2" path="res://scripts/ember_map_loader.gd" id="2"]
+[ext_resource type="Script" uid="uid://4lkb6w8l82y0" path="res://scripts/ember_region.gd" id="3"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_467332258_canvas_493047929.tscn" id="3_s7jpf"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_0.tscn" id="3_u116l"]
+[ext_resource type="PackedScene" uid="uid://d28adjshhn515" path="res://prefabs/voxels/vox_fan_crate_stack.tscn" id="4"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_182068941.tscn" id="4_j5jts"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_1_canvas_120981611.tscn" id="4_u116l"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_fan_barrel_canvas_31516427_canvas_62266144.tscn" id="4_y8t1g"]
+[ext_resource type="PackedScene" uid="uid://bj4jbb1n0u8kt" path="res://prefabs/voxels/vox_fan_barrel.tscn" id="5"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_2.tscn" id="5_sijwm"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_3.tscn" id="6_ikush"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_4_canvas_121360778.tscn" id="7_lxf6b"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_5.tscn" id="8_ga0ds"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_6.tscn" id="9_yb5pd"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_7_canvas_121725901.tscn" id="10_sijwm"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_8.tscn" id="11_1txye"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_9.tscn" id="12_2lfjq"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_10.tscn" id="13_a55yo"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_11.tscn" id="14_hlj1e"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_82315914_canvas_194380203_canvas_117373020_canvas_106179708_canvas_1509328469.tscn" id="20_ikush"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_fragment_112205362.tscn" id="22_sijwm"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_merge_60949294_0.tscn" id="22_yjp2r"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_merge_60959363_1.tscn" id="23_ga0ds"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_fragment_1508100958.tscn" id="24_yb5pd"]
+
+[sub_resource type="Environment" id="env"]
+background_mode = 1
+background_color = Color(0.43, 0.61, 0.65, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.66, 0.77, 0.8, 1)
+ambient_light_energy = 0.65
+tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.48, 0.63, 0.66, 1)
+fog_density = 0.0005
+
+[sub_resource type="StandardMaterial3D" id="water"]
+albedo_color = Color(0.075, 0.28, 0.34, 1)
+roughness = 0.88
+
+[sub_resource type="BoxMesh" id="b1"]
+material = SubResource("water")
+size = Vector3(1800, 2, 1500)
+
+[sub_resource type="StandardMaterial3D" id="stone"]
+albedo_color = Color(0.43, 0.47, 0.45, 1)
+roughness = 0.88
+
+[sub_resource type="BoxMesh" id="b2"]
+material = SubResource("stone")
+size = Vector3(384, 16, 112)
+
+[sub_resource type="BoxShape3D" id="s2"]
+size = Vector3(384, 16, 112)
+
+[sub_resource type="StandardMaterial3D" id="edge"]
+albedo_color = Color(0.27, 0.17, 0.1, 1)
+roughness = 0.88
+
+[sub_resource type="BoxMesh" id="b4"]
+material = SubResource("edge")
+size = Vector3(190, 0.16, 0.65)
+
+[sub_resource type="BoxMesh" id="b5"]
+material = SubResource("edge")
+size = Vector3(190, 0.16, 0.65)
+
+[sub_resource type="BoxMesh" id="b6"]
+material = SubResource("edge")
+size = Vector3(190, 0.16, 0.65)
+
+[sub_resource type="BoxMesh" id="b7"]
+material = SubResource("edge")
+size = Vector3(190, 0.16, 0.65)
+
+[sub_resource type="BoxMesh" id="b8"]
+material = SubResource("edge")
+size = Vector3(190, 0.16, 0.65)
+
+[sub_resource type="BoxMesh" id="b9"]
+material = SubResource("edge")
+size = Vector3(190, 0.16, 0.65)
+
+[sub_resource type="BoxMesh" id="b10"]
+material = SubResource("edge")
+size = Vector3(190, 0.16, 0.65)
+
+[sub_resource type="BoxMesh" id="b11"]
+material = SubResource("edge")
+size = Vector3(190, 0.16, 0.65)
+
+[sub_resource type="BoxMesh" id="b12"]
+material = SubResource("edge")
+size = Vector3(190, 0.16, 0.65)
+
+[sub_resource type="BoxMesh" id="b13"]
+material = SubResource("edge")
+size = Vector3(190, 0.16, 0.65)
+
+[sub_resource type="BoxMesh" id="b14"]
+material = SubResource("edge")
+size = Vector3(190, 0.16, 0.65)
+
+[sub_resource type="BoxMesh" id="b15"]
+material = SubResource("edge")
+size = Vector3(190, 0.16, 0.65)
+
+[sub_resource type="BoxMesh" id="b16"]
+material = SubResource("edge")
+size = Vector3(190, 0.16, 0.65)
+
+[sub_resource type="BoxMesh" id="b17"]
+material = SubResource("edge")
+size = Vector3(190, 0.16, 0.65)
+
+[sub_resource type="BoxMesh" id="b18"]
+material = SubResource("edge")
+size = Vector3(190, 0.16, 0.65)
+
+[sub_resource type="BoxMesh" id="b19"]
+material = SubResource("edge")
+size = Vector3(190, 0.16, 0.65)
+
+[sub_resource type="BoxMesh" id="b20"]
+material = SubResource("edge")
+size = Vector3(190, 0.16, 0.65)
+
+[sub_resource type="BoxMesh" id="b21"]
+material = SubResource("edge")
+size = Vector3(190, 0.16, 0.65)
+
+[sub_resource type="BoxMesh" id="b22"]
+material = SubResource("edge")
+size = Vector3(190, 0.16, 0.65)
+
+[sub_resource type="BoxMesh" id="b23"]
+material = SubResource("edge")
+size = Vector3(190, 0.16, 0.65)
+
+[sub_resource type="BoxMesh" id="b24"]
+material = SubResource("edge")
+size = Vector3(190, 0.16, 0.65)
+
+[sub_resource type="BoxMesh" id="b25"]
+material = SubResource("stone")
+size = Vector3(96, 6, 5)
+
+[sub_resource type="BoxShape3D" id="s25"]
+size = Vector3(96, 6, 5)
+
+[sub_resource type="BoxMesh" id="b26"]
+material = SubResource("stone")
+size = Vector3(96, 6, 5)
+
+[sub_resource type="BoxShape3D" id="s26"]
+size = Vector3(96, 6, 5)
+
+[sub_resource type="BoxMesh" id="b27"]
+material = SubResource("edge")
+size = Vector3(3, 3, 256)
+
+[sub_resource type="BoxShape3D" id="s27"]
+size = Vector3(3, 24, 256)
+
+[sub_resource type="BoxMesh" id="b28"]
+material = SubResource("edge")
+size = Vector3(3, 3, 256)
+
+[sub_resource type="BoxShape3D" id="s28"]
+size = Vector3(3, 24, 256)
+
+[sub_resource type="BoxMesh" id="b29"]
+material = SubResource("edge")
+size = Vector3(192, 3, 3)
+
+[sub_resource type="BoxShape3D" id="s29"]
+size = Vector3(192, 24, 3)
+
+[sub_resource type="BoxMesh" id="b30"]
+material = SubResource("edge")
+size = Vector3(96, 24, 3)
+
+[sub_resource type="BoxShape3D" id="s30"]
+size = Vector3(96, 24, 3)
+
+[sub_resource type="BoxMesh" id="b31"]
+material = SubResource("edge")
+size = Vector3(96, 24, 3)
+
+[sub_resource type="BoxShape3D" id="s31"]
+size = Vector3(96, 24, 3)
+
+[sub_resource type="BoxMesh" id="b32"]
+material = SubResource("edge")
+size = Vector3(5, 36, 112)
+
+[sub_resource type="BoxShape3D" id="s32"]
+size = Vector3(5, 36, 112)
+
+[sub_resource type="BoxMesh" id="b33"]
+material = SubResource("edge")
+size = Vector3(5, 36, 112)
+
+[sub_resource type="BoxShape3D" id="s33"]
+size = Vector3(5, 36, 112)
+
+[sub_resource type="BoxMesh" id="b34"]
+material = SubResource("edge")
+size = Vector3(384, 36, 5)
+
+[sub_resource type="BoxShape3D" id="s34"]
+size = Vector3(384, 36, 5)
+
+[sub_resource type="BoxMesh" id="b35"]
+material = SubResource("edge")
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxShape3D" id="s35"]
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxMesh" id="b36"]
+material = SubResource("edge")
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxShape3D" id="s36"]
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxMesh" id="b37"]
+material = SubResource("edge")
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxShape3D" id="s37"]
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxMesh" id="b38"]
+material = SubResource("edge")
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxShape3D" id="s38"]
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxMesh" id="b39"]
+material = SubResource("edge")
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxShape3D" id="s39"]
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxMesh" id="b40"]
+material = SubResource("edge")
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxShape3D" id="s40"]
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxMesh" id="b41"]
+material = SubResource("edge")
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxShape3D" id="s41"]
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxMesh" id="b42"]
+material = SubResource("edge")
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxShape3D" id="s42"]
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxMesh" id="b43"]
+material = SubResource("edge")
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxShape3D" id="s43"]
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxMesh" id="b44"]
+material = SubResource("edge")
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxShape3D" id="s44"]
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxMesh" id="b45"]
+material = SubResource("edge")
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxShape3D" id="s45"]
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxMesh" id="b47"]
+material = SubResource("edge")
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxShape3D" id="s47"]
+size = Vector3(7, 24, 7)
+
+[sub_resource type="BoxMesh" id="b49"]
+material = SubResource("stone")
+size = Vector3(86, 64, 48)
+
+[sub_resource type="BoxShape3D" id="s49"]
+size = Vector3(86, 64, 48)
+
+[sub_resource type="StandardMaterial3D" id="roof"]
+albedo_color = Color(0.38, 0.2, 0.16, 1)
+roughness = 0.88
+
+[sub_resource type="BoxMesh" id="b50"]
+material = SubResource("roof")
+size = Vector3(98, 9, 60)
+
+[sub_resource type="BoxMesh" id="b51"]
+material = SubResource("edge")
+size = Vector3(16, 32, 1)
+
+[sub_resource type="BoxMesh" id="b52"]
+material = SubResource("edge")
+size = Vector3(35, 13, 100)
+
+[sub_resource type="StandardMaterial3D" id="wood"]
+albedo_color = Color(0.48, 0.3, 0.16, 1)
+roughness = 0.88
+
+[sub_resource type="BoxMesh" id="b53"]
+material = SubResource("wood")
+size = Vector3(28, 2, 85)
+
+[sub_resource type="BoxMesh" id="b54"]
+material = SubResource("edge")
+size = Vector3(3, 75, 3)
+
+[sub_resource type="StandardMaterial3D" id="sail"]
+albedo_color = Color(0.83, 0.78, 0.6, 1)
+roughness = 0.88
+
+[sub_resource type="BoxMesh" id="b55"]
+material = SubResource("sail")
+size = Vector3(5, 22, 3)
+
+[sub_resource type="BoxMesh" id="b56"]
+material = SubResource("sail")
+size = Vector3(52, 1, 1)
+
+[sub_resource type="BoxMesh" id="b57"]
+material = SubResource("sail")
+size = Vector3(52, 1, 1)
+
+[sub_resource type="StandardMaterial3D" id="hill"]
+albedo_color = Color(0.27, 0.38, 0.37, 1)
+roughness = 0.88
+
+[sub_resource type="BoxMesh" id="b58"]
+material = SubResource("hill")
+size = Vector3(330, 80, 140)
+
+[sub_resource type="StandardMaterial3D" id="cliff"]
+albedo_color = Color(0.25, 0.34, 0.34, 1)
+roughness = 0.88
+
+[sub_resource type="BoxMesh" id="b59"]
+material = SubResource("cliff")
+size = Vector3(100, 50, 100)
+
+[sub_resource type="BoxMesh" id="b60"]
+material = SubResource("sail")
+size = Vector3(24, 72, 24)
+
+[sub_resource type="BoxMesh" id="b61"]
+material = SubResource("edge")
+size = Vector3(30, 14, 30)
+
+[sub_resource type="BoxMesh" id="b62"]
+material = SubResource("roof")
+size = Vector3(36, 10, 36)
+
+[node name="TestPier" type="Node3D" unique_id=1484909082]
+script = ExtResource("1")
+map_id = "test_pier"
+
+[node name="Map" type="Node3D" parent="." unique_id=459093806]
+script = ExtResource("2")
+map_id = "test_pier"
+hydrate_legacy_regions = false
+authored_size_blocks = Vector2i(24, 25)
+camera_distance = 180.0
+camera_polar = 0.84
+camera_yaw = 0.35
+camera_far = 2400.0
+
+[node name="Look" type="Node3D" parent="Map" unique_id=1395515900]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="Map/Look" unique_id=2007192879]
+environment = SubResource("env")
+
+[node name="Sun" type="DirectionalLight3D" parent="Map/Look" unique_id=2037080624]
+transform = Transform3D(0.88294756, 0.3488854, -0.3141378, 0, 0.66913056, 0.74314487, 0.46947157, -0.656158, 0.5908072, 0, 0, 0)
+light_color = Color(1, 0.87, 0.68, 1)
+light_energy = 1.5
+shadow_enabled = true
+directional_shadow_max_distance = 600.0
+
+[node name="Terrain" type="Node3D" parent="Map" unique_id=1393857164]
+
+[node name="BayWater" type="Node3D" parent="Map/Terrain" unique_id=1456488035]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, -9, 80)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/BayWater" unique_id=1908567442]
+mesh = SubResource("b1")
+
+[node name="StoneQuay" type="StaticBody3D" parent="Map/Terrain" unique_id=279972517]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, -8, 344)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/StoneQuay" unique_id=773959559]
+mesh = SubResource("b2")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Terrain/StoneQuay" unique_id=1859598354]
+shape = SubResource("s2")
+
+[node name="TimberPier" type="StaticBody3D" parent="Map/Terrain" unique_id=682131787]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, -5, 160)
+
+[node name="Visual" type="Node3D" parent="Map/Terrain/TimberPier" unique_id=2067743009]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.009994507, -5.000002, -0.041168213)
+
+[node name="Part_01" parent="Map/Terrain/TimberPier/Visual" unique_id=2087500304 instance=ExtResource("3_u116l")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, -96)
+placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_0"
+
+[node name="Part_02" parent="Map/Terrain/TimberPier/Visual" unique_id=1781618651 instance=ExtResource("4_u116l")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -96)
+placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_1"
+metadata/ember_canvas_unique_source = "vox_shape_block_15328782_canvas_117422242_part_32556083_1_canvas_120981611"
+
+[node name="Part_03" parent="Map/Terrain/TimberPier/Visual" unique_id=1435782634 instance=ExtResource("5_sijwm")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0, -96)
+placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_2"
+
+[node name="Part_04" parent="Map/Terrain/TimberPier/Visual" unique_id=1517968370 instance=ExtResource("6_ikush")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, -32)
+placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_3"
+
+[node name="Part_05" parent="Map/Terrain/TimberPier/Visual" unique_id=1107862746 instance=ExtResource("7_lxf6b")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -32)
+placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_4"
+metadata/ember_canvas_unique_source = "vox_shape_block_15328782_canvas_117422242_part_32556083_4_canvas_121360778"
+
+[node name="Part_06" parent="Map/Terrain/TimberPier/Visual" unique_id=181225988 instance=ExtResource("8_ga0ds")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0, -32)
+placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_5"
+
+[node name="Part_07" parent="Map/Terrain/TimberPier/Visual" unique_id=1041095338 instance=ExtResource("9_yb5pd")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 32)
+placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_6"
+
+[node name="Part_08" parent="Map/Terrain/TimberPier/Visual" unique_id=769002060 instance=ExtResource("10_sijwm")]
+transform = Transform3D(0.99999994, 0, 0, 0, 0.99999994, 0, 0, 0, 1, 0, -2.861023e-06, 32)
+placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_7"
+metadata/ember_canvas_unique_source = "vox_shape_block_15328782_canvas_117422242_part_32556083_7_canvas_121725901"
+
+[node name="Part_11" parent="Map/Terrain/TimberPier/Visual" unique_id=1081542407 instance=ExtResource("13_a55yo")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 96)
+placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_10"
+
+[node name="Part_09" parent="Map/Terrain/TimberPier/Visual" unique_id=750181801 instance=ExtResource("11_1txye")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0, 32)
+placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_8"
+
+[node name="Part_10" parent="Map/Terrain/TimberPier/Visual" unique_id=2086471593 instance=ExtResource("12_2lfjq")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 96)
+placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_9"
+
+[node name="Part_12" parent="Map/Terrain/TimberPier/Visual" unique_id=1472468968 instance=ExtResource("14_hlj1e")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0, 96)
+placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_11"
+
+[node name="placed_shape_block_15328782_canvas_117422242_part_32556083_8_copy" parent="Map/Terrain/TimberPier/Visual" unique_id=1065162205 instance=ExtResource("11_1txye")]
+transform = Transform3D(1, 0, 0, 0, 0.9848077, -0.17364818, 0, 0.17364818, 0.9848077, 127.999985, 0.07596111, 31.13176)
+placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_8_copy"
+
+[node name="placed_shape_block_15328782_canvas_117422242_part_32556083_8_copy_copy" parent="Map/Terrain/TimberPier/Visual" unique_id=870239206 instance=ExtResource("11_1txye")]
+transform = Transform3D(1, 0, 0, 0, 0.9848077, 0.17364815, 0, -0.17364815, 0.9848077, 191.99998, 0.07596111, 32.86824)
+placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_8_copy_copy"
+
+[node name="placed_shape_block_15328782_canvas_117422242_part_32556083_8_copy_copy_copy" parent="Map/Terrain/TimberPier/Visual" unique_id=84777909 instance=ExtResource("11_1txye")]
+transform = Transform3D(1, 0, 0, 0, 0.9848077, -0.17364818, 0, 0.17364818, 0.9848077, 255.99998, 0.07596111, 31.13176)
+placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_8_copy_copy_copy"
+
+[node name="PlankSeam36" type="Node3D" parent="Map/Terrain" unique_id=300362989]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0.08, 36)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/PlankSeam36" unique_id=1358065179]
+mesh = SubResource("b4")
+
+[node name="PlankSeam48" type="Node3D" parent="Map/Terrain" unique_id=371383763]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0.08, 48)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/PlankSeam48" unique_id=279210414]
+mesh = SubResource("b5")
+
+[node name="PlankSeam60" type="Node3D" parent="Map/Terrain" unique_id=258502604]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0.08, 60)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/PlankSeam60" unique_id=490338799]
+mesh = SubResource("b6")
+
+[node name="PlankSeam72" type="Node3D" parent="Map/Terrain" unique_id=69878772]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0.08, 72)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/PlankSeam72" unique_id=1136427245]
+mesh = SubResource("b7")
+
+[node name="PlankSeam84" type="Node3D" parent="Map/Terrain" unique_id=2057758186]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0.08, 84)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/PlankSeam84" unique_id=1827426552]
+mesh = SubResource("b8")
+
+[node name="PlankSeam96" type="Node3D" parent="Map/Terrain" unique_id=2056671500]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0.08, 96)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/PlankSeam96" unique_id=340247049]
+mesh = SubResource("b9")
+
+[node name="PlankSeam108" type="Node3D" parent="Map/Terrain" unique_id=1056948329]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0.08, 108)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/PlankSeam108" unique_id=549262346]
+mesh = SubResource("b10")
+
+[node name="PlankSeam120" type="Node3D" parent="Map/Terrain" unique_id=1597099000]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0.08, 120)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/PlankSeam120" unique_id=1616822956]
+mesh = SubResource("b11")
+
+[node name="PlankSeam132" type="Node3D" parent="Map/Terrain" unique_id=1579467040]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0.08, 132)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/PlankSeam132" unique_id=1758037827]
+mesh = SubResource("b12")
+
+[node name="PlankSeam144" type="Node3D" parent="Map/Terrain" unique_id=601987216]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0.08, 144)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/PlankSeam144" unique_id=743322120]
+mesh = SubResource("b13")
+
+[node name="PlankSeam156" type="Node3D" parent="Map/Terrain" unique_id=810328313]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0.08, 156)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/PlankSeam156" unique_id=1577485780]
+mesh = SubResource("b14")
+
+[node name="PlankSeam168" type="Node3D" parent="Map/Terrain" unique_id=1531444851]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0.08, 168)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/PlankSeam168" unique_id=1155222588]
+mesh = SubResource("b15")
+
+[node name="PlankSeam180" type="Node3D" parent="Map/Terrain" unique_id=914848701]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0.08, 180)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/PlankSeam180" unique_id=1253661757]
+mesh = SubResource("b16")
+
+[node name="PlankSeam192" type="Node3D" parent="Map/Terrain" unique_id=461740651]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0.08, 192)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/PlankSeam192" unique_id=1353871709]
+mesh = SubResource("b17")
+
+[node name="PlankSeam204" type="Node3D" parent="Map/Terrain" unique_id=743053176]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0.08, 204)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/PlankSeam204" unique_id=1255257999]
+mesh = SubResource("b18")
+
+[node name="PlankSeam216" type="Node3D" parent="Map/Terrain" unique_id=636762801]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0.08, 216)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/PlankSeam216" unique_id=1027604711]
+mesh = SubResource("b19")
+
+[node name="PlankSeam228" type="Node3D" parent="Map/Terrain" unique_id=1748384479]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0.08, 228)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/PlankSeam228" unique_id=869228663]
+mesh = SubResource("b20")
+
+[node name="PlankSeam240" type="Node3D" parent="Map/Terrain" unique_id=884836091]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0.08, 240)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/PlankSeam240" unique_id=1362171356]
+mesh = SubResource("b21")
+
+[node name="PlankSeam252" type="Node3D" parent="Map/Terrain" unique_id=899859075]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0.08, 252)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/PlankSeam252" unique_id=1762072367]
+mesh = SubResource("b22")
+
+[node name="PlankSeam264" type="Node3D" parent="Map/Terrain" unique_id=649147456]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0.08, 264)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/PlankSeam264" unique_id=907428143]
+mesh = SubResource("b23")
+
+[node name="PlankSeam276" type="Node3D" parent="Map/Terrain" unique_id=1273232199]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0.08, 276)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/PlankSeam276" unique_id=858088719]
+mesh = SubResource("b24")
+
+[node name="QuayLipWest" type="StaticBody3D" parent="Map/Terrain" unique_id=870140555]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 3, 288)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/QuayLipWest" unique_id=320700020]
+mesh = SubResource("b25")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Terrain/QuayLipWest" unique_id=1946703479]
+shape = SubResource("s25")
+
+[node name="QuayLipEast" type="StaticBody3D" parent="Map/Terrain" unique_id=917631121]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 336, 3, 288)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/QuayLipEast" unique_id=1853130725]
+mesh = SubResource("b26")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Terrain/QuayLipEast" unique_id=1605266805]
+shape = SubResource("s26")
+
+[node name="WestPierRail" type="StaticBody3D" parent="Map/Terrain" unique_id=1835234265]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 96, 12, 160)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/WestPierRail" unique_id=1647736134]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -4, 0)
+mesh = SubResource("b27")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Terrain/WestPierRail" unique_id=1782628320]
+shape = SubResource("s27")
+
+[node name="EastPierRail" type="StaticBody3D" parent="Map/Terrain" unique_id=2117216988]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 288, 12, 160)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/EastPierRail" unique_id=476354199]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -4, 0)
+mesh = SubResource("b28")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Terrain/EastPierRail" unique_id=1413186900]
+shape = SubResource("s28")
+
+[node name="PierEndRail" type="StaticBody3D" parent="Map/Terrain" unique_id=552622162]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 12, 32)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/PierEndRail" unique_id=549068202]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -4, 0)
+mesh = SubResource("b29")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Terrain/PierEndRail" unique_id=1301290029]
+shape = SubResource("s29")
+
+[node name="WestQuayParapet" type="StaticBody3D" parent="Map/Terrain" unique_id=1576608366]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 12, 288)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/WestQuayParapet" unique_id=580730740]
+mesh = SubResource("b30")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Terrain/WestQuayParapet" unique_id=1863910214]
+shape = SubResource("s30")
+
+[node name="EastQuayParapet" type="StaticBody3D" parent="Map/Terrain" unique_id=963827066]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 336, 12, 288)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/EastQuayParapet" unique_id=219113833]
+mesh = SubResource("b31")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Terrain/EastQuayParapet" unique_id=46539125]
+shape = SubResource("s31")
+
+[node name="WestLimit" type="StaticBody3D" parent="Map/Terrain" unique_id=1315638221]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 18, 344)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/WestLimit" unique_id=122208950]
+mesh = SubResource("b32")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Terrain/WestLimit" unique_id=1105076790]
+shape = SubResource("s32")
+
+[node name="EastLimit" type="StaticBody3D" parent="Map/Terrain" unique_id=1931414619]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 384, 18, 344)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/EastLimit" unique_id=38097631]
+mesh = SubResource("b33")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Terrain/EastLimit" unique_id=821655323]
+shape = SubResource("s33")
+
+[node name="BackLimit" type="StaticBody3D" parent="Map/Terrain" unique_id=1454770086]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 18, 400)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Terrain/BackLimit" unique_id=745006456]
+mesh = SubResource("b34")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Terrain/BackLimit" unique_id=1713149867]
+shape = SubResource("s34")
+
+[node name="Props" type="Node3D" parent="Map" unique_id=547461226]
+
+[node name="MooringPost96_40" type="StaticBody3D" parent="Map/Props" unique_id=1758625518]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 96, 3, 40)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/MooringPost96_40" unique_id=1448055872]
+mesh = SubResource("b35")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Props/MooringPost96_40" unique_id=1471988734]
+shape = SubResource("s35")
+
+[node name="MooringPost288_40" type="StaticBody3D" parent="Map/Props" unique_id=1072799319]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 288, 3, 40)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/MooringPost288_40" unique_id=952831139]
+mesh = SubResource("b36")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Props/MooringPost288_40" unique_id=1915207711]
+shape = SubResource("s36")
+
+[node name="MooringPost96_80" type="StaticBody3D" parent="Map/Props" unique_id=348492241]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 96, 3, 80)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/MooringPost96_80" unique_id=353734320]
+mesh = SubResource("b37")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Props/MooringPost96_80" unique_id=177835508]
+shape = SubResource("s37")
+
+[node name="MooringPost288_80" type="StaticBody3D" parent="Map/Props" unique_id=1409117856]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 288, 3, 80)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/MooringPost288_80" unique_id=1788471378]
+mesh = SubResource("b38")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Props/MooringPost288_80" unique_id=984680275]
+shape = SubResource("s38")
+
+[node name="MooringPost96_120" type="StaticBody3D" parent="Map/Props" unique_id=887367256]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 96, 3, 120)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/MooringPost96_120" unique_id=613436562]
+mesh = SubResource("b39")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Props/MooringPost96_120" unique_id=1418046112]
+shape = SubResource("s39")
+
+[node name="MooringPost288_120" type="StaticBody3D" parent="Map/Props" unique_id=594177029]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 288, 3, 120)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/MooringPost288_120" unique_id=1783725641]
+mesh = SubResource("b40")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Props/MooringPost288_120" unique_id=2110504824]
+shape = SubResource("s40")
+
+[node name="MooringPost96_160" type="StaticBody3D" parent="Map/Props" unique_id=924655128]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 96, 3, 160)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/MooringPost96_160" unique_id=1653287314]
+mesh = SubResource("b41")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Props/MooringPost96_160" unique_id=1894284602]
+shape = SubResource("s41")
+
+[node name="MooringPost288_160" type="StaticBody3D" parent="Map/Props" unique_id=2116945297]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 288, 3, 160)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/MooringPost288_160" unique_id=986727057]
+mesh = SubResource("b42")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Props/MooringPost288_160" unique_id=898481725]
+shape = SubResource("s42")
+
+[node name="MooringPost96_200" type="StaticBody3D" parent="Map/Props" unique_id=347990337]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 96, 3, 200)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/MooringPost96_200" unique_id=346554291]
+mesh = SubResource("b43")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Props/MooringPost96_200" unique_id=2044298289]
+shape = SubResource("s43")
+
+[node name="MooringPost288_200" type="StaticBody3D" parent="Map/Props" unique_id=2039887146]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 288, 3, 200)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/MooringPost288_200" unique_id=1215361914]
+mesh = SubResource("b44")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Props/MooringPost288_200" unique_id=1059887702]
+shape = SubResource("s44")
+
+[node name="MooringPost96_240" type="StaticBody3D" parent="Map/Props" unique_id=1779454384]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 96, 3, 240)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/MooringPost96_240" unique_id=981145582]
+mesh = SubResource("b45")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Props/MooringPost96_240" unique_id=2034767588]
+shape = SubResource("s45")
+
+[node name="MooringPost288_240" type="StaticBody3D" parent="Map/Props" unique_id=1673048095]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 288, 3, 240)
+
+[node name="Visual" parent="Map/Props/MooringPost288_240" unique_id=38455828 instance=ExtResource("3_s7jpf")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, -12, 0.5)
+placement_id = "placed_shape_block_467332258"
+metadata/ember_canvas_unique_source = "vox_shape_block_467332258_canvas_493047929"
+
+[node name="MooringPost96_280" type="StaticBody3D" parent="Map/Props" unique_id=1479531980]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 96, 3, 280)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/MooringPost96_280" unique_id=1216415036]
+mesh = SubResource("b47")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Props/MooringPost96_280" unique_id=729903727]
+shape = SubResource("s47")
+
+[node name="MooringPost288_280" type="StaticBody3D" parent="Map/Props" unique_id=1352482960]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 288, 3, 280)
+
+[node name="Visual" parent="Map/Props/MooringPost288_280" unique_id=1727545198 instance=ExtResource("4_j5jts")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5, -12, 0.5)
+placement_id = "placed_shape_block_182068941"
+
+[node name="CargoA" parent="Map/Props" unique_id=1362439217 instance=ExtResource("4")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 118, 0, 98)
+placement_id = "pier_cargo_a"
+
+[node name="CargoB" parent="Map/Props" unique_id=1122758355 instance=ExtResource("4")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 265, 0, 165)
+placement_id = "pier_cargo_b"
+
+[node name="CargoC" parent="Map/Props" unique_id=1726048498 instance=ExtResource("4")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0, 320)
+placement_id = "pier_cargo_c"
+
+[node name="BarrelA" parent="Map/Props" unique_id=1068666084 instance=ExtResource("4_y8t1g")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 266, 0, 214)
+placement_id = "pier_barrel_a"
+metadata/ember_canvas_unique_source = "vox_fan_barrel_canvas_31516427_canvas_62266144"
+
+[node name="BarrelB" parent="Map/Props" unique_id=1220535807 instance=ExtResource("5")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 126, 0, 112)
+placement_id = "pier_barrel_b"
+
+[node name="HarborStore" type="StaticBody3D" parent="Map/Props" unique_id=1316860006]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 55, 32, 372)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/HarborStore" unique_id=541525953]
+mesh = SubResource("b49")
+
+[node name="Collision" type="CollisionShape3D" parent="Map/Props/HarborStore" unique_id=764661508]
+shape = SubResource("s49")
+
+[node name="HarborStoreRoof" type="Node3D" parent="Map/Props" unique_id=1112147757]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 55, 68, 372)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/HarborStoreRoof" unique_id=116366237]
+mesh = SubResource("b50")
+
+[node name="StoreDoor" type="Node3D" parent="Map/Props" unique_id=1318185196]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 16, 347)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/StoreDoor" unique_id=93892854]
+mesh = SubResource("b51")
+
+[node name="BoatHull" type="Node3D" parent="Map/Props" unique_id=739290409]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, -1, 158)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/BoatHull" unique_id=217067328]
+mesh = SubResource("b52")
+
+[node name="BoatDeck" type="Node3D" parent="Map/Props" unique_id=382178011]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 6, 158)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/BoatDeck" unique_id=972600980]
+mesh = SubResource("b53")
+
+[node name="BoatMast" type="Node3D" parent="Map/Props" unique_id=181791020]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 42, 153)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/BoatMast" unique_id=1226644992]
+mesh = SubResource("b54")
+
+[node name="FurledSail" type="Node3D" parent="Map/Props" unique_id=2037018691]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 61, 154)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/FurledSail" unique_id=1947233169]
+mesh = SubResource("b55")
+
+[node name="MooringLineA" type="Node3D" parent="Map/Props" unique_id=237771504]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 4, 122)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/MooringLineA" unique_id=502213551]
+mesh = SubResource("b56")
+
+[node name="MooringLineB" type="Node3D" parent="Map/Props" unique_id=1506603245]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 4, 187)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/MooringLineB" unique_id=406720278]
+mesh = SubResource("b57")
+
+[node name="pier_barrel_a_copy" parent="Map/Props" unique_id=474160675 instance=ExtResource("5")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 282, 0, 214)
+placement_id = "pier_barrel_a_copy"
+
+[node name="placed_shape_block_82315914" parent="Map/Props" unique_id=961523952 instance=ExtResource("20_ikush")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 7.739155, 164)
+model_id = "vox_shape_block_82315914_canvas_194380203_canvas_117373020_canvas_106179708_canvas_1509328469"
+placement_id = "placed_shape_block_82315914"
+metadata/ember_source_signature = "70cd31a863362b221a78ff6c48993ba87cf6214ef80e31dd7ecceae9db326474"
+metadata/ember_canvas_unique_source = "vox_shape_block_82315914_canvas_194380203_canvas_117373020_canvas_106179708_canvas_1509328469"
+
+[node name="Fragment" parent="Map/Props" unique_id=646497447 instance=ExtResource("22_sijwm")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 20.52087, 172)
+placement_id = "placed_fragment_112205362"
+
+[node name="placed_shape_block_38923252" parent="Map/Props" unique_id=208338306 instance=ExtResource("22_yjp2r")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 228.79372, 0, 164)
+placement_id = "placed_merge_60949294_0"
+
+[node name="Fragment_new" parent="Map/Props" unique_id=807874246 instance=ExtResource("23_ga0ds")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 228.79372, 10.2976055, 166)
+placement_id = "placed_merge_60959363_1"
+
+[node name="Fragment_new_new" parent="Map/Props" unique_id=916869218 instance=ExtResource("24_yb5pd")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 203, 11.91877, 170)
+placement_id = "placed_fragment_1508100958"
+
+[node name="Regions" type="Node3D" parent="Map" unique_id=1328498943]
+
+[node name="PlayerStart" type="Area3D" parent="Map/Regions" unique_id=455727392]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0, 164)
+collision_layer = 0
+collision_mask = 0
+monitoring = false
+script = ExtResource("3")
+region_id = "pier_start"
+map_id = "test_pier"
+kind = "player_start"
+
+[node name="Backdrop" type="Node3D" parent="Map" unique_id=272432926]
+
+[node name="DistantHeadland" type="Node3D" parent="Map/Backdrop" unique_id=392109395]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -180, 28, -320)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Backdrop/DistantHeadland" unique_id=1841862568]
+mesh = SubResource("b58")
+
+[node name="HeadlandRock" type="Node3D" parent="Map/Backdrop" unique_id=1687615815]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -50, 0, -260)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Backdrop/HeadlandRock" unique_id=901241553]
+mesh = SubResource("b59")
+
+[node name="Lighthouse" type="Node3D" parent="Map/Backdrop" unique_id=2078970323]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -120, 100, -320)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Backdrop/Lighthouse" unique_id=352506483]
+mesh = SubResource("b60")
+
+[node name="LighthouseLantern" type="Node3D" parent="Map/Backdrop" unique_id=1442123281]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -120, 143, -320)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Backdrop/LighthouseLantern" unique_id=600550764]
+mesh = SubResource("b61")
+
+[node name="LighthouseCap" type="Node3D" parent="Map/Backdrop" unique_id=1416621428]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -120, 155, -320)
+
+[node name="Visual" type="MeshInstance3D" parent="Map/Backdrop/LighthouseCap" unique_id=99416296]
+mesh = SubResource("b62")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=141081317]
+
+[node name="Gate" type="Label" parent="CanvasLayer" unique_id=44903285]
+offset_left = 20.0
+offset_top = 16.0
+offset_right = 1160.0
+offset_bottom = 64.0
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.9)
+theme_override_constants/shadow_offset_x = 2
+theme_override_constants/shadow_offset_y = 2
+theme_override_font_sizes/font_size = 18
+text = "ПРИЧАЛ · тестовая локация"

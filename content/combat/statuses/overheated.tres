@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="EmberCombatStatusResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_status_resource.gd" id="1_status"]
+
+[resource]
+script = ExtResource("1_status")
+status_id = "overheated"
+display_name = "Накал"
+description = "Накал усиливает силу приёма, но делает получаемый урон опаснее."
+kind = 0
+glyph = "✹"
+ui_color = Color(1, 0.690196, 0.372549, 1)

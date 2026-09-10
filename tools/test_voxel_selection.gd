@@ -50,6 +50,7 @@ func _run() -> void:
 	for frame in 4:
 		await process_frame
 	var panel: VBoxContainer = workspace.get("_selection_panel")
+	panel.get("_mode").select(1) # This regression exercises color connectivity, not the new default marquee.
 	workspace.call("_toggle_voxel_selection")
 	var camera: Camera3D = workspace.get("_camera")
 	var viewport: SubViewport = workspace.get("_viewport")

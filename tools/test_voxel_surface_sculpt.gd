@@ -9,7 +9,17 @@ const SurfaceMesher = preload("res://scripts/ember_voxel_surface_mesher.gd")
 const TEMP_PATH := "user://ember_surface_sculpt_test.tres"
 
 
+class BoundWorldSelector extends WorldSelector:
+	var selected_map: EmberMapLoader
+
+	func _resolve_map() -> EmberMapLoader:
+		return selected_map
+
+
 func _init() -> void:
+	if "--native-selector-probe" in OS.get_cmdline_user_args():
+		quit(_native_selector_probe())
+		return
 	quit(_run())
 
 
@@ -486,6 +496,16 @@ func _test_material_brush(errors: Array[String]) -> void:
 
 
 func _test_world_surface_seed(errors: Array[String]) -> void:
+	# Capture stderr too: missing pack reads log ERROR but do not fail Godot's
+	# process exit code. This reproduces the editor's automatic context bind.
+	var output: Array = []
+	var code := OS.execute(OS.get_executable_path(), PackedStringArray([
+		"--headless", "--path", ProjectSettings.globalize_path("res://"),
+		"--script", "res://tools/test_voxel_surface_sculpt.gd", "--", "--native-selector-probe",
+	]), output, true)
+	var probe_text := "\n".join(output)
+	if code != 0 or "ERROR" in probe_text or "NATIVE_SELECTOR_PASS" not in probe_text:
+		errors.append("native editor selector probe failed: %s" % probe_text)
 	var selector := WorldSelector.new()
 	var toolbar := selector.build_toolbar()
 	for control_name in [
@@ -534,6 +554,50 @@ func _test_world_surface_seed(errors: Array[String]) -> void:
 		errors.append("world Surface path is not deterministic")
 	if Model.world_surface_path("Test Map") != EmberVoxelModelResource.world_surface_path("Test Map"):
 		errors.append("editor and runtime disagree about the canonical world Surface path")
+
+
+func _native_selector_probe() -> int:
+	var errors: Array[String] = []
+	var packed := load("res://scenes/test_pier.tscn") as PackedScene
+	var scene := packed.instantiate()
+	var map := scene.get_node("Map") as EmberMapLoader
+	var selector := BoundWorldSelector.new()
+	selector.selected_map = map
+	var toolbar := selector.build_toolbar()
+	if toolbar.visible or not selector._grid.is_empty():
+		errors.append("primitive pier incorrectly offers a voxel Surface selection")
+	# Repeat the exact selection-change callback; no pack read may be logged.
+	selector.selected_map = null
+	selector.refresh_context()
+	selector.selected_map = map
+	selector.refresh_context()
+	map.authored_size_blocks = Vector2i.ZERO
+	if map._expected_world_surface_blocks() != Vector2i.ZERO:
+		errors.append("native map with transient unknown dimensions used legacy data")
+	var surface := EmberVoxelModelResource.new()
+	surface.size_blocks = Vector3i(2, 1, 3)
+	surface.material = {"semanticOwner": "test_pier"}
+	map.visual_surface = surface
+	selector.selected_map = null
+	selector.refresh_context()
+	selector.selected_map = map
+	selector.refresh_context()
+	if not toolbar.visible or selector._grid.get("width") != 2 or selector._grid.get("depth") != 3:
+		errors.append("native Surface does not supply its own selector dimensions")
+	var legacy := EmberMapLoader.new()
+	legacy.map_id = "fan_town"
+	var expected: Dictionary = EmberTileMesher.surface_grid(
+		EmberPack.parse_json_file(EmberPack.map_path("fan_town")))
+	if selector._surface_grid_for_map(legacy) != expected:
+		errors.append("legacy selector changed its source grid or heights")
+	toolbar.free()
+	scene.free()
+	legacy.free()
+	for error in errors:
+		push_error(error)
+	if errors.is_empty():
+		print("NATIVE_SELECTOR_PASS")
+	return 0 if errors.is_empty() else 1
 
 
 func _test_stroke_undo(

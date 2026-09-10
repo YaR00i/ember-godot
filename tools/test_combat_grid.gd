@@ -14,6 +14,7 @@ func _init() -> void:
 	_test_non_hostile_approach(errors)
 	_test_held_target_lifecycle(errors)
 	_test_held_ai(errors)
+	_test_movement_only_ai(errors)
 	_test_grid_conduction(errors)
 	_test_focus_and_push(errors)
 	_test_height_rules(errors)
@@ -31,6 +32,7 @@ func _init() -> void:
 	print("  support, item, cell and lift commands reuse the same approach planner")
 	print("  held targets leave the grid and release through synthetic carrier commands")
 	print("  AI carriers use the same synthetic legality without moving")
+	print("  movement-only AI pursuit commits once instead of rewinding or stalling its turn")
 	print("  connected wet panels conduct; focus-linked ember panels boost fire")
 	print("  grid forced movement resolves through the shared combat result")
 	print("  elevation and linked Frozen/Wet cellChanges share preview and commit")
@@ -378,6 +380,31 @@ func _test_held_ai(errors: Array[String]) -> void:
 		or (command.get("moves", {}) as Dictionary).get("warden", Vector2i(4, 2)) != Vector2i(4, 2)
 	):
 		errors.append("AI carrier bypassed shared synthetic commands or moved while holding")
+
+
+func _test_movement_only_ai(errors: Array[String]) -> void:
+	var state := Grid.initial_state()
+	_keep_alive(state, PackedStringArray(["warden", "protagonist"]))
+	_force_turn(state, "warden")
+	_set_unit_value(state, "warden", "actions", [])
+	var origin: Vector2i = Combat.unit_definition(state, "warden").get("cell", Combat.INVALID_CELL)
+	var command := Grid.enemy_command(state)
+	var destination: Vector2i = (command.get("moves", {}) as Dictionary).get(
+		"warden", origin
+	)
+	if (
+		not bool(command.get("ok", false))
+		or not bool(command.get("movementOnly", false))
+		or destination == origin
+	):
+		errors.append("movement-only AI pursuit does not satisfy the canonical result contract")
+		return
+	var committed := Combat.commit(state, command)
+	if (
+		int(committed.get("turn", 0)) != int(state.get("turn", 0)) + 1
+		or Combat.unit_definition(committed, "warden").get("cell", origin) != destination
+	):
+		errors.append("movement-only AI pursuit was rejected and left the enemy turn stuck")
 
 
 func _test_grid_conduction(errors: Array[String]) -> void:

@@ -350,6 +350,8 @@ func _start_battle_from_script(encounter_id: String) -> String:
 	visible = false
 	var error := EmberCombatTransition.change_scene(get_tree(), clean_id, economy_state)
 	if error != OK:
+		if not EmberCombatTransition.last_start_error.is_empty():
+			return EmberCombatTransition.last_start_error
 		return (
 			"Эта встреча уже завершена"
 			if error == ERR_ALREADY_EXISTS

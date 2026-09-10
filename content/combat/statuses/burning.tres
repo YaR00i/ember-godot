@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="EmberCombatStatusResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_status_resource.gd" id="1_status"]
+
+[resource]
+script = ExtResource("1_status")
+status_id = "burning"
+display_name = "Горение"
+description = "Горящую цель можно потушить водой; статус участвует в стихийных взаимодействиях."
+glyph = "✦"
+ui_color = Color(1, 0.541176, 0.333333, 1)

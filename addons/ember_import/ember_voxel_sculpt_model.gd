@@ -1676,6 +1676,7 @@ static func pick(
 	ray_origin: Vector3,
 	ray_direction: Vector3,
 	visible_height := -1,
+	allow_empty_floor := false,
 ) -> Dictionary:
 	if resource == null or ray_direction.is_zero_approx():
 		return {}
@@ -1708,6 +1709,12 @@ static func pick(
 			last_empty = cell
 			previous_cell = cell
 		t += step
+	if allow_empty_floor and absf(ray_direction.y) > 0.00001:
+		var floor_t := -ray_origin.y / ray_direction.y
+		var point := ray_origin + ray_direction * floor_t
+		var floor_cell := Vector3i(floori(point.x * density), 0, floori(point.z * density))
+		if floor_t >= 0.0 and contains(floor_cell, size):
+			return {"hit": INVALID_CELL, "adjacent": floor_cell, "empty_floor": true}
 	return {}
 
 

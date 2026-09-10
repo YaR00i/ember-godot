@@ -91,7 +91,6 @@ size = Vector3(1.128, 0.78, 1.128)
 transparency = 1
 shading_mode = 0
 albedo_color = Color(0.22, 0.19, 0.29, 0.24)
-roughness = 0.92
 
 [sub_resource type="BoxMesh" id="BoxMesh_blocked_faded"]
 material = SubResource("StandardMaterial3D_blocked_faded")

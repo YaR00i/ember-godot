@@ -10,6 +10,22 @@ func _init() -> void:
 	var errors: Array[String] = []
 	var items := EmberInteractionContent.item_definitions()
 	var party := PartyState.new_game(items)
+	for count in range(1, 5):
+		var active: Array[String] = []
+		active.assign(["mira", "orik", "sena", "protagonist"].slice(0, count))
+		var partial := ENCOUNTER.initial_state(party, 73, active)
+		partial["units"]["mira"]["hp"] = 0
+		partial["units"]["mira"]["mp"] = 1
+		var projected := PartyState.combat_progression_preview(partial, 35, true, items)
+		var committed := PartyState.apply_combat_result(party, partial, items, 35, true)
+		if projected["rows"].size() != count or projected["party"].size() != count:
+			errors.append("active %d preview invented absent heroes" % count)
+		for hero_id in PartyState.HERO_IDS:
+			if hero_id in active:
+				if committed[hero_id] != projected["party"].get(hero_id):
+					errors.append("active %d preview/commit disagree for %s" % [count, hero_id])
+			elif committed[hero_id] != party[hero_id]:
+				errors.append("inactive %s received HP/MP/XP/equipment changes" % hero_id)
 	var mira: Dictionary = party.get("mira", {})
 	var mira_before := PartyState.derived_stats("mira", mira, items)
 	mira["hp"] = int(mira_before.get("maxHp", 1)) - 5

@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="EmberCombatStatusResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_status_resource.gd" id="1_status"]
+
+[resource]
+script = ExtResource("1_status")
+status_id = "frozen"
+display_name = "Заморозка"
+description = "Замёрзшая цель теряет подготовку Wet и уязвима к нагреву."
+glyph = "◆"
+ui_color = Color(0.662745, 0.933333, 1, 1)
