@@ -2,6 +2,7 @@
 extends EditorPlugin
 
 const EmberToolsDock = preload("res://addons/ember_import/ember_tools_dock.gd")
+const EmberVoxelObjectLibrary = preload("res://addons/ember_import/ember_voxel_object_library_panel.gd")
 const EmberVoxelPropGizmo = preload("res://addons/ember_import/ember_voxel_prop_gizmo.gd")
 const EmberStandaloneTriggerGizmo = preload("res://addons/ember_import/ember_standalone_trigger_gizmo.gd")
 const EmberObjectInspector = preload("res://addons/ember_import/ember_object_inspector_plugin.gd")
@@ -27,6 +28,7 @@ const GRAPH_LAYOUT_SECTION := "EmberGraph"
 const GRAPH_LAYOUT_WORKSPACE := "workspace_layout"
 
 var _dock: VBoxContainer
+var _object_library
 var _confirm: ConfirmationDialog
 var _voxel_gizmo: EditorNode3DGizmoPlugin
 var _trigger_gizmo: EditorNode3DGizmoPlugin
@@ -54,10 +56,16 @@ func _enter_tree() -> void:
 	add_tool_menu_item("Ember: Точная voxel-расстановка…", _place_voxel_selection)
 	name = "EmberImportPlugin"
 	_voxel_object_toolbar = HBoxContainer.new()
-	var create_object := Button.new()
-	create_object.text = "+ Объект"
-	create_object.pressed.connect(_new_voxel_shape)
-	_voxel_object_toolbar.add_child(create_object)
+	var object_library := Button.new()
+	object_library.text = "Объекты"
+	object_library.tooltip_text = "Открыть нижнюю полку voxel-объектов."
+	object_library.pressed.connect(_open_voxel_object_library)
+	_voxel_object_toolbar.add_child(object_library)
+	var create_shape := Button.new()
+	create_shape.text = "+ Форма"
+	create_shape.tooltip_text = "Создать новую простую voxel-форму и открыть её в Canvas."
+	create_shape.pressed.connect(_new_voxel_shape)
+	_voxel_object_toolbar.add_child(create_shape)
 	var edit_object := Button.new()
 	edit_object.text = "Объект / сборка в Canvas"
 	edit_object.tooltip_text = "Выберите voxel-объект или группу секций. Сборка открывается общим редактируемым холстом."
@@ -141,10 +149,18 @@ func _enter_tree() -> void:
 	_dock.duplicate_requested.connect(_duplicate_voxel_prop)
 	_dock.standalone_trigger_requested.connect(_create_standalone_trigger)
 	_dock.voxel_prop_requested.connect(_create_voxel_prop)
+	_dock.voxel_library_requested.connect(_open_voxel_object_library)
 	_dock.voxel_migrate_requested.connect(_migrate_voxel_from_library)
 	_dock.voxel_batch_migrate_requested.connect(_migrate_voxel_batch_from_dashboard)
 	_dock.close_requested.connect(_close_migration_panel)
 	add_control_to_bottom_panel(_dock, "Ember Migration")
+	_object_library = EmberVoxelObjectLibrary.new()
+	_object_library.place_requested.connect(_create_voxel_prop)
+	_object_library.open_resource_requested.connect(_open_voxel_library_resource)
+	_object_library.migrate_requested.connect(_migrate_voxel_from_library)
+	_object_library.new_shape_requested.connect(_new_voxel_shape)
+	_object_library.close_requested.connect(_close_object_library)
+	add_control_to_bottom_panel(_object_library, "Объекты")
 	_interact_actions = EmberInspectorActions.new()
 	_interact_actions.configure(get_undo_redo())
 	_interact_actions.scene_binding_changed.connect(_on_scene_binding_changed)
@@ -310,6 +326,11 @@ func _exit_tree() -> void:
 	if _dock:
 		remove_control_from_bottom_panel(_dock)
 		_dock.queue_free()
+		_dock = null
+	if _object_library:
+		remove_control_from_bottom_panel(_object_library)
+		_object_library.queue_free()
+		_object_library = null
 	if _confirm:
 		_confirm.queue_free()
 
@@ -879,10 +900,74 @@ func _close_migration_panel() -> void:
 	hide_bottom_panel()
 
 
+func _open_voxel_object_library() -> void:
+	if _object_library == null:
+		return
+	var context := _voxel_object_library_context()
+	_object_library.open_for(
+		context.get("anchor") as Node3D,
+		bool(context.get("can_place", false)),
+		str(context.get("label", "Место: откройте Ember Map")),
+	)
+	make_bottom_panel_item_visible(_object_library)
+
+
+func _close_object_library() -> void:
+	hide_bottom_panel()
+
+
+func _voxel_object_library_context() -> Dictionary:
+	var root := EditorInterface.get_edited_scene_root()
+	if root == null:
+		return {"anchor": null, "can_place": false, "label": "Место: откройте Ember Map"}
+	var map := root.find_child("Map", true, false) as EmberMapLoader
+	if map == null or map.get_node_or_null("Props") == null:
+		return {"anchor": null, "can_place": false, "label": "Место: в сцене нет Map/Props"}
+	var anchor: Node3D
+	var selection := EditorInterface.get_selection()
+	if selection != null:
+		for selected in selection.get_selected_nodes():
+			var current := selected as Node
+			var selected_3d := selected as Node3D
+			while current != null:
+				if current is EmberVoxelProp:
+					selected_3d = current as Node3D
+					break
+				current = current.get_parent()
+			if selected_3d != null:
+				anchor = selected_3d
+				break
+	if anchor != null:
+		return {
+			"anchor": anchor,
+			"can_place": true,
+			"label": "Место: рядом с «%s» · смещение +X" % anchor.name,
+		}
+	var start := root.find_child("player_start", true, false) as Node3D
+	if start == null:
+		start = root.find_child("PlayerStart", true, false) as Node3D
+	return {
+		"anchor": null,
+		"can_place": true,
+		"label": "Место: у точки старта" if start != null else "Место: начало координат Map/Props",
+	}
+
+
+func _open_voxel_library_resource(model_id: String) -> void:
+	var resource := EmberVoxelCatalog.native_resource(model_id)
+	if resource == null:
+		_object_library.show_status("Godot Resource для %s ещё не создан." % model_id, true)
+		return
+	EditorInterface.edit_resource(resource)
+	_object_library.show_status("Открыт Resource модели %s." % model_id)
+
+
 func _migrate_voxel_from_library(model_id: String) -> void:
 	if _interact_actions == null or not _interact_actions.migrate_voxel_model(model_id, self):
 		if _dock:
 			_dock.show_status("Модель %s уже перенесена или legacy-источник недоступен." % model_id, true)
+		if _object_library:
+			_object_library.show_status("Модель %s уже перенесена или legacy-источник недоступен." % model_id, true)
 
 
 func _migrate_voxel_batch_from_dashboard(model_ids: Array[String]) -> void:
@@ -898,6 +983,8 @@ func _migrate_voxel_batch_from_dashboard(model_ids: Array[String]) -> void:
 func _on_voxel_model_changed(model_id: String) -> void:
 	if _dock:
 		_dock.call_deferred("accept_voxel_migration_change", model_id)
+	if _object_library:
+		_object_library.call_deferred("refresh", model_id)
 
 
 func _new_voxel_shape() -> void:
@@ -1062,6 +1149,8 @@ func _create_voxel_prop(model_id: String, anchor: Node3D) -> void:
 	if map == null or props == null:
 		if _dock:
 			_dock.show_status("Не найден контейнер Map/Props.", true)
+		if _object_library:
+			_object_library.show_status("Не найден контейнер Map/Props.", true)
 		return
 	var tile_size := map.imported_tile_size if map.imported_tile_size > 0.0 else 16.0
 	var prefab_path := EmberVoxelPrefab.prefab_path(model_id)
@@ -1078,11 +1167,15 @@ func _create_voxel_prop(model_id: String, anchor: Node3D) -> void:
 	if packed == null:
 		if _dock:
 			_dock.show_status("Prefab %s не собран: проверьте voxel-исходник." % model_id, true)
+		if _object_library:
+			_object_library.show_status("Prefab %s не собран: проверьте voxel-исходник." % model_id, true)
 		return
 	report = EmberVoxelPrefab.validate_packed(model_id, packed)
 	if not bool(report.get("ok", false)):
 		if _dock:
 			_dock.show_status("Prefab %s не прошёл проверку: %s" % [model_id, "; ".join(report.get("errors", []))], true)
+		if _object_library:
+			_object_library.show_status("Prefab %s не прошёл проверку: %s" % [model_id, "; ".join(report.get("errors", []))], true)
 		return
 	var world_position := Vector3.ZERO
 	if is_instance_valid(anchor) and (anchor == root or root.is_ancestor_of(anchor)):
@@ -1100,6 +1193,8 @@ func _create_voxel_prop(model_id: String, anchor: Node3D) -> void:
 	if prop == null:
 		if _dock:
 			_dock.show_status("Не удалось создать instance %s." % model_id, true)
+		if _object_library:
+			_object_library.show_status("Не удалось создать instance %s." % model_id, true)
 		return
 	prop.configure_voxel_scale(prop.voxels_per_block, tile_size)
 	var undo_redo := get_undo_redo()
@@ -1120,6 +1215,9 @@ func _add_authored_voxel(parent: Node, prop: EmberVoxelProp, root: Node) -> void
 	if _dock:
 		_dock.show_status("Добавлен %s в Map/Props · %s. Ctrl+Z отменяет." % [prop.model_id, prop.placement_id])
 		_dock.refresh()
+	if _object_library:
+		_object_library.show_status("Добавлен %s · Ctrl+Z отменяет." % prop.name)
+		_object_library.refresh_context(prop, true, "Место: рядом с «%s» · смещение +X" % prop.name)
 
 
 func _remove_authored_voxel(parent: Node, prop: EmberVoxelProp) -> void:
@@ -1132,6 +1230,8 @@ func _remove_authored_voxel(parent: Node, prop: EmberVoxelProp) -> void:
 	if _dock:
 		_dock.show_status("Добавление voxel-prefab отменено.")
 		_dock.refresh()
+	if _object_library:
+		_object_library.show_status("Добавление объекта отменено через Ctrl+Z.")
 
 
 func _on_scene_changed(root: Node) -> void:
@@ -1139,6 +1239,13 @@ func _on_scene_changed(root: Node) -> void:
 		_graph_workspace.set_scene_root(root)
 	if _dock:
 		_dock.refresh()
+	if _object_library:
+		var context := _voxel_object_library_context()
+		_object_library.refresh_context(
+			context.get("anchor") as Node3D,
+			bool(context.get("can_place", false)),
+			str(context.get("label", "Место: откройте Ember Map")),
+		)
 	if _battlefield_painter:
 		_battlefield_painter.refresh_context()
 	if _world_surface_selector:
@@ -1180,6 +1287,13 @@ func _refresh_voxel_gizmos() -> void:
 		_battlefield_painter.refresh_context()
 	if _world_surface_selector:
 		_world_surface_selector.refresh_context()
+	if _object_library:
+		var context := _voxel_object_library_context()
+		_object_library.refresh_context(
+			context.get("anchor") as Node3D,
+			bool(context.get("can_place", false)),
+			str(context.get("label", "Место: откройте Ember Map")),
+		)
 
 
 func _ask_reimport() -> void:

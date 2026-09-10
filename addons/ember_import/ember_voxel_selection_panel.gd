@@ -20,9 +20,14 @@ var _through: OptionButton
 var _depth: SpinBox
 var _operation: OptionButton
 var _tolerance: SpinBox
+var _tolerance_row: HBoxContainer
 var _status: Label
 var _paint: Button
 var _mask: CheckButton
+var _mode_buttons: Array[Button] = []
+var _through_buttons: Array[Button] = []
+var _operation_buttons: Array[Button] = []
+var _through_row: HBoxContainer
 var _overlay: MultiMeshInstance3D
 var _job: RefCounted
 var _pending_operation := 0
@@ -38,19 +43,37 @@ var _overlay_color := DEFAULT_OVERLAY_COLOR
 
 func _init() -> void:
 	name = "VoxelSelectionPanel"
-	var heading := Label.new()
-	heading.text = "ВЫДЕЛЕНИЕ ВОКСЕЛЕЙ"
-	add_child(heading)
 	_toggle = Button.new()
 	_toggle.name = "VoxelSelectToggle"
 	_toggle.text = "Выбирать воксели · V"
 	_toggle.toggle_mode = true
+	_toggle.theme_type_variation = &"WorkshopToolButton"
 	_toggle.pressed.connect(func() -> void: activation_requested.emit())
 	add_child(_toggle)
-	_mode = _options(["Один воксель", "Связные похожего цвета", "Все похожего цвета", "Рамка · протяните мышью", "Рамка по поверхности"])
-	_mode.item_selected.connect(func(_index: int) -> void: _box_anchor = Vector3i(-1,-1,-1))
+	_mode = _state_options(["Один воксель", "Связные похожего цвета", "Все похожего цвета", "Рамка · протяните мышью", "Рамка по поверхности"])
+	_mode.item_selected.connect(_on_mode_selected)
 	_mode.select(3)
-	_through = _options(["Рамка: видимая поверхность", "Рамка: насквозь"])
+	var method_label := Label.new()
+	method_label.text = "СПОСОБ ВЫДЕЛЕНИЯ"
+	method_label.modulate = Color(0.60, 0.72, 0.82)
+	add_child(method_label)
+	var method_group := ButtonGroup.new()
+	method_group.allow_unpress = false
+	var method_primary := HBoxContainer.new()
+	method_primary.add_theme_constant_override("separation", 4)
+	add_child(method_primary)
+	_add_segment_buttons(method_primary, method_group, _mode, [0, 1, 2], ["Воксель", "Связные", "Цвет"], _mode_buttons)
+	var method_area := HBoxContainer.new()
+	method_area.add_theme_constant_override("separation", 4)
+	add_child(method_area)
+	_add_segment_buttons(method_area, method_group, _mode, [3, 4], ["Рамка", "Поверхность"], _mode_buttons)
+	_through = _state_options(["Рамка: видимая поверхность", "Рамка: насквозь"])
+	_through_row = HBoxContainer.new()
+	_through_row.add_theme_constant_override("separation", 4)
+	add_child(_through_row)
+	var through_group := ButtonGroup.new()
+	through_group.allow_unpress = false
+	_add_segment_buttons(_through_row, through_group, _through, [0, 1], ["Видимые", "Насквозь"], _through_buttons)
 	_depth = SpinBox.new()
 	_depth.min_value = 1
 	_depth.max_value = 256
@@ -60,55 +83,134 @@ func _init() -> void:
 	_depth.tooltip_text = "Число слоёв внутрь от грани, с которой начат жест. Плоскость не огибает рельеф."
 	add_child(_depth)
 	_depth.hide()
-	_mode.item_selected.connect(func(index: int) -> void:
-		_depth.visible = index == 4
-		_through.visible = index != 4)
-	_operation = _options(["Новое выделение", "Добавить · Shift", "Вычесть · Ctrl"])
+	_operation = _state_options(["Новое выделение", "Добавить · Shift", "Вычесть · Ctrl"])
 	_operation.tooltip_text = "Операция меняет только выделение, не геометрию. Зажмите Shift или Ctrl ДО начала протягивания; без клавиш используется режим этого списка."
-	var row := HBoxContainer.new()
+	var operation_label := Label.new()
+	operation_label.text = "ИЗМЕНЕНИЕ ВЫДЕЛЕНИЯ"
+	operation_label.modulate = Color(0.60, 0.72, 0.82)
+	add_child(operation_label)
+	var operation_row := HBoxContainer.new()
+	operation_row.add_theme_constant_override("separation", 4)
+	add_child(operation_row)
+	var operation_group := ButtonGroup.new()
+	operation_group.allow_unpress = false
+	_add_segment_buttons(operation_row, operation_group, _operation, [0, 1, 2], ["Новое", "+ Shift", "− Ctrl"], _operation_buttons)
+	_tolerance_row = HBoxContainer.new()
 	var label := Label.new()
 	label.text = "Допуск цвета %"
-	row.add_child(label)
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_tolerance_row.add_child(label)
 	_tolerance = SpinBox.new()
 	_tolerance.name = "VoxelSelectionTolerance"
 	_tolerance.max_value = 100
-	row.add_child(_tolerance)
-	add_child(row)
+	_tolerance.custom_minimum_size.x = 96.0
+	_tolerance_row.add_child(_tolerance)
+	add_child(_tolerance_row)
 	_status = Label.new()
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(_status)
+	var primary_actions := HBoxContainer.new()
+	primary_actions.add_theme_constant_override("separation", 5)
+	add_child(primary_actions)
 	_paint = Button.new()
 	_paint.name = "VoxelSelectionPaint"
-	_paint.text = "Окрасить выделенное"
+	_paint.text = "Окрасить"
+	_paint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_paint.pressed.connect(_request_paint)
-	add_child(_paint)
+	primary_actions.add_child(_paint)
 	var transform_button := Button.new()
-	transform_button.text = "Перенос / копия / поворот…"
+	transform_button.text = "Перенести…"
+	transform_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	transform_button.pressed.connect(func() -> void:
 		if not busy() and not selected.is_empty():
 			transform_requested.emit())
-	add_child(transform_button)
+	primary_actions.add_child(transform_button)
+	var extract_actions := HBoxContainer.new()
+	extract_actions.add_theme_constant_override("separation", 5)
+	add_child(extract_actions)
 	for cutting in [true,false]:
 		var extract := Button.new()
-		extract.text = "Вырезать в новый объект…" if cutting else "Скопировать в новый объект…"
+		extract.text = "Вырезать…" if cutting else "Копировать…"
+		extract.tooltip_text = "Создать новый объект из выделения" if cutting else "Скопировать выделение в новый объект"
+		extract.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		extract.pressed.connect(func() -> void:
 			if not busy() and not selected.is_empty():
 				extract_requested.emit(cutting))
-		add_child(extract)
+		extract_actions.add_child(extract)
+	var selection_actions := HBoxContainer.new()
+	selection_actions.add_theme_constant_override("separation", 5)
+	add_child(selection_actions)
 	_mask = CheckButton.new()
 	_mask.name = "VoxelSelectionMaskBrush"
-	_mask.text = "Кисть по выделению"
+	_mask.text = "Маска кисти"
 	_mask.tooltip_text = "Точная маска для цвета; XZ-отпечаток для формы."
-	add_child(_mask)
+	_mask.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	selection_actions.add_child(_mask)
 	var clear := Button.new()
-	clear.text = "Снять выделение"
+	clear.text = "Снять"
+	clear.tooltip_text = "Очистить текущее выделение вокселей"
+	clear.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	clear.pressed.connect(clear_selection)
-	add_child(clear)
-	var help := Label.new()
-	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	help.text = "Зажмите Shift ДО начала рамки, чтобы добавить участок к выделению; Ctrl — убрать участок из выделения, не удаляя воксели. Без клавиш действует режим списка выше. «Насквозь» включает внутренние и задние воксели. Перенос: Enter применяет, Esc отменяет."
-	add_child(help)
+	selection_actions.add_child(clear)
+	_sync_segments()
+	_on_mode_selected(_mode.selected)
 	_update_status()
+
+
+func _state_options(labels: Array) -> OptionButton:
+	var option := OptionButton.new()
+	for label in labels:
+		option.add_item(str(label))
+	option.hide()
+	add_child(option)
+	return option
+
+
+func _add_segment_buttons(
+	parent: HBoxContainer,
+	group: ButtonGroup,
+	option: OptionButton,
+	indices: Array,
+	labels: Array,
+	buttons: Array[Button],
+) -> void:
+	for local_index in indices.size():
+		var option_index := int(indices[local_index])
+		var button := Button.new()
+		button.text = str(labels[local_index])
+		button.toggle_mode = true
+		button.button_group = group
+		button.theme_type_variation = &"WorkshopSegmentButton"
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.tooltip_text = option.get_item_text(option_index)
+		button.pressed.connect(_select_segment.bind(option, option_index))
+		parent.add_child(button)
+		buttons.append(button)
+
+
+func _select_segment(option: OptionButton, index: int) -> void:
+	option.select(index)
+	option.item_selected.emit(index)
+	_sync_segments()
+
+
+func _sync_option(option: OptionButton, buttons: Array[Button]) -> void:
+	for button in buttons:
+		button.set_pressed_no_signal(button.tooltip_text == option.get_item_text(option.selected))
+
+
+func _sync_segments() -> void:
+	_sync_option(_mode, _mode_buttons)
+	_sync_option(_through, _through_buttons)
+	_sync_option(_operation, _operation_buttons)
+
+
+func _on_mode_selected(index: int) -> void:
+	_box_anchor = Vector3i(-1, -1, -1)
+	_depth.visible = index == 4
+	_through_row.visible = index != 4
+	_tolerance_row.visible = index in [1, 2]
+	_sync_segments()
 
 
 func sync(resource: EmberVoxelModelResource, region: Rect2i, height: int, surface: Node3D) -> void:
@@ -193,6 +295,7 @@ func choose(seed: Vector3i, shift := false, control := false) -> void:
 
 
 func _process(_delta: float) -> void:
+	_sync_segments()
 	var deadline := Time.get_ticks_usec() + 3000
 	while _job != null and Time.get_ticks_usec() < deadline:
 		_job.step(128)
@@ -304,13 +407,13 @@ func _update_status(message := "") -> void:
 	_paint.disabled = busy() or selected.is_empty()
 	_mask.disabled = selected.is_empty() or _mask_kind == "none"
 	if _mask_kind == "voxels":
-		_mask.text = "Кисть только по выбранным вокселям"
+		_mask.text = "Маска кисти"
 		_mask.tooltip_text = "Цвет или материал меняются только на точных индексах выделения; после мазка маска остаётся."
 	elif _mask_kind == "columns":
-		_mask.text = "Кисть только по колонкам выделения"
+		_mask.text = "Маска кисти"
 		_mask.tooltip_text = "Форма меняется лишь в вертикальном XZ-отпечатке выделения; после успешного мазка устаревшая маска очищается."
 	else:
-		_mask.text = "Кисть по выделению недоступна"
+		_mask.text = "Маска кисти"
 		_mask.tooltip_text = "Заливка уровня работает с замкнутым водоёмом, а не с voxel-маской."
 
 
@@ -322,14 +425,6 @@ func _rebuild_selected_columns() -> void:
 	for raw_index in selected:
 		var cell := Selection.cell_of(int(raw_index), size)
 		_selected_columns[cell.x + cell.z * size.x] = true
-
-
-func _options(labels: Array) -> OptionButton:
-	var option := OptionButton.new()
-	for label in labels:
-		option.add_item(str(label))
-	add_child(option)
-	return option
 
 
 func _exit_tree() -> void:

@@ -46,6 +46,11 @@ func clear_cache(path := "") -> void:
 			_cache.erase(key)
 
 
+func cancel_pending() -> void:
+	_pending.clear()
+	_queued.clear()
+
+
 func _ensure_stage() -> void:
 	if _viewport != null:
 		return

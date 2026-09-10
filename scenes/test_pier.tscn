@@ -25,6 +25,7 @@
 [ext_resource type="PackedScene" path="res://prefabs/voxels/vox_merge_60949294_0.tscn" id="22_yjp2r"]
 [ext_resource type="PackedScene" path="res://prefabs/voxels/vox_merge_60959363_1.tscn" id="23_ga0ds"]
 [ext_resource type="PackedScene" path="res://prefabs/voxels/vox_fragment_1508100958.tscn" id="24_yb5pd"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_sphere_253874193_canvas_374568229.tscn" id="25_yjp2r"]
 
 [sub_resource type="Environment" id="env"]
 background_mode = 1
@@ -917,9 +918,7 @@ placement_id = "pier_barrel_a_copy"
 
 [node name="placed_shape_block_82315914" parent="Map/Props" unique_id=961523952 instance=ExtResource("20_ikush")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 7.739155, 164)
-model_id = "vox_shape_block_82315914_canvas_194380203_canvas_117373020_canvas_106179708_canvas_1509328469"
 placement_id = "placed_shape_block_82315914"
-metadata/ember_source_signature = "70cd31a863362b221a78ff6c48993ba87cf6214ef80e31dd7ecceae9db326474"
 metadata/ember_canvas_unique_source = "vox_shape_block_82315914_canvas_194380203_canvas_117373020_canvas_106179708_canvas_1509328469"
 
 [node name="Fragment" parent="Map/Props" unique_id=646497447 instance=ExtResource("22_sijwm")]
@@ -937,6 +936,13 @@ placement_id = "placed_merge_60959363_1"
 [node name="Fragment_new_new" parent="Map/Props" unique_id=916869218 instance=ExtResource("24_yb5pd")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 203, 11.91877, 170)
 placement_id = "placed_fragment_1508100958"
+
+[node name="placed_shape_sphere_253874193" parent="Map/Props" unique_id=570295176 instance=ExtResource("25_yjp2r")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0, 164)
+model_id = "vox_shape_sphere_253874193_canvas_374568229"
+placement_id = "placed_shape_sphere_253874193"
+metadata/ember_source_signature = "7008f96ed6f6367483ea043e7bc3208530e7766d13bad382790f550d8d9a5da7"
+metadata/ember_canvas_unique_source = "vox_shape_sphere_253874193_canvas_374568229"
 
 [node name="Regions" type="Node3D" parent="Map" unique_id=1328498943]
 

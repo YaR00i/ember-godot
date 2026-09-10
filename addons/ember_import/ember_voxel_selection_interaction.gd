@@ -32,6 +32,11 @@ var _controls: VBoxContainer
 var _numbers: Array[SpinBox] = []
 var _axis: OptionButton
 var _turns: OptionButton
+var _axis_buttons: Array[Button] = []
+var _turn_buttons: Array[Button] = []
+var _stamp_mode_buttons: Array[Button] = []
+var _stamp_mirror_buttons: Array[Button] = []
+var _stamp_anchor_buttons: Array[Button] = []
 var _copy: CheckBox
 var _apply: Button
 var _hint: Label
@@ -79,62 +84,123 @@ func setup(owner_workspace: Control) -> void:
 	_hover.material_override = _material(Color(0.1,1,1,1))
 	_hover.hide()
 	_controls = VBoxContainer.new()
-	workspace._selection_panel.add_child(_controls)
+	_controls.name = "VoxelWorkshopTransformControls"
+	var controls_parent: Control = workspace._operation_panel if is_instance_valid(workspace._operation_panel) else workspace._selection_panel
+	controls_parent.add_child(_controls)
 	_controls.hide()
+	var operation_heading := Label.new()
+	operation_heading.text = "ТЕКУЩАЯ ОПЕРАЦИЯ"
+	operation_heading.modulate = Color(0.96, 0.72, 0.32)
+	_controls.add_child(operation_heading)
 	_hint = Label.new()
+	_hint.name = "VoxelWorkshopOperationMessage"
 	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_hint.modulate = Color(0.76, 0.82, 0.88)
 	_controls.add_child(_hint)
+	var coordinates := HBoxContainer.new()
+	coordinates.add_theme_constant_override("separation", 5)
+	_controls.add_child(coordinates)
 	for axis in ["X", "Y", "Z"]:
-		var row := HBoxContainer.new()
+		var row := VBoxContainer.new()
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var label := Label.new()
-		label.text = "Сдвиг " + axis + " · vox"
-		label.size_flags_horizontal = SIZE_EXPAND_FILL
+		label.text = "Сдвиг " + axis
 		row.add_child(label)
 		var number := SpinBox.new()
 		number.min_value = -4096
 		number.max_value = 4096
+		number.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		number.value_changed.connect(_changed.unbind(1))
 		row.add_child(number)
 		_numbers.append(number)
-		_controls.add_child(row)
-	_axis = OptionButton.new()
-	for label in ["Вокруг X", "Вокруг Y", "Вокруг Z"]:
-		_axis.add_item(label)
+		coordinates.add_child(row)
+	_axis = _state_options(["Вокруг X", "Вокруг Y", "Вокруг Z"])
 	_axis.select(1)
-	_controls.add_child(_axis)
-	_turns = OptionButton.new()
-	for label in ["Без поворота", "+90°", "180°", "−90°"]:
-		_turns.add_item(label)
-	_controls.add_child(_turns)
+	_turns = _state_options(["Без поворота", "+90°", "180°", "−90°"])
+	_axis_buttons = _segment_row(_controls, "Ось", _axis, ["X", "Y", "Z"])
+	_turn_buttons = _segment_row(_controls, "Поворот", _turns, ["0°", "90°", "180°", "−90°"])
 	_copy = CheckBox.new()
 	_copy.text = "Копия · оставить исходный фрагмент"
 	_controls.add_child(_copy)
-	_axis.item_selected.connect(_changed.unbind(1))
-	_turns.item_selected.connect(_changed.unbind(1))
 	_copy.toggled.connect(_changed.unbind(1))
 	_stamp_controls = VBoxContainer.new()
+	_stamp_controls.add_theme_constant_override("separation", 5)
 	_controls.add_child(_stamp_controls)
-	_stamp_mode = _stamp_options(["Добавить · занятое сохранить","Заменить · цвет и материал"])
-	_stamp_mirror = _stamp_options(["Без отражения","Отразить X","Отразить Y","Отразить Z"])
-	_stamp_anchor = _stamp_options(["Опора: нижний угол","Опора: центр основания","Опора: центр объёма"])
+	_stamp_mode = _state_options(["Добавить · занятое сохранить","Заменить · цвет и материал"])
+	_stamp_mirror = _state_options(["Без отражения","Отразить X","Отразить Y","Отразить Z"])
+	_stamp_anchor = _state_options(["Опора: нижний угол","Опора: центр основания","Опора: центр объёма"])
+	_stamp_mode_buttons = _segment_row(_stamp_controls, "Режим", _stamp_mode, ["Добавить", "Заменить"])
+	_stamp_mirror_buttons = _segment_row(_stamp_controls, "Зеркало", _stamp_mirror, ["Нет", "X", "Y", "Z"])
+	_stamp_anchor_buttons = _segment_row(_stamp_controls, "Опора", _stamp_anchor, ["Угол", "Низ", "Центр"])
 	_apply = Button.new()
+	_apply.name = "VoxelWorkshopApplyOperation"
 	_apply.text = "Применить · Enter"
+	_apply.theme_type_variation = &"WorkshopPrimaryButton"
 	_apply.pressed.connect(commit)
-	_controls.add_child(_apply)
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 5)
+	_controls.add_child(actions)
+	_apply.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	actions.add_child(_apply)
 	var cancel := Button.new()
+	cancel.name = "VoxelWorkshopCancelOperation"
 	cancel.text = "Отмена · Esc"
 	cancel.pressed.connect(cancel_gesture)
-	_controls.add_child(cancel)
+	cancel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	actions.add_child(cancel)
+	_sync_all_segments()
 
-func _stamp_options(labels: Array) -> OptionButton:
+func _state_options(labels: Array) -> OptionButton:
 	var control := OptionButton.new()
-	control.fit_to_longest_item = false
-	control.clip_text = true
 	for label in labels:
 		control.add_item(label)
 	control.item_selected.connect(_changed.unbind(1))
-	_stamp_controls.add_child(control)
+	control.hide()
+	_controls.add_child(control)
 	return control
+
+func _segment_row(parent: VBoxContainer, title: String, option: OptionButton, labels: Array) -> Array[Button]:
+	var row := HBoxContainer.new()
+	row.name = "VoxelWorkshop%sSegments" % title
+	row.add_theme_constant_override("separation", 4)
+	parent.add_child(row)
+	var caption := Label.new()
+	caption.text = title
+	caption.custom_minimum_size.x = 58.0
+	caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	caption.modulate = Color(0.66, 0.73, 0.80)
+	row.add_child(caption)
+	var group := ButtonGroup.new()
+	group.allow_unpress = false
+	var buttons: Array[Button] = []
+	for index in labels.size():
+		var button := Button.new()
+		button.text = labels[index]
+		button.toggle_mode = true
+		button.button_group = group
+		button.theme_type_variation = &"WorkshopSegmentButton"
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.tooltip_text = option.get_item_text(index)
+		button.pressed.connect(_select_segment.bind(option, index))
+		row.add_child(button)
+		buttons.append(button)
+	return buttons
+
+func _select_segment(option: OptionButton, index: int) -> void:
+	option.select(index)
+	_sync_all_segments()
+	_changed()
+
+func _sync_segment(option: OptionButton, buttons: Array[Button]) -> void:
+	for index in buttons.size():
+		buttons[index].set_pressed_no_signal(index == option.selected)
+
+func _sync_all_segments() -> void:
+	_sync_segment(_axis, _axis_buttons)
+	_sync_segment(_turns, _turn_buttons)
+	_sync_segment(_stamp_mode, _stamp_mode_buttons)
+	_sync_segment(_stamp_mirror, _stamp_mirror_buttons)
+	_sync_segment(_stamp_anchor, _stamp_anchor_buttons)
 
 func _material(color: Color) -> StandardMaterial3D:
 	var material := StandardMaterial3D.new()
@@ -160,6 +226,7 @@ func begin_stamp(preset: Resource) -> void:
 	_stamp_mode.select(0)
 	_stamp_mirror.select(0)
 	_stamp_anchor.select(clampi(_stamp.anchor,0,2))
+	_sync_all_segments()
 	_numbers[0].value = workspace._resource.grid_size().x/2
 	_numbers[2].value = workspace._resource.grid_size().z/2
 	_changed()
@@ -176,14 +243,18 @@ func _start_transform() -> void:
 	for number in _numbers:
 		number.value = 0
 	_turns.select(0)
+	_sync_all_segments()
 	_copy.set_pressed_no_signal(false)
 	_copy.visible = _stamp == null
 	_stamp_controls.visible = _stamp != null
 	for i in 3:
-		_numbers[i].get_parent().get_child(0).text = ("Опора " if _stamp != null else "Сдвиг ")+["X","Y","Z"][i]+" · vox"
+		_numbers[i].get_parent().get_child(0).text = ("Опора " if _stamp != null else "Сдвиг ")+["X","Y","Z"][i]
 	_syncing = false
 	_controls.show()
-	workspace._selection_panel.move_child(_controls,0 if _stamp != null else workspace._selection_panel.get_child_count()-1)
+	if _stamp != null:
+		workspace._show_stamp_operation(_stamp.display_name)
+	else:
+		workspace._show_selection_operation()
 	var ancestor := _controls.get_parent()
 	while ancestor != null and not ancestor is ScrollContainer:
 		ancestor = ancestor.get_parent()
@@ -193,6 +264,7 @@ func _start_transform() -> void:
 	_changed()
 
 func _changed() -> void:
+	_sync_all_segments()
 	if _syncing or not transforming:
 		return
 	if _stamp != null:
@@ -202,6 +274,7 @@ func _changed() -> void:
 	_apply.disabled = true
 
 func cancel_gesture() -> void:
+	var was_transforming := transforming
 	var was_stamp := _stamp != null
 	_surface_marquee = null
 	_surface_bounds = {}
@@ -222,6 +295,11 @@ func cancel_gesture() -> void:
 		_ghost.hide()
 	if is_instance_valid(_controls):
 		_controls.hide()
+	if was_transforming and is_instance_valid(workspace):
+		if was_stamp:
+			workspace._show_stamp_library_mode(false)
+		elif workspace._selection_panel.active:
+			workspace._show_selection_mode()
 	queue_redraw()
 
 func commit() -> void:
@@ -418,9 +496,10 @@ func _process(_delta: float) -> void:
 		else:
 			_plan = Stamp.plan(workspace._resource,_stamp,_offset,_axis.selected,_turns.selected,_stamp_mirror.selected-1,_stamp_anchor.selected,_stamp_mode.selected == 1,workspace._actions.active_part,workspace._edit_region_blocks,workspace._slice_height)
 		_apply.disabled = _plan.has("error")
-		_hint.text = _plan.get("error","Тяните стрелки X/Y/Z. Enter применяет, Esc отменяет. Оранжевое — исходное, голубое — результат.")
+		_hint.modulate = Color(1.0, 0.45, 0.40) if _plan.has("error") else Color(0.76, 0.82, 0.88)
+		_hint.text = _plan.get("error","Оранжевое — исходное · голубое — результат")
 		if _stamp != null and not _plan.has("error"):
-			_hint.text = "Штамп: "+_stamp.display_name+". ЛКМ — опора, стрелки/числа — сдвиг. Enter — отпечаток, Esc — отмена. Пустоты не стирают."
+			_hint.text = "Штамп: "+_stamp.display_name
 		_show_transform()
 	var mouse: Vector2 = workspace._viewport_container.get_local_mouse_position()
 	_hover.visible = not dragging and not _finish and not transforming and Rect2(Vector2.ZERO,size).has_point(mouse)

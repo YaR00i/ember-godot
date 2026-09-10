@@ -68,6 +68,57 @@ func open(prop: EmberVoxelProp, scene_root: Node, undo_redo: Object, edit_shared
 func label() -> String:
 	return "Общая модель · меняются связанные экземпляры" if shared else "Выбранный экземпляр · остальные не изменятся"
 
+
+func target_name() -> String:
+	var prop := _target.get_ref() as EmberVoxelProp if _target != null else null
+	return str(prop.name) if is_instance_valid(prop) else ""
+
+
+func rename_target(requested_name: String) -> Dictionary:
+	error = ""
+	var prop := _target.get_ref() as EmberVoxelProp if _target != null else null
+	var scene_root := _root.get_ref() as Node if _root != null else null
+	if not is_instance_valid(prop) or not is_instance_valid(scene_root) or not scene_root.is_ancestor_of(prop):
+		return _result_error("Объект удалён или сцена закрыта.")
+	var clean_name := requested_name.strip_edges()
+	if clean_name.is_empty():
+		return _result_error("Имя объекта не может быть пустым.")
+	if clean_name.validate_node_name() != clean_name:
+		return _result_error("В имени объекта нельзя использовать . : @ / \" %.")
+	if clean_name.length() > 80:
+		return _result_error("Имя объекта должно быть не длиннее 80 символов.")
+	var old_name := str(prop.name)
+	if clean_name == old_name:
+		return {"ok": true, "changed": false, "name": old_name}
+	var parent := prop.get_parent()
+	if parent == null:
+		return _result_error("У объекта нет владельца в сцене.")
+	for sibling in parent.get_children():
+		if sibling != prop and str(sibling.name) == clean_name:
+			return _result_error("Объект с именем «%s» уже существует рядом." % clean_name)
+	var target_ref := weakref(prop)
+	if _undo is EditorUndoRedoManager:
+		_undo.create_action("Переименовать voxel-объект", UndoRedo.MERGE_DISABLE, scene_root)
+		_undo.add_do_method(self, "_set_target_name", target_ref, clean_name)
+		_undo.add_undo_method(self, "_set_target_name", target_ref, old_name)
+	else:
+		_undo.create_action("Переименовать voxel-объект")
+		_undo.add_do_method(_set_target_name.bind(target_ref, clean_name))
+		_undo.add_undo_method(_set_target_name.bind(target_ref, old_name))
+	_undo.add_do_reference(self)
+	_undo.commit_action()
+	return {"ok": true, "changed": true, "name": target_name()}
+
+
+func _set_target_name(target_ref: WeakRef, next_name: String) -> void:
+	var prop := target_ref.get_ref() as EmberVoxelProp
+	if not is_instance_valid(prop):
+		return
+	prop.name = next_name
+	if Engine.is_editor_hint():
+		EditorInterface.mark_scene_as_unsaved()
+
+
 func release_projection_cache() -> void:
 	# Undo retains this session, but does not need its acceleration data.
 	_projection_cache = null

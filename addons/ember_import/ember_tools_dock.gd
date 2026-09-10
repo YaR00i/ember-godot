@@ -6,6 +6,7 @@ signal reimport_requested
 signal duplicate_requested(prop: EmberVoxelProp)
 signal standalone_trigger_requested(anchor: Node3D)
 signal voxel_prop_requested(model_id: String, anchor: Node3D)
+signal voxel_library_requested
 signal voxel_migrate_requested(model_id: String)
 signal voxel_batch_migrate_requested(model_ids: Array[String])
 signal close_requested
@@ -132,8 +133,8 @@ func _build_ui() -> void:
 	var voxel_title := Label.new()
 	voxel_title.text = "Выбранный voxel-проп"
 	voxel_body.add_child(voxel_title)
-	_voxel_library = _button("Библиотека voxel-префабов…", _open_voxel_library)
-	_voxel_library.tooltip_text = "Выберите voxel-модель с превью. Она добавится в Map/Props рядом с выбранным 3D-объектом или у player_start."
+	_voxel_library = _button("Открыть полку объектов", _open_voxel_library)
+	_voxel_library.tooltip_text = "Открыть постоянную нижнюю библиотеку с поиском, превью и понятным местом добавления."
 	voxel_body.add_child(_voxel_library)
 	_selection_label = Label.new()
 	_selection_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -556,17 +557,7 @@ func _duplicate_selected_prop() -> void:
 
 
 func _open_voxel_library() -> void:
-	_ensure_voxel_popup()
-	var current_id := _selected_prop.model_id if _selected_prop != null else ""
-	_voxel_popup_entries = VoxelVisuals.entries()
-	_voxel_picker.setup("VOXEL-МОДЕЛИ · GODOT + ОЧЕРЕДЬ ИМПОРТА", _voxel_popup_entries, current_id)
-	_voxel_picker.set_choose_text("Добавить в сцену")
-	_refresh_voxel_queue_stats()
-	_refresh_voxel_library_selection(_voxel_picker.selected_id())
-	_voxel_popup.popup_centered(Vector2i(760, 600))
-	for entry in _voxel_popup_entries:
-		var preview_path := str(entry.get("previewPath", ""))
-		_voxel_preview_renderer.queue_preview(str(entry.get("id", "")), preview_path)
+	voxel_library_requested.emit()
 
 
 func _ensure_voxel_popup() -> void:

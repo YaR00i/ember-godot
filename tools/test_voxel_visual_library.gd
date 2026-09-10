@@ -21,6 +21,10 @@ func _run() -> int:
 	var native_entry := _entry_by_id(entries, "vox_fan_anvil")
 	if str(native_entry.get("owner", "")) != "godot" or not bool(native_entry.get("migrated", false)):
 		errors.append("visual library does not expose native migration ownership")
+	if str(native_entry.get("title", "")).is_empty() or str(native_entry.get("scale", "")).is_empty():
+		errors.append("visual library does not expose object-shelf title and scale metadata")
+	if not native_entry.get("tags", []) is Array:
+		errors.append("visual library does not expose searchable object tags")
 	var ready_entry := _first_ready(entries)
 	if ready_entry.is_empty():
 		errors.append("catalog has no existing PackedScene available for visual placement")

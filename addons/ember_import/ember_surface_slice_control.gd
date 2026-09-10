@@ -11,7 +11,7 @@ func _init() -> void:
 	_enabled = CheckButton.new()
 	_enabled.name = "EnableHeightSlice"
 	_enabled.text = "Срез по высоте"
-	_enabled.tooltip_text = "Скрыть верх и защитить его от кистей. Файл и игровой вид остаются полными."
+	_enabled.tooltip_text = "Скрыть верх и защитить его от кистей. 1 vox — нижний слой; вода скрыта. Файл и игровой вид остаются полными."
 	add_child(_enabled)
 	_height = SpinBox.new()
 	_height.name = "HeightSliceLevel"
@@ -21,10 +21,6 @@ func _init() -> void:
 	_height.step = 1
 	_height.editable = false
 	add_child(_height)
-	var hint := Label.new()
-	hint.text = "1 vox = нижний слой. В срезе: объём, цвет и локальный материал. Вода скрыта."
-	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	add_child(hint)
 	_enabled.toggled.connect(func(enabled: bool) -> void:
 		_height.editable = enabled
 		change_requested.emit(enabled, int(_height.value))

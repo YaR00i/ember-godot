@@ -12,6 +12,7 @@ var _selected_id := ""
 var _search: LineEdit
 var _items: ItemList
 var _choose: Button
+var _actions: HBoxContainer
 
 
 func setup(title_text: String, entries: Array[Dictionary], current_id: String) -> void:
@@ -23,10 +24,10 @@ func setup(title_text: String, entries: Array[Dictionary], current_id: String) -
 	set_entries(entries, current_id)
 
 
-func set_entries(entries: Array[Dictionary], current_id: String) -> void:
+func set_entries(entries: Array[Dictionary], current_id: String, clear_search := true) -> void:
 	_entries = entries.duplicate(true)
 	_selected_id = current_id
-	if _search != null:
+	if clear_search and _search != null:
 		_search.text = ""
 	_refresh()
 
@@ -45,6 +46,11 @@ func selected_entry() -> Dictionary:
 func set_choose_text(value: String) -> void:
 	if _choose != null:
 		_choose.text = value
+
+
+func set_choose_visible(value: bool) -> void:
+	if _actions != null:
+		_actions.visible = value
 
 
 func set_tile_layout(icon_size: Vector2i, column_width: int, text_lines := 2) -> void:
@@ -98,19 +104,19 @@ func _build(title_text: String) -> void:
 	_items.item_selected.connect(_on_item_selected)
 	_items.item_activated.connect(_on_item_activated)
 	add_child(_items)
-	var actions := HBoxContainer.new()
-	actions.alignment = BoxContainer.ALIGNMENT_END
-	add_child(actions)
+	_actions = HBoxContainer.new()
+	_actions.alignment = BoxContainer.ALIGNMENT_END
+	add_child(_actions)
 	var hint := Label.new()
 	hint.text = "Двойной клик или Enter — выбрать"
 	hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hint.modulate = Color(0.66, 0.68, 0.74)
-	actions.add_child(hint)
+	_actions.add_child(hint)
 	_choose = Button.new()
 	_choose.name = "ChooseVisualLibraryItem"
 	_choose.text = "Выбрать"
 	_choose.pressed.connect(_emit_choice)
-	actions.add_child(_choose)
+	_actions.add_child(_choose)
 
 
 func _refresh() -> void:

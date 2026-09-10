@@ -33,26 +33,37 @@ var _pending_resource: EmberVoxelModelResource
 
 func _init() -> void:
 	name = "VoxelPalettePanel"
-	var heading := Label.new()
-	heading.text = "ПАЛИТРА"
-	add_child(heading)
 	_label = Label.new()
+	_label.name = "VoxelWorkshopPersistentColor"
+	_label.modulate = Color(0.60, 0.82, 0.94)
+	_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	add_child(_label)
 	_swatch_scroll = ScrollContainer.new()
 	_swatch_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_swatch_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	add_child(_swatch_scroll)
 	_grid = GridContainer.new()
-	_grid.columns = 6
+	_grid.columns = 5
+	_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_grid.add_theme_constant_override("h_separation", 4)
+	_grid.add_theme_constant_override("v_separation", 4)
 	_swatch_scroll.add_child(_grid)
 	var buttons := HBoxContainer.new()
+	buttons.add_theme_constant_override("separation", 4)
 	add_child(buttons)
-	_add = _button(buttons, "+ Цвет", "PaletteAdd", _open_dialog.bind("add"))
-	_edit = _button(buttons, "Изменить", "PaletteEdit", _open_dialog.bind("set"))
-	_merge = _button(buttons, "Заменить…", "PaletteMerge", _open_dialog.bind("merge"))
+	_add = _button(buttons, "+", "PaletteAdd", _open_dialog.bind("add"))
+	_add.tooltip_text = "Добавить новый цвет в палитру"
+	_edit = _button(buttons, "Изм.", "PaletteEdit", _open_dialog.bind("set"))
+	_edit.tooltip_text = "Изменить выбранный цвет во всей модели"
+	_merge = _button(buttons, "Замена", "PaletteMerge", _open_dialog.bind("merge"))
 	_merge.tooltip_text = "Заменить все ссылки другим цветом и удалить образец. Не удаляет воксели."
-	_ramp = _button(self, "Рамп оттенков…", "PaletteRamp", _open_dialog.bind("ramp"))
+	var extended_buttons := HBoxContainer.new()
+	extended_buttons.add_theme_constant_override("separation", 4)
+	add_child(extended_buttons)
+	_ramp = _button(extended_buttons, "Рамп", "PaletteRamp", _open_dialog.bind("ramp"))
 	_ramp.tooltip_text = "Развернуть выбранный цвет в связный набор теней и светов."
-	_pick = _button(self, "Пипетка · I", "PaletteEyedropper", func() -> void: pick_requested.emit())
+	_pick = _button(extended_buttons, "Пипетка · I", "PaletteEyedropper", func() -> void: pick_requested.emit())
+	_pick.tooltip_text = "Взять цвет с вокселя на Canvas"
 	_dialog = ConfirmationDialog.new()
 	_dialog.name = "PaletteEditDialog"
 	_dialog.ok_button_text = "Применить"
@@ -122,13 +133,14 @@ func sync(resource: EmberVoxelModelResource, selected: int) -> void:
 		for index in range(1, _colors.size()):
 			var button := Button.new()
 			button.name = "PaletteColor_%d" % index
-			button.custom_minimum_size = Vector2(38, 38)
-			button.icon = swatch(_colors[index], 26)
+			button.theme_type_variation = &"WorkshopSwatchButton"
+			button.custom_minimum_size = Vector2(34, 34)
+			button.icon = swatch(_colors[index], 24)
 			button.toggle_mode = true
 			button.tooltip_text = "Цвет %d · #%s" % [index, _colors[index].to_html(false)]
 			button.pressed.connect(func() -> void: color_selected.emit(index))
 			_grid.add_child(button)
-	_swatch_scroll.custom_minimum_size.y = clampi(ceili(float(_grid.get_child_count()) / 6.0) * 42, 42, 136)
+	_swatch_scroll.custom_minimum_size.y = clampi(ceili(float(_grid.get_child_count()) / 5.0) * 38, 38, 80)
 	_selected = clampi(selected, 1, maxi(1, _colors.size() - 1))
 	for index in _grid.get_child_count():
 		(_grid.get_child(index) as Button).set_pressed_no_signal(index + 1 == _selected)
@@ -141,7 +153,7 @@ func sync(resource: EmberVoxelModelResource, selected: int) -> void:
 
 
 func set_pick_active(active: bool) -> void:
-	_pick.text = "Клик по вокселю · Esc отмена" if active else "Пипетка · I"
+	_pick.text = "Кликните…" if active else "Пипетка · I"
 
 
 func cancel_edit() -> void:
@@ -245,6 +257,8 @@ func _button(parent: Node, text: String, node_name: String, pressed: Callable) -
 	var button := Button.new()
 	button.name = node_name
 	button.text = text
+	button.theme_type_variation = &"WorkshopIconButton"
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	button.pressed.connect(pressed)
 	parent.add_child(button)
 	return button

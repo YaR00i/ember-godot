@@ -10,7 +10,53 @@
 
 ## Источники правды
 
-### Одиночный объёмный штамп — первая фаза (manual gate открыт)
+### Воксельная мастерская и одиночный объёмный штамп (manual gate открыт)
+
+Нативный UI workspace перестроен без нового owner: компактные основные
+инструменты и постоянный compact PalettePanel слева, контекст
+Object/Model/Part/Preset сверху, активные параметры над правыми вкладками
+Parts/Library и контекстная помощь в footer. Палитра сохраняет прежние signals,
+Undo owner и диалоги; локально прокручивается только сетка swatches.
+`WorkshopSwatchButton` принудительно оставляет icon tint белым во всех состояниях,
+поэтому ImageTexture swatch показывает точный цвет palette data, а не цветовую
+модуляцию активной темы Godot.
+Поле `Объект` в context bar редактирует имя текущего scene instance через
+`ember_voxel_object_session.gd` и общий scene Undo/Redo; Surface оставляет поле
+disabled, а display name/model ID ресурса показываются отдельно и не меняются.
+`Parts` разделён на локальные `Selection/Groups/View`: выбор режима и операции
+использует прямые сегменты, а groups/slice/region больше не образуют один общий
+длинный scroll. Горизонтальный scroll отключён, group selector не подбирает
+ширину по длиннейшему имени, а длинные labels/buttons используют wrap/ellipsis.
+Панели сворачиваются; dirty/error/disabled состояния различимы. Библиотека
+показывает карточки с миниатюрами, вычисленными в памяти из preset geometry,
+не записывая кеш и не меняя Resource schema. Сетка карточек прокручивается
+локально, поэтому выбранный пресет и `Разместить / Редактировать` не уезжают;
+редко используемая форма capture свёрнута. OptionButton остаются внутренними
+значениями существующего plan, но mode/axis/turn/mirror/anchor представлены
+синхронизированными взаимоисключающими сегментами. Scoped factory
+`ember_voxel_workshop_theme.gd` сначала копирует активную Godot Theme, затем
+централизованно переопределяет только workshop Controls; editor fonts/icons/DPI
+сохраняются, соседние плагины не затрагиваются. `test_voxel_workshop_layout.gd`
+закрывает 1280×720/1600×900, постоянную левую палитру, три подраздела Parts,
+переключение режимов и сегментов, закреплённые
+library actions, стабильный Canvas, collapse, active operation, empty library
+и dirty/error states.
+
+Объектная библиотека 3D отделена от библиотеки штампов Canvas и от migration
+dashboard. `ember_voxel_object_library_panel.gd` регистрируется plugin как
+постоянная нижняя полка `Объекты`; входы — кнопка `Объекты` в 3D-toolbar и
+`Открыть полку объектов` в Ember Migration. Полка использует прежнюю проекцию
+`EmberVoxelVisuals`, `EmberVisualLibraryPicker`, in-memory preview renderer и
+канонические string IDs: нового owner/schema/кеша нет. В основном слое находятся
+поиск, фильтры owner, карточки, фиксированный details и `Поставить в сцену`;
+`Открыть Godot Resource / Перенести в Godot` убраны в `Ещё…`.
+При смене owner-фильтра карточки заново получают уже рассчитанные Texture2D из
+session-кеша панели, поэтому `Все → Готовы в Godot → Все` не теряет миниатюры.
+Plugin явно показывает фактическую цель размещения и обновляет её при смене
+selection: +X от выбранного Node3D либо player_start/начало Map. Сам алгоритм
+размещения, Undo и scene ownership не менялись. `test_voxel_object_library_layout.gd`
+закрывает компактную ширину/высоту, фильтры, metadata, pinned action и отсутствие
+модального PopupPanel; native capture — `user://voxel_object_library.png`.
 
 Приняты два режима: Add заполняет только пустые целевые ячейки; Replace
 переносит цвет и четыре материальных канала в занятые ячейки отпечатка, включая
@@ -29,7 +75,7 @@ merge provenance шаблона очищаются: они не перенося
 Выделение/открытие/preview файлов не создают. Загрузка пресетов использует
 CACHE_MODE_IGNORE_DEEP, чтобы видеть отредактированную внешнюю геометрию.
 
-`ember_voxel_stamp_panel.gd` — сохранить выделение, список/refresh, разместить,
+`ember_voxel_stamp_panel.gd` — сохранить выделение, карточки/refresh, разместить,
 редактировать модель. Редактирование использует обычный workspace.open_surface
 с прежним navigation save/discard guard. Уже поставленные отпечатки — копии
 voxel data, а не ссылки на шаблон. Preset geometry не является вторым renderer.
@@ -49,7 +95,7 @@ Out-of-bounds/срез, palette overflow, lock и несовместимость
 без скрытого обрезания и изменения размера. Large synthetic 16384 occupied /
 131072 target cells: plan ~60ms; это не замер полной отзывчивости на Причале.
 Пока нет непрерывного мазка, шага, 2D-маски с глубиной и resampling плотности.
-Gate: test_voxel_stamp (capture, independence, channels/holes, both modes,
+Gate: test_voxel_workshop_layout + test_voxel_stamp (capture, independence, channels/holes, both modes,
 ownership, Undo/Redo, preset/target save/reopen, cache refresh, overflow/lock,
 Canvas preview/commit/cancel/edit/discard); native -- --capture пишет
 user://voxel_stamp.png. Связанные gates перечислены в MIGRATION_TEST_PLAN.

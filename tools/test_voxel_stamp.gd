@@ -96,15 +96,35 @@ func _ui(target: EmberVoxelModelResource, preset: Resource, undo: UndoRedo, dire
 	root.add_child(workspace)
 	workspace.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	workspace.open_surface(target,directory.path_join("target.tres"))
+	workspace._stamp_panel.directory = directory.path_join("presets")
+	workspace._stamp_panel.sources = directory.path_join("models")
+	workspace._stamp_panel.refresh_library()
 	for frame in 4:
 		await process_frame
+	check(not workspace._stamp_panel._create_panel.visible,"new stamp form starts collapsed")
+	check(workspace._stamp_panel._library_actions.get_parent() == workspace._stamp_panel,"library actions are pinned outside card scroll")
 	var interaction: Control = workspace._selection_interaction
 	var before := target.to_definition()
 	interaction.begin_stamp(preset)
 	for frame in 3:
 		await process_frame
 	check(interaction.transforming and not interaction._apply.disabled,"Canvas stamp preview with no selection")
+	check(interaction._controls.get_parent() == workspace._operation_panel and interaction._controls.visible,"stamp controls stay visible above the library")
+	check(not interaction._stamp_mode.visible and interaction._stamp_mode_buttons[0].visible,"stamp state dropdown is hidden behind direct mode choices")
+	interaction._select_segment(interaction._stamp_mirror,1)
+	await process_frame
+	check(interaction._stamp_mirror.selected == 1 and interaction._stamp_mirror_buttons[1].button_pressed,"mirror segment synchronizes stamp plan state")
+	check(workspace._sidebar_tabs.current_tab == 1 and workspace._stamp_tool_button.button_pressed,"stamp placement keeps the library context")
+	check(workspace._workshop_context_label.text.contains(preset.display_name),"selected stamp is absent from workshop context")
 	check(target.to_definition() == before,"UI preview unchanged")
+	interaction._numbers[0].value = -100
+	for frame in 2:
+		await process_frame
+	check(interaction._apply.disabled and interaction._hint.modulate.is_equal_approx(Color(1.0,0.45,0.40)),"invalid stamp state is not visibly distinct")
+	interaction._numbers[0].value = 8
+	for frame in 2:
+		await process_frame
+	check(not interaction._apply.disabled and not interaction._hint.modulate.is_equal_approx(Color(1.0,0.45,0.40)),"valid stamp state did not recover")
 	if "--capture" in OS.get_cmdline_user_args():
 		await create_timer(0.3).timeout
 		root.get_texture().get_image().save_png("user://voxel_stamp.png")
@@ -123,14 +143,14 @@ func _ui(target: EmberVoxelModelResource, preset: Resource, undo: UndoRedo, dire
 	check(target.to_definition().model == before.model,"UI Undo")
 	undo.redo()
 	check(target.voxels == expected,"UI Redo")
-	workspace._stamp_panel.directory = directory.path_join("presets")
-	workspace._stamp_panel.sources = directory.path_join("models")
 	workspace._selection_panel.set_selection(PackedInt32Array([0,17]))
 	for frame in 3:
 		await process_frame
 	workspace._stamp_panel._title.text = "Мой второй штамп"
 	workspace._stamp_panel._save()
 	check(workspace._stamp_panel._entries.size() == 2,"UI library save")
+	check(workspace._stamp_panel._card_buttons.size() == 2,"UI library card grid")
+	check(workspace._stamp_panel._card_buttons[0].icon != null,"UI library derived thumbnail")
 	workspace._stamp_panel._edit()
 	check(workspace._resource.tags.has("stamp"),"edit preset in same Canvas")
 	var saved_voxels: PackedByteArray = workspace._resource.voxels.duplicate()

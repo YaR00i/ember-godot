@@ -25,25 +25,33 @@ var _color_before := Color.WHITE
 
 func _init() -> void:
 	name = "VoxelGroupsPanel"
-	var heading := Label.new()
-	heading.text = "ГРУППЫ ВОКСЕЛЕЙ"
-	add_child(heading)
 	_list = OptionButton.new()
 	_list.name = "VoxelGroupList"
+	_list.fit_to_longest_item = false
+	_list.clip_text = true
+	_list.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_list.item_selected.connect(_on_selected)
 	add_child(_list)
 	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 5)
 	add_child(row)
 	_create = _button(row, "+ Из выделения", _ask_name.bind("create"))
 	_create.name = "VoxelGroupCreate"
 	var rename := _button(row, "Имя…", _ask_name.bind("rename"))
 	rename.name = "VoxelGroupRename"
-	_replace = _button(self, "Заменить состав выделением", _replace_members)
-	var select := _button(self, "Выделить группу", _select_group)
+	var membership_row := HBoxContainer.new()
+	membership_row.add_theme_constant_override("separation", 5)
+	add_child(membership_row)
+	_replace = _button(membership_row, "Заменить состав", _replace_members)
+	_replace.tooltip_text = "Заменить воксели группы текущим выделением"
+	var select := _button(membership_row, "Выделить", _select_group)
+	select.tooltip_text = "Выделить все воксели текущей группы"
 	select.name = "VoxelGroupSelect"
 	_lock = CheckButton.new()
 	_lock.name = "VoxelGroupLock"
-	_lock.text = "Защитить воксели от кистей"
+	_lock.text = "Защитить от правок"
+	_lock.tooltip_text = "Защита блокирует изменение формы, цвета вокселей и материала"
 	_lock.toggled.connect(_toggle_lock)
 	add_child(_lock)
 	var color_row := HBoxContainer.new()
@@ -59,22 +67,25 @@ func _init() -> void:
 	_color.pressed.connect(_begin_color_edit)
 	_color.popup_closed.connect(_commit_color_edit)
 	color_row.add_child(_color)
+	var view_row := HBoxContainer.new()
+	view_row.add_theme_constant_override("separation", 5)
+	add_child(view_row)
 	_visible = CheckButton.new()
 	_visible.name = "VoxelGroupVisible"
-	_visible.text = "Показывать в просмотре"
+	_visible.text = "Показывать"
+	_visible.tooltip_text = "Видимость относится только к текущему просмотру редактора"
+	_visible.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_visible.set_pressed_no_signal(true)
 	_visible.toggled.connect(_toggle_visible)
-	add_child(_visible)
+	view_row.add_child(_visible)
 	_isolate = CheckButton.new()
 	_isolate.name = "VoxelGroupIsolate"
-	_isolate.text = "Изолировать в просмотре"
+	_isolate.text = "Изолировать"
+	_isolate.tooltip_text = "Временно показать только выбранную группу"
+	_isolate.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_isolate.toggled.connect(_toggle_isolate)
-	add_child(_isolate)
+	view_row.add_child(_isolate)
 	_delete = _button(self, "Удалить группу", _delete_group)
-	var help := Label.new()
-	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	help.text = "Координаты и цвет подписи хранятся в .tres; цвет не перекрашивает модель. Видимость и изоляция — только текущий вид редактора. Защита блокирует форму, цвет вокселей и материал."
-	add_child(help)
 	_dialog = ConfirmationDialog.new()
 	_dialog.title = "Имя группы"
 	_dialog.ok_button_text = "Применить"
@@ -270,6 +281,10 @@ func _position(id: String) -> int:
 func _button(parent: Node, title: String, action: Callable) -> Button:
 	var button := Button.new()
 	button.text = title
+	button.clip_text = true
+	button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	button.tooltip_text = title
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	button.pressed.connect(action)
 	parent.add_child(button)
 	return button

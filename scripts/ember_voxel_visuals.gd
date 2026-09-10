@@ -37,6 +37,7 @@ static func entries() -> Array[Dictionary]:
 		var owner_line := "Источник: Godot Resource" if owner == "godot" else "Ожидает одноразового импорта из JOI"
 		result.append({
 			"id": model_id,
+			"title": title,
 			"label": "%s%s\n%s" % ["" if ready else "◇ ", title, model_id],
 			"tooltip": "%s\nmodelId: %s\n%s\n%s\n%s\n%s" % [
 				title,
@@ -47,6 +48,8 @@ static func entries() -> Array[Dictionary]:
 			"Prefab готов · %s" % path if ready else "Source preview · prefab создастся только при добавлении",
 			],
 			"texture": null,
+			"tags": tags,
+			"scale": scale_line,
 			"previewPath": path if ready else "",
 			"previewModelId": model_id,
 			"ready": ready,

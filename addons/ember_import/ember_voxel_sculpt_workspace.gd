@@ -19,6 +19,7 @@ const SelectionPanel = preload("res://addons/ember_import/ember_voxel_selection_
 const GroupsPanel = preload("res://addons/ember_import/ember_voxel_groups_panel.gd")
 const Groups = preload("res://addons/ember_import/ember_voxel_groups.gd")
 const BrushProfiles = preload("res://addons/ember_import/ember_voxel_brush_profiles.gd")
+const WorkshopTheme = preload("res://addons/ember_import/ember_voxel_workshop_theme.gd")
 const PREVIEW_CHUNK_SIZE := 16
 const PREVIEW_REBUILD_BUDGET_USEC := 6000
 const MAX_VIEWPORT_DIMENSION := 4096
@@ -115,7 +116,19 @@ var _surface_fill_inset: OptionButton
 var _surface_fill_tint: OptionButton
 var _coarse: CheckBox
 var _title: Label
+var _dirty_label: Label
+var _object_name_input: LineEdit
+var _workshop_context_label: Label
 var _active_tool_label: Label
+var _tool_rail: VBoxContainer
+var _sidebar_panel: VBoxContainer
+var _operation_panel: VBoxContainer
+var _sidebar_tabs: TabContainer
+var _parts_sections: TabContainer
+var _select_tool_button: Button
+var _stamp_tool_button: Button
+var _tool_rail_toggle: Button
+var _sidebar_toggle: Button
 var _view_menu: MenuButton
 var _surface_layer_view: OptionButton
 var _play_owner_button: Button
@@ -128,6 +141,8 @@ var _camera_size_control: SpinBox
 var _camera_margin_control: SpinBox
 var _status: Label
 var _info: Label
+var _footer_stats: Label
+var _workshop_preset_name := ""
 
 var _yaw := deg_to_rad(45.0)
 var _pitch := deg_to_rad(-48.0)
@@ -201,6 +216,7 @@ func _on_workspace_visibility_changed() -> void:
 
 
 func _process(delta: float) -> void:
+	_sync_object_name_input()
 	if is_instance_valid(_scene_context) and _scene_context.visible:
 		_context_poll += delta
 		if _context_poll >= 0.5:
@@ -231,6 +247,8 @@ func _process(delta: float) -> void:
 
 func _input(event: InputEvent) -> void:
 	if not is_visible_in_tree():
+		return
+	if is_instance_valid(_object_name_input) and _object_name_input.has_focus():
 		return
 	if event is InputEventKey and is_instance_valid(_selection_interaction) and _selection_interaction.handle(event):
 		get_viewport().set_input_as_handled()
@@ -490,6 +508,7 @@ func _open_surface_unchecked(
 		)
 	_refresh_palette()
 	_refresh_groups()
+	_update_workshop_shell()
 	_rebuild_visual()
 	_rebuild_region_overlay()
 	_update_region_label(_edit_region_blocks)
@@ -629,6 +648,8 @@ func show_current_status() -> void:
 
 
 func _build() -> void:
+	var base_theme := EditorInterface.get_editor_theme() if Engine.is_editor_hint() else ThemeDB.get_default_theme()
+	theme = WorkshopTheme.build(base_theme)
 	_navigation_guard = NavigationGuard.new()
 	_navigation_guard.configure(_save, discard_changes)
 	add_child(_navigation_guard)
@@ -648,25 +669,30 @@ func _build() -> void:
 	header.add_theme_constant_override("separation", 6)
 	root.add_child(header)
 	_title = Label.new()
-	_title.text = "SURFACE CANVAS · STYLE PILOT"
+	_title.text = "ВОКСЕЛЬНАЯ МАСТЕРСКАЯ"
 	_title.modulate = Color(0.96, 0.72, 0.32)
 	_title.add_theme_font_size_override("font_size", 14)
 	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_title.clip_text = true
 	_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	header.add_child(_title)
+	var workspace_actions := HFlowContainer.new()
+	workspace_actions.name = "VoxelWorkshopWorkspaceActions"
+	workspace_actions.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	workspace_actions.add_theme_constant_override("h_separation", 6)
+	workspace_actions.add_theme_constant_override("v_separation", 4)
 	var create_object := Button.new()
 	create_object.text = "+ Объект"
 	create_object.pressed.connect(func():
 		if create_object_callback.is_valid():
 			request_close(create_object_callback, Callable())
 	)
-	header.add_child(create_object)
+	workspace_actions.add_child(create_object)
 	_grow_button = Button.new()
 	_grow_button.text = "Расширить холст…"
 	_grow_button.visible = false
 	_grow_button.pressed.connect(_show_canvas_growth)
-	header.add_child(_grow_button)
+	workspace_actions.add_child(_grow_button)
 	_view_menu = MenuButton.new()
 	_view_menu.name = "VoxelSurfaceViewMenu"
 	_view_menu.text = "Вид"
@@ -686,7 +712,7 @@ func _build() -> void:
 	view_popup.add_check_item("Рамка рабочей области", ViewAction.REGION_OVERLAY)
 	view_popup.set_item_checked(view_popup.get_item_index(ViewAction.REGION_OVERLAY), _show_region)
 	view_popup.id_pressed.connect(_on_view_action)
-	header.add_child(_view_menu)
+	workspace_actions.add_child(_view_menu)
 	_surface_layer_view = OptionButton.new()
 	_surface_layer_view.name = "VoxelSurfaceLayerView"
 	_surface_layer_view.tooltip_text = (
@@ -699,20 +725,78 @@ func _build() -> void:
 	_surface_layer_view.add_item("Слои · только дно")
 	_surface_layer_view.set_item_metadata(1, "floor")
 	_surface_layer_view.item_selected.connect(_on_surface_layer_view_changed)
-	header.add_child(_surface_layer_view)
+	workspace_actions.add_child(_surface_layer_view)
 	_play_owner_button = Button.new()
 	_play_owner_button.name = "PlayVoxelSurfaceOwner"
 	_play_owner_button.text = "▶ Играть карту"
 	_play_owner_button.tooltip_text = "Сохранить Surface и запустить связанную world-сцену."
 	_play_owner_button.visible = false
 	_play_owner_button.pressed.connect(_play_owner_scene)
-	header.add_child(_play_owner_button)
+	workspace_actions.add_child(_play_owner_button)
+	_tool_rail_toggle = Button.new()
+	_tool_rail_toggle.name = "ToggleVoxelWorkshopTools"
+	_tool_rail_toggle.text = "Инструменты"
+	_tool_rail_toggle.tooltip_text = "Показать или скрыть левую панель инструментов."
+	_tool_rail_toggle.theme_type_variation = &"WorkshopToolButton"
+	_tool_rail_toggle.toggle_mode = true
+	_tool_rail_toggle.button_pressed = true
+	_tool_rail_toggle.toggled.connect(func(pressed: bool) -> void:
+		if is_instance_valid(_tool_rail):
+			_tool_rail.visible = pressed
+	)
+	header.add_child(_tool_rail_toggle)
+	_sidebar_toggle = Button.new()
+	_sidebar_toggle.name = "ToggleVoxelWorkshopSidebar"
+	_sidebar_toggle.text = "Панели"
+	_sidebar_toggle.tooltip_text = "Показать или скрыть палитру, части и библиотеку."
+	_sidebar_toggle.theme_type_variation = &"WorkshopToolButton"
+	_sidebar_toggle.toggle_mode = true
+	_sidebar_toggle.button_pressed = true
+	_sidebar_toggle.toggled.connect(func(pressed: bool) -> void:
+		if is_instance_valid(_sidebar_panel):
+			_sidebar_panel.visible = pressed
+	)
+	header.add_child(_sidebar_toggle)
+	_dirty_label = Label.new()
+	_dirty_label.name = "VoxelWorkshopDirtyState"
+	_dirty_label.text = "Сохранено"
+	_dirty_label.modulate = Color(0.54, 0.64, 0.74)
+	header.add_child(_dirty_label)
 	var save := Button.new()
 	save.name = "SaveVoxelSurfacePilot"
 	save.text = "Сохранить"
+	save.theme_type_variation = &"WorkshopPrimaryButton"
 	save.tooltip_text = "Сохранить текущую Surface в её Godot Resource."
 	save.pressed.connect(_save)
 	header.add_child(save)
+
+	var context_bar := HFlowContainer.new()
+	context_bar.name = "VoxelWorkshopContextBar"
+	context_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	context_bar.add_theme_constant_override("h_separation", 8)
+	context_bar.add_theme_constant_override("v_separation", 3)
+	root.add_child(context_bar)
+	var object_name_label := Label.new()
+	object_name_label.text = "Объект"
+	context_bar.add_child(object_name_label)
+	_object_name_input = LineEdit.new()
+	_object_name_input.name = "VoxelWorkshopObjectName"
+	_object_name_input.custom_minimum_size.x = 180.0
+	_object_name_input.max_length = 80
+	_object_name_input.placeholder_text = "—"
+	_object_name_input.editable = false
+	_object_name_input.text_submitted.connect(_submit_object_name)
+	_object_name_input.focus_exited.connect(_commit_object_name)
+	_object_name_input.gui_input.connect(_on_object_name_gui_input)
+	context_bar.add_child(_object_name_input)
+	_workshop_context_label = Label.new()
+	_workshop_context_label.name = "VoxelWorkshopContext"
+	_workshop_context_label.text = "›  Модель —  ›  Часть —  ›  Пресет —"
+	_workshop_context_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_workshop_context_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_workshop_context_label.tooltip_text = "Текущий объект сцены, voxel-модель, часть склейки и пресет штампа."
+	context_bar.add_child(_workshop_context_label)
+	root.add_child(workspace_actions)
 
 	_context_controls = HFlowContainer.new()
 	_context_controls.visible = false
@@ -950,7 +1034,7 @@ func _build() -> void:
 	split.name = "VoxelSculptMainSplit"
 	split.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	split.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	split.split_offset = 1050
+	split.split_offset = 960
 	root.add_child(split)
 	var canvas_area := HBoxContainer.new()
 	canvas_area.name = "VoxelSculptCanvasArea"
@@ -959,26 +1043,46 @@ func _build() -> void:
 	canvas_area.add_theme_constant_override("separation", 6)
 	split.add_child(canvas_area)
 
-	var tool_rail := VBoxContainer.new()
-	tool_rail.name = "VoxelSculptToolRail"
-	tool_rail.custom_minimum_size.x = 205.0
-	tool_rail.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	tool_rail.add_theme_constant_override("separation", 5)
-	canvas_area.add_child(tool_rail)
+	_tool_rail = VBoxContainer.new()
+	_tool_rail.name = "VoxelSculptToolRail"
+	_tool_rail.custom_minimum_size.x = 168.0
+	_tool_rail.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_tool_rail.add_theme_constant_override("separation", 5)
+	canvas_area.add_child(_tool_rail)
 	var tools_heading := Label.new()
-	tools_heading.text = "ИНСТРУМЕНТЫ"
+	tools_heading.text = "ОСНОВНЫЕ ИНСТРУМЕНТЫ"
 	tools_heading.modulate = Color(0.60, 0.82, 0.94)
-	tool_rail.add_child(tools_heading)
+	_tool_rail.add_child(tools_heading)
+	_select_tool_button = Button.new()
+	_select_tool_button.name = "VoxelWorkshopSelectionTool"
+	_select_tool_button.text = "⌗ Выделение · V"
+	_select_tool_button.tooltip_text = "Выделить воксели рамкой, перенести, скопировать или отделить."
+	_select_tool_button.toggle_mode = true
+	_select_tool_button.theme_type_variation = &"WorkshopToolButton"
+	_select_tool_button.pressed.connect(_open_selection_tool)
+	_tool_rail.add_child(_select_tool_button)
+	_stamp_tool_button = Button.new()
+	_stamp_tool_button.name = "VoxelWorkshopStampTool"
+	_stamp_tool_button.text = "▦ Штамп · библиотека"
+	_stamp_tool_button.tooltip_text = "Открыть сохранение, выбор и размещение объёмных штампов."
+	_stamp_tool_button.toggle_mode = true
+	_stamp_tool_button.theme_type_variation = &"WorkshopToolButton"
+	_stamp_tool_button.pressed.connect(_open_stamp_library)
+	_tool_rail.add_child(_stamp_tool_button)
+	var brushes_heading := Label.new()
+	brushes_heading.text = "КИСТИ И ФОРМА"
+	brushes_heading.modulate = Color(0.54, 0.64, 0.74)
+	_tool_rail.add_child(brushes_heading)
 	_tool = ItemList.new()
 	_tool.name = "VoxelSculptTool"
 	_tool.select_mode = ItemList.SELECT_SINGLE
 	_tool.max_columns = 1
 	_tool.same_column_width = true
 	_tool.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_tool.custom_minimum_size = Vector2(205.0, 260.0)
+	_tool.custom_minimum_size = Vector2(168.0, 170.0)
 	for entry in [
-		["▧ Объём", Model.TOOL_ADD],
-		["▣ Красить", Model.TOOL_PAINT],
+		["▧ Лепка · объём", Model.TOOL_ADD],
+		["▣ Покраска", Model.TOOL_PAINT],
 		["◐ Материал / вода", Model.TOOL_MATERIAL],
 		["▰ Заливка уровня", Model.TOOL_SURFACE_FILL],
 		["⛰ Рельеф", Model.TOOL_RAISE],
@@ -990,11 +1094,15 @@ func _build() -> void:
 		_tool.set_item_metadata(_tool.item_count - 1, entry[1])
 	_tool.select(0)
 	_tool.item_selected.connect(_on_tool_selected)
-	tool_rail.add_child(_tool)
-	var rail_hint := Label.new()
-	rail_hint.text = "LMB — применить\nRMB — вращать\nMMB — сдвинуть"
-	rail_hint.modulate = Color(0.54, 0.64, 0.74)
-	tool_rail.add_child(rail_hint)
+	_tool_rail.add_child(_tool)
+	_tool_rail.add_child(HSeparator.new())
+	_palette_panel = PalettePanel.new()
+	_palette_panel.name = "VoxelWorkshopPersistentPalette"
+	_palette_panel.color_selected.connect(_select_palette_color)
+	_palette_panel.operation_requested.connect(_apply_palette_operation)
+	_palette_panel.pick_requested.connect(_toggle_color_pick)
+	_palette_panel.editing_started.connect(_finish_palette_gesture)
+	_tool_rail.add_child(_palette_panel)
 	canvas_area.add_child(VSeparator.new())
 
 	_viewport_container = SubViewportContainer.new()
@@ -1011,76 +1119,127 @@ func _build() -> void:
 	canvas_area.add_child(_viewport_container)
 	_build_viewport()
 
-	var sidebar_scroll := ScrollContainer.new()
-	sidebar_scroll.name = "VoxelSculptSidebarScroll"
-	sidebar_scroll.custom_minimum_size.x = 280.0
-	sidebar_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	sidebar_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	sidebar_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	split.add_child(sidebar_scroll)
-	var sidebar := VBoxContainer.new()
-	sidebar.name = "VoxelSculptSidebar"
-	sidebar.custom_minimum_size.x = 272.0
-	sidebar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sidebar.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	sidebar.add_theme_constant_override("separation", 8)
-	sidebar_scroll.add_child(sidebar)
-	var heading := Label.new()
-	heading.text = "АКТИВНЫЙ ИНСТРУМЕНТ"
-	heading.modulate = Color(0.60, 0.82, 0.94)
-	sidebar.add_child(heading)
-	_info = Label.new()
-	_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	sidebar.add_child(_info)
-	sidebar.add_child(HSeparator.new())
-	_palette_panel = PalettePanel.new()
-	_palette_panel.color_selected.connect(_select_palette_color)
-	_palette_panel.operation_requested.connect(_apply_palette_operation)
-	_palette_panel.pick_requested.connect(_toggle_color_pick)
-	_palette_panel.editing_started.connect(_finish_palette_gesture)
-	sidebar.add_child(_palette_panel)
-	sidebar.add_child(HSeparator.new())
+	_sidebar_panel = VBoxContainer.new()
+	_sidebar_panel.name = "VoxelWorkshopSidebar"
+	# The real editor runs at 125% DPI on the primary authoring setup. This width
+	# keeps the native work tabs visible without sacrificing the compact Canvas.
+	_sidebar_panel.custom_minimum_size.x = 340.0
+	_sidebar_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_sidebar_panel.add_theme_constant_override("separation", 6)
+	split.add_child(_sidebar_panel)
+	_operation_panel = VBoxContainer.new()
+	_operation_panel.name = "VoxelWorkshopActiveOperation"
+	_operation_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_operation_panel.add_theme_constant_override("separation", 5)
+	_sidebar_panel.add_child(_operation_panel)
+	_sidebar_tabs = TabContainer.new()
+	_sidebar_tabs.name = "VoxelWorkshopSidebarTabs"
+	_sidebar_tabs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_sidebar_tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_sidebar_tabs.get_tab_bar().theme_type_variation = &"WorkshopTabBar"
+	_sidebar_panel.add_child(_sidebar_tabs)
+
+	var parts_tab := VBoxContainer.new()
+	parts_tab.name = "Части"
+	parts_tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	parts_tab.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_sidebar_tabs.add_child(parts_tab)
+	_parts_sections = TabContainer.new()
+	_parts_sections.name = "VoxelWorkshopPartsSections"
+	_parts_sections.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_parts_sections.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_parts_sections.get_tab_bar().theme_type_variation = &"WorkshopSubTabBar"
+	parts_tab.add_child(_parts_sections)
+	var selection_scroll := ScrollContainer.new()
+	selection_scroll.name = "Выделение"
+	selection_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	selection_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	selection_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	selection_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_parts_sections.add_child(selection_scroll)
+	var selection_tab := VBoxContainer.new()
+	selection_tab.name = "VoxelWorkshopSelectionTab"
+	selection_tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	selection_tab.add_theme_constant_override("separation", 8)
+	selection_scroll.add_child(selection_tab)
 	_selection_panel = SelectionPanel.new()
 	_selection_panel.activation_requested.connect(_toggle_voxel_selection)
 	_selection_panel.paint_requested.connect(_paint_voxel_selection)
 	_selection_panel.transform_requested.connect(_transform_voxel_selection)
 	_selection_panel.extract_requested.connect(_extract_voxel_selection)
 	_selection_panel.selection_changed.connect(func(has_selection: bool) -> void: _groups_panel.set_can_create(has_selection))
-	sidebar.add_child(_selection_panel)
+	selection_tab.add_child(_selection_panel)
 	_selection_interaction = preload("res://addons/ember_import/ember_voxel_selection_interaction.gd").new()
 	_viewport_container.add_child(_selection_interaction)
 	_selection_interaction.setup(self)
+
+	var stamp_tab := VBoxContainer.new()
+	stamp_tab.name = "Библиотека"
+	stamp_tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stamp_tab.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	stamp_tab.add_theme_constant_override("separation", 8)
+	_sidebar_tabs.add_child(stamp_tab)
 	_stamp_panel = preload("res://addons/ember_import/ember_voxel_stamp_panel.gd").new()
-	sidebar.add_child(_stamp_panel)
+	_stamp_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	stamp_tab.add_child(_stamp_panel)
 	_stamp_panel.setup(self)
-	sidebar.add_child(HSeparator.new())
+	var groups_scroll := ScrollContainer.new()
+	groups_scroll.name = "Группы"
+	groups_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	groups_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	groups_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	groups_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_parts_sections.add_child(groups_scroll)
+	var groups_tab := VBoxContainer.new()
+	groups_tab.name = "VoxelWorkshopGroupsTab"
+	groups_tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	groups_tab.add_theme_constant_override("separation", 8)
+	groups_scroll.add_child(groups_tab)
 	_groups_panel = GroupsPanel.new()
+	_groups_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_groups_panel.operation_requested.connect(_apply_group_operation)
 	_groups_panel.select_requested.connect(_select_group_members)
 	_groups_panel.isolate_requested.connect(_set_group_isolation)
 	_groups_panel.visibility_requested.connect(_set_hidden_group_indices)
-	sidebar.add_child(_groups_panel)
+	groups_tab.add_child(_groups_panel)
+	groups_tab.add_child(HSeparator.new())
+	var part_heading := Label.new()
+	part_heading.text = "ЧАСТЬ ДЛЯ НОВЫХ ВОКСЕЛЕЙ"
+	part_heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	part_heading.modulate = Color(0.60, 0.82, 0.94)
+	groups_tab.add_child(part_heading)
 	_part_selector = OptionButton.new()
 	_part_selector.fit_to_longest_item = false
 	_part_selector.clip_text = true
 	_part_selector.tooltip_text = "К какой части склейки относятся новые воксели. Существующие воксели сохраняют свою часть; группы выделения от этого не меняются."
-	_part_selector.item_selected.connect(func(index: int): _actions.active_part = index)
-	sidebar.add_child(_part_selector)
-	sidebar.add_child(HSeparator.new())
+	_part_selector.item_selected.connect(_on_workshop_part_selected)
+	groups_tab.add_child(_part_selector)
+	var view_scroll := ScrollContainer.new()
+	view_scroll.name = "Вид"
+	view_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	view_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	view_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	view_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_parts_sections.add_child(view_scroll)
+	var view_tab := VBoxContainer.new()
+	view_tab.name = "VoxelWorkshopViewTab"
+	view_tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	view_tab.add_theme_constant_override("separation", 8)
+	view_scroll.add_child(view_tab)
 	_slice_control = SliceControl.new()
 	_slice_control.change_requested.connect(_on_height_slice_changed)
-	sidebar.add_child(_slice_control)
-	sidebar.add_child(HSeparator.new())
+	view_tab.add_child(_slice_control)
+	view_tab.add_child(HSeparator.new())
 	var region_heading := Label.new()
 	region_heading.text = "РАБОЧАЯ ОБЛАСТЬ"
 	region_heading.modulate = Color(0.60, 0.82, 0.94)
-	sidebar.add_child(region_heading)
+	view_tab.add_child(region_heading)
 	_region_label = Label.new()
 	_region_label.name = "VoxelSculptRegionLabel"
 	_region_label.text = "Область: вся"
 	_region_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_region_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	sidebar.add_child(_region_label)
+	view_tab.add_child(_region_label)
 	_region_select_button = Button.new()
 	_region_select_button.name = "VoxelSculptRegionSelect"
 	_region_select_button.text = "Выделить участок"
@@ -1090,40 +1249,244 @@ func _build() -> void:
 		+ "но кисти не меняют контекст за границей участка."
 	)
 	_region_select_button.toggled.connect(_on_region_select_toggled)
-	sidebar.add_child(_region_select_button)
+	view_tab.add_child(_region_select_button)
 	var whole_region := Button.new()
 	whole_region.name = "VoxelSculptWholeRegion"
 	whole_region.text = "Использовать всю поверхность"
 	whole_region.pressed.connect(_use_whole_region)
-	sidebar.add_child(whole_region)
-	sidebar.add_child(HSeparator.new())
+	view_tab.add_child(whole_region)
+	view_tab.add_child(HSeparator.new())
 	var resource_heading := Label.new()
 	resource_heading.text = "РЕСУРС"
 	resource_heading.modulate = Color(0.60, 0.82, 0.94)
-	sidebar.add_child(resource_heading)
+	view_tab.add_child(resource_heading)
 	_resource_path_label = Label.new()
 	_resource_path_label.text = Model.PILOT_PATH
 	_resource_path_label.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
 	_resource_path_label.modulate = Color(0.54, 0.64, 0.74)
-	sidebar.add_child(_resource_path_label)
-	var spacer := Control.new()
-	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	sidebar.add_child(spacer)
+	view_tab.add_child(_resource_path_label)
 	_reset_button = Button.new()
 	_reset_button.name = "ResetVoxelSurfacePilot"
 	_reset_button.text = "Сбросить тестовый холст"
 	_reset_button.tooltip_text = "Только для встроенного pilot Resource. Ctrl+Z отменяет."
 	_reset_button.pressed.connect(_reset_pilot)
-	sidebar.add_child(_reset_button)
+	view_tab.add_child(_reset_button)
 
+	var footer := HFlowContainer.new()
+	footer.name = "VoxelWorkshopFooter"
+	footer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	footer.add_theme_constant_override("h_separation", 12)
+	footer.add_theme_constant_override("v_separation", 4)
+	_info = Label.new()
+	_info.name = "VoxelWorkshopHelpStrip"
+	_info.custom_minimum_size = Vector2(440.0, 30.0)
+	_info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_info.size_flags_stretch_ratio = 1.6
+	_info.clip_text = true
+	_info.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_info.modulate = Color(0.60, 0.82, 0.94)
+	footer.add_child(_info)
 	_status = Label.new()
 	_status.name = "VoxelSculptStatus"
-	_status.custom_minimum_size.y = 30.0
-	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_status.custom_minimum_size = Vector2(260.0, 30.0)
+	_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_status.clip_text = true
+	_status.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_status.modulate = Color(0.66, 0.74, 0.84)
-	root.add_child(_status)
+	footer.add_child(_status)
+	_footer_stats = Label.new()
+	_footer_stats.name = "VoxelWorkshopFooterStats"
+	_footer_stats.text = "0 vox · сетка —"
+	_footer_stats.modulate = Color(0.54, 0.64, 0.74)
+	footer.add_child(_footer_stats)
+	root.add_child(footer)
 	_build_camera_popup()
 	_on_tool_selected(0)
+
+
+func _open_selection_tool() -> void:
+	if is_instance_valid(_sidebar_panel):
+		_sidebar_panel.visible = true
+	if is_instance_valid(_sidebar_toggle):
+		_sidebar_toggle.set_pressed_no_signal(true)
+	if is_instance_valid(_sidebar_tabs):
+		_sidebar_tabs.current_tab = 0
+	if is_instance_valid(_parts_sections):
+		_parts_sections.current_tab = 0
+	if is_instance_valid(_stamp_tool_button):
+		_stamp_tool_button.set_pressed_no_signal(false)
+	_toggle_voxel_selection()
+
+
+func _open_stamp_library() -> void:
+	_show_stamp_library_mode(true)
+
+
+func _show_stamp_library_mode(announce := false) -> void:
+	if is_instance_valid(_sidebar_panel):
+		_sidebar_panel.visible = true
+	if is_instance_valid(_sidebar_toggle):
+		_sidebar_toggle.set_pressed_no_signal(true)
+	if is_instance_valid(_sidebar_tabs):
+		_sidebar_tabs.current_tab = 1
+	if is_instance_valid(_selection_panel):
+		_selection_panel.set_active(false)
+	if is_instance_valid(_select_tool_button):
+		_select_tool_button.set_pressed_no_signal(false)
+	if is_instance_valid(_stamp_tool_button):
+		_stamp_tool_button.set_pressed_no_signal(true)
+	if is_instance_valid(_active_tool_label):
+		_active_tool_label.text = "Штамп · библиотека"
+	if is_instance_valid(_info):
+		_info.text = "Выберите карточку штампа, затем разместите её на Canvas. Текущее выделение можно сохранить как новый пресет."
+	if announce:
+		_set_status("Библиотека штампов открыта · выберите пресет или сохраните текущее выделение")
+
+
+func _select_workshop_stamp(display_name: String) -> void:
+	_workshop_preset_name = display_name.strip_edges()
+	_update_workshop_shell()
+
+
+func _show_stamp_operation(display_name: String) -> void:
+	_select_workshop_stamp(display_name)
+	if is_instance_valid(_sidebar_panel):
+		_sidebar_panel.visible = true
+	if is_instance_valid(_sidebar_toggle):
+		_sidebar_toggle.set_pressed_no_signal(true)
+	if is_instance_valid(_sidebar_tabs):
+		_sidebar_tabs.current_tab = 1
+	if is_instance_valid(_select_tool_button):
+		_select_tool_button.set_pressed_no_signal(false)
+	if is_instance_valid(_stamp_tool_button):
+		_stamp_tool_button.set_pressed_no_signal(true)
+
+
+func _show_selection_operation() -> void:
+	if is_instance_valid(_sidebar_panel):
+		_sidebar_panel.visible = true
+	if is_instance_valid(_sidebar_toggle):
+		_sidebar_toggle.set_pressed_no_signal(true)
+	if is_instance_valid(_sidebar_tabs):
+		_sidebar_tabs.current_tab = 0
+	if is_instance_valid(_parts_sections):
+		_parts_sections.current_tab = 0
+	if is_instance_valid(_select_tool_button):
+		_select_tool_button.set_pressed_no_signal(true)
+	if is_instance_valid(_stamp_tool_button):
+		_stamp_tool_button.set_pressed_no_signal(false)
+	if is_instance_valid(_active_tool_label):
+		_active_tool_label.text = "Выделение · перенос"
+	if is_instance_valid(_info):
+		_info.text = "Настройте перенос, копию или поворот сверху панели. Предпросмотр не меняет модель; Enter применяет один шаг Undo."
+
+
+func _show_selection_mode() -> void:
+	if is_instance_valid(_sidebar_tabs):
+		_sidebar_tabs.current_tab = 0
+	if is_instance_valid(_parts_sections):
+		_parts_sections.current_tab = 0
+	if is_instance_valid(_select_tool_button):
+		_select_tool_button.set_pressed_no_signal(true)
+	if is_instance_valid(_stamp_tool_button):
+		_stamp_tool_button.set_pressed_no_signal(false)
+	if is_instance_valid(_active_tool_label):
+		_active_tool_label.text = "Выделение · область"
+	if is_instance_valid(_info):
+		_info.text = "Протяните рамку на Canvas. Shift добавляет, Ctrl убирает; действия с выбранным фрагментом находятся во вкладке «Части»."
+
+
+func _on_workshop_part_selected(index: int) -> void:
+	if _actions != null:
+		_actions.active_part = index
+	_update_workshop_shell()
+
+
+func _update_workshop_shell() -> void:
+	if is_instance_valid(_dirty_label):
+		_dirty_label.text = "Не сохранено" if _resource != null and has_unsaved_changes() else "Сохранено"
+		_dirty_label.modulate = (
+			Color(1.0, 0.72, 0.30)
+			if _resource != null and has_unsaved_changes()
+			else Color(0.54, 0.64, 0.74)
+		)
+	if _resource == null:
+		_sync_object_name_input(true)
+		if is_instance_valid(_workshop_context_label):
+			_workshop_context_label.text = "›  Модель —  ›  Часть —  ›  Пресет —"
+		if is_instance_valid(_footer_stats):
+			_footer_stats.text = "0 vox · сетка —"
+		return
+	var part := "Добавленное"
+	if is_instance_valid(_part_selector) and _part_selector.visible and _part_selector.selected >= 0:
+		part = _part_selector.get_item_text(_part_selector.selected).trim_prefix("Новые воксели → ")
+	var model := _resource.model_id if not _resource.model_id.is_empty() else _resource_path.get_file().get_basename()
+	if model.is_empty():
+		model = "без ID"
+	_sync_object_name_input()
+	if is_instance_valid(_workshop_context_label):
+		var model_name := _resource.display_name if not _resource.display_name.is_empty() else model
+		var preset_name := _workshop_preset_name if not _workshop_preset_name.is_empty() else "—"
+		_workshop_context_label.text = "›  Модель %s (%s)  ›  Часть %s  ›  Пресет %s" % [
+			model_name,
+			model,
+			part,
+			preset_name,
+		]
+		_workshop_context_label.tooltip_text = (
+			"Voxel-модель: %s · ID: %s · часть: %s · пресет: %s"
+			% [model_name, model, part, preset_name]
+		)
+	if is_instance_valid(_footer_stats):
+		var occupied := _resource.voxels.size() - _resource.voxels.count(0)
+		_footer_stats.text = "%d vox · сетка %d" % [occupied, _resource.normalized_density()]
+
+
+func _sync_object_name_input(force := false) -> void:
+	if not is_instance_valid(_object_name_input):
+		return
+	var can_rename: bool = _object_session != null and not _object_session.target_name().is_empty()
+	_object_name_input.editable = can_rename
+	_object_name_input.tooltip_text = (
+		"Имя выбранного экземпляра в дереве сцены. Enter или переход к другому полю применяет; Esc отменяет ввод."
+		if can_rename
+		else "Surface редактируется как ресурс; отдельного объекта сцены для переименования здесь нет."
+	)
+	if not can_rename:
+		_object_name_input.text = ""
+		return
+	if force or not _object_name_input.has_focus():
+		var current_name: String = _object_session.target_name()
+		if _object_name_input.text != current_name:
+			_object_name_input.text = current_name
+
+
+func _submit_object_name(_submitted: String) -> void:
+	_commit_object_name()
+	_object_name_input.release_focus()
+
+
+func _commit_object_name() -> void:
+	if _object_session == null or not is_instance_valid(_object_name_input):
+		return
+	var previous_name: String = _object_session.target_name()
+	if _object_name_input.text.strip_edges() == previous_name:
+		_object_name_input.text = previous_name
+		return
+	var result: Dictionary = _object_session.rename_target(_object_name_input.text)
+	if not bool(result.get("ok", false)):
+		_object_name_input.text = previous_name
+		_set_status(str(result.get("error", "Не удалось переименовать объект")), true)
+		return
+	_object_name_input.text = str(result.get("name", previous_name))
+	_set_status("Объект переименован · сохраните сцену обычным Ctrl+S в 3D")
+
+
+func _on_object_name_gui_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		_object_name_input.text = _object_session.target_name() if _object_session != null else ""
+		_object_name_input.release_focus()
+		_object_name_input.accept_event()
 
 
 func _build_camera_popup() -> void:
@@ -1377,6 +1740,16 @@ func _toggle_voxel_selection() -> void:
 	_cancel_region_selection()
 	_cancel_ramp_anchor(false)
 	_selection_panel.set_active(active)
+	if is_instance_valid(_select_tool_button):
+		_select_tool_button.set_pressed_no_signal(_selection_panel.active)
+	if _selection_panel.active and is_instance_valid(_sidebar_tabs):
+		_sidebar_tabs.current_tab = 0
+	if _selection_panel.active and is_instance_valid(_parts_sections):
+		_parts_sections.current_tab = 0
+	if _selection_panel.active:
+		_show_selection_mode()
+	else:
+		_update_tool_help(_selected_tool_id())
 
 
 func _transform_voxel_selection() -> void:
@@ -1512,11 +1885,13 @@ func _refresh_groups(preferred_id := "") -> void:
 		_displayed_groups = []
 		_locked_indices.clear()
 		_groups_panel.sync([], "")
+		_update_workshop_shell()
 		return
 	_displayed_groups = _resource.voxel_groups.duplicate(true)
 	_locked_indices = Groups.locked_indices(_resource.voxel_groups)
 	_groups_panel.sync(_resource.voxel_groups, preferred_id)
 	_groups_panel.set_can_create(not _selection_panel.selected.is_empty())
+	_update_workshop_shell()
 
 
 func _apply_group_operation(operation: Dictionary) -> void:
@@ -2181,6 +2556,10 @@ func _update_region_label(region: Rect2i, selecting := false) -> void:
 func _on_tool_selected(_index: int) -> void:
 	if is_instance_valid(_selection_panel):
 		_selection_panel.set_active(false)
+	if is_instance_valid(_select_tool_button):
+		_select_tool_button.set_pressed_no_signal(false)
+	if is_instance_valid(_stamp_tool_button):
+		_stamp_tool_button.set_pressed_no_signal(false)
 	_flush_pending_stroke_position()
 	_finish_stroke()
 	_cancel_ramp_anchor(false)
@@ -2300,7 +2679,7 @@ func _update_tool_help(tool_id: int) -> void:
 		return
 	if is_instance_valid(_selection_interaction) and _selection_interaction._stamp != null:
 		_active_tool_label.text = "Штамп · " + ("добавить" if _selection_interaction._stamp_mode.selected == 0 else "заменить")
-		_info.text = "ЛКМ задаёт положение штампа. Enter применяет один отпечаток, Esc отменяет. Параметры — в панели штампа; пустоты не стирают объект."
+		_info.text = "ЛКМ — положение · Enter — один отпечаток · Esc — отмена. Пустоты штампа не стирают объект."
 		return
 	var title := "Объём · добавить"
 	var help := "Добавляет материал перед видимой гранью. Протяните LMB; один жест отменяется одним Ctrl+Z."
@@ -3752,15 +4131,17 @@ func _disconnect_resource() -> void:
 	_heightfield_source_voxels = PackedByteArray()
 	_resource = null
 	_resource_path = ""
+	_update_workshop_shell()
 
 
 func _set_status(message: String, error := false, color := Color(0.66, 0.74, 0.84)) -> void:
 	if is_instance_valid(_title) and _resource != null:
-		_title.text = "SURFACE CANVAS · %s%s" % [
+		_title.text = "ВОКСЕЛЬНАЯ МАСТЕРСКАЯ · %s%s" % [
 			_resource.display_name.to_upper(), " *" if has_unsaved_changes() else ""
 		]
 	var actual_color := Color(1.0, 0.45, 0.40) if error else color
 	if _status != null:
 		_status.text = message
 		_status.modulate = actual_color
+	_update_workshop_shell()
 	status_changed.emit(message, actual_color)

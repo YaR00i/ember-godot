@@ -109,8 +109,11 @@ func _run() -> void:
 	for frame in 2:
 		await process_frame
 	if "--capture" in OS.get_cmdline_user_args():
-		var scroll := panel.get_parent().get_parent() as ScrollContainer
-		scroll.ensure_control_visible(interaction._controls)
+		var ancestor: Node = interaction._controls.get_parent()
+		while ancestor != null and not ancestor is ScrollContainer:
+			ancestor = ancestor.get_parent()
+		if ancestor is ScrollContainer:
+			ancestor.ensure_control_visible(interaction._controls)
 		for frame in 6:
 			await process_frame
 		root.get_texture().get_image().save_png("user://selection_interaction.png")
