@@ -124,7 +124,7 @@ func _run() -> void:
 	root.add_child(panel)
 	await process_frame
 	panel._change_parameter("tree_type", 1)
-	check(panel.recipe.parameters.tree_type == 1 and panel.recipe.parameters.generation_version == 8, "shared creation UI selects latest oak")
+	check(panel.recipe.parameters.tree_type == 1 and panel.recipe.parameters.generation_version == 17, "shared creation UI selects latest oak")
 	panel.undo_local()
 	check(panel.recipe.parameters.tree_type == 0 and panel.recipe.parameters.generation_version == 2, "type choice Undo restores exact savanna version")
 	panel.redo_local()
@@ -132,11 +132,11 @@ func _run() -> void:
 	panel.undo_local()
 	panel.controls.tree_type.select(2)
 	panel.controls.tree_type.item_selected.emit(2)
-	check(panel.recipe.parameters.tree_type == 2 and panel.recipe.parameters.generation_version == 5, "shared creation UI selects latest birch")
+	check(panel.recipe.parameters.tree_type == 2 and panel.recipe.parameters.generation_version == 13, "shared creation UI selects latest birch")
 	panel.undo_local()
 	check(panel.recipe.parameters.tree_type == 0 and panel.recipe.parameters.generation_version == 2, "birch choice Undo restores saved algorithm")
 	panel.redo_local()
-	check(panel.recipe.parameters.tree_type == 2 and panel.recipe.parameters.generation_version == 5, "birch type choice Redo")
+	check(panel.recipe.parameters.tree_type == 2 and panel.recipe.parameters.generation_version == 13, "birch type choice Redo")
 	check(panel.controls.foliage_along.get_parent().visible, "interior foliage control visible for new types")
 	panel._syncing = true
 	panel.active_id = ""

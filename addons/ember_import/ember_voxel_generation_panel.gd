@@ -263,11 +263,17 @@ func _field_changed(key: String, value: Variant, candidate_field: bool) -> void:
 func _change_parameter(key: String, value: Variant) -> void:
 	if _syncing: return
 	# Explicit type choice uses today's profile; opening saved recipes does not.
-	if recipe.parameters.get(key) == value and not (key == "tree_type" and int(recipe.parameters.generation_version) != int(Generator.LargeTreeProvider.LATEST_VERSIONS[int(value)])): return
+	if recipe.parameters.get(key) == value and not (key == "tree_type" and int(recipe.parameters.generation_version) != int(Generator.LargeTreeProvider.LATEST_VERSIONS[int(value)])) and not (key == "foliage_style" and Generator.LargeTreeProvider.FoliagePattern.needs_style_upgrade(recipe.parameters, int(value))): return
 	var next := recipe.duplicate(true)
 	next.parameters[key] = value
 	# A new type choice opts into its latest form; loading old recipes does not.
 	if key == "tree_type": next.parameters.generation_version = Generator.LargeTreeProvider.LATEST_VERSIONS[int(value)]
+	if key == "tree_type" and int(next.parameters.foliage_style) == 2 and not Generator.LargeTreeProvider.FoliagePattern.supports_style(next.parameters, 2):
+		next.parameters.foliage_style = 0
+	if key == "foliage_style" and int(value) == 1 and int(recipe.parameters.get("foliage_style", 0)) == 1 and int(recipe.parameters.get("foliage_pattern_version", 1)) < 2:
+		next.parameters.foliage_geometry_detail = recipe.parameters.foliage_detail
+	if key == "foliage_style" and int(value) == 1: next.parameters.foliage_pattern_version = 2
+	if key == "foliage_style" and int(value) == 3: next.parameters.foliage_cloud_version = 2
 	if key == "bark_pattern" and bool(value): next.parameters.bark_pattern_version = 2
 	next.parameters = Generator.normalized_parameters(next.generator_id, next.parameters)
 	_change_recipe(next)
@@ -303,11 +309,21 @@ func _sync_controls() -> void:
 				control.set_item_text(int(value), "%s · прежняя форма" % field.options[int(value)])
 		control.set_block_signals(false)
 		if field.key == "leaf_density": control.get_parent().visible = int(recipe.parameters.generation_version) == 1
+		if field.key == "structure_diversity": control.get_parent().visible = Generator.LargeTreeProvider.TreeVariation.supported(recipe.parameters)
 		if field.key == "foliage_amount": control.get_parent().visible = int(recipe.parameters.generation_version) >= 2
+		if field.key == "foliage_style":
+			control.visible = Generator.LargeTreeProvider.FoliagePattern.supported(recipe.parameters)
+			control.set_item_disabled(2, not Generator.LargeTreeProvider.FoliagePattern.supports_style(recipe.parameters, 2))
+		if field.key == "foliage_leaf_size":
+			control.get_parent().visible = Generator.LargeTreeProvider.FoliagePattern.supported(recipe.parameters) and int(recipe.parameters.foliage_style) in [2, 3]
+			control.get_parent().get_child(0).text = "Размер деталей · vox" if int(recipe.parameters.foliage_style) == 3 else "Размер листика · vox"
+		if field.key == "foliage_leaf_accents": control.get_parent().visible = Generator.LargeTreeProvider.FoliagePattern.supported(recipe.parameters) and int(recipe.parameters.foliage_style) == 3
+		if field.key == "foliage_detail": control.get_parent().visible = Generator.LargeTreeProvider.FoliagePattern.supported(recipe.parameters) and (int(recipe.parameters.foliage_style) == 1 or (int(recipe.parameters.foliage_style) == 3 and int(recipe.parameters.foliage_cloud_version) >= 2))
+		if field.key == "foliage_pattern_strength": control.get_parent().visible = Generator.LargeTreeProvider.FoliagePattern.supported(recipe.parameters) and ((int(recipe.parameters.foliage_style) == 1 and int(recipe.parameters.foliage_pattern_version) >= 2) or (int(recipe.parameters.foliage_style) == 3 and int(recipe.parameters.foliage_cloud_version) >= 2))
 		if str(field.key) in ["branch_thickness", "branch_taper", "branch_curve", "branch_start", "cluster_size", "cluster_flatten", "canopy_cohesion", "root_flare"]:
 			control.get_parent().visible = int(recipe.parameters.generation_version) >= 2
 		if field.key == "crown_shape": control.visible = int(recipe.parameters.generation_version) >= 2
-		if field.key == "foliage_along": control.get_parent().visible = int(recipe.parameters.get("tree_type", 0)) > 0 or int(recipe.parameters.generation_version) == 9
+		if field.key == "foliage_along": control.get_parent().visible = int(recipe.parameters.get("tree_type", 0)) > 0 or int(recipe.parameters.generation_version) in [9, 14]
 	_count.max_value = Generator.candidate_limit(recipe)
 	_seed.set_block_signals(true)
 	_seed.value = recipe.seed
@@ -745,6 +761,7 @@ func _sync_candidate_controls() -> void:
 		elif control is ColorPickerButton: control.color = value
 		elif control is CheckButton: control.button_pressed = bool(value)
 		elif control is OptionButton: control.select(int(value))
+		if key == "foliage_style": control.set_item_disabled(2, not Generator.LargeTreeProvider.FoliagePattern.supports_style(candidate_recipe.parameters, 2))
 		control.set_block_signals(false)
 	_apply.disabled = not editable or not _draft_dirty()
 	_discard.disabled = not _draft_dirty() or suspended
@@ -753,10 +770,14 @@ func _sync_candidate_controls() -> void:
 func _change_candidate_parameter(key: String, value: Variant) -> void:
 	var candidate := session.find_candidate(active_id)
 	if candidate.is_empty() or candidate.saved or bool(candidate.get("publication_locked", false)) or suspended or _busy() or candidate_recipe == null: return
-	if candidate_recipe.parameters.get(key) == value: return
+	if candidate_recipe.parameters.get(key) == value and not (key == "foliage_style" and Generator.LargeTreeProvider.FoliagePattern.needs_style_upgrade(candidate_recipe.parameters, int(value))): return
 	var next := candidate_recipe.duplicate(true)
 	next.parameters[key] = value
+	if key == "foliage_style" and int(value) == 1 and int(candidate_recipe.parameters.get("foliage_style", 0)) == 1 and int(candidate_recipe.parameters.get("foliage_pattern_version", 1)) < 2:
+		next.parameters.foliage_geometry_detail = candidate_recipe.parameters.foliage_detail
 	if key == "bark_pattern" and bool(value): next.parameters.bark_pattern_version = 2
+	if key == "foliage_style" and int(value) == 1: next.parameters.foliage_pattern_version = 2
+	if key == "foliage_style" and int(value) == 3: next.parameters.foliage_cloud_version = 2
 	next.parameters = Generator.normalized_parameters(next.generator_id, next.parameters)
 	history.create_action("Черновик дерева № %d" % candidate.number)
 	history.add_do_method(_apply_candidate_draft.bind(active_id, next))

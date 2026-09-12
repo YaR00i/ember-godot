@@ -16,7 +16,9 @@ func check(value: bool, message: String) -> void:
 
 func _run() -> void:
 	var birch: Resource = Generator.creation_presets(Generator.LARGE_TREE)[2].recipe.duplicate(true)
-	check(birch.parameters.generation_version == 5, "new birch preset selects revision 5")
+	check(birch.parameters.generation_version == 13, "new birch preset selects varied profile")
+	# Historical shape/serialization gate remains explicitly on revision 5.
+	birch.parameters.generation_version = 5
 	var directory := "user://birch_shape_%d" % Time.get_ticks_usec()
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(directory))
 	for height in [64, 96, 128, 256]:

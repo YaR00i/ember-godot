@@ -14,7 +14,13 @@ static func creation_fields(generator_id: String) -> Array[Dictionary]:
 		{"key": "trunk_width", "title": "Толщина ствола · vox", "min": 3, "max": 24},
 		{"key": "crown_spread", "title": "Ширина кроны", "min": 25, "max": 85},
 		{"key": "branchiness", "title": "Ветвистость", "min": 0, "max": 100},
+		{"key": "structure_diversity", "title": "Разнообразие каркаса · %", "min": 0, "max": 100},
 		{"key": "foliage_amount", "title": "Количество листвы", "min": 0, "max": 100},
+		{"key": "foliage_style", "title": "Стиль листвы", "options": ["Прежняя", "Пиксель-арт · пробная", "Листовые побеги · пробные", "Лиственные облака · пробные"]},
+		{"key": "foliage_leaf_size", "title": "Размер листика · vox", "min": 3, "max": 12},
+		{"key": "foliage_leaf_accents", "title": "Выраженность листиков · %", "min": 0, "max": 100},
+		{"key": "foliage_detail", "title": "Детализация листвы", "min": 0, "max": 100},
+		{"key": "foliage_pattern_strength", "title": "Выраженность рисунка · %", "min": 0, "max": 100},
 		{"key": "foliage_along", "title": "Листва вдоль ветвей · %", "min": 0, "max": 100},
 		{"key": "bark_color", "title": "Кора", "type": "color"},
 		{"key": "foliage_color", "title": "Листва", "type": "color"},
@@ -31,7 +37,7 @@ static func creation_fields(generator_id: String) -> Array[Dictionary]:
 		["root_flare", "Расширение корней", 0, 100],
 	]:
 		fields.append({"key": item[0], "title": item[1], "min": item[2], "max": item[3], "advanced": true})
-	fields.append({"key": "generation_version", "title": "Совместимость · алгоритм", "options": ["Классический", "Крупные формы", "Характер дерева", "Дуб · развилки и крона", "Берёза · лёгкие ветви", "Клён · округлая крона", "Клён · высокая крона", "Дуб · взрослый раскидистый", "Саванна · зонтичная", "Ель · хвойные ярусы"], "offset": 1, "advanced": true})
+	fields.append({"key": "generation_version", "title": "Совместимость · алгоритм", "options": ["Классический", "Крупные формы", "Характер дерева", "Дуб · развилки и крона", "Берёза · лёгкие ветви", "Клён · округлая крона", "Клён · высокая крона", "Дуб · взрослый раскидистый", "Саванна · зонтичная", "Ель · хвойные ярусы", "Дуб · разнообразный каркас", "Клён · разнообразный каркас", "Берёза · разнообразный каркас", "Саванна · разнообразный каркас", "Ель · разнообразный каркас", "Дуб · композиция и центральные развилки", "Дуб · боковое вторичное ветвление"], "offset": 1, "advanced": true})
 	fields.append({"key": "leaf_density", "title": "Плотность · классический", "min": 20, "max": 100, "advanced": true})
 	fields.append({"key": "density", "title": "Плотность сетки", "options": ["16 vox / блок", "32 vox / блок"], "values": [16, 32], "advanced": true})
 	for field in LargeTreeProvider.BarkPattern.fields():
@@ -53,11 +59,11 @@ static func creation_presets(generator_id: String) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	if generator_id != LARGE_TREE: return result
 	for item in [
-		{"name": "Тип · Саванна", "parameters": {"tree_type": 0, "generation_version": 9, "crown_shape": 0, "trunk_width": 8, "crown_spread": 80, "branch_thickness": 60, "branch_taper": 80, "branch_curve": 80, "cluster_size": 115, "cluster_flatten": 65, "branch_start": 38, "foliage_along": 85, "root_flare": 25}},
-		{"name": "Тип · Дуб", "parameters": {"tree_type": 1, "generation_version": 8, "trunk_width": 14, "crown_spread": 78, "branch_thickness": 85, "branch_curve": 70, "branch_taper": 70, "cluster_size": 115, "cluster_flatten": 15, "branch_start": 26, "foliage_along": 75, "root_flare": 80, "bark_pattern": true, "bark_pattern_direction": 1, "bark_pattern_length": 14, "bark_pattern_density": 65, "bark_pattern_color": Color("3f2c23")}},
-		{"name": "Тип · Берёза", "parameters": {"tree_type": 2, "generation_version": 5, "trunk_width": 6, "crown_spread": 55, "branch_thickness": 35, "branch_taper": 80, "cluster_size": 100, "cluster_flatten": 15, "foliage_along": 45, "root_flare": 35, "bark_color": Color("d6d2bd"), "bark_pattern": true, "bark_pattern_direction": 0, "bark_pattern_length": 5, "bark_pattern_density": 70, "bark_pattern_color": Color("302b29")}},
-		{"name": "Тип · Клён", "parameters": {"tree_type": 3, "generation_version": 7, "trunk_width": 8, "crown_spread": 60, "branch_thickness": 65, "branch_taper": 70, "cluster_size": 115, "cluster_flatten": 15, "branch_start": 30, "foliage_along": 85, "root_flare": 45, "foliage_color": Color("659845")}},
-		{"name": "Тип · Ель", "parameters": {"tree_type": 4, "generation_version": 10, "trunk_width": 6, "crown_spread": 55, "branch_thickness": 40, "branch_taper": 85, "branch_curve": 60, "branch_start": 20, "cluster_size": 115, "cluster_flatten": 15, "foliage_along": 85, "root_flare": 30, "foliage_color": Color("38654a")}},
+		{"name": "Тип · Саванна", "parameters": {"tree_type": 0, "generation_version": 14, "crown_shape": 0, "trunk_width": 8, "crown_spread": 80, "branch_thickness": 60, "branch_taper": 80, "branch_curve": 80, "cluster_size": 115, "cluster_flatten": 65, "branch_start": 38, "foliage_along": 85, "root_flare": 25}},
+		{"name": "Тип · Дуб", "parameters": {"tree_type": 1, "generation_version": 17, "trunk_width": 14, "crown_spread": 78, "branch_thickness": 85, "branch_curve": 70, "branch_taper": 70, "cluster_size": 115, "cluster_flatten": 15, "branch_start": 26, "foliage_along": 75, "root_flare": 80, "bark_pattern": true, "bark_pattern_direction": 1, "bark_pattern_length": 14, "bark_pattern_density": 65, "bark_pattern_color": Color("3f2c23")}},
+		{"name": "Тип · Берёза", "parameters": {"tree_type": 2, "generation_version": 13, "trunk_width": 6, "crown_spread": 55, "branch_thickness": 35, "branch_taper": 80, "cluster_size": 100, "cluster_flatten": 15, "foliage_along": 45, "root_flare": 35, "bark_color": Color("d6d2bd"), "bark_pattern": true, "bark_pattern_direction": 0, "bark_pattern_length": 5, "bark_pattern_density": 70, "bark_pattern_color": Color("302b29")}},
+		{"name": "Тип · Клён", "parameters": {"tree_type": 3, "generation_version": 12, "trunk_width": 8, "crown_spread": 60, "branch_thickness": 65, "branch_taper": 70, "cluster_size": 115, "cluster_flatten": 15, "branch_start": 30, "foliage_along": 85, "root_flare": 45, "foliage_color": Color("659845")}},
+		{"name": "Тип · Ель", "parameters": {"tree_type": 4, "generation_version": 15, "trunk_width": 6, "crown_spread": 55, "branch_thickness": 40, "branch_taper": 85, "branch_curve": 60, "branch_start": 20, "cluster_size": 115, "cluster_flatten": 15, "foliage_along": 85, "root_flare": 30, "foliage_color": Color("38654a")}},
 		{"name": "База · Широкая крона", "parameters": {"crown_shape": 0}},
 		{"name": "База · Стройное дерево", "parameters": {"crown_shape": 1, "crown_spread": 40}},
 		{"name": "База · Осенние ярусы", "parameters": {"crown_shape": 2, "foliage_color": Color("c67432"), "foliage_amount": 85}},
@@ -180,7 +186,7 @@ static func editing_fields(recipe: Resource) -> Array:
 	var fields: Array = [
 		{"key": "branch_thickness", "label": "Толщина ветвей · % ствола", "group": "Каркас", "min": 25, "max": 100},
 		{"key": "branch_taper", "label": "Сужение ветвей · %", "group": "Каркас", "min": 0, "max": 100},
-		{"key": "foliage_amount", "label": "Количество пучков · %", "group": "Листва", "min": 0, "max": 100},
+		{"key": "foliage_amount", "label": "Количество листвы · %", "group": "Листва", "min": 0, "max": 100},
 		{"key": "cluster_size", "label": "Размер пучков · %", "group": "Листва", "min": 65, "max": 180},
 		{"key": "cluster_flatten", "label": "Приплюснутость · %", "group": "Листва", "min": 0, "max": 100},
 		{"key": "canopy_cohesion", "label": "Сомкнутость · %", "group": "Листва", "min": 0, "max": 100},
@@ -188,8 +194,22 @@ static func editing_fields(recipe: Resource) -> Array:
 		{"key": "foliage_color", "label": "Цвет листвы", "group": "Цвета", "type": "color"},
 		{"key": "bark_color", "label": "Цвет коры", "group": "Цвета", "type": "color"},
 	]
-	if int(recipe.parameters.get("tree_type", 0)) > 0 or int(recipe.parameters.get("generation_version", 1)) == 9:
+	if int(recipe.parameters.get("tree_type", 0)) > 0 or int(recipe.parameters.get("generation_version", 1)) in [9, 14]:
 		fields.insert(3, {"key": "foliage_along", "label": "Листва вдоль ветвей · %", "group": "Листва", "min": 0, "max": 100})
+	if LargeTreeProvider.FoliagePattern.supported(recipe.parameters):
+		fields.insert(2, {"key": "foliage_style", "label": "Стиль листвы", "group": "Листва", "options": ["Прежняя", "Пиксель-арт · пробная", "Листовые побеги · пробные", "Лиственные облака · пробные"]})
+		if int(recipe.parameters.get("foliage_style", 0)) == 2:
+			fields.insert(3, {"key": "foliage_leaf_size", "label": "Размер листика · vox", "group": "Листва", "min": 3, "max": 12})
+		if int(recipe.parameters.get("foliage_style", 0)) == 3:
+			fields.insert(3, {"key": "foliage_leaf_size", "label": "Размер деталей · vox", "group": "Листва", "min": 3, "max": 12})
+			fields.insert(4, {"key": "foliage_leaf_accents", "label": "Выраженность листиков · %", "group": "Листва", "min": 0, "max": 100})
+			if int(recipe.parameters.get("foliage_cloud_version", 1)) >= 2:
+				fields.insert(5, {"key": "foliage_detail", "label": "Размер рисунка · детализация", "group": "Листва", "min": 0, "max": 100})
+				fields.insert(6, {"key": "foliage_pattern_strength", "label": "Выраженность рисунка · %", "group": "Листва", "min": 0, "max": 100})
+		if int(recipe.parameters.get("foliage_style", 0)) == 1:
+			fields.insert(3, {"key": "foliage_detail", "label": "Детализация листвы", "group": "Листва", "min": 0, "max": 100})
+			if int(recipe.parameters.get("foliage_pattern_version", 1)) >= 2:
+				fields.insert(4, {"key": "foliage_pattern_strength", "label": "Выраженность рисунка · %", "group": "Листва", "min": 0, "max": 100})
 	for descriptor in LargeTreeProvider.BarkPattern.fields():
 		descriptor["label"] = descriptor.title
 		descriptor["group"] = "Рисунок коры"

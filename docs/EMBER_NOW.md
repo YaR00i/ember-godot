@@ -1,7 +1,7 @@
 # Ember — текущая точка
 
 Обновлено: 2026-09-13
-Git: общий checkpoint редактора и генеративной мастерской от 2026-09-13 (`main`).
+Git: checkpoint деревьев/листвы/сохранения мастерской от 2026-09-13 (`main`).
 Предыдущий UI checkpoint: `48774a0`; каноническая глава: `647a882`.
 
 Этот файл — короткая стартовая точка для нового Codex-thread. Он не заменяет
@@ -16,6 +16,151 @@ Checkpoint2026-09-13: пользователь принял ель и запро
 placement/split preview зависят от прежней структуры Причала; sandbox native
 batch требует пересборки6 prefab. Подробности в MIGRATION_TEST_PLAN.md.
 Это сохранение текущей точки, не объявление всего редактора завершённым.
+Будущие настройки характера деревьев и управляемые вариации записаны в
+EMBER_PRODUCT_PLAN.md рядом с отложенными shaders/light/mesh optimization.
+Пользователь завершил текущую итерацию деревьев и запросил commit/push.
+Форма пород, разнообразие, пробные режимы листвы и сохранение параметров
+зафиксированы; дальше деревья не дорабатывать без нового запроса.
+Оптимизация mesh/шейдеры и расширенные настройки характера остаются
+отложенными в продуктовой дорожной карте. Основной редактор ещё не объявлен
+полностью завершённым; старые3 gates checkpoint ea50fdf сохраняются.
+Перед Git checkpoint повторно прошли13 targeted suites: variation, формы
+всех5 пород, tree_types, bark, large_tree_object, generator/editing,
+foliage_species и workshop_generator_save. diff --check PASS; Forward+
+проверки листвы и сохранения выполнены в предыдущих срезах на disposable copy.
+
+Последний завершённый срез — общие режимы листвы для всех5 типов деревьев.
+Pixel-art1 и clouds3 доступны саванне/дубу/берёзе/клёну/ели в creation,
+candidate editing и contextual Generator; те же FoliagePattern и volumes.
+Каркас/physical и прежняя листва0 не менялись; параметры pattern/clouds
+общие, без новых controls/schema. Shoot trial2 остаётся только дубу;
+явный переход с него на другую породу выбирает прежнюю листву с Undo.
+Существующие assets не пересобираются автоматически. Новый species targeted
+проверяет обе пробы/все5 пород/64–256/seeds17/371/wood+collision/fresh-frozen/
+serialization/UI/Undo/Redo/Discard; он и5related suites PASS. Native Forward+
+disposable gallery10 деревьев PASS, capture просмотрен. Пользователь принял
+текущий итог и завершил итерацию; это не объявление trial-режимов финальными.
+
+Предыдущий согласованный срез — сохранение рецепта из воксельной мастерской.
+В активной вкладке «Генератор» общая Save/save_changes()/Ctrl+S публикует
+точный preview и все параметры через существующую Creation-транзакцию,
+по выбранному режиму. Нет preview — отказ без сохранения старого sculpt
+исходника; manual dirty update защищён. Новый user:// targeted тест и
+native Forward+ workspace gate PASS: все3 режима/полные параметры/reopen/
+Undo/Redo/Discard/stale preview. Related editing/foliage/object canvas PASS.
+Пользователю проверить Save/Ctrl+S после
+редактирования стиля и выраженности; художественная приёмка дуба17 открыта.
+
+Предыдущий согласованный срез — боковое вторичное ветвление дуба17. Пользователь
+подтвердил рандомность16, но попросил закрыть боковые пробелы настоящими ветками.
+Тот же TreeVariation планирует1–3 lateral shoots на крупный сук по «Ветвистости»;
+«Разнообразие» меняет anchors/turn/length/rise. Побеги из средней части сучьев
+растут наружу, раздваиваются и несут боковые/нижние leaf masses. Нижний ствол
+остаётся открытым. Primary composition16 и его RNG сохранены; pixel-art math
+прежняя. Новые presets/type reselect используют17, старые8/11/16/frozen exact;
+diversity0 exact8. Нет новых ползунков/схемы/renderer. Для новой партии повторно
+выбрать «Дуб»; старый кандидат — явная regeneration из настроек партии/Undo.
+Variation targeted включает secondary count/sideward growth/physical anchors,
+primary16 parity и frozen16 non-upgrade; all5species/limits/history gates PASS.
+Variation и8related oak/types/bark/editing/large-tree/generator/foliage/session
+PASS; native Forward+ Apply/Discard/regeneration/Undo/Redo/publication/reopen
+PASS без script/engine errors, captures просмотрены; art gate открыт.
+
+Предыдущий срез — композиция дуба16 после screenshots №29–31:
+пользователь оставляет pixel-art основой, clouds/shoots — экспериментами.
+Отдельный pure oak_composition в TreeVariation меняет высоты/азимуты крупных
+развилок и баланс крон; два tapering leaders продолжают ствол в верхнюю крону,
+их реальные побеги несут связующую внутреннюю листву. Нет filler sphere,
+нового renderer/схемы/ползунка. Pixel-art math не менялась. Новые type presets
+и явный reselect «Дуб» используют16; сохранённые8/11 и frozen trees не меняются.
+Разнообразие0 сохраняет exact прежнюю8 geometry. Для новой партии повторно
+выбрать «Дуб»; для старого кандидата дополнительно явная команда «Новый каркас
+из настроек партии», с Undo. Targeted проверяет reported параметры96/8/80,
+6seeds, реальные leaders/центральную листву и fork-height diversity; общий
+variation suite продолжает все5 пород/limits/fresh-frozen/text/preset/history.
+Variation targeted и8related oak/types/bark/editing/large-tree/generator/
+foliage/session PASS; native Forward+ editing/regeneration/Undo/Redo/
+publication/reopen PASS без script/engine errors; captures просмотрены;
+художественная приёмка пользователя открыта. Другие породы/новая листва вне среза.
+
+Предыдущий срез — вторая проба «Лиственных облаков» дуба8/11: style3
+в том же FoliagePattern/Recipe/workshop/contextual Generator. Вместо кольца
+тонких подушек — крупные объёмные купола над ветвями, редкие пары листиков
+по краям. Общий surface pattern из pixel-art наносится после объединения масс:
+«Размер рисунка · детализация»0–100 (выше — мельче пятна) и «Выраженность
+рисунка»0–100 (контраст палитры), не меняют форму или frozen scaffold.
+Размер деталей3–12 и выраженность листиков0–100 (default35) сохранены.
+Recipe.parameters.foliage_cloud_version: новые defaults2, missing1. Первая
+проба и стили0/1/2 exact; для старого кандидата/preset/object повторно выбрать
+«Лиственные облака · пробные»: upgrade явный, Undo возвращает прежнюю пробу.
+Native Forward+ сравнение на одном scaffold/Apply/Discard/Undo/Redo/
+publication/reopen PASS; clouds-only, полный foliage и8related suites
+oak/types/bark/editing/large-tree/generator/variation/session PASS.
+Визуальная приёмка пользователя открыта; другие породы/shaders/perf леса вне среза.
+
+Предыдущий срез: пользователь принял разнообразие дуба11/клёна12 и видит
+потенциал листовых побегов. Тот же механизм адаптирован для берёзы13/саванны14/ели15.
+Seed раньше менял координаты, но схема сучьев/развилок оставалась
+слишком фиксированной. Общий pure TreeVariation планирует количество/высоты/
+длины/изгибы/асимметрию и вторичные развилки в пределах породного envelope.
+Новые type presets и явный reselect используют14/11/13/12/15; старые рецепты и frozen skeleton
+не обновляются автоматически. Один creation-only «Разнообразие каркаса»0–100%
+(default65);0 воспроизводит прежнюю geometry. Pixel-art дуба поддерживает11,
+его математика/настройки не менялись; пользователь считает его лучшим пробным.
+Берёза меняет ритм тонких поникающих побегов, саванна — развилки под плоской
+зонтичной кроной, ель — ярусы/длины/вторичные побеги вокруг центральной оси.
+Будущие характер/возраст/многоствольность и полировка листовых побегов вне среза.
+Новый targeted проверяет6 seeds ×64/128/256 для всех пяти пород, yaw-invariant
+структурные различия/counts, old parity при0, fresh/frozen/text, extreme seeds/
+directions, preset/draft Undo/Redo. Ручная приёмка берёзы/саванны/ели открыта.
+Variation targeted и10related oak/maple/birch/savanna/spruce/types/bark/foliage/
+editing/session PASS. Native disposable всех пяти пород:
+Forward+ bare/dressed comparison, индивидуальные
+Apply/Discard/Undo/Redo/publication/reopen и explicit regeneration/Undo/Redo PASS;
+скриншоты просмотрены. Новый план не является character/age editor или forest
+performance gate. Для текущих старых настроек повторно выбрать тип перед batch.
+
+История листовых проб (не текущая задача):
+Текущий согласованный срез — пробная пиксель-арт листва актуального дуба v8:
+переключатель прежняя/пиксель-арт и одна новая «Детализация», через общий
+provider/Recipe/workshop/contextual Generator. Крупные объёмы получают связанные
+неодинаковые группы с неровным ступенчатым краем и согласованными цветовыми
+пятнами. Каркас, кора и коллизия не меняются; missing fields оставляют старую
+геометрию. Остальные породы, иголки, ветер и shaders вне текущего среза.
+Реализация готовится к визуальной приёмке пользователя; не объявлять её принятой
+по автоматическим tests. Затем адаптировать подход к другим породам по результату.
+Foliage targeted и7 связанных suites PASS (oak/types/bark/editing/session/
+large-tree-object/generator); native disposable Forward+ Apply/Discard/Undo/Redo/
+publication/reopen PASS. Геометрия64–256 около0.21–0.67s, meshing отдельно.
+Канонический owner/совместимость — в technical handoff, ручной сценарий — gates.
+После проверки пользователь отметил разнообразие формы, но слабую читаемость
+рисунка. Согласован следующий пробный срез: FoliagePattern revision2 наносит
+согласованные ступенчатые листовые пятна на поверхность уже собранной кроны,
+независимо от порядка перекрытия объёмов. «Детализация» меняет масштаб рисунка,
+новая «Выраженность» — контраст; они не перестраивают крону. Missing pattern
+revision сохраняет первый рисунок1; явный выбор «Пиксель-арт» (в том числе
+повторный) включает2 с Undo/Redo. Приёмка нового рисунка открыта, другие породы/
+иголки/шейдер/свет не входят в этот срез.
+Surface targeted и4related suites (oak/bark/editing/session) PASS; native
+Forward+ сравнение strengths20/65/100, individual Apply/Discard/Undo/Redo,
+publication/reopen/contextual fields PASS. Прямые viewport captures просмотрены.
+Обновление custom pixel v1 сохраняет старую форму через скрытый geometry detail;
+этот переход проверен на Detail85. Fresh geometry около0.23–0.72s, mesh отдельно.
+
+Пользователь оставил pixel surface как пробный вариант. Следующий согласованный
+срез — «Листовые побеги · пробные» (style2) только для актуального дуба8.
+Тот же FoliagePattern строит компактное внутреннее ядро и зелёные побеги с четырьмя
+поочерёдными согнутыми ромбовыми листьями; ближайшая древесина frozen scaffold
+задаёт привязку/направление. Wood, bark и collision не меняются. Один новый
+контрол — размер листика3–12vox (default5), остальные общие amount/along/цвет/
+размер пучков. Old0 и pixel1 сохраняются, shaders/ветер/другие породы вне среза.
+Визуальная приёмка этого подхода открыта; тестовый дуб96/seed391 сначала
+сравнивается со старым на одном каркасе, затем размеры5/8 и другой seed.
+Foliage targeted и4related (oak/bark/editing/session) PASS; disposable native
+Forward+ size Apply/Discard/Undo/Redo, publication/reopen/contextual PASS.
+Fresh64–256 около0.28–0.87s, meshing отдельно. Дуб96/seed391:75_250 occupied
+вместо125_212, но174_280 triangles вместо91_340 (~1.9×): trial не является
+готовой оптимизацией для леса. Native captures просмотрены, art gate открыт.
 
 - Реализован поток «Объекты → Генерация…»: отдельная native вкладка сцены
   `addons/ember_import/editor/Генерация.tscn` с нейтральным светом и общая нижняя

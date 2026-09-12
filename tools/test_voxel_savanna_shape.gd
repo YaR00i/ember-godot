@@ -16,7 +16,8 @@ func check(value: bool, message: String) -> void:
 
 func _run() -> void:
 	var savanna: Resource = Generator.creation_presets(Generator.LARGE_TREE)[0].recipe
-	check(savanna.parameters.generation_version == 9, "new savanna preset selects umbrella")
+	check(savanna.parameters.generation_version == 14, "new savanna preset selects varied umbrella")
+	savanna.parameters.generation_version = 9
 	check(Generator.editing_fields(savanna).any(func(field): return field.key == "foliage_along"), "new savanna exposes shared interior foliage editing")
 	check(Provider.normalize({"tree_type": 0, "generation_version": 2}).generation_version == 2, "saved savanna retains v2")
 	var directory := "user://savanna_shape_%d" % Time.get_ticks_usec()
@@ -84,17 +85,17 @@ func _run() -> void:
 	await process_frame
 	check(panel.recipe.parameters.generation_version == 2, "opening default does not silently upgrade")
 	panel.controls.tree_type.item_selected.emit(0)
-	check(panel.recipe.parameters.generation_version == 9, "explicit reselect of savanna upgrades old default")
+	check(panel.recipe.parameters.generation_version == 14, "explicit reselect of savanna upgrades old default")
 	panel.undo_local()
 	check(panel.recipe.parameters.generation_version == 2, "same-type upgrade Undo restores saved revision")
 	panel.redo_local()
 	panel._change_parameter("tree_type", 1)
 	panel._change_parameter("tree_type", 0)
-	check(panel.recipe.parameters.generation_version == 9, "type choice selects latest savanna")
+	check(panel.recipe.parameters.generation_version == 14, "type choice selects latest savanna")
 	panel.undo_local()
 	check(panel.recipe.parameters.tree_type == 1, "type choice Undo")
 	panel.redo_local()
-	check(panel.recipe.parameters.generation_version == 9, "type choice Redo")
+	check(panel.recipe.parameters.generation_version == 14, "type choice Redo")
 	panel.session.source_directory = directory.path_join("sources")
 	panel.session.prefab_directory = directory.path_join("prefabs")
 	panel.session.recipe_directory = directory.path_join("recipes")

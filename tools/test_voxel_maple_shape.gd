@@ -21,7 +21,8 @@ func _run() -> void:
 		var built := Provider.build(old, 371, Color.WHITE, {}, "Old maple")
 		check(not built.has("error") and hash(built.geometry.voxels) == [3008355434, 2969065940, 970442213][index], "saved v6 maple remains byte-identical")
 	var maple: Resource = Generator.creation_presets(Generator.LARGE_TREE)[3].recipe.duplicate(true)
-	check(maple.parameters.generation_version == 7, "new maple preset selects revision 7")
+	check(maple.parameters.generation_version == 12, "new maple preset selects varied revision")
+	maple.parameters.generation_version = 7 # Preserve historical v7 crown gates.
 	check(Provider.normalize({"tree_type": 3, "generation_version": 3}).generation_version == 3, "saved maple stays v3")
 	var directory := "user://maple_shape_%d" % Time.get_ticks_usec()
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(directory))
@@ -102,11 +103,11 @@ func _run() -> void:
 	await process_frame
 	panel.controls.tree_type.select(3)
 	panel.controls.tree_type.item_selected.emit(3)
-	check(panel.recipe.parameters.generation_version == 7, "native type choice selects latest maple")
+	check(panel.recipe.parameters.generation_version == 12, "native type choice selects latest maple")
 	panel.undo_local()
 	check(panel.recipe.parameters.tree_type == 0 and panel.recipe.parameters.generation_version == 2, "type choice Undo restores old version")
 	panel.redo_local()
-	check(panel.recipe.parameters.tree_type == 3 and panel.recipe.parameters.generation_version == 7, "type choice Redo restores maple")
+	check(panel.recipe.parameters.tree_type == 3 and panel.recipe.parameters.generation_version == 12, "type choice Redo restores latest maple")
 	panel.session.source_directory = directory.path_join("sources")
 	panel.session.prefab_directory = directory.path_join("prefabs")
 	panel.session.recipe_directory = directory.path_join("recipes")

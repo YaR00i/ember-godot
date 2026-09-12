@@ -1,0 +1,1036 @@
+[gd_resource type="Resource" format=3 uid="uid://8qsyroqfdxg0"]
+
+[ext_resource type="Script" uid="uid://bndlx7f0sdeg3" path="res://addons/ember_import/ember_voxel_generator_recipe.gd" id="1_tumrf"]
+
+[resource]
+script = ExtResource("1_tumrf")
+generator_id = "large_tree"
+parameters = {
+"bark_color": Color(0.4627451, 0.3137255, 0.22352941, 1),
+"bark_pattern": false,
+"bark_pattern_color": Color(0.1882353, 0.16862746, 0.16078432, 1),
+"bark_pattern_density": 60,
+"bark_pattern_direction": 0,
+"bark_pattern_length": 6,
+"bark_pattern_version": 2,
+"branch_curve": 80,
+"branch_direction": 0,
+"branch_start": 38,
+"branch_taper": 80,
+"branch_thickness": 60,
+"branchiness": 62,
+"canopy_cohesion": 55,
+"cluster_flatten": 65,
+"cluster_size": 115,
+"crown_shape": 0,
+"crown_spread": 80,
+"density": 16,
+"foliage_along": 85,
+"foliage_amount": 100,
+"foliage_cloud_version": 2,
+"foliage_color": Color(0.30980393, 0.56078434, 0.3137255, 1),
+"foliage_detail": 55,
+"foliage_geometry_detail": 55,
+"foliage_leaf_accents": 35,
+"foliage_leaf_size": 5,
+"foliage_pattern_strength": 65,
+"foliage_pattern_version": 2,
+"foliage_style": 0,
+"generation_version": 17,
+"height": 96,
+"irregularity": 42,
+"leaf_density": 62,
+"root_flare": 25,
+"structure_diversity": 65,
+"tree_type": 1,
+"trunk_width": 8
+}
+structure = {
+"grid": Vector3i(96, 96, 112),
+"groups": [{
+"along": false,
+"center": Vector3(-11.25, 49.75, 37.25),
+"radii": Vector3(11.75, 8.25, 11.25),
+"radius": 11.75,
+"state": 0,
+"top": false
+}, {
+"along": true,
+"center": Vector3(-8.5, 48.25, 33.5),
+"radii": Vector3(10.5, 6.5, 10.5),
+"radius": 10.5,
+"state": 0,
+"top": false
+}, {
+"along": true,
+"center": Vector3(-5, 51.5, 23.25),
+"radii": Vector3(11.5, 8.75, 10.5),
+"radius": 11.5,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(7.25, 47.5, 40.75),
+"radii": Vector3(9.5, 6.5, 10),
+"radius": 10.0,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(-2, 48.75, 48),
+"radii": Vector3(8, 5.75, 8.5),
+"radius": 8.5,
+"state": 0,
+"top": false
+}, {
+"along": true,
+"center": Vector3(3, 46.25, 36.5),
+"radii": Vector3(9, 6.5, 9),
+"radius": 9.0,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(-30.5, 45.5, 25.25),
+"radii": Vector3(9.5, 6.5, 10),
+"radius": 10.0,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(-30.25, 46, 34.5),
+"radii": Vector3(8, 5.75, 8.5),
+"radius": 8.5,
+"state": 0,
+"top": false
+}, {
+"along": true,
+"center": Vector3(-23.5, 44.75, 23.25),
+"radii": Vector3(9, 6.5, 9),
+"radius": 9.0,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(-0.75, 53.75, -30.5),
+"radii": Vector3(9.25, 6.25, 8.75),
+"radius": 9.25,
+"state": 0,
+"top": false
+}, {
+"along": true,
+"center": Vector3(-1, 51.5, -26),
+"radii": Vector3(10.5, 6.5, 10.5),
+"radius": 10.5,
+"state": 0,
+"top": false
+}, {
+"along": true,
+"center": Vector3(1, 53.25, -16.5),
+"radii": Vector3(11.5, 8.75, 10.5),
+"radius": 11.5,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(18.25, 44.25, -25.25),
+"radii": Vector3(9.5, 6.5, 10),
+"radius": 10.0,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(14.25, 44.75, -31),
+"radii": Vector3(8, 5.75, 8.5),
+"radius": 8.5,
+"state": 0,
+"top": false
+}, {
+"along": true,
+"center": Vector3(14.75, 43.75, -21),
+"radii": Vector3(9, 6.5, 9),
+"radius": 9.0,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(-18.25, 47.75, -31.75),
+"radii": Vector3(9.5, 6.5, 10),
+"radius": 10.0,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(-11, 48.5, -42.5),
+"radii": Vector3(8, 5.75, 8.5),
+"radius": 8.5,
+"state": 0,
+"top": false
+}, {
+"along": true,
+"center": Vector3(-12, 47.25, -28.5),
+"radii": Vector3(9, 6.5, 9),
+"radius": 9.0,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(-21.75, 55, -16),
+"radii": Vector3(10.75, 7.25, 10),
+"radius": 10.75,
+"state": 0,
+"top": false
+}, {
+"along": true,
+"center": Vector3(-18.5, 53, -13.75),
+"radii": Vector3(10.5, 6.5, 10.5),
+"radius": 10.5,
+"state": 0,
+"top": false
+}, {
+"along": true,
+"center": Vector3(-11, 55.5, -8.5),
+"radii": Vector3(11.5, 8.75, 10.5),
+"radius": 11.5,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(-28, 51, -4),
+"radii": Vector3(9.5, 6.5, 10),
+"radius": 10.0,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(-31, 51.75, -12.75),
+"radii": Vector3(8, 5.75, 8.5),
+"radius": 8.5,
+"state": 0,
+"top": false
+}, {
+"along": true,
+"center": Vector3(-23.5, 50, -6),
+"radii": Vector3(9, 6.5, 9),
+"radius": 9.0,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(-10.75, 50.5, -28.5),
+"radii": Vector3(9.5, 6.5, 10),
+"radius": 10.0,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(-18.25, 51.5, -29),
+"radii": Vector3(8, 5.75, 8.5),
+"radius": 8.5,
+"state": 0,
+"top": false
+}, {
+"along": true,
+"center": Vector3(-9.5, 49.25, -22.75),
+"radii": Vector3(9, 6.5, 9),
+"radius": 9.0,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(31.25, 68.5, 15),
+"radii": Vector3(10, 7, 9.5),
+"radius": 10.0,
+"state": 0,
+"top": false
+}, {
+"along": true,
+"center": Vector3(28, 64.75, 13.5),
+"radii": Vector3(10.5, 6.5, 10.5),
+"radius": 10.5,
+"state": 0,
+"top": false
+}, {
+"along": true,
+"center": Vector3(20.25, 63.75, 10),
+"radii": Vector3(11.5, 8.75, 10.5),
+"radius": 11.5,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(23.25, 59.25, 27.75),
+"radii": Vector3(9.5, 6.5, 10),
+"radius": 10.0,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(30, 60.5, 26.75),
+"radii": Vector3(8, 5.75, 8.5),
+"radius": 8.5,
+"state": 0,
+"top": false
+}, {
+"along": true,
+"center": Vector3(21.25, 58, 22.75),
+"radii": Vector3(9, 6.5, 9),
+"radius": 9.0,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(34.75, 55, -0.75),
+"radii": Vector3(9.5, 6.5, 10),
+"radius": 10.0,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(40.5, 55.5, 7.75),
+"radii": Vector3(8, 5.75, 8.5),
+"radius": 8.5,
+"state": 0,
+"top": false
+}, {
+"along": true,
+"center": Vector3(30.75, 54.5, 2.75),
+"radii": Vector3(9, 6.5, 9),
+"radius": 9.0,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(13, 69.5, -21),
+"radii": Vector3(9.25, 6.25, 8.75),
+"radius": 9.25,
+"state": 0,
+"top": false
+}, {
+"along": true,
+"center": Vector3(11.75, 66, -18),
+"radii": Vector3(10.5, 6.5, 10.5),
+"radius": 10.5,
+"state": 0,
+"top": false
+}, {
+"along": true,
+"center": Vector3(9.75, 65.5, -11.25),
+"radii": Vector3(11.5, 8.75, 10.5),
+"radius": 11.5,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(-0.75, 55.5, -21.5),
+"radii": Vector3(9.5, 6.5, 10),
+"radius": 10.0,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(5.5, 55.75, -27.25),
+"radii": Vector3(8, 5.75, 8.5),
+"radius": 8.5,
+"state": 0,
+"top": false
+}, {
+"along": true,
+"center": Vector3(2.75, 55, -18.5),
+"radii": Vector3(9, 6.5, 9),
+"radius": 9.0,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(22.75, 60, -15.25),
+"radii": Vector3(9.5, 6.5, 10),
+"radius": 10.0,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(22, 60.5, -20),
+"radii": Vector3(8, 5.75, 8.5),
+"radius": 8.5,
+"state": 0,
+"top": false
+}, {
+"along": true,
+"center": Vector3(19.25, 59.5, -13.5),
+"radii": Vector3(9, 6.5, 9),
+"radius": 9.0,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(8.75, 64, 5),
+"radii": Vector3(11.75, 8, 11),
+"radius": 11.75,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(11.25, 73.5, 7),
+"radii": Vector3(13.25, 8.25, 12.5),
+"radius": 13.25,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(4, 71.5, 11.25),
+"radii": Vector3(10.5, 7.25, 10.5),
+"radius": 10.5,
+"state": 0,
+"top": false
+}, {
+"along": true,
+"center": Vector3(6, 59.5, 5.25),
+"radii": Vector3(10, 7.25, 10),
+"radius": 10.0,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(1.25, 61.5, -1),
+"radii": Vector3(11.75, 8, 11),
+"radius": 11.75,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(-2, 69.25, -1.75),
+"radii": Vector3(13.25, 8.25, 12.5),
+"radius": 13.25,
+"state": 0,
+"top": false
+}, {
+"along": false,
+"center": Vector3(2.75, 68.25, -8.75),
+"radii": Vector3(10.5, 7.25, 10.5),
+"radius": 10.5,
+"state": 0,
+"top": false
+}, {
+"along": true,
+"center": Vector3(3.25, 57.75, -2.75),
+"radii": Vector3(10, 7.25, 10),
+"radius": 10.0,
+"state": 0,
+"top": false
+}],
+"lines": [{
+"branch": false,
+"finish": Vector3(-0.75, 9.75, 2),
+"physical": true,
+"r0": 6.175,
+"r1": 5.064800000000001,
+"start": Vector3(0, 0, 0),
+"t0": 0.0,
+"t1": 1.0
+}, {
+"branch": false,
+"finish": Vector3(0.25, 19.75, 3.5),
+"physical": true,
+"r0": 5.064800000000001,
+"r1": 4.5136,
+"start": Vector3(-0.75, 9.75, 2),
+"t0": 0.0,
+"t1": 1.0
+}, {
+"branch": false,
+"finish": Vector3(2.5, 29.5, 3.75),
+"physical": true,
+"r0": 4.5136,
+"r1": 3.9624,
+"start": Vector3(0.25, 19.75, 3.5),
+"t0": 0.0,
+"t1": 1.0
+}, {
+"branch": false,
+"finish": Vector3(4.75, 39.5, 2.75),
+"physical": true,
+"r0": 3.9624,
+"r1": 3.4112000000000005,
+"start": Vector3(2.5, 29.5, 3.75),
+"t0": 0.0,
+"t1": 1.0
+}, {
+"branch": false,
+"finish": Vector3(5.75, 49.25, 1),
+"physical": true,
+"r0": 3.4112000000000005,
+"r1": 2.8600000000000003,
+"start": Vector3(4.75, 39.5, 2.75),
+"t0": 0.0,
+"t1": 1.0
+}, {
+"branch": false,
+"finish": Vector3(0.25, 0, 6),
+"physical": true,
+"r0": 3.7439999999999998,
+"r1": 1.8719999999999999,
+"start": Vector3(-0.48749998, 6.3374996, 1.3),
+"t0": 0.0,
+"t1": 1.0
+}, {
+"branch": false,
+"finish": Vector3(-5.25, 0, 3),
+"physical": true,
+"r0": 3.7439999999999998,
+"r1": 1.8719999999999999,
+"start": Vector3(-0.48749998, 6.3374996, 1.3),
+"t0": 0.0,
+"t1": 1.0
+}, {
+"branch": false,
+"finish": Vector3(-4.25, 0, -4.75),
+"physical": true,
+"r0": 3.7439999999999998,
+"r1": 1.8719999999999999,
+"start": Vector3(-0.48749998, 6.3374996, 1.3),
+"t0": 0.0,
+"t1": 1.0
+}, {
+"branch": false,
+"finish": Vector3(2.25, 0, -5.5),
+"physical": true,
+"r0": 3.7439999999999998,
+"r1": 1.8719999999999999,
+"start": Vector3(-0.48749998, 6.3374996, 1.3),
+"t0": 0.0,
+"t1": 1.0
+}, {
+"branch": false,
+"finish": Vector3(5.75, 0, 1.5),
+"physical": true,
+"r0": 3.7439999999999998,
+"r1": 1.8719999999999999,
+"start": Vector3(-0.48749998, 6.3374996, 1.3),
+"t0": 0.0,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(-4.75, 37.75, 13.25),
+"physical": true,
+"r0": 2.9955730376243594,
+"r1": 2.3964584300994876,
+"start": Vector3(4.5, 38, 3),
+"t0": 0.0,
+"t1": 0.35
+}, {
+"branch": true,
+"finish": Vector3(-5, 46.5, 28.75),
+"physical": true,
+"r0": 2.3964584300994876,
+"r1": 1.8356871574562075,
+"start": Vector3(-4.75, 37.75, 13.25),
+"t0": 0.35,
+"t1": 0.72
+}, {
+"branch": true,
+"finish": Vector3(-11.25, 49.75, 37.25),
+"physical": true,
+"r0": 1.8356871574562075,
+"r1": 0.8866896191368102,
+"start": Vector3(-5, 46.5, 28.75),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(0, 45.5, 33.5),
+"physical": true,
+"r0": 1.3767653680921557,
+"r1": 0.8260592208552934,
+"start": Vector3(-5, 43, 22.75),
+"t0": 0.4,
+"t1": 0.72
+}, {
+"branch": true,
+"finish": Vector3(7.25, 47.5, 40.75),
+"physical": true,
+"r0": 0.8260592208552934,
+"r1": 0.65,
+"start": Vector3(0, 45.5, 33.5),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(-2, 48.75, 48),
+"physical": true,
+"r0": 0.6883826840460778,
+"r1": 0.65,
+"start": Vector3(0, 45.5, 33.5),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(-18.75, 44.25, 21.75),
+"physical": true,
+"r0": 1.3767653680921557,
+"r1": 0.8260592208552934,
+"start": Vector3(-5, 43, 22.5),
+"t0": 0.4,
+"t1": 0.72
+}, {
+"branch": true,
+"finish": Vector3(-30.5, 45.5, 25.25),
+"physical": true,
+"r0": 0.8260592208552934,
+"r1": 0.65,
+"start": Vector3(-18.75, 44.25, 21.75),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(-30.25, 46, 34.5),
+"physical": true,
+"r0": 0.6883826840460778,
+"r1": 0.65,
+"start": Vector3(-18.75, 44.25, 21.75),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(5.5, 38.75, -8.75),
+"physical": true,
+"r0": 2.8892765361785893,
+"r1": 2.3114212289428715,
+"start": Vector3(3.75, 35.25, 3.25),
+"t0": 0.0,
+"t1": 0.35
+}, {
+"branch": true,
+"finish": Vector3(-1.25, 48.5, -20.75),
+"physical": true,
+"r0": 2.3114212289428715,
+"r1": 1.7705486613702395,
+"start": Vector3(5.5, 38.75, -8.75),
+"t0": 0.35,
+"t1": 0.72
+}, {
+"branch": true,
+"finish": Vector3(-0.75, 53.75, -30.5),
+"physical": true,
+"r0": 1.7705486613702395,
+"r1": 0.8552258547088623,
+"start": Vector3(-1.25, 48.5, -20.75),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(12.25, 43.25, -18),
+"physical": true,
+"r0": 1.3279114960276797,
+"r1": 0.7967468976166078,
+"start": Vector3(3, 42.25, -13),
+"t0": 0.4,
+"t1": 0.72
+}, {
+"branch": true,
+"finish": Vector3(18.25, 44.25, -25.25),
+"physical": true,
+"r0": 0.7967468976166078,
+"r1": 0.65,
+"start": Vector3(12.25, 43.25, -18),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(14.25, 44.75, -31),
+"physical": true,
+"r0": 0.6639557480138398,
+"r1": 0.65,
+"start": Vector3(12.25, 43.25, -18),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(-8, 46.75, -26.5),
+"physical": true,
+"r0": 1.3279114960276797,
+"r1": 0.7967468976166078,
+"start": Vector3(0.75, 45.5, -17),
+"t0": 0.4,
+"t1": 0.72
+}, {
+"branch": true,
+"finish": Vector3(-18.25, 47.75, -31.75),
+"physical": true,
+"r0": 0.7967468976166078,
+"r1": 0.65,
+"start": Vector3(-8, 46.75, -26.5),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(-11, 48.5, -42.5),
+"physical": true,
+"r0": 0.6639557480138398,
+"r1": 0.65,
+"start": Vector3(-8, 46.75, -26.5),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(-4.5, 41.25, -4),
+"physical": true,
+"r0": 2.5045833764076235,
+"r1": 2.003666701126099,
+"start": Vector3(4.75, 39, 2.75),
+"t0": 0.0,
+"t1": 0.35
+}, {
+"branch": true,
+"finish": Vector3(-14.5, 50.5, -10.75),
+"physical": true,
+"r0": 2.003666701126099,
+"r1": 1.5348086930625917,
+"start": Vector3(-4.5, 41.25, -4),
+"t0": 0.35,
+"t1": 0.72
+}, {
+"branch": true,
+"finish": Vector3(-21.75, 55, -16),
+"physical": true,
+"r0": 1.5348086930625917,
+"r1": 0.7413566794166564,
+"start": Vector3(-14.5, 50.5, -10.75),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(-20.5, 49.25, -7.5),
+"physical": true,
+"r0": 1.1511065197969437,
+"r1": 0.6906639118781662,
+"start": Vector3(-11.25, 47.5, -8.5),
+"t0": 0.4,
+"t1": 0.72
+}, {
+"branch": true,
+"finish": Vector3(-28, 51, -4),
+"physical": true,
+"r0": 0.6906639118781662,
+"r1": 0.65,
+"start": Vector3(-20.5, 49.25, -7.5),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(-31, 51.75, -12.75),
+"physical": true,
+"r0": 0.65,
+"r1": 0.65,
+"start": Vector3(-20.5, 49.25, -7.5),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(-8.75, 48.5, -19),
+"physical": true,
+"r0": 1.1511065197969437,
+"r1": 0.6906639118781662,
+"start": Vector3(-10.25, 46.5, -8),
+"t0": 0.4,
+"t1": 0.72
+}, {
+"branch": true,
+"finish": Vector3(-10.75, 50.5, -28.5),
+"physical": true,
+"r0": 0.6906639118781662,
+"r1": 0.65,
+"start": Vector3(-8.75, 48.5, -19),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(-18.25, 51.5, -29),
+"physical": true,
+"r0": 0.65,
+"r1": 0.65,
+"start": Vector3(-8.75, 48.5, -19),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(14, 47.25, 6.75),
+"physical": true,
+"r0": 1.8493529876232149,
+"r1": 1.479482390098572,
+"start": Vector3(4.5, 39, 2.75),
+"t0": 0.0,
+"t1": 0.35
+}, {
+"branch": true,
+"finish": Vector3(23.75, 60.25, 11.75),
+"physical": true,
+"r0": 1.479482390098572,
+"r1": 1.1332835108155062,
+"start": Vector3(14, 47.25, 6.75),
+"t0": 0.35,
+"t1": 0.72
+}, {
+"branch": true,
+"finish": Vector3(31.25, 68.5, 15),
+"physical": true,
+"r0": 1.1332835108155062,
+"r1": 0.65,
+"start": Vector3(23.75, 60.25, 11.75),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(19.75, 57, 19.5),
+"physical": true,
+"r0": 0.8499626331116297,
+"r1": 0.65,
+"start": Vector3(19.25, 54.5, 9.5),
+"t0": 0.4,
+"t1": 0.72
+}, {
+"branch": true,
+"finish": Vector3(23.25, 59.25, 27.75),
+"physical": true,
+"r0": 0.65,
+"r1": 0.65,
+"start": Vector3(19.75, 57, 19.5),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(30, 60.5, 26.75),
+"physical": true,
+"r0": 0.65,
+"r1": 0.65,
+"start": Vector3(19.75, 57, 19.5),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(28, 54.25, 5.25),
+"physical": true,
+"r0": 0.8499626331116297,
+"r1": 0.65,
+"start": Vector3(18.5, 53.25, 9),
+"t0": 0.4,
+"t1": 0.72
+}, {
+"branch": true,
+"finish": Vector3(34.75, 55, -0.75),
+"physical": true,
+"r0": 0.65,
+"r1": 0.65,
+"start": Vector3(28, 54.25, 5.25),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(40.5, 55.5, 7.75),
+"physical": true,
+"r0": 0.65,
+"r1": 0.65,
+"start": Vector3(28, 54.25, 5.25),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(8.5, 49.25, -5.5),
+"physical": true,
+"r0": 1.7812585365056994,
+"r1": 1.4250068292045597,
+"start": Vector3(5, 42, 2.25),
+"t0": 0.0,
+"t1": 0.35
+}, {
+"branch": true,
+"finish": Vector3(10.25, 61.75, -14.5),
+"physical": true,
+"r0": 1.4250068292045597,
+"r1": 1.0915552311706926,
+"start": Vector3(8.5, 49.25, -5.5),
+"t0": 0.35,
+"t1": 0.72
+}, {
+"branch": true,
+"finish": Vector3(13, 69.5, -21),
+"physical": true,
+"r0": 1.0915552311706926,
+"r1": 0.65,
+"start": Vector3(10.25, 61.75, -14.5),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(5, 54.75, -16.5),
+"physical": true,
+"r0": 0.8186664233780194,
+"r1": 0.65,
+"start": Vector3(9.25, 54, -9),
+"t0": 0.4,
+"t1": 0.72
+}, {
+"branch": true,
+"finish": Vector3(-0.75, 55.5, -21.5),
+"physical": true,
+"r0": 0.65,
+"r1": 0.65,
+"start": Vector3(5, 54.75, -16.5),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(5.5, 55.75, -27.25),
+"physical": true,
+"r0": 0.65,
+"r1": 0.65,
+"start": Vector3(5, 54.75, -16.5),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(17, 59.25, -12.5),
+"physical": true,
+"r0": 0.8186664233780194,
+"r1": 0.65,
+"start": Vector3(9.75, 58.25, -12),
+"t0": 0.4,
+"t1": 0.72
+}, {
+"branch": true,
+"finish": Vector3(22.75, 60, -15.25),
+"physical": true,
+"r0": 0.65,
+"r1": 0.65,
+"start": Vector3(17, 59.25, -12.5),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(22, 60.5, -20),
+"physical": true,
+"r0": 0.65,
+"r1": 0.65,
+"start": Vector3(17, 59.25, -12.5),
+"t0": 0.72,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(6, 59.5, 5.25),
+"physical": true,
+"r0": 2.8600000000000003,
+"r1": 2.0592,
+"start": Vector3(5.75, 49.25, 1),
+"t0": 0.0,
+"t1": 0.42
+}, {
+"branch": true,
+"finish": Vector3(11, 67.75, 4.75),
+"physical": true,
+"r0": 2.0592,
+"r1": 1.0868000000000002,
+"start": Vector3(6, 59.5, 5.25),
+"t0": 0.42,
+"t1": 0.76
+}, {
+"branch": true,
+"finish": Vector3(11.25, 73.5, 7),
+"physical": true,
+"r0": 1.0868000000000002,
+"r1": 0.65,
+"start": Vector3(11, 67.75, 4.75),
+"t0": 0.76,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(4, 71.5, 11.25),
+"physical": true,
+"r0": 1.2870000000000001,
+"r1": 0.65,
+"start": Vector3(6, 59.5, 5.25),
+"t0": 0.42,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(3.25, 57.75, -2.75),
+"physical": true,
+"r0": 2.8600000000000003,
+"r1": 2.0592,
+"start": Vector3(5.75, 49.25, 1),
+"t0": 0.0,
+"t1": 0.42
+}, {
+"branch": true,
+"finish": Vector3(-0.5, 64.5, 0.25),
+"physical": true,
+"r0": 2.0592,
+"r1": 1.0868000000000002,
+"start": Vector3(3.25, 57.75, -2.75),
+"t0": 0.42,
+"t1": 0.76
+}, {
+"branch": true,
+"finish": Vector3(-2, 69.25, -1.75),
+"physical": true,
+"r0": 1.0868000000000002,
+"r1": 0.65,
+"start": Vector3(-0.5, 64.5, 0.25),
+"t0": 0.76,
+"t1": 1.0
+}, {
+"branch": true,
+"finish": Vector3(2.75, 68.25, -8.75),
+"physical": true,
+"r0": 1.2870000000000001,
+"r1": 0.65,
+"start": Vector3(3.25, 57.75, -2.75),
+"t0": 0.42,
+"t1": 1.0
+}],
+"noise_radius": 10.5,
+"parameters": {
+"bark_color": Color(0.4627451, 0.3137255, 0.22352941, 1),
+"bark_pattern": false,
+"bark_pattern_color": Color(0.1882353, 0.16862746, 0.16078432, 1),
+"bark_pattern_density": 60,
+"bark_pattern_direction": 0,
+"bark_pattern_length": 6,
+"bark_pattern_version": 2,
+"branch_curve": 80,
+"branch_direction": 0,
+"branch_start": 38,
+"branch_taper": 80,
+"branch_thickness": 60,
+"branchiness": 62,
+"canopy_cohesion": 55,
+"cluster_flatten": 65,
+"cluster_size": 115,
+"crown_shape": 0,
+"crown_spread": 80,
+"density": 16,
+"foliage_along": 85,
+"foliage_amount": 100,
+"foliage_cloud_version": 2,
+"foliage_color": Color(0.30980393, 0.56078434, 0.3137255, 1),
+"foliage_detail": 55,
+"foliage_geometry_detail": 55,
+"foliage_leaf_accents": 35,
+"foliage_leaf_size": 5,
+"foliage_pattern_strength": 65,
+"foliage_pattern_version": 2,
+"foliage_style": 0,
+"generation_version": 17,
+"height": 96,
+"irregularity": 42,
+"leaf_density": 62,
+"root_flare": 25,
+"structure_diversity": 65,
+"tree_type": 1,
+"trunk_width": 8
+},
+"pivot_bias": Vector2i(-5, -3),
+"version": 1
+}
+family_id = "vox_tree_27942275"
+family_title = "Дерево"
+variation_name = "Вариант 1"

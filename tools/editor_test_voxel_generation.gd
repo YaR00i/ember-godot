@@ -58,7 +58,7 @@ func _run() -> void:
 	var panel := EditorInterface.get_base_control().find_child("EmberGenerationWorkspace", true, false)
 	check(panel != null, "real native generation panel")
 	if panel == null: get_tree().quit(1); return
-	if OS.get_cmdline_user_args().has("--oak-crown-only") or OS.get_cmdline_user_args().has("--birch-shape-only") or OS.get_cmdline_user_args().has("--bark-pattern-only") or OS.get_cmdline_user_args().has("--maple-shape-only") or OS.get_cmdline_user_args().has("--savanna-shape-only") or OS.get_cmdline_user_args().has("--spruce-shape-only"):
+	if OS.get_cmdline_user_args().has("--foliage-clouds-only") or OS.get_cmdline_user_args().has("--tree-variation-only") or OS.get_cmdline_user_args().has("--leaf-shoots-only") or OS.get_cmdline_user_args().has("--foliage-surface-only") or OS.get_cmdline_user_args().has("--oak-foliage-only") or OS.get_cmdline_user_args().has("--oak-crown-only") or OS.get_cmdline_user_args().has("--birch-shape-only") or OS.get_cmdline_user_args().has("--bark-pattern-only") or OS.get_cmdline_user_args().has("--maple-shape-only") or OS.get_cmdline_user_args().has("--savanna-shape-only") or OS.get_cmdline_user_args().has("--spruce-shape-only"):
 		var birch := OS.get_cmdline_user_args().has("--birch-shape-only")
 		var bark := OS.get_cmdline_user_args().has("--bark-pattern-only")
 		var maple := OS.get_cmdline_user_args().has("--maple-shape-only")
@@ -66,6 +66,16 @@ func _run() -> void:
 		await frames(15)
 		await settle()
 		for message in errors: push_error(message)
+		if OS.get_cmdline_user_args().has("--tree-variation-only"):
+			print("editor_test_voxel_tree_variation: ", "PASS" if errors.is_empty() else "FAIL")
+		if OS.get_cmdline_user_args().has("--leaf-shoots-only"):
+			print("editor_test_voxel_leaf_shoots: ", "PASS" if errors.is_empty() else "FAIL")
+		if OS.get_cmdline_user_args().has("--foliage-clouds-only"):
+			print("editor_test_voxel_foliage_clouds: ", "PASS" if errors.is_empty() else "FAIL")
+		if OS.get_cmdline_user_args().has("--foliage-surface-only"):
+			print("editor_test_voxel_foliage_surface: ", "PASS" if errors.is_empty() else "FAIL")
+		if OS.get_cmdline_user_args().has("--oak-foliage-only"):
+			print("editor_test_voxel_oak_foliage: ", "PASS" if errors.is_empty() else "FAIL")
 		print("editor_test_voxel_spruce_shape: " if OS.get_cmdline_user_args().has("--spruce-shape-only") else ("editor_test_voxel_savanna_shape: " if OS.get_cmdline_user_args().has("--savanna-shape-only") else ("editor_test_voxel_maple_shape: " if maple else ("editor_test_voxel_bark_pattern: " if bark else ("editor_test_voxel_birch_shape: " if birch else "editor_test_voxel_oak_crown: ")))), "PASS" if errors.is_empty() else "FAIL")
 		get_tree().quit(0 if errors.is_empty() else 1)
 		return
@@ -323,8 +333,15 @@ func _check_tree_types(panel: Node) -> void:
 	panel.close_session()
 
 func _check_oak_shapes(panel: Node, birch := false, bark := false, maple := false) -> void:
+	var variation := OS.get_cmdline_user_args().has("--tree-variation-only")
+	var composition := variation and OS.get_cmdline_user_args().has("--composition-dressed")
+	var shoots := OS.get_cmdline_user_args().has("--leaf-shoots-only")
+	var clouds := OS.get_cmdline_user_args().has("--foliage-clouds-only")
+	var surface := OS.get_cmdline_user_args().has("--foliage-surface-only")
+	var foliage := OS.get_cmdline_user_args().has("--oak-foliage-only") or surface
 	var savanna := OS.get_cmdline_user_args().has("--savanna-shape-only")
 	var spruce := OS.get_cmdline_user_args().has("--spruce-shape-only")
+	var species := "spruce" if spruce else ("savanna" if savanna else ("maple" if maple else ("birch" if birch else "oak")))
 	panel.studio_requested.emit()
 	await frames(10)
 	var registry := preload("res://addons/ember_import/ember_voxel_generator.gd")
@@ -335,10 +352,25 @@ func _check_oak_shapes(panel: Node, birch := false, bark := false, maple := fals
 	if maple: panel._title.text = "Native maple shape"
 	if savanna: panel._title.text = "Native savanna shape"
 	if spruce: panel._title.text = "Native spruce shape"
+	if foliage: panel._title.text = "Дуб · прежняя / пиксель-арт / детали / другой seed"
+	if surface: panel._title.text = "Рисунок · №1 слабый / №2 средний / №3 сильный / №4 мелкий"
+	if shoots: panel._title.text = "Листики · №1 прежняя / №2 размер5 / №3 размер8 / №4 другой seed"
+	if clouds: panel._title.text = "Дуб · №1 прежние облака / №2 шапки слабый / №3 средний / №4 мелкий"
+	if variation: panel._title.text = "Каркасы · seeds17/371/391 · без общего поворота"
 	panel._count.value = 1
 	var entry := 0
 	var configurations := [[3, 391, 100], [revision, 391, 100], [revision, 391, 0], [revision, 17, 100]]
 	if spruce: configurations = [[10, 371, 100], [10, 391, 100], [10, 391, 0], [10, 17, 100]]
+	if foliage: configurations = [[8, 391, 100], [8, 391, 100], [8, 391, 100], [8, 17, 100]]
+	if surface: configurations = [[8, 391, 100], [8, 391, 100], [8, 391, 100], [8, 391, 100]]
+	if shoots: configurations = [[8, 391, 100], [8, 391, 100], [8, 391, 100], [8, 17, 100]]
+	if clouds: configurations = [[8, 391, 100], [8, 391, 100], [8, 391, 100], [8, 391, 100]]
+	if variation:
+		var varied_revision := int(oak.parameters.generation_version)
+		configurations = [[varied_revision, 17, 0], [varied_revision, 371, 0], [varied_revision, 391, 0], [varied_revision, 17, 100]]
+		if composition:
+			configurations = [[varied_revision, 17, 100], [varied_revision, 371, 100], [varied_revision, 391, 100], [varied_revision, 17, 0]]
+			panel._title.text = "Дуб · новая композиция · seeds17/371/391 · №4 без листвы"
 	for config in configurations:
 		var recipe := oak.duplicate(true)
 		if birch and config[0] == 3:
@@ -353,6 +385,14 @@ func _check_oak_shapes(panel: Node, birch := false, bark := false, maple := fals
 			recipe.parameters.generation_version = 2
 		recipe.parameters.height = 96
 		recipe.parameters.foliage_amount = config[2]
+		if foliage:
+			recipe.parameters.foliage_style = 0 if entry == 0 else 1
+			recipe.parameters.foliage_detail = 90 if entry == 2 else 55
+		if surface:
+			recipe.parameters.foliage_style = 1
+			recipe.parameters.foliage_pattern_version = 2
+			recipe.parameters.foliage_detail = 85 if entry == 3 else 55
+			recipe.parameters.foliage_pattern_strength = [20, 65, 100, 65][entry]
 		if bark:
 			var scattered := OS.get_cmdline_user_args().has("--scattered-bark")
 			recipe = registry.creation_presets("large_tree")[[2, 2, 2, 1][entry] if scattered else [2, 1, 2, 1][entry]].recipe.duplicate(true)
@@ -365,6 +405,17 @@ func _check_oak_shapes(panel: Node, birch := false, bark := false, maple := fals
 				recipe.parameters.bark_pattern_color = Color("912d46")
 			if entry == 3 and not scattered: recipe.parameters.bark_pattern = false
 			panel._title.text = "Native bark pattern"
+		if shoots:
+			recipe.parameters.foliage_style = 0 if entry == 0 else 2
+			recipe.parameters.foliage_leaf_size = 8 if entry == 2 else 5
+		if clouds:
+			recipe.parameters.foliage_style = 3
+			recipe.parameters.foliage_cloud_version = 1 if entry == 0 else 2
+			recipe.parameters.foliage_pattern_strength = [65, 20, 65, 100][entry]
+			recipe.parameters.foliage_detail = 85 if entry == 3 else 55
+		if variation and species == "oak": recipe.parameters.foliage_style = 1
+		if composition:
+			recipe.parameters.merge({"trunk_width":8,"crown_spread":80,"structure_diversity":100,"foliage_detail":55,"foliage_pattern_strength":25,"foliage_along":85}, true)
 		entry += 1
 		panel._apply_recipe(recipe)
 		panel._seed.value = config[1]
@@ -378,9 +429,110 @@ func _check_oak_shapes(panel: Node, birch := false, bark := false, maple := fals
 	for index in 3:
 		panel._compare_candidate(panel.session.candidates[index], true)
 		await work(panel)
-	var candidate: Dictionary = panel.session.candidates[1]
+	var candidate: Dictionary = panel.session.candidates[2 if clouds else 1]
 	panel._select_preview(candidate)
 	var voxels: PackedByteArray = candidate.creation.source.voxels.duplicate()
+	if clouds:
+		for record in panel.session.candidates:
+			check(record.creation.recipe.structure.lines == candidate.creation.recipe.structure.lines and record.creation.recipe.structure.groups == candidate.creation.recipe.structure.groups, "native three styles share exact same scaffold")
+		check(panel.candidate_controls.has("foliage_leaf_accents") and panel.candidate_controls.has("foliage_leaf_size") and panel.candidate_controls.has("foliage_detail") and panel.candidate_controls.has("foliage_pattern_strength"), "native caps expose shared pattern controls")
+		var palette: PackedColorArray = candidate.creation.source.palette.duplicate()
+		panel.candidate_controls.foliage_pattern_strength.value = 20
+		panel._apply.pressed.emit()
+		check(candidate.creation.source.voxels == voxels and candidate.creation.source.palette != palette, "native caps contrast palette only")
+		panel.undo_local()
+		check(candidate.creation.source.palette == palette, "native caps contrast Undo exact")
+		panel.redo_local()
+		panel.undo_local()
+		panel.candidate_controls.foliage_detail.value = 85
+		panel._apply.pressed.emit()
+		var mask: PackedByteArray = voxels.duplicate()
+		var edited_mask: PackedByteArray = candidate.creation.source.voxels.duplicate()
+		for index in mask.size(): mask[index] = mini(mask[index], 1)
+		for index in edited_mask.size(): edited_mask[index] = mini(edited_mask[index], 1)
+		check(mask == edited_mask and candidate.creation.source.voxels != voxels, "native cap pattern size colors only")
+		panel.undo_local()
+		check(candidate.creation.source.voxels == voxels, "native cap pattern scale Undo exact")
+		panel.redo_local()
+		panel.undo_local()
+		panel.candidate_controls.foliage_leaf_accents.value = 80
+		panel._discard.pressed.emit()
+		check(candidate.creation.source.voxels == voxels, "native clouds accent Discard exact")
+		panel.candidate_controls.foliage_leaf_accents.value = 80
+		panel._apply.pressed.emit()
+		check(candidate.creation.source.voxels != voxels, "native clouds accent Apply changes geometry")
+		panel.undo_local()
+		check(candidate.creation.source.voxels == voxels, "native clouds accent Undo exact")
+		panel.redo_local()
+		panel.undo_local()
+	if variation:
+		check(panel.controls.structure_diversity.get_parent().visible, "native diversity discoverable")
+		var signatures := {}
+		for record in panel.session.candidates:
+			var topology := []
+			for line: Dictionary in record.creation.recipe.structure.lines:
+				topology.append([line.start.y, line.finish.y, line.branch, line.t0, line.t1])
+			signatures[hash(topology)] = true
+		check(signatures.size() == 3, "native seeds have three structurally distinct trees; dressing preserves scaffold")
+		check(not panel.candidate_controls.has("structure_diversity"), "native frozen editing excludes regeneration knob")
+		var batch_before: Resource = panel.recipe.duplicate(true)
+		var lines_before: Array = candidate.creation.recipe.structure.lines.duplicate(true)
+		panel.controls.structure_diversity.value = 65 if int(panel.recipe.parameters.structure_diversity) == 100 else 100
+		panel._seed.value = candidate.seed
+		for button in panel.find_children("*", "Button", true, false):
+			if button.text == "Новый каркас из настроек партии": button.pressed.emit(); break
+		check(candidate.creation.recipe.structure.lines != lines_before, "native explicit regeneration replaces only chosen skeleton")
+		panel.undo_local()
+		check(candidate.creation.source.voxels == voxels and candidate.creation.recipe.structure.lines == lines_before, "native skeleton regeneration Undo exact")
+		panel.redo_local()
+		panel.undo_local()
+		panel._apply_recipe(batch_before)
+	if shoots:
+		for measured in [panel.session.candidates[0], candidate]:
+			var vertices := 0
+			var triangles := 0
+			for instance in measured.node.get_children():
+				if not instance is MeshInstance3D or instance.mesh == null: continue
+				for surface_index in instance.mesh.get_surface_count():
+					var arrays: Array = instance.mesh.surface_get_arrays(surface_index)
+					vertices += arrays[Mesh.ARRAY_VERTEX].size()
+					triangles += (arrays[Mesh.ARRAY_INDEX].size() if arrays[Mesh.ARRAY_INDEX] != null and not arrays[Mesh.ARRAY_INDEX].is_empty() else arrays[Mesh.ARRAY_VERTEX].size()) / 3
+			print("LEAF_SHOOTS_MESH style=", measured.creation.recipe.parameters.foliage_style, " vertices=", vertices, " triangles=", triangles)
+		check(panel.candidate_controls.has("foliage_leaf_size") and not panel.candidate_controls.has("foliage_detail"), "native shoots conditional controls")
+		panel.candidate_controls.foliage_leaf_size.value = 8
+		panel._discard.pressed.emit()
+		check(candidate.creation.source.voxels == voxels and not panel._draft_dirty(), "native leaf size Discard")
+		panel.candidate_controls.foliage_leaf_size.value = 8
+		panel._apply.pressed.emit()
+		check(candidate.creation.source.voxels != voxels, "native leaf size Apply geometry")
+		panel.undo_local()
+		check(candidate.creation.source.voxels == voxels, "native leaf size Undo exact")
+		panel.redo_local()
+		panel.undo_local()
+	if foliage:
+		var old: Dictionary = panel.session.candidates[0]
+		check(old.creation.recipe.structure.lines == candidate.creation.recipe.structure.lines and old.creation.recipe.structure.groups == candidate.creation.recipe.structure.groups, "native old/new foliage have the exact same scaffold")
+		check(panel.controls.foliage_style.visible and panel.candidate_controls.has("foliage_detail"), "native foliage discovery and individual controls")
+		panel.candidate_controls.foliage_detail.value = 85
+		panel._discard.pressed.emit()
+		check(candidate.creation.source.voxels == voxels and not panel._draft_dirty(), "native foliage draft Discard leaves committed mesh unchanged")
+		panel.candidate_controls.foliage_style.item_selected.emit(0)
+		panel._apply.pressed.emit()
+		check(candidate.creation.recipe.parameters.foliage_style == 0, "native foliage switch Apply")
+		panel.undo_local()
+		check(candidate.creation.source.voxels == voxels and candidate.creation.recipe.parameters.foliage_style == 1, "native foliage switch Undo exact")
+		panel.redo_local()
+		panel.undo_local()
+		if surface:
+			var palette: PackedColorArray = candidate.creation.source.palette.duplicate()
+			check(old.creation.source.voxels == candidate.creation.source.voxels and old.creation.source.palette != palette, "native weak/medium patterns share exact geometry")
+			panel.candidate_controls.foliage_pattern_strength.value = 20
+			panel._apply.pressed.emit()
+			check(candidate.creation.source.voxels == voxels and candidate.creation.source.palette != palette, "native strength Apply changes only palette")
+			panel.undo_local()
+			check(candidate.creation.source.palette == palette, "native pattern strength Undo exact")
+			panel.redo_local()
+			panel.undo_local()
 	check(panel.candidate_controls.has("foliage_along"), "native crown interior foliage control exists")
 	if not panel.candidate_controls.has("foliage_along"): return
 	panel.candidate_controls.foliage_along.value = 30
@@ -405,6 +557,11 @@ func _check_oak_shapes(panel: Node, birch := false, bark := false, maple := fals
 		panel.undo_local()
 		check(candidate.creation.source.voxels == voxels, "native bark styling Undo exact")
 	panel._select_all_previews()
+	if variation:
+		for record in panel.session.candidates:
+			if not is_instance_valid(record.node): continue
+			var first_tip: Vector3 = record.creation.recipe.structure.lines[0].finish
+			record.node.rotation.y = atan2(first_tip.z, first_tip.x)
 	var viewport := EditorInterface.get_editor_viewport_3d(0)
 	var container: Node = viewport.get_parent()
 	while container != null and not container.is_class("Node3DEditorViewport"): container = container.get_parent()
@@ -446,10 +603,14 @@ func _check_oak_shapes(panel: Node, birch := false, bark := false, maple := fals
 	if maple: capture = "user://generation_maple_upright_native.png"
 	if savanna: capture = "user://generation_savanna_native.png"
 	if spruce: capture = "user://generation_spruce_native.png"
+	if foliage: capture = "user://generation_oak_foliage_native.png"
+	if shoots: capture = "user://generation_leaf_shoots_native.png"
+	if clouds: capture = "user://generation_foliage_clouds_native.png"
+	if variation: capture = "user://generation_%s_variation_native.png" % species
 	if bark and OS.get_cmdline_user_args().has("--scattered-bark"): capture = "user://generation_bark_scattered_native.png"
 	EditorInterface.get_base_control().get_viewport().get_texture().get_image().save_png(capture)
 	print("GENERATION_OAK_NATIVE_CAPTURE ", ProjectSettings.globalize_path(capture))
-	if (maple or (not birch and not bark)) and container is Control:
+	if (variation or maple or (not birch and not bark)) and container is Control:
 		panel._select_preview(candidate)
 		panel._show_solo()
 		var node: Node3D = candidate.node
@@ -507,9 +668,35 @@ func _check_oak_shapes(panel: Node, birch := false, bark := false, maple := fals
 				await frames(2)
 			await frames(10)
 			var detail := "user://generation_%s_%s.png" % ["spruce" if spruce else ("savanna" if savanna else ("maple" if maple else "oak_mature")), "front" if key == KEY_KP_1 else "side"]
+			if foliage: detail = "user://generation_oak_foliage_%s.png" % ("front" if key == KEY_KP_1 else "side")
+			if shoots: detail = "user://generation_leaf_shoots_%s.png" % ("front" if key == KEY_KP_1 else "side")
+			if clouds: detail = "user://generation_foliage_clouds_%s.png" % ("front" if key == KEY_KP_1 else "side")
+			if variation: detail = "user://generation_%s_variation_%s.png" % [species, "front" if key == KEY_KP_1 else "side"]
 			EditorInterface.get_base_control().get_viewport().get_texture().get_image().save_png(detail)
+			if variation and key == KEY_KP_1:
+				viewport.get_texture().get_image().save_png("user://generation_%s_variation_preview.png" % species)
+			if (shoots or clouds) and key == KEY_KP_1:
+				viewport.get_texture().get_image().save_png("user://generation_foliage_clouds_preview.png" if clouds else "user://generation_leaf_shoots_preview.png")
+				var camera := viewport.get_camera_3d()
+				var previous_size := camera.size
+				for zoom_step in 40:
+					if camera.size < previous_size * 0.45: break
+					var wheel := InputEventMouseButton.new()
+					wheel.position = container.get_global_rect().get_center()
+					wheel.global_position = wheel.position
+					wheel.button_index = MOUSE_BUTTON_WHEEL_UP
+					wheel.pressed = true
+					EditorInterface.get_base_control().get_viewport().push_input(wheel)
+					await frames(2)
+				await frames(10)
+				viewport.get_texture().get_image().save_png("user://generation_foliage_clouds_detail.png" if clouds else "user://generation_leaf_shoots_detail.png")
+			if foliage and key == KEY_KP_1:
+				viewport.get_texture().get_image().save_png("user://generation_oak_foliage_preview.png")
 			print("GENERATION_MAPLE_VIEW_CAPTURE ", ProjectSettings.globalize_path(detail))
 		node.position = original
+		if foliage:
+			await _capture_old_foliage(panel, container, viewport)
+			if surface: await _capture_old_foliage(panel, container, viewport, 2)
 	if bark and OS.get_cmdline_user_args().has("--scattered-bark") and container is Control:
 		for index in 3:
 			panel._select_preview(panel.session.candidates[index])
@@ -564,7 +751,84 @@ func _check_oak_shapes(panel: Node, birch := false, bark := false, maple := fals
 	var creation := preload("res://addons/ember_import/ember_voxel_tree_object_creation.gd")
 	var stored := creation.load_recipe(candidate.creation.source.model_id)
 	check(stored != null and stored.parameters.generation_version == candidate.creation.recipe.parameters.generation_version, "native tree Recipe reopens with same revision")
+	if clouds:
+		check(stored != null and stored.parameters.foliage_style == 3 and stored.parameters.foliage_cloud_version == 2 and stored.parameters.foliage_leaf_accents == 35, "native cap recipe publication/reopen")
+		var contextual := preload("res://addons/ember_import/ember_voxel_generator_panel.gd").new()
+		add_child(contextual)
+		check(contextual.open_source(candidate.creation.source), "native contextual opens clouds")
+		contextual.controls.foliage_leaf_accents.value = 80
+		contextual.discard()
+		check(contextual.recipe.parameters.foliage_leaf_accents == 35, "native contextual cloud Discard")
+		contextual.controls.foliage_style.item_selected.emit(2)
+		check(not contextual.controls.has("foliage_leaf_accents"), "native contextual clouds to shoots hides accents")
+		contextual.undo_parameters()
+		check(contextual.controls.has("foliage_leaf_accents"), "native contextual cloud style Undo restores accents")
+		contextual.queue_free()
+	if shoots:
+		check(stored != null and stored.parameters.foliage_style == 2 and stored.parameters.foliage_leaf_size == 5, "native shoots publication/reopen")
+		var contextual := preload("res://addons/ember_import/ember_voxel_generator_panel.gd").new()
+		add_child(contextual)
+		check(contextual.open_source(candidate.creation.source), "native contextual opens leaf shoots")
+		contextual.controls.foliage_style.item_selected.emit(0)
+		check(not contextual.controls.has("foliage_leaf_size"), "native contextual hides leaf size for old style")
+		contextual.undo_parameters()
+		check(contextual.controls.has("foliage_leaf_size"), "native contextual style Undo restores leaf size")
+		contextual.controls.foliage_leaf_size.value = 8
+		contextual.discard()
+		check(contextual.recipe.parameters.foliage_leaf_size == 5, "native contextual leaf size Discard")
+		contextual.queue_free()
+	if foliage:
+		check(stored != null and stored.parameters.foliage_style == 1 and stored.parameters.foliage_detail == 55, "native published foliage Recipe reopens with style and detail")
+		var contextual := preload("res://addons/ember_import/ember_voxel_generator_panel.gd").new()
+		add_child(contextual)
+		check(contextual.open_source(candidate.creation.source), "native contextual panel opens published pixel oak")
+		contextual.controls.foliage_style.item_selected.emit(0)
+		check(not contextual.controls.has("foliage_detail"), "native contextual old style removes detail")
+		contextual.controls.foliage_style.item_selected.emit(1)
+		check(contextual.controls.has("foliage_detail"), "native contextual pixel style restores detail")
+		contextual.undo_parameters()
+		contextual.redo_parameters()
+		contextual.discard()
+		check(contextual.recipe.parameters.foliage_style == 1 and contextual.controls.has("foliage_detail"), "native contextual draft Undo/Redo/Discard")
+		contextual.queue_free()
 	panel.close_session()
+
+func _capture_old_foliage(panel: Node, container: Control, viewport: SubViewport, candidate_index := 0) -> void:
+	var surface := OS.get_cmdline_user_args().has("--foliage-surface-only")
+	var variant := ("weak" if candidate_index == 0 else "strong") if surface else "old"
+	var old: Dictionary = panel.session.candidates[candidate_index]
+	panel._select_preview(old)
+	panel._show_solo()
+	var node: Node3D = old.node
+	var original := node.position
+	var box := AABB()
+	var first := true
+	for mesh in node.get_children():
+		if not mesh is MeshInstance3D: continue
+		var bounds: AABB = mesh.global_transform * mesh.get_aabb()
+		box = bounds if first else box.merge(bounds)
+		first = false
+	node.position -= box.get_center()
+	var pending: Array[Node] = [container]
+	var selected := false
+	while not pending.is_empty() and not selected:
+		var control: Node = pending.pop_back()
+		for child in control.get_children(true): pending.append(child)
+		if not control is PopupMenu: continue
+		for index in control.item_count:
+			var text: String = control.get_item_text(index).to_lower()
+			if text.contains("спереди") or text.contains("front"):
+				control.id_pressed.emit(control.get_item_id(index))
+				selected = true
+				break
+	check(selected, "old foliage comparison uses same real front camera")
+	await frames(10)
+	var capture := "user://generation_oak_foliage_%s_front.png" % variant
+	EditorInterface.get_base_control().get_viewport().get_texture().get_image().save_png(capture)
+	print("GENERATION_OLD_FOLIAGE_CAPTURE ", ProjectSettings.globalize_path(capture))
+	viewport.get_texture().get_image().save_png("user://generation_oak_foliage_%s_preview.png" % variant)
+	node.position = original
+	panel._select_preview(panel.session.candidates[1])
 
 func _find_library(node: Node) -> Node:
 	if node is EmberVoxelObjectLibraryPanel: return node

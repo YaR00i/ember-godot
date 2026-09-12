@@ -31,7 +31,7 @@ func _run() -> void:
 	panel.open_for({"root": scene, "parent": scene, "undo": undo, "world_size": 1.0})
 	var starting_version: int = panel.recipe.parameters.generation_version
 	var starting_thickness: int = panel.recipe.parameters.branch_thickness
-	check(starting_version == 9, "new workshop uses current savanna without upgrading loaded recipes")
+	check(starting_version == Generator.LargeTreeProvider.LATEST_VERSIONS[0], "new workshop uses current savanna without upgrading loaded recipes")
 	var test_dir := "user://generation_session_%d" % Time.get_ticks_usec()
 	panel.session.source_directory = test_dir.path_join("source")
 	panel.session.prefab_directory = test_dir.path_join("prefabs")

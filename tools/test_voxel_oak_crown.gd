@@ -17,7 +17,8 @@ func check(value: bool, message: String) -> void:
 func _run() -> void:
 	var presets := Generator.creation_presets(Generator.LARGE_TREE)
 	var oak: Resource = presets[1].recipe.duplicate(true)
-	check(oak.parameters.generation_version == 8, "new oak preset opts into mature spreading revision")
+	check(oak.parameters.generation_version == 17, "new oak preset opts into lateral mature revision")
+	oak.parameters.generation_version = 8 # Preserve historical v8 geometry gates.
 	check(Provider.normalize({"generation_version": 4, "tree_type": 1}).generation_version == 4, "saved v4 stays on original algorithm")
 	var directory := "user://oak_crown_%d" % Time.get_ticks_usec()
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(directory))
@@ -122,11 +123,11 @@ func _run() -> void:
 	panel.controls.tree_type.item_selected.emit(0)
 	panel.controls.tree_type.select(1)
 	panel.controls.tree_type.item_selected.emit(1)
-	check(panel.recipe.parameters.generation_version == 8, "native oak type choice routes to v8")
+	check(panel.recipe.parameters.generation_version == 17, "native oak type choice routes to latest revision")
 	panel.undo_local()
 	check(panel.recipe.parameters.tree_type == 0, "type choice Undo")
 	panel.redo_local()
-	check(panel.recipe.parameters.generation_version == 8, "type choice Redo")
+	check(panel.recipe.parameters.generation_version == 17, "type choice Redo")
 	panel.controls.height.value = 64
 	panel._count.value = 1
 	panel.generate()
@@ -154,7 +155,7 @@ func _run() -> void:
 	undo.redo()
 	check(candidate.saved, "oak publication Redo")
 	var reopened := Creation.load_recipe(candidate.creation.source.model_id, panel.session.recipe_directory)
-	check(reopened != null and reopened.parameters.generation_version == 8, "publication reopens mature oak recipe")
+	check(reopened != null and reopened.parameters.generation_version == 17, "publication reopens lateral oak recipe")
 	panel.close_session()
 	panel.free()
 	scene.free()

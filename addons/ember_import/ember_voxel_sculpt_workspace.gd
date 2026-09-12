@@ -5144,6 +5144,13 @@ func _reset_pilot() -> void:
 
 
 func _save() -> bool:
+	# Generator preview is not the sculpt Resource. Route every workshop Save
+	# entry point through the same explicit recipe publication transaction.
+	if _generator_active():
+		_generator_panel.context["manual_dirty"] = has_unsaved_changes()
+		var saved: bool = _generator_panel.save_variant()
+		_set_status(_generator_panel._info.text, not saved)
+		return saved
 	_flush_pending_stroke_position()
 	_finish_stroke()
 	_cancel_precision_line(false)

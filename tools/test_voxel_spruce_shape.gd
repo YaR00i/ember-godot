@@ -16,7 +16,8 @@ func check(value: bool, message: String) -> void:
 
 func _run() -> void:
 	var spruce: Resource = Generator.creation_presets(Generator.LARGE_TREE)[4].recipe
-	check(spruce.parameters.tree_type == 4 and spruce.parameters.generation_version == 10, "spruce preset and type")
+	check(spruce.parameters.tree_type == 4 and spruce.parameters.generation_version == 15, "spruce varied preset and type")
+	spruce.parameters.generation_version = 10
 	var directory := "user://spruce_shape_%d" % Time.get_ticks_usec()
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(directory))
 	for height in [64, 96, 128, 256]:
@@ -88,7 +89,7 @@ func _run() -> void:
 	root.add_child(scene)
 	await process_frame
 	panel.open_for({"root": scene, "undo": undo, "world_size": 1.0})
-	check(panel.recipe.parameters.generation_version == 9, "fresh workshop starts with current savanna")
+	check(panel.recipe.parameters.generation_version == 14, "fresh workshop starts with current savanna")
 	check(panel.controls.tree_type.item_count == 5, "five types visible together")
 	for kind in 5:
 		panel.controls.tree_type.item_selected.emit(kind)
@@ -96,12 +97,12 @@ func _run() -> void:
 	panel.undo_local()
 	check(panel.recipe.parameters.tree_type == 3, "type choice Undo")
 	panel.redo_local()
-	check(panel.recipe.parameters.generation_version == 10, "type choice Redo")
+	check(panel.recipe.parameters.generation_version == 15, "type choice Redo")
 	var old := Generator.default_recipe(Generator.LARGE_TREE)
 	panel.open_for({"root": scene, "undo": undo, "world_size": 1.0}, old)
 	check(panel.recipe.parameters.generation_version == 2 and panel.controls.tree_type.get_item_text(0).contains("прежняя"), "saved old algorithm remains and is marked")
 	panel.controls.tree_type.item_selected.emit(0)
-	check(panel.recipe.parameters.generation_version == 9 and not panel.controls.tree_type.get_item_text(0).contains("прежняя"), "explicit reselect upgrades visible type")
+	check(panel.recipe.parameters.generation_version == 14 and not panel.controls.tree_type.get_item_text(0).contains("прежняя"), "explicit reselect upgrades visible type")
 	panel.session.source_directory = directory.path_join("sources")
 	panel.session.prefab_directory = directory.path_join("prefabs")
 	panel.session.recipe_directory = directory.path_join("recipes")

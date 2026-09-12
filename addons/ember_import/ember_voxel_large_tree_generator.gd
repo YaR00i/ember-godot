@@ -10,17 +10,28 @@ const MIN_HEIGHT := 64
 const MAX_HEIGHT := 256
 const MAX_STORAGE_CELLS := 4_194_304
 const MAX_OCCUPIED_VOXELS := 360_000
-const LATEST_VERSIONS := [9, 8, 5, 7, 10]
+const LATEST_VERSIONS := [14, 17, 13, 12, 15]
+const TreeVariation = preload("res://addons/ember_import/ember_voxel_tree_variation.gd")
 const BarkPattern = preload("res://addons/ember_import/ember_voxel_bark_pattern.gd")
+const FoliagePattern = preload("res://addons/ember_import/ember_voxel_foliage_pattern.gd")
 
 
 static func defaults() -> Dictionary:
 	return {
 		"generation_version": 2,
+		"structure_diversity": 65,
 		"bark_pattern_version": 2,
 		"tree_type": 0,
 		"branch_direction": 0,
 		"foliage_along": 65,
+		"foliage_style": 0,
+		"foliage_leaf_size": 5,
+		"foliage_leaf_accents": 35,
+		"foliage_cloud_version": 2,
+		"foliage_detail": 55,
+		"foliage_pattern_version": 2,
+		"foliage_pattern_strength": 65,
+		"foliage_geometry_detail": 55,
 		"crown_shape": 0,
 		"branch_thickness": 75,
 		"branch_taper": 60,
@@ -55,9 +66,13 @@ static func normalize(parameters: Dictionary) -> Dictionary:
 	var density := 32 if height > 128 or int(parameters.get("density", fallback.density)) == 32 else 16
 	var tree_type := clampi(int(parameters.get("tree_type", 0)), 0, 4)
 	var direction := clampi(int(parameters.get("branch_direction", 0)), 0, 3)
-	var version := clampi(int(parameters.get("generation_version", 1)), 1, 10)
+	var version := clampi(int(parameters.get("generation_version", 1)), 1, 17)
+	if version in [16, 17] and tree_type != 1: version = LATEST_VERSIONS[tree_type]
+	if version in [13, 14, 15] and tree_type != {13: 2, 14: 0, 15: 4}[version]: version = LATEST_VERSIONS[tree_type]
+	if version == 12 and tree_type != 3: version = LATEST_VERSIONS[tree_type]
+	if version == 11 and tree_type != 1: version = LATEST_VERSIONS[tree_type]
 	if tree_type > 0 or direction > 0: version = maxi(3, version)
-	if tree_type == 4: version = 10
+	if tree_type == 4 and version != 15: version = 10
 	if version == 10 and tree_type != 4: version = LATEST_VERSIONS[tree_type]
 	if version == 9 and tree_type != 0: version = 8 if tree_type == 1 else (5 if tree_type == 2 else 7)
 	if version == 8 and tree_type != 1: version = 7 if tree_type == 3 else (5 if tree_type == 2 else 3)
@@ -67,9 +82,20 @@ static func normalize(parameters: Dictionary) -> Dictionary:
 	var result := {
 		# Missing version belongs to saved v1 recipes, not today's UI defaults.
 		"generation_version": version,
+		"structure_diversity": clampi(int(parameters.get("structure_diversity", 65)), 0, 100),
 		"tree_type": tree_type,
 		"branch_direction": direction,
 		"foliage_along": clampi(int(parameters.get("foliage_along", 65)), 0, 100),
+		# Absent fields keep every previously saved crown byte-identical.
+		"foliage_style": clampi(int(parameters.get("foliage_style", 0)), 0, 3),
+		"foliage_leaf_size": clampi(int(parameters.get("foliage_leaf_size", 5)), 3, 12),
+		"foliage_leaf_accents": clampi(int(parameters.get("foliage_leaf_accents", 35)), 0, 100),
+		"foliage_cloud_version": clampi(int(parameters.get("foliage_cloud_version", 1)), 1, 2),
+		"foliage_detail": clampi(int(parameters.get("foliage_detail", 55)), 0, 100),
+		"foliage_pattern_version": clampi(int(parameters.get("foliage_pattern_version", 1)), 1, 2),
+		"foliage_pattern_strength": clampi(int(parameters.get("foliage_pattern_strength", 65)), 0, 100),
+		# Hidden dressing identity preserves the shape when upgrading a v1 pattern.
+		"foliage_geometry_detail": clampi(int(parameters.get("foliage_geometry_detail", 55)), 0, 100),
 		"crown_shape": clampi(int(parameters.get("crown_shape", fallback.crown_shape)), 0, 2),
 		"branch_thickness": clampi(int(parameters.get("branch_thickness", fallback.branch_thickness)), 25, 100),
 		"branch_taper": clampi(int(parameters.get("branch_taper", fallback.branch_taper)), 0, 100),
@@ -102,17 +128,17 @@ static func build(
 		return _build_legacy(parameters, seed, fallback_color, material, title, model_id)
 	if int(normalize(parameters).generation_version) == 4:
 		return _build_oak(normalize(parameters), seed, material, title, model_id)
-	if int(normalize(parameters).generation_version) == 5:
+	if int(normalize(parameters).generation_version) in [5, 13]:
 		return _build_birch(normalize(parameters), seed, material, title, model_id)
 	if int(normalize(parameters).generation_version) == 6:
 		return _build_maple(normalize(parameters), seed, material, title, model_id)
-	if int(normalize(parameters).generation_version) == 7:
+	if int(normalize(parameters).generation_version) in [7, 12]:
 		return _build_maple_upright(normalize(parameters), seed, material, title, model_id)
-	if int(normalize(parameters).generation_version) == 8:
+	if int(normalize(parameters).generation_version) in [8, 11, 16, 17]:
 		return _build_oak_mature(normalize(parameters), seed, material, title, model_id)
-	if int(normalize(parameters).generation_version) == 9:
+	if int(normalize(parameters).generation_version) in [9, 14]:
 		return _build_savanna_umbrella(normalize(parameters), seed, material, title, model_id)
-	if int(normalize(parameters).generation_version) == 10:
+	if int(normalize(parameters).generation_version) in [10, 15]:
 		return _build_spruce(normalize(parameters), seed, material, title, model_id)
 	return _build_sculpted(normalize(parameters), seed, material, title, model_id)
 
@@ -237,6 +263,7 @@ static func _emit(
 	var height := int(settings.height)
 	if wood.is_empty() or (leaves.is_empty() and not settings.has("_pivot_bias") and int(settings.generation_version) < 4):
 		return {"error": "Параметры не создали дерево со стволом и листвой."}
+	FoliagePattern.colorize(leaves, wood, settings, seed)
 	var bounds := _bounds(wood, leaves)
 	var raw_size: Vector3i = bounds.max - bounds.min + Vector3i.ONE
 	var density := int(settings.density)
@@ -273,6 +300,17 @@ static func _emit(
 	source.size_blocks = Vector3i(grid.x / density, ceili(float(height) / density), grid.z / density)
 	source.height_voxels = height
 	source.palette = _palette(settings.bark_color, settings.foliage_color)
+	if FoliagePattern.supported(settings) and int(settings.foliage_style) == 1 and int(settings.foliage_pattern_version) >= 2:
+		var strength := float(settings.foliage_pattern_strength) / 100.0
+		source.palette[4] = settings.foliage_color.darkened(0.58 * strength)
+		source.palette[6] = settings.foliage_color.lightened(0.20 * strength)
+	if FoliagePattern.supports_style(settings, 2) and int(settings.foliage_style) == 2:
+		source.palette[4] = settings.foliage_color.darkened(0.38)
+		source.palette[6] = settings.foliage_color.lightened(0.16)
+	if FoliagePattern.supported(settings) and int(settings.foliage_style) == 3:
+		var strength := float(settings.foliage_pattern_strength) / 100.0 if int(settings.foliage_cloud_version) >= 2 else 1.0
+		source.palette[4] = settings.foliage_color.darkened(0.42 * strength)
+		source.palette[6] = settings.foliage_color.lightened(0.18 * strength)
 	var bark_marks := BarkPattern.marks(wood, lines, seed, settings)
 	if not bark_marks.is_empty(): source.palette.append(settings.bark_pattern_color)
 	source.material = material.duplicate(true)
@@ -300,7 +338,7 @@ static func _emit(
 			continue
 		var index := VoxMesher.cell_index(cell.x, cell.y, cell.z, grid.x, grid.z)
 		var light := noise.get_noise_3d(raw_cell.x + 31, raw_cell.y + 17, raw_cell.z - 23)
-		source.voxels[index] = 4 if light < -0.12 else (6 if light > 0.34 else 5)
+		source.voxels[index] = int(leaves[raw_cell]) if typeof(leaves[raw_cell]) == TYPE_INT else (4 if light < -0.12 else (6 if light > 0.34 else 5))
 	return {
 		"geometry": source,
 		"parameters": settings,
@@ -410,6 +448,8 @@ static func _build_oak(settings: Dictionary, seed: int, material: Dictionary,
 ## Uses the same frozen lines/crown volumes as oak, not a second generator.
 static func _build_birch(settings: Dictionary, seed: int, material: Dictionary,
 	title: String, model_id: String) -> Dictionary:
+	var varied := int(settings.generation_version) == 13 and int(settings.structure_diversity) > 0
+	var variation := TreeVariation.plan(seed, int(settings.structure_diversity), 2, 8 + roundi(float(settings.branchiness) / 16.0)) if varied else {}
 	var random := RandomNumberGenerator.new()
 	random.seed = maxi(0, seed) + 86028121
 	var wood := {}
@@ -422,6 +462,7 @@ static func _build_birch(settings: Dictionary, seed: int, material: Dictionary,
 	var curve := float(settings.branch_curve) / 100.0
 	var heading := random.randf() * TAU
 	var drift := Vector3(cos(heading), 0, sin(heading)) * height * curve * 0.055
+	if varied: drift = drift.rotated(Vector3.UP, float(variation.trunk_turn)) * float(variation.trunk_bend)
 	var trunk: Array[Vector3] = [Vector3.ZERO]
 	for index in range(1, 6):
 		var progress := float(index) / 5.0
@@ -448,39 +489,53 @@ static func _build_birch(settings: Dictionary, seed: int, material: Dictionary,
 	var leaf_radius := maxf(1.0, snappedf(spread * 0.28 * leaf_scale, 0.25))
 	var flatten := _canopy_flatten(settings)
 	var count := 8 + roundi(float(settings.branchiness) / 16.0)
+	if varied: count = variation.limbs.size()
 	var start_height := clampf(float(settings.branch_start) / 100.0, 0.25, 0.50)
 	var branch_radius := maxf(0.85, radius * float(settings.branch_thickness) / 100.0)
 	var tip_ratio := lerpf(1.0, 0.12, float(settings.branch_taper) / 100.0)
 	for index in count:
+		var limb: Dictionary = variation.limbs[index] if varied else {}
 		var progress := float(index) / float(count - 1)
 		var level := lerpf(start_height, 0.88, progress) + random.randf_range(-0.015, 0.015)
+		if varied: level = clampf(level + float(limb.height_shift), start_height, 0.91)
 		if int(settings.crown_shape) == 2:
 			level = snappedf(level, 0.08) + random.randf_range(-0.01, 0.01)
 		var start := _support_point(_sample_polyline(trunk, level / 0.98))
 		var angle := heading + float(index) * TAU / 2.61803398875 + random.randf_range(-0.2, 0.2)
+		if varied: angle += float(limb.angle_shift)
 		var outward := Vector3(cos(angle), 0, sin(angle))
 		var sideways := Vector3(-sin(angle), 0, cos(angle))
 		var envelope := sin(lerpf(0.30, 0.93, progress) * PI)
 		var reach := spread * envelope * random.randf_range(0.85, 1.08)
+		if varied: reach *= float(limb.length)
 		var slope := 0.32
 		if int(settings.branch_direction) > 0:
 			slope = [0.32, 0.65, 0.06, -0.20][int(settings.branch_direction)]
+		elif varied: slope *= float(limb.rise)
 		var end := start + outward * reach + Vector3.UP * reach * slope
 		end.y = minf(end.y, height * 0.95)
 		var knee := _support_point(start.lerp(end, 0.55) + sideways * reach * curve * 0.12)
+		if varied: knee = _support_point(start.lerp(end, 0.55) + sideways * reach * curve * 0.12 * float(limb.bend))
 		end = _support_point(end)
 		var r0 := maxf(0.85, branch_radius * lerpf(1.0, 0.50, progress))
+		if varied: r0 = maxf(0.85, r0 * float(limb.radius))
 		var rm := maxf(0.65, r0 * lerpf(1.0, tip_ratio, 0.55))
 		_record_line(lines, wood, collision, start, knee, r0, rm, true, true, 0.0, 0.55)
 		_record_line(lines, wood, collision, knee, end, rm, maxf(0.65, r0 * tip_ratio), true, true, 0.55, 1.0)
 		var size := leaf_radius * lerpf(1.15, 0.45, progress)
 		_record_crown_volume(groups, knee.lerp(end, 0.40), Vector3(size, size * flatten, size), true)
-		for twig in 3:
+		var twig_count := int(limb.twig_count) if varied else 3
+		for twig in twig_count:
 			var anchor := _support_point(knee.lerp(end, 0.35 + float(twig) * 0.30))
 			var turn := angle + (-0.60 + float(twig) * 0.60)
+			if varied:
+				var position := float(twig) / float(maxi(1, twig_count - 1)) if twig_count > 1 else 0.5
+				anchor = _support_point(knee.lerp(end, lerpf(0.25, 0.95, position)))
+				turn = angle + lerpf(-0.60, 0.60, position) * float(limb.twig_spread)
 			var length := reach * random.randf_range(0.25, 0.42)
 			var tip := anchor + Vector3(cos(turn), 0, sin(turn)) * length
 			tip.y -= length * (0.45 + curve * 0.55) + height * 0.015
+			if varied: tip.y -= length * (float(limb.rise) - 1.0) * 0.30
 			tip = _support_point(tip)
 			var middle := _support_point(anchor.lerp(tip, 0.45) + Vector3.UP * length * 0.08)
 			_record_line(lines, wood, collision, anchor, middle, maxf(0.65, rm * 0.65), 0.65, true, true, 0.70, 0.85)
@@ -618,12 +673,19 @@ static func _build_maple_upright(settings: Dictionary, seed: int, material: Dict
 	var flatten := _canopy_flatten(settings)
 	var vertical_radius := minf(height * 0.10, maxf(leaf_radius * flatten, height * 0.105 * leaf_scale * flatten))
 	var top_height := height - 1.0 - ceilf(vertical_radius * 0.75)
+	var varied := int(settings.generation_version) == 12 and int(settings.structure_diversity) > 0
+	var variation := TreeVariation.plan(seed, settings.structure_diversity, 3, 3 + roundi(float(settings.branchiness) / 55.0)) if varied else {}
+	if varied: top_height = minf(top_height, top_height * float(variation.trunk_height))
 	var trunk: Array[Vector3] = [Vector3.ZERO]
 	for index in range(1, 7):
 		var progress := float(index) / 6.0
 		var bend := radius * curve * sin(progress * PI) * 1.15
 		var point := _support_point(Vector3(cos(heading + progress) * bend,
 			top_height * progress, sin(heading + progress) * bend))
+		if varied:
+			var turn := heading + progress + float(variation.trunk_turn) * progress
+			point = _support_point(Vector3(cos(turn) * bend * float(variation.trunk_bend), top_height * progress,
+				sin(turn) * bend * float(variation.trunk_bend)) + Vector3(cos(heading), 0, sin(heading)) * radius * curve * progress * float(variation.lean))
 		trunk.append(point)
 		_record_line(lines, wood, collision, trunk[index - 1], point,
 			maxf(0.65, radius * lerpf(1.10, 0.12, float(index - 1) / 6.0)),
@@ -640,36 +702,48 @@ static func _build_maple_upright(settings: Dictionary, seed: int, material: Dict
 	var start_height := clampf(float(settings.branch_start) / 100.0, 0.24, 0.45)
 	var branch_radius := maxf(0.85, radius * float(settings.branch_thickness) / 100.0)
 	var tip_ratio := lerpf(1.0, 0.12, float(settings.branch_taper) / 100.0)
-	for level in 5:
-		var progress := float(level) / 4.0
+	var level_total := int(variation.levels) if varied else 5
+	var plan_index := 0
+	for level in level_total:
+		var progress := float(level) / float(level_total - 1)
 		var altitude := lerpf(start_height, 0.85, progress)
+		if varied: count = int(variation.limbs[plan_index].count)
 		if int(settings.crown_shape) == 2: altitude = snappedf(altitude, 0.10)
 		var envelope := sin(lerpf(0.25, 0.88, progress) * PI)
 		var core := _support_point(_sample_polyline(trunk, altitude * height / top_height) + Vector3.UP * vertical_radius * 0.15)
 		_record_crown_volume(groups, core, Vector3(reach * envelope * 0.55, vertical_radius * 1.12, reach * envelope * 0.53))
 		for index in count:
+			var limb: Dictionary = variation.limbs[plan_index] if varied else {}
+			plan_index += 1
 			var angle := heading + float(level) * 2.39996 + TAU * float(index) / float(count) + random.randf_range(-0.18, 0.18)
+			if varied: angle += float(limb.angle_shift)
 			var radial := Vector3(cos(angle), 0, sin(angle))
 			var tangent := Vector3(-sin(angle), 0, cos(angle))
 			var start := _support_point(_sample_polyline(trunk, altitude * height / top_height))
+			if varied: start = _support_point(_sample_polyline(trunk, clampf(altitude + float(limb.height_shift), 0.24, 0.88) * height / top_height))
 			var length := reach * envelope * random.randf_range(0.86, 1.08)
+			if varied: length *= float(limb.length)
 			var slope := lerpf(0.12, 0.38, progress)
+			if varied: slope *= float(limb.rise)
 			if int(settings.branch_direction) > 0: slope = [0.0, 0.65, 0.06, -0.20][int(settings.branch_direction)]
 			var end := start + radial * length + Vector3.UP * length * slope
 			end.y = clampf(end.y, height * 0.23, top_height)
 			var knee := _support_point(start.lerp(end, 0.50) + tangent * length * curve * random.randf_range(-0.14, 0.14))
+			if varied: knee = _support_point(knee + tangent * length * curve * (float(limb.bend) - 1.0) * 0.16)
 			end = _support_point(end)
 			var r0 := maxf(0.85, branch_radius * lerpf(1.0, 0.35, progress))
+			if varied: r0 = maxf(0.85, r0 * float(limb.radius))
 			var rm := maxf(0.65, r0 * lerpf(1.0, tip_ratio, 0.5))
 			_record_line(lines, wood, collision, start, knee, r0, rm, true, true, 0.0, 0.5)
 			_record_line(lines, wood, collision, knee, end, rm, maxf(0.65, r0 * tip_ratio), true, true, 0.5, 1.0)
 			var size := random.randf_range(0.86, 1.10) * lerpf(1.05, 0.70, progress)
 			_record_crown_volume(groups, end, Vector3(leaf_radius * size, vertical_radius * size, leaf_radius * size * 0.95))
 			_record_crown_volume(groups, knee.lerp(end, 0.50), Vector3(leaf_radius * size * 1.12, vertical_radius * size, leaf_radius * size), true)
-			for twig in 2:
+			for twig in (int(limb.twig_count) if varied else 2):
 				var turn := angle + (-1.0 if twig == 0 else 1.0) * random.randf_range(0.40, 0.70)
 				var anchor := _support_point(knee.lerp(end, 0.55))
 				var tip := end + Vector3(cos(turn), 0, sin(turn)) * length * 0.20
+				if varied: tip = end + (tip - end) * float(limb.twig_spread)
 				tip.y = minf(top_height, end.y + length * random.randf_range(0.12, 0.25))
 				tip = _support_point(tip)
 				_record_line(lines, wood, collision, anchor, tip, maxf(0.65, rm * 0.60), 0.65, true, true, 0.60, 1.0)
@@ -704,11 +778,21 @@ static func _build_oak_mature(settings: Dictionary, seed: int, material: Diction
 	var flare := float(settings.root_flare) / 100.0
 	var trunk: Array[Vector3] = [Vector3.ZERO]
 	var trunk_top := height * 0.60
+	var lateral := int(settings.generation_version) == 17 and int(settings.structure_diversity) > 0
+	var composed := int(settings.generation_version) in [16, 17] and int(settings.structure_diversity) > 0
+	var varied := int(settings.generation_version) in [11, 16, 17] and int(settings.structure_diversity) > 0
+	var variation := TreeVariation.plan(seed, settings.structure_diversity, 1, 5 + roundi(float(settings.branchiness) / 50.0)) if varied else {}
+	if composed: variation = TreeVariation.oak_composition(seed, settings.structure_diversity, 5 + roundi(float(settings.branchiness) / 50.0))
+	if varied: trunk_top *= float(variation.trunk_height)
 	for index in range(1, 6):
 		var progress := float(index) / 5.0
 		var point := _support_point(Vector3.UP * trunk_top * progress
 			+ radial * radius * curve * sin(progress * PI * 0.70)
 			+ tangent * radius * curve * sin(progress * PI * 1.60) * 0.45)
+		if varied:
+			point = _support_point(Vector3.UP * trunk_top * progress
+				+ radial * radius * curve * sin(progress * PI * 0.70 + float(variation.trunk_turn) * progress) * float(variation.trunk_bend)
+				+ tangent * radius * curve * (sin(progress * PI * 1.60) * 0.45 + progress * float(variation.lean)))
 		var r0 := radius * (lerpf(1.05, 1.60, flare) if index == 1 else lerpf(1.08, 0.55, float(index - 1) / 5.0))
 		var r1 := radius * lerpf(1.08, 0.55, progress)
 		_record_line(lines, wood, collision, trunk[-1], point, r0, r1, true)
@@ -729,18 +813,28 @@ static func _build_oak_mature(settings: Dictionary, seed: int, material: Diction
 	var vertical_radius := minf(height * 0.105, maxf(height * 0.075, leaf_radius) * _canopy_flatten(settings))
 	var ceiling := height - 1.0 - ceilf(vertical_radius)
 	var count := 5 + roundi(float(settings.branchiness) / 50.0)
+	if varied: count = variation.limbs.size()
 	var branch_radius := maxf(0.85, radius * float(settings.branch_thickness) / 100.0)
 	var tip_ratio := lerpf(1.0, 0.12, float(settings.branch_taper) / 100.0)
+	var lateral_plan := TreeVariation.oak_laterals(seed, settings.structure_diversity, settings.branchiness, count) if lateral else []
 	for index in count:
 		var progress := float(index) / float(count - 1)
+		var limb: Dictionary = variation.limbs[index] if varied else {}
 		var altitude := lerpf(clampf(float(settings.branch_start) / 100.0, 0.22, 0.36), 0.56, progress)
+		if varied: altitude = clampf(altitude + float(limb.height_shift), 0.22, trunk_top / height - 0.025)
+		if composed: altitude = clampf(float(limb.altitude), 0.22, trunk_top / height - 0.025)
 		var start := _support_point(_sample_polyline(trunk, altitude * height / trunk_top))
 		var angle := heading + float(index) * 2.39996 + random.randf_range(-0.20, 0.20)
+		if varied: angle += float(limb.angle_shift)
+		if composed: angle = heading + float(limb.azimuth)
 		var outward := Vector3(cos(angle), 0, sin(angle))
 		var sideways := Vector3(-sin(angle), 0, cos(angle))
 		var length := reach * lerpf(1.05, 0.67, progress) * random.randf_range(0.90, 1.08)
+		if varied: length *= float(limb.length)
 		var end := start + outward * length + sideways * length * curve * random.randf_range(-0.20, 0.20)
 		end.y = height * lerpf(0.48, 0.81, progress) + height * random.randf_range(-0.025, 0.025)
+		if varied: end.y += height * float(limb.height_shift) * 1.5
+		if composed: end.y = height * float(limb.end_height)
 		if int(settings.crown_shape) == 2: end.y = snappedf(end.y, height * 0.10)
 		if int(settings.branch_direction) > 0:
 			end.y = start.y + length * [0.0, 0.65, 0.06, -0.20][int(settings.branch_direction)]
@@ -749,7 +843,11 @@ static func _build_oak_mature(settings: Dictionary, seed: int, material: Diction
 		var knee := _support_point(start.lerp(end, 0.35) + sideways * length * curve * 0.22
 			- Vector3.UP * height * curve * random.randf_range(0.025, 0.060))
 		var elbow := _support_point(start.lerp(end, 0.72) - sideways * length * curve * 0.12)
+		if varied:
+			knee = _support_point(knee + sideways * length * curve * (float(limb.bend) - 1.0) * 0.22)
+			elbow = _support_point(elbow - sideways * length * curve * (float(limb.bend) - 1.0) * 0.12)
 		var r0 := maxf(0.85, branch_radius * lerpf(1.0, 0.55, progress))
+		if varied: r0 = maxf(0.85, r0 * float(limb.radius))
 		var rm := maxf(0.65, r0 * lerpf(1.0, tip_ratio, 0.55))
 		_record_line(lines, wood, collision, start, knee, r0, maxf(0.65, r0 * 0.80), true, true, 0.0, 0.35)
 		_record_line(lines, wood, collision, knee, elbow, maxf(0.65, r0 * 0.80), rm, true, true, 0.35, 0.72)
@@ -760,19 +858,29 @@ static func _build_oak_mature(settings: Dictionary, seed: int, material: Diction
 		# Uneven inner foliage joins the outer fans, while keeping lower forks visible.
 		var inner := _support_point(knee.lerp(elbow, 0.65) + Vector3.UP * height * 0.085)
 		_record_crown_volume(groups, inner, Vector3(leaf_radius * 1.10, vertical_radius * 1.20, leaf_radius), true)
-		for twig in 3:
-			var anchor := _support_point(knee.lerp(elbow, 0.45 + float(twig) * 0.22))
-			var turn: float = angle + [-0.80, 0.65, 0.05][twig] + random.randf_range(-0.15, 0.15)
+		var twig_count := int(limb.twig_count) if varied else 3
+		for twig in twig_count:
+			var twig_progress := float(twig) / float(maxi(1, twig_count - 1))
+			var anchor := _support_point(knee.lerp(elbow, lerpf(0.40, 0.90, twig_progress) if varied else (0.45 + float(twig) * 0.22)))
+			var turn: float = angle + (lerpf(-0.85, 0.85, twig_progress) if varied else [-0.80, 0.65, 0.05][twig]) + random.randf_range(-0.15, 0.15)
 			var tip := end + Vector3(cos(turn), 0, sin(turn)) * length * 0.18
-			tip += sideways * length * [-0.20, 0.22, 0.0][twig]
+			if varied: tip = end + (tip - end) * float(limb.twig_spread)
+			tip += sideways * length * (lerpf(-0.22, 0.22, twig_progress) if varied else [-0.20, 0.22, 0.0][twig])
 			tip.y = minf(ceiling, end.y + height * random.randf_range(0.065, 0.14))
+			if varied: tip.y = minf(ceiling, end.y + (tip.y - end.y) * float(limb.rise))
 			tip = _support_point(tip)
 			var middle := _support_point(anchor.lerp(tip, 0.55) + sideways * length * curve * 0.10)
+			# Consume the historical twig stream even when replacing its geometry:
+			# upgrading secondary branching must not reshuffle the primary limbs.
+			if lateral: continue
 			_record_line(lines, wood, collision, anchor, middle, maxf(0.65, rm * 0.70), maxf(0.65, rm * 0.40), true, true, 0.50, 0.78)
 			_record_line(lines, wood, collision, middle, tip, maxf(0.65, rm * 0.40), 0.65, true, true, 0.78, 1.0)
 			_record_crown_volume(groups, tip, Vector3(leaf_radius * size * 0.80, vertical_radius * 0.85, leaf_radius * size * 0.85))
 			_record_crown_volume(groups, middle.lerp(tip, 0.35), Vector3(leaf_radius * 0.85, vertical_radius * 0.80, leaf_radius * 0.80), true)
-		if index < 3:
+		if lateral:
+			_paint_oak_laterals(settings, lateral_plan[index], knee, elbow, angle, length,
+				rm, leaf_radius, vertical_radius, ceiling, lines, groups, wood, collision)
+		if (bool(limb.upper) if varied else index < 3):
 			var upper := _support_point(start + outward * length * 0.38 + sideways * length * 0.15)
 			upper.y = snappedf(minf(ceiling, height * (0.84 + float(index) * 0.025)), 0.25)
 			var bend := _support_point(knee.lerp(upper, 0.55) - sideways * length * curve * 0.20)
@@ -781,6 +889,9 @@ static func _build_oak_mature(settings: Dictionary, seed: int, material: Diction
 			_record_crown_volume(groups, bend.lerp(upper, 0.40), Vector3(leaf_radius * 1.08, vertical_radius, leaf_radius * 1.05), true)
 			_record_crown_volume(groups, bend.lerp(upper, 0.75), Vector3(leaf_radius * 1.15, vertical_radius * 1.10, leaf_radius * 1.10), true)
 			_record_crown_volume(groups, upper, Vector3(leaf_radius * 1.05, vertical_radius, leaf_radius))
+	if composed:
+		_paint_oak_leaders(settings, variation, trunk[-1], radius, reach, leaf_radius,
+			vertical_radius, ceiling, lines, groups, wood, collision)
 	var noise := _volume_noise(seed, leaf_radius)
 	_paint_crown_volumes(leaves, wood, groups, settings, settings, noise)
 	var result := _emit(settings, wood, collision, leaves, noise, seed, material, title, model_id, lines)
@@ -791,10 +902,67 @@ static func _build_oak_mature(settings: Dictionary, seed: int, material: Diction
 	return result
 
 
+## Secondary branches start on the main limb, not at its upper tip. Forked
+## lateral foliage forms the crown shoulders, leaving the lower trunk clear.
+static func _paint_oak_laterals(settings: Dictionary, shoots: Array, knee: Vector3,
+	elbow: Vector3, angle: float, length: float, radius: float, leaf_radius: float,
+	vertical_radius: float, ceiling: float, lines: Array, groups: Array,
+	wood: Dictionary, collision: Dictionary) -> void:
+	for shoot: Dictionary in shoots:
+		var anchor := _support_point(knee.lerp(elbow, float(shoot.anchor)))
+		var turn := angle + float(shoot.turn)
+		var direction := Vector3(cos(turn), 0, sin(turn))
+		var side := Vector3(-sin(turn), 0, cos(turn))
+		var extent := length * float(shoot.length)
+		var tip := anchor + direction * extent
+		var rise := float(shoot.rise)
+		if int(settings.branch_direction) > 0: rise = [0.0, 0.65, 0.06, -0.20][int(settings.branch_direction)]
+		tip.y = clampf(anchor.y + extent * rise, float(settings.height) * 0.28, ceiling)
+		tip = _support_point(tip)
+		var bend := _support_point(anchor.lerp(tip, 0.53) + side * extent * 0.09)
+		var r0 := maxf(0.65, radius * 0.75)
+		_record_line(lines, wood, collision, anchor, bend, r0, maxf(0.65, r0 * 0.60), true, true, 0.40, 0.72)
+		_record_line(lines, wood, collision, bend, tip, maxf(0.65, r0 * 0.60), 0.65, true, true, 0.72, 1.0)
+		var fork := _support_point(bend + (direction * 0.50 - side * signf(float(shoot.turn)) * 0.45) * extent)
+		fork.y = clampf(bend.y + extent * rise * 0.75, float(settings.height) * 0.28, ceiling)
+		fork = _support_point(fork)
+		_record_line(lines, wood, collision, bend, fork, maxf(0.65, r0 * 0.50), 0.65, true, true, 0.72, 1.0)
+		_record_crown_volume(groups, tip, Vector3(leaf_radius * 0.90, vertical_radius * 0.90, leaf_radius * 0.95))
+		_record_crown_volume(groups, fork, Vector3(leaf_radius * 0.75, vertical_radius * 0.80, leaf_radius * 0.80))
+		_record_crown_volume(groups, bend.lerp(tip, 0.40), Vector3(leaf_radius * 0.85, vertical_radius * 0.90, leaf_radius * 0.85), true)
+
+
+## Tapering structural continuations carry the inner foliage; no filler sphere.
+static func _paint_oak_leaders(settings: Dictionary, variation: Dictionary, root: Vector3,
+	radius: float, reach: float, leaf_radius: float, vertical_radius: float, ceiling: float,
+	lines: Array, groups: Array, wood: Dictionary, collision: Dictionary) -> void:
+	for index in 2:
+		var angle := float(variation.leader_phase) + index * 2.65
+		var outward := Vector3(cos(angle), 0, sin(angle))
+		var sideways := Vector3(-sin(angle), 0, cos(angle))
+		var tip := root + outward * reach * float(variation.leader_reach)
+		tip.y = minf(ceiling, float(settings.height) * (float(variation.leader_height) - index * 0.045))
+		tip = _support_point(tip)
+		var knee := _support_point(root.lerp(tip, 0.42) + sideways * reach * 0.07)
+		var elbow := _support_point(root.lerp(tip, 0.76) - sideways * reach * 0.035)
+		var r0 := maxf(0.85, radius * 0.55)
+		_record_line(lines, wood, collision, root, knee, r0, r0 * 0.72, true, true, 0.0, 0.42)
+		_record_line(lines, wood, collision, knee, elbow, r0 * 0.72, maxf(0.65, r0 * 0.38), true, true, 0.42, 0.76)
+		_record_line(lines, wood, collision, elbow, tip, maxf(0.65, r0 * 0.38), 0.65, true, true, 0.76, 1.0)
+		_record_crown_volume(groups, knee.lerp(elbow, 0.55), Vector3(leaf_radius * 1.12, vertical_radius * 1.10, leaf_radius * 1.05))
+		_record_crown_volume(groups, tip, Vector3(leaf_radius * 1.25, vertical_radius * 1.15, leaf_radius * 1.18))
+		var twig := _support_point(elbow + sideways * reach * 0.25 + Vector3.UP * minf(vertical_radius * 0.50, ceiling - elbow.y))
+		_record_line(lines, wood, collision, knee, twig, maxf(0.65, r0 * 0.45), 0.65, true, true, 0.42, 1.0)
+		_record_crown_volume(groups, twig, Vector3(leaf_radius, vertical_radius, leaf_radius))
+		_record_crown_volume(groups, knee, Vector3(leaf_radius * 0.95, vertical_radius, leaf_radius * 0.95), true)
+
+
 ## Thin spreading scaffold below a shallow, gently domed umbrella.
 ## Saved savanna v2/v3 keep the original sculpted builder and random sequence.
 static func _build_savanna_umbrella(settings: Dictionary, seed: int, material: Dictionary,
 	title: String, model_id: String) -> Dictionary:
+	var varied := int(settings.generation_version) == 14 and int(settings.structure_diversity) > 0
+	var variation := TreeVariation.plan(seed, int(settings.structure_diversity), 0, 3 + roundi(float(settings.branchiness) / 70.0)) if varied else {}
 	var random := RandomNumberGenerator.new()
 	random.seed = maxi(0, seed) + 15485863
 	var wood := {}
@@ -809,12 +977,16 @@ static func _build_savanna_umbrella(settings: Dictionary, seed: int, material: D
 	var outward := Vector3(cos(heading), 0, sin(heading))
 	var tangent := Vector3(-sin(heading), 0, cos(heading))
 	var fork_height := height * clampf(float(settings.branch_start) / 100.0 + random.randf_range(-0.04, 0.14), 0.30, 0.55)
+	if varied: fork_height = height * clampf(fork_height / height + float(variation.fork_shift), 0.30, 0.55)
 	var trunk: Array[Vector3] = [Vector3.ZERO]
 	for index in range(1, 5):
 		var progress := float(index) / 4.0
 		var point := _support_point(Vector3.UP * fork_height * progress
 			+ outward * radius * curve * sin(progress * PI * 0.90) * 1.80
 			+ tangent * radius * curve * sin(progress * PI * 1.50) * 0.65)
+		if varied:
+			var offset := (point - Vector3.UP * point.y).rotated(Vector3.UP, float(variation.trunk_turn)) * float(variation.trunk_bend)
+			point = _support_point(offset + Vector3.UP * point.y)
 		_record_line(lines, wood, collision, trunk[-1], point,
 			radius * lerpf(1.18, 0.80, float(index - 1) / 4.0), radius * lerpf(1.18, 0.80, progress), true)
 		trunk.append(point)
@@ -833,22 +1005,32 @@ static func _build_savanna_umbrella(settings: Dictionary, seed: int, material: D
 	var vertical_radius := maxf(1.0, minf(height * 0.075, leaf_radius * _canopy_flatten(settings)))
 	var ceiling := height - 1.0 - ceilf(vertical_radius)
 	var count := 3 + roundi(float(settings.branchiness) / 70.0)
+	if varied: count = variation.limbs.size()
 	var branch_radius := maxf(0.85, radius * float(settings.branch_thickness) / 100.0)
 	var tip_ratio := lerpf(1.0, 0.12, float(settings.branch_taper) / 100.0)
 	for index in count:
+		var limb: Dictionary = variation.limbs[index] if varied else {}
 		var angle := heading + TAU * float(index) / float(count) + random.randf_range(-0.22, 0.22)
+		if varied: angle += float(limb.angle_shift)
 		var radial := Vector3(cos(angle), 0, sin(angle))
 		var sideways := Vector3(-sin(angle), 0, cos(angle))
 		var start := _support_point(_sample_polyline(trunk, 0.80 + float(index % 3) * 0.10))
+		if varied: start = _support_point(_sample_polyline(trunk, clampf(0.88 + float(limb.height_shift) * 3.0, 0.73, 1.0)))
 		var length := reach * random.randf_range(0.65, 0.78)
+		if varied: length *= float(limb.length)
 		var end := start + radial * length
 		end.y = minf(ceiling, height * 0.87 + reach * random.randf_range(-0.035, 0.035))
+		if varied: end.y = clampf(end.y + height * float(limb.height_shift) * 0.60, height * 0.80, ceiling)
 		if int(settings.branch_direction) > 0:
 			end.y = clampf(start.y + length * [0.0, 0.65, 0.06, -0.20][int(settings.branch_direction)], height * 0.55, ceiling)
 		var knee := _support_point(start.lerp(end, 0.43) + sideways * length * curve * 0.25)
 		var elbow := _support_point(start.lerp(end, 0.76) - sideways * length * curve * 0.15)
+		if varied:
+			knee = _support_point(start.lerp(end, 0.43) + sideways * length * curve * 0.25 * float(limb.bend))
+			elbow = _support_point(start.lerp(end, 0.76) - sideways * length * curve * 0.15 * float(limb.bend))
 		end = _support_point(end)
 		var r0 := branch_radius * random.randf_range(0.90, 1.08)
+		if varied: r0 = maxf(0.85, r0 * float(limb.radius))
 		_record_line(lines, wood, collision, start, knee, r0, maxf(0.65, r0 * 0.70), true, true, 0.0, 0.43)
 		_record_line(lines, wood, collision, knee, elbow, maxf(0.65, r0 * 0.70), maxf(0.65, r0 * 0.40), true, true, 0.43, 0.76)
 		_record_line(lines, wood, collision, elbow, end, maxf(0.65, r0 * 0.40), maxf(0.65, r0 * tip_ratio), true, true, 0.76, 1.0)
@@ -856,9 +1038,12 @@ static func _build_savanna_umbrella(settings: Dictionary, seed: int, material: D
 		var inner := _support_point(end * 0.55)
 		inner.y = minf(ceiling, end.y + reach * 0.10)
 		_record_crown_volume(groups, inner, Vector3(leaf_radius * 1.20, vertical_radius, leaf_radius * 1.10), true)
-		for twig in 3:
-			var turn: float = angle + [-0.65, 0.65, 0.0][twig]
+		var twig_count := int(limb.twig_count) if varied else 3
+		for twig in twig_count:
+			var turn: float = angle if varied else angle + [-0.65, 0.65, 0.0][twig]
+			if varied: turn = angle + lerpf(-0.65, 0.65, float(twig) / float(maxi(1, twig_count - 1))) * float(limb.twig_spread)
 			var anchor := _support_point(knee.lerp(elbow, 0.40 + float(twig) * 0.25))
+			if varied: anchor = _support_point(knee.lerp(elbow, lerpf(0.25, 0.90, float(twig) / float(maxi(1, twig_count - 1)))))
 			var tip := end + Vector3(cos(turn), 0, sin(turn)) * reach * random.randf_range(0.27, 0.38)
 			tip.y = end.y - reach * random.randf_range(0.02, 0.10)
 			if int(settings.crown_shape) == 2: tip.y -= height * float(index % 2) * 0.045
@@ -885,6 +1070,8 @@ static func _build_savanna_umbrella(settings: Dictionary, seed: int, material: D
 ## No cone primitive, alternate renderer or individual needle geometry.
 static func _build_spruce(settings: Dictionary, seed: int, material: Dictionary,
 	title: String, model_id: String) -> Dictionary:
+	var varied := int(settings.generation_version) == 15 and int(settings.structure_diversity) > 0
+	var variation := TreeVariation.plan(seed, int(settings.structure_diversity), 4, 3 + roundi(float(settings.branchiness) / 100.0)) if varied else {}
 	var random := RandomNumberGenerator.new()
 	random.seed = maxi(0, seed) + 32452843
 	var wood := {}
@@ -901,7 +1088,9 @@ static func _build_spruce(settings: Dictionary, seed: int, material: Dictionary,
 	for index in range(1, 9):
 		var progress := float(index) / 8.0
 		var drift := radius * curve * sin(progress * PI) * 0.65
+		if varied: drift *= float(variation.trunk_bend)
 		var point := _support_point(Vector3(cos(heading) * drift, top_height * progress, sin(heading) * drift))
+		if varied: point = _support_point(point.rotated(Vector3.UP, float(variation.trunk_turn)))
 		_record_line(lines, wood, collision, trunk[-1], point,
 			maxf(0.65, radius * lerpf(1.15, 0.10, float(index - 1) / 8.0)),
 			maxf(0.65, radius * lerpf(1.15, 0.10, progress)), true)
@@ -924,8 +1113,9 @@ static func _build_spruce(settings: Dictionary, seed: int, material: Dictionary,
 	var count := 3 + roundi(float(settings.branchiness) / 100.0)
 	var branch_radius := maxf(0.85, radius * float(settings.branch_thickness) / 100.0)
 	var tip_ratio := lerpf(1.0, 0.12, float(settings.branch_taper) / 100.0)
-	for level in 9:
-		var progress := float(level) / 8.0
+	var levels := int(variation.levels) if varied else 9
+	for level in levels:
+		var progress := float(level) / float(levels - 1)
 		var altitude := lerpf(start_height, 0.91, progress)
 		var envelope := pow(1.0 - progress * 0.93, 0.90)
 		# Overlapping slender inner masses keep the leader clothed, while the
@@ -933,18 +1123,27 @@ static func _build_spruce(settings: Dictionary, seed: int, material: Dictionary,
 		var core := maxf(2.0, reach * envelope * 0.24 * scale)
 		_record_crown_volume(groups, _sample_polyline(trunk, altitude * height / top_height),
 			Vector3(core, maxf(4.0, height * 0.055 * scale), core))
-		for index in count:
+		var level_limbs: Array = variation.limbs.filter(func(limb): return int(limb.level) == level) if varied else []
+		var level_count := level_limbs.size() if varied else count
+		for index in level_count:
+			var limb: Dictionary = level_limbs[index] if varied else {}
 			var angle := heading + float(level) * 2.39996 + TAU * float(index) / float(count) + random.randf_range(-0.18, 0.18)
+			if varied: angle = heading + float(level) * 2.39996 + TAU * float(index) / float(level_count) + float(limb.angle_shift)
 			var radial := Vector3(cos(angle), 0, sin(angle))
 			var tangent := Vector3(-sin(angle), 0, cos(angle))
 			var start := _support_point(_sample_polyline(trunk, (altitude + random.randf_range(-0.008, 0.008)) * height / top_height))
+			if varied: start = _support_point(_sample_polyline(trunk, clampf(altitude + float(limb.height_shift), start_height, 0.93) * height / top_height))
 			var length := reach * envelope * random.randf_range(0.88, 1.08)
+			if varied: length *= float(limb.length)
 			var slope := lerpf(-0.12, 0.25, progress)
 			if int(settings.branch_direction) > 0: slope = [0.0, 0.65, 0.06, -0.20][int(settings.branch_direction)]
+			elif varied: slope *= float(limb.rise)
 			var end := _support_point(start + radial * length + Vector3.UP * length * slope)
 			end.y = minf(end.y, top_height)
 			var knee := _support_point(start.lerp(end, 0.65) - Vector3.UP * length * curve * 0.10 + tangent * length * curve * random.randf_range(-0.06, 0.06))
+			if varied: knee = _support_point(start.lerp(end, 0.65) - Vector3.UP * length * curve * 0.10 * float(limb.bend) + tangent * length * curve * float(limb.angle_shift) * 0.25)
 			var r0 := maxf(0.65, branch_radius * lerpf(1.0, 0.20, progress))
+			if varied: r0 = maxf(0.65, r0 * float(limb.radius))
 			_record_line(lines, wood, collision, start, knee, r0, maxf(0.65, r0 * 0.45), true, true, 0.0, 0.65)
 			_record_line(lines, wood, collision, knee, end, maxf(0.65, r0 * 0.45), maxf(0.65, r0 * tip_ratio), true, true, 0.65, 1.0)
 			var size := maxf(0.85, leaf_radius * envelope)
@@ -952,9 +1151,10 @@ static func _build_spruce(settings: Dictionary, seed: int, material: Dictionary,
 			var radii := Vector3(size + absf(radial.x) * length * 0.22, vertical, size + absf(radial.z) * length * 0.22)
 			_record_crown_volume(groups, knee.lerp(end, 0.45), radii)
 			_record_crown_volume(groups, start.lerp(knee, 0.70), radii * 0.90, true)
-			for twig in 1:
+			for twig in (int(limb.twig_count) if varied else 1):
 				var anchor := _support_point(start.lerp(knee, 0.60 + float(twig) * 0.30))
 				var direction := (radial + tangent * (-0.65 if posmod(level + index, 2) == 0 else 0.65)).normalized()
+				if varied: direction = (radial + tangent * (-0.65 if posmod(level + index, 2) == 0 else 0.65) * float(limb.twig_spread)).normalized()
 				var tip := _support_point(anchor + direction * length * 0.48 - Vector3.UP * length * curve * 0.08)
 				_record_line(lines, wood, collision, anchor, tip, maxf(0.65, r0 * 0.35), 0.65, true, true, 0.60, 1.0)
 				var twig_radii := Vector3(size * 0.65 + absf(direction.x) * length * 0.12, vertical * 0.85, size * 0.65 + absf(direction.z) * length * 0.12)
@@ -982,8 +1182,9 @@ static func _paint_crown_volumes(leaves: Dictionary, wood: Dictionary, groups: A
 	var scale := float(settings.cluster_size) / float(base.cluster_size)
 	scale *= lerpf(0.85, 1.18, float(settings.canopy_cohesion) / 100.0) / lerpf(0.85, 1.18, float(base.canopy_cohesion) / 100.0)
 	var vertical := _canopy_flatten(settings) / _canopy_flatten(base)
+	var patterned := FoliagePattern.supports_style(settings, int(settings.foliage_style)) and int(settings.foliage_style) > 0
 	for index in groups.size():
-		if posmod(index * 37 + 17, 100) >= int(settings.foliage_amount): continue
+		if not patterned and posmod(index * 37 + 17, 100) >= int(settings.foliage_amount): continue
 		var group: Dictionary = groups[index]
 		var radii: Vector3 = group.radii * scale
 		radii.y *= vertical
@@ -992,7 +1193,14 @@ static func _paint_crown_volumes(leaves: Dictionary, wood: Dictionary, groups: A
 			radii *= sqrt(float(settings.foliage_along) / 100.0)
 		var center: Vector3 = group.center
 		center.y = minf(center.y, float(settings.height - 1) - ceilf(radii.y))
-		_paint_canopy(leaves, wood, center, radii, float(settings.irregularity) / 100.0, noise, true)
+		if patterned and int(settings.foliage_style) == 3:
+			FoliagePattern.paint_clouds(leaves, wood, center, radii, settings, noise.seed + index * 104729)
+		elif patterned and int(settings.foliage_style) == 2:
+			FoliagePattern.paint_shoots(leaves, wood, center, radii, settings, noise.seed + index * 104729)
+		elif patterned:
+			FoliagePattern.paint(leaves, wood, center, radii, settings, noise.seed + index * 104729)
+		else:
+			_paint_canopy(leaves, wood, center, radii, float(settings.irregularity) / 100.0, noise, true)
 
 
 static func _canopy_flatten(settings: Dictionary) -> float:
@@ -1158,10 +1366,10 @@ static func structure_errors(structure: Dictionary) -> Array[String]:
 		return ["Недопустимый размер каркаса дерева."]
 	if int(structure.parameters.get("generation_version", 0)) >= 4:
 		var noise_radius: Variant = structure.get("noise_radius")
-		var expected_type := 4 if int(structure.parameters.generation_version) == 10 else (0 if int(structure.parameters.generation_version) == 9 else (1 if int(structure.parameters.generation_version) == 8 else mini(3, int(structure.parameters.generation_version) - 3)))
+		var expected_type := int({4: 1, 5: 2, 6: 3, 7: 3, 8: 1, 9: 0, 10: 4, 11: 1, 12: 3, 13: 2, 14: 0, 15: 4, 16: 1, 17: 1}.get(int(structure.parameters.generation_version), 0))
 		if int(structure.parameters.get("tree_type", 0)) != expected_type or (not noise_radius is float and not noise_radius is int) or not is_finite(float(noise_radius)) or float(noise_radius) <= 0 or float(noise_radius) > 64:
 			return ["Некорректный профиль кроны дерева."]
-	if absi(structure.pivot_bias.x) > 128 or absi(structure.pivot_bias.y) > 128 or int(structure.parameters.get("generation_version", 0)) not in [2, 3, 4, 5, 6, 7, 8, 9, 10]:
+	if absi(structure.pivot_bias.x) > 128 or absi(structure.pivot_bias.y) > 128 or int(structure.parameters.get("generation_version", 0)) not in [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]:
 		return ["Недопустимая привязка каркаса дерева."]
 	if structure.has("grid"):
 		if not structure.grid is Vector3i or structure.grid.x < 1 or structure.grid.z < 1 or structure.grid.x > 256 or structure.grid.z > 256:

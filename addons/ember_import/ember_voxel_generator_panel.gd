@@ -101,6 +101,18 @@ func open_source(source: EmberVoxelModelResource, next_context := {}) -> bool:
 	_variation_name.text = "Новая вариация"
 	_save_button.text = "Сохранить вариацию и поставить"
 	_info.text = "Структура закреплена. Настройки меняют её оформление.\nПредпросмотр — только рецепт; ручная лепка не переносится. Исходник не изменится."
+	_rebuild_fields()
+	_preview_button.disabled = false
+	return true
+
+
+func _rebuild_fields() -> void:
+	# Descriptors may depend on the draft (style, provider capability, etc.).
+	# Detach immediately, release after the input signal finishes.
+	for child in _fields.get_children():
+		_fields.remove_child(child)
+		child.queue_free()
+	controls.clear()
 	var section := ""
 	_syncing = true
 	for field in Generator.editing_fields(recipe):
@@ -122,6 +134,7 @@ func open_source(source: EmberVoxelModelResource, next_context := {}) -> bool:
 			var option := OptionButton.new()
 			for title in field.options: option.add_item(title)
 			option.select(int(recipe.parameters[field.key]))
+			if field.key == "foliage_style": option.set_item_disabled(2, not Generator.LargeTreeProvider.FoliagePattern.supports_style(recipe.parameters, 2))
 			option.item_selected.connect(func(value: int): set_parameter(field.key, value))
 			_fields.add_child(option)
 			controls[field.key] = option
@@ -142,20 +155,28 @@ func open_source(source: EmberVoxelModelResource, next_context := {}) -> bool:
 			_fields.add_child(value)
 			controls[field.key] = value
 	_syncing = false
-	_preview_button.disabled = false
-	return true
 
 
 func set_parameter(key: String, value: Variant) -> void:
-	if _syncing or recipe == null or not controls.has(key) or recipe.parameters[key] == value:
+	if _syncing or recipe == null or not controls.has(key):
 		return
+	if recipe.parameters[key] == value and not (key == "foliage_style" and Generator.LargeTreeProvider.FoliagePattern.needs_style_upgrade(recipe.parameters, int(value))): return
 	var before: Variant = recipe.parameters[key]
 	history.create_action("Параметр генератора: " + key)
 	history.add_do_method(_assign.bind(key, value))
 	history.add_undo_method(_assign.bind(key, before))
+	if key == "foliage_style" and int(value) == 3:
+		history.add_do_method(_assign.bind("foliage_cloud_version", 2))
+		history.add_undo_method(_assign.bind("foliage_cloud_version", recipe.parameters.get("foliage_cloud_version", 1)))
 	if key == "bark_pattern" and bool(value):
 		history.add_do_method(_assign.bind("bark_pattern_version", 2))
 		history.add_undo_method(_assign.bind("bark_pattern_version", recipe.parameters.get("bark_pattern_version", 1)))
+	if key == "foliage_style" and int(value) == 1:
+		if int(recipe.parameters.get("foliage_style", 0)) == 1 and int(recipe.parameters.get("foliage_pattern_version", 1)) < 2:
+			history.add_do_method(_assign.bind("foliage_geometry_detail", recipe.parameters.foliage_detail))
+			history.add_undo_method(_assign.bind("foliage_geometry_detail", recipe.parameters.get("foliage_geometry_detail", 55)))
+		history.add_do_method(_assign.bind("foliage_pattern_version", 2))
+		history.add_undo_method(_assign.bind("foliage_pattern_version", recipe.parameters.get("foliage_pattern_version", 1)))
 	history.commit_action()
 
 
@@ -169,6 +190,11 @@ func _assign(key: String, value: Variant) -> void:
 func _sync_controls() -> void:
 	if recipe == null:
 		return
+	var descriptors := Generator.editing_fields(recipe)
+	var changed := descriptors.size() != controls.size()
+	for field in descriptors:
+		if not controls.has(field.key): changed = true
+	if changed: _rebuild_fields()
 	_syncing = true
 	for key in controls:
 		if controls[key] is ColorPickerButton:
@@ -252,27 +278,32 @@ func prepare() -> void:
 	preview_changed.emit(creation.packed, creation.source)
 
 
-func save_variant() -> void:
-	if creation == null or context.is_empty() or not context.has("undo"):
-		return
+func save_variant() -> bool:
+	if creation == null:
+		_info.text = "Сначала соберите точный предпросмотр текущих параметров. Ничего не сохранено."
+		return false
+	if context.is_empty() or not context.has("undo"):
+		_info.text = "Нет контекста сохранения вариации. Ничего не сохранено."
+		return false
 	creation.world_size = float(context.world_size)
 	if _save_mode.selected == 1:
 		if not creation.update_variation(_source_id, context):
 			_info.text = creation.error
-			return
+			return false
 		_clear_preview()
 		_info.text = "Выбранная вариация обновлена. Scene Undo/Redo восстанавливает геометрию и рецепт."
-		return
+		return true
 	var offset := Vector3(float(_source.size_blocks.x + 1) * creation.world_size, 0, 0)
 	var prop: EmberVoxelProp = creation.commit(context.root, context.parent, context.undo, context.position + offset)
 	if prop == null:
 		_info.text = creation.error
-		return
+		return false
 	if context.get("transform") is Transform3D:
 		prop.basis = context.transform.basis
 	variant_created.emit(prop)
 	_clear_preview()
 	_info.text = "Сохранён отдельный вариант: " + prop.model_id
+	return true
 
 
 func _save_mode_changed(_index: int) -> void:

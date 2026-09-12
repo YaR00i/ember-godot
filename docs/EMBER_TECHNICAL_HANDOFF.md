@@ -28,6 +28,19 @@ Intermittent загрузка Party/Explore в рабочем editor пока н
 
 ### Воксельная мастерская и одиночный объёмный штамп (manual gate открыт)
 
+2026-09-13: общая кнопка workspace «Сохранить», `save_changes()` и Ctrl+S
+в активной вкладке «Генератор» идут через тот же `save_variant()`/Creation,
+что и кнопка генератора. Режим публикации остаётся явно выбранным:
+новая вариация / обновление выбранной / отдельный объект. Сохраняются точный
+preview source/prefab и весь Recipe.parameters, не старый sculpt Resource.
+Без актуального preview или контекста — явный отказ, без fallback к sculpt
+save; ошибки публикации возвращаются в footer, успешная публикация снимает
+preview. Manual dirty обновления проверяется непосредственно перед Save.
+Никакой новой schema/owner и автоматической перегенерации при сохранении.
+`test_voxel_workshop_generator_save.gd` пишет только user:// и проверяет все
+три режима, полные параметры/voxels/palette, reopen controls, Undo/Redo,
+Discard, stale preview и защиту manual dirty; headless/native Forward+ PASS.
+
 Нативный UI workspace перестроен без нового owner: компактные основные
 инструменты и постоянный compact PalettePanel слева, контекст
 Object/Model/Part/Preset сверху, активные параметры над правыми вкладками
@@ -509,6 +522,277 @@ reopen10 PASS, финальные `generation_spruce_front.png`/`generation_spru
 `generation_spruce_native.png` просмотрены. Лог без script errors; copied UID
 warnings и scan-abort warning при штатном quit не исправлялись этим срезом.
 Следующий шаг — обсуждение общей системы листьев/хвои, затем отдельный контракт.
+
+Pixel-art foliage prototype2026-09-13 (дуб v8; визуальная приёмка открыта):
+`ember_voxel_foliage_pattern.gd` — чистый leaf-модуль dressing существующих crown
+volumes, не новый provider/renderer/scaffold. `foliage_style=0/1` (missing=0),
+`foliage_detail=0..100` (missing=55) нормализуются LargeTreeProvider и сохраняются
+в прежней Recipe.parameters. Capability пока только tree_type1/version8;
+прочие породы игнорируют стиль и не получают controls, прежний oak preset остаётся0.
+Связное ядро и12–28 неодинаковых перекрывающихся lobes с детерминированным seed
+обслуживают shared `_paint_crown_volumes` fresh/frozen path. Detail задаёт размер/
+число групп и грубый согласованный край, amount плавно уменьшает объёмы, не
+выбрасывает случайные целые исходные supports. Пятна используют существующие
+palette4–6 по группам; старые boolean leaves оставляют прежний noise-emitter exact.
+Frozen structure1/quarter supports не меняются, кора/collision прежние.
+Creation и individual/contextual editing используют registry descriptors;
+detail появляется только при style1. Сохранённые presets сохраняют оба поля,
+не хранят каркас. Шейдер, индивидуальные листья/иголки и ветер не добавлялись.
+Contextual GeneratorPanel теперь сравнивает ключи descriptors при изменении
+черновика и пересобирает только набор controls при смене capability/style.
+Controls сначала отсоединяются, затем queue_free после завершения input signal;
+это общий lifecycle для зависимых полей, не специальная ветка UI только для дуба.
+Undo/Redo/Discard также восстанавливают нужный набор полей без remesh.
+`test_voxel_foliage_pattern.gd` проверяет64/96/128/256×seeds17/391, missing/old
+parity, validation/scaffold/wood/collision stability, fresh/frozen/text exact,
+amount/detail/season, isolated voxel check, preset roundtrip и creation Undo/Redo.
+Native fixture `-- --oak-foliage-only` сравнивает old/new/detail90 на одном
+каркасе seed391 и seed17; individual Apply/Discard/Undo/Redo, publication/
+Undo/Redo/reopen. Captures `generation_oak_foliage_native.png`, `_front.png`,
+`_side.png`, `_old_front.png`; оценка пользователя нужна отдельно от assertions.
+Foliage targeted и7related suites (oak/types/bark/editing/session/large-tree-object/
+generator) PASS; native Forward+ PASS, лог без script errors. Сохранены прежние
+copied UID warnings и scan-abort при quit. Fresh foliage64–256 около0.21–0.67s,
+meshing не входит в это измерение. Скриншоты подтверждают более крупные цветовые
+пятна; направление первого dressing ещё не принято пользователем. Дополнительные
+`generation_oak_foliage_preview.png`/`_old_preview.png` — прямой снимок 3D viewport,
+не AI-рендер/монтаж; light/shader существующие, art polishing остаётся открытым.
+
+Surface pattern revision2 (2026-09-13, после замечания о нечитаемом паттерне):
+тот же FoliagePattern, без второго provider/renderer. `foliage_pattern_version`
+нормализуется1..2: new defaults2, missing1 сохраняет первый prototype. Явный
+выбор/reselect «Пиксель-арт» обновляет только pattern revision с Undo в creation,
+individual и contextual panels. `foliage_pattern_strength=0..100` (default65)
+сохраняется в прежней Recipe и presets; field виден только в актуальном pixel
+oak/revision2. Рецепты других пород и прежний style0 не меняются.
+Revision2 фиксирует геометрию dressing на прежней Detail55 для новых деревьев;
+скрытый `foliage_geometry_detail` хранит эту часть identity (default55). При
+явном обновлении уже настроенного pixel v1 он захватывает текущую Detail, чтобы
+не сбросить принятую custom крону. Это Recipe metadata, не новый ручной control.
+Пользовательская
+Detail теперь задаёт размер узора3–9vox. `_emit` вызывает pure `colorize` после
+всего union: exposed cells определяются по membership leaves/wood, оттенок4/5/6
+вычисляется из целочисленной 3D lattice, seed и смещённого ступенчатого ромбового
+мотива. Ориентация/размер motifs варьируются по tiles, итог не зависит от порядка
+групп/Dictionary. Воксели не добавляются/удаляются, wood/collision не трогаются.
+Strength смешивает только leaf palette4/6 с базовой5:0 скрывает рисунок,100 даёт
+полный контраст. Никаких дополнительных palette indices, baked sunlight или
+shader. Цвет сезона меняет palette, не координаты рисунка.
+Targeted дополнен reversed insertion order, оттенками поверхности, missing/1
+parity, strength0/20/65/100 palette-only, Detail occupancy/collision invariance,
+upgrade/reselect Undo и динамическими contextual fields. Native
+`-- --foliage-surface-only` сравнивает strengths20/65/100 на одном seed391/
+каркасе, четвёртый — Detail85. Individual strength Apply/Undo/Redo, Discard,
+publication/reopen/contextual lifecycle проверяются прежней fixture.
+Surface targeted и4related suites (oak/bark/editing/session) PASS; native
+Forward+ strengths20/65/100 и Detail85, palette-only Apply/Undo/Redo, publication/
+reopen/contextual fields PASS, лог без script errors. Captures показывают
+заметный средний/сильный узор, art acceptance остаётся открытым. Fresh64–256
+около0.23–0.72s, meshing отдельно; native screenshot не меняет shader/light.
+
+Structural variation (2026-09-13, после leaf trials): пользователь отметил
+слишком похожие каркасы и предпочёл pixel-art. Read-only audit6 seeds показал
+одинаковые70 segments/6 высот главных сучьев oak8 и90 segments/5 уровней maple7.
+Передача seed/new batch работает; причина — жёсткая схема пород, не foliage.
+Новые oak11/maple12 продолжают те же mature/upright builders с version guards;
+legacy RNG/геометрия8/7 не изменены. Единственный pure plan owner —
+`ember_voxel_tree_variation.gd`: собственный deterministic RNG независимо от
+leaf RNG/общего поворота, ограниченные count/level/height/length/radius/bend/
+rise/twig/upper-fork и согласованная направленная асимметрия. Species builders
+сохраняют envelope, quarter anchors, rasterization, collision и storage budgets.
+Oak main4–8, twig1–4, upper1–3; maple levels4–6, переменное количество сучьев
+на уровне, twig1–2, max24 main. Frozen format1 и максимум128 lines/groups прежние.
+`structure_diversity`0–100 (default65) принадлежит Recipe.parameters и presets,
+виден только в creation11/12.0 использует точную старую geometry8/7. Он не
+является dressing field замороженного объекта; смена каркаса — прежняя явная
+команда с Undo/Redo. Registry/type choices→11/12, advanced compatibility choices
+дополнены, normalization/structure validation знают версии. Saved8/7 не обновляются.
+FoliagePattern поддерживает oak8/11 без изменения алгоритма/цветов; maple foliage
+прежняя. Другие породы и будущие character/age/multistem profiles вне среза.
+`test_voxel_tree_variation.gd`:6 seeds ×64/128/256, yaw-invariant heights/lengths/
+connectivity fingerprint и разные counts, validation/fresh-frozen/text, diversity0
+legacy parity, frozen immunity, extreme3seeds/directions, presets/UI Undo/Redo.
+Исторические oak/maple/foliage suites явно продолжают8/7/8 geometry gates;
+проверки type UI/publication соответствуют актуальным11/12. Native fixture
+`-- --tree-variation-only` (+`--maple-shape-only`) сравнивает bare17/371/391
+и dressing17, выравнивая первый trunk segment по X только для представления.
+Individual Apply/Discard/Undo/Redo/publication/reopen и явная skeleton regeneration
+через кнопку/Undo/Redo проверяются в disposable copy. Визуальная приёмка открыта.
+Variation targeted и7related suites oak/maple/types/bark/foliage/editing/session
+PASS. Native oak/maple Forward+ PASS, включая явную замену каркаса/Undo/Redo;
+логи без script errors, copied UID warnings/scan-abort оставлены прежними.
+Шесть default seeds дают oak53–71 segments вместо постоянных70, maple55–83
+вместо90. Это наблюдение для протестированной партии, не общий min/max алгоритма.
+Captures `generation_oak_variation_native/front/side/preview.png` и maple аналог
+просмотрены; пользователь принял разнообразие дуба/клёна.
+
+Продолжение2026-09-13: TreeVariation поддерживает также birch13/savanna14/
+spruce15 через общий slender plan; oak11/maple12 RNG stream не менялся.
+Birch main7–14, twig1–3, поникающие тонкие побеги и непрерывный leader;
+savanna main3–5, twig1–4/fan, неравномерные места развилок и плоский ceiling;
+spruce levels7–10, max36 main, twig0–1, разная длина/высоты ветвей вокруг leader.
+Предел128 lines/groups, quarter anchors, physical wood и общий rasterizer прежние.
+Creation presets/type reselect→14/11/13/12/15; совместимость знает13–15.
+Saved5/9/10 не обновляются; diversity0 воспроизводит5/9/10 exact geometry.
+Frozen editing не заменяет topology: только явная regeneration с Undo/Redo.
+Shared descriptor показывает один diversity knob для11–15 и foliage_along
+для новой savanna14; oak-only foliage trials не перенесены на другие породы.
+Targeted variation расширен на все5 пород, включая limits/fresh-frozen/text/
+legacy parity/UI/presets. Historical birch/savanna/spruce gates явно используют
+5/9/10, новые UI checks —13/14/15. Native fixture выбирает revision из type preset
+и имеет отдельные species captures. Художественная приёмка новых трёх открыта.
+
+Variation и10 related suites PASS. Native birch/savanna/spruce Forward+ PASS,
+включая explicit regeneration/Undo/Redo, Apply/Discard/publication/reopen.
+Bare/dressed comparison captures просмотрены; birch final fixture также даёт
+front/side/preview. В тестовой партии6seeds: birch85–105 segments (было107),
+savanna41–77 (56), spruce85–105 (120); oak/maple counts прежние для11/12.
+
+Oak composition16 (2026-09-13, screenshots №29–31): latest type versions теперь
+14/16/13/12/15. Старые8/11 не меняются; normalize/type validation/frozen source
+знают16. Pure TreeVariation.oak_composition использует отдельный seed stream,
+не меняя прежний plan11/12/13/14/15. Diversity>0: главные ветви образуют2–4
+неравномерных fan направления на переменных высотах, end heights независимы
+от ascending index. Trunk height/lean и leader reach/height меняются по seed.
+Два tapering continuations и их реальные side twigs продолжают trunk tip;
+inner masses принадлежат их supports. Не добавляются filler sphere, второй
+skeleton owner или renderer. Diversity0 exact8 geometry; old11 RNG untouched.
+FoliagePattern capabilities включают16, pixel-art/colorize math неизменны.
+Новый type preset и explicit same-type reselect выбирают16 с Undo; frozen editing
+сохраняет base generation version и topology. Regenerate candidate использует
+только batch recipe через прежний history/Apply/publication путь.
+Targeted variation дополнен6 seeds на reported96/trunk8/spread80/diversity100/
+pixel/detail55/contrast25/along85: два physical leaders с taper, вариативные
+fork heights и trunk tops, поддержанная центральная листва, same bare structure.
+Общие gates all5species/heights64/128/256/limits/directions/presets/text/history
+сохранены. Native fixture --tree-variation-only --composition-dressed сравнивает
+три pixel дуба17/371/391 и bare17, actual Forward+; individual editing/history,
+explicit regeneration/Undo/Redo, publication/reopen. Variation и8related suites
+oak/types/bark/editing/large-tree/generator/foliage/session PASS; native clean
+Forward+ PASS без script/engine errors, captures просмотрены, diff --check чистый.
+Art gate открыт, старые общие migration gates не менялись.
+
+Oak lateral17 (2026-09-13): пользователь подтвердил рандомность16, но крона
+слишком тянулась вверх без боковых побегов. Latest type versions14/17/13/12/15;
+compatibility enum/normalize/validation/frozen/FoliagePattern знают17. Сохранённые
+8/11/16 не обновляются; diversity0 exact8. TreeVariation.oak_laterals — отдельный
+pure seed stream:1–3 shoots/limb по branchiness0/62/100; diversity влияет на
+anchor/turn/length/rise. New secondary replaces historical upward twigs; прежние
+RNG draws всё равно потребляются, поэтому main limbs/trunk/leaders exact16.
+Secondary roots лежат на knee→elbow основных сучьев, стороны чередуются, рост
+преимущественно наружу/слегка вверх. Two tapering segments +fork/leaf volumes
+несут боковые плечи и нижний край кроны; lower trunk не получает filler foliage.
+Existing branch_direction override учитывается; physical lines и frozen supports
+используют прежний owner. Max8limbs×3shoots×3segments +main/trunk/leaders <=114
+segments; groups<=104. Pixel-art paint/colorize math unchanged. Type preset и
+explicit reselect выбирают17; existing regenerate/history/preset/publication
+путь прежний. No new controls/schema/renderer.
+Variation targeted дополнен6reported seeds: bounded count по branchiness,
+exact16 primary lines, sideways physical branches, anchors на parent segment,
+distinct secondary layouts, frozen16 даже сparameters17 остаётся exact16.
+All5species64/128/256/extremes/directions/fresh-frozen/text/history сохранены.
+Native --tree-variation-only --composition-dressed теперь использует latest17:
+3pixel seeds17/371/391 и bare17, individual edit/regeneration/Undo/Redo/
+Discard/publication/reopen; captures generation_oak_variation_*.png просмотрены.
+Variation и8related oak/types/bark/editing/large-tree/generator/foliage/session
+PASS; native Forward+ PASS без script/engine errors; diff --check чистый.
+Art gate открыт; старые migration gates не менялись.
+
+Trial leaf shoots (2026-09-13): пользователь сохранил pixel1 как эксперимент
+и согласовал отдельный style2 в прежнем oak8 dressing. Normalization сохраняет
+old default0; `foliage_leaf_size=3..12` (default5) — единственный новый ручной
+параметр. Common descriptors показывают его только для style2, pixel detail/
+strength скрываются; Recipe/preset/публикация остаются прежними owners.
+`FoliagePattern.paint_shoots` использует quarter crown supports, ближайшую wood
+клетку и seed. Внутреннее ядро0.36 радиуса соединяется с древесиной зелёным
+черешком;6–24 направленных побега несут по4 неодинаковых тонких ромбовых листа.
+Воксельная пластинка имеет приподнятую жилку/согнутые края и опущенный кончик;
+цвет согласован внутри побега, palette4/5/6 без новых индексов. Черешки являются
+leaf dressing, не новым физическим scaffold. Высота/occupied/storage прежние
+ограниченные; unsupported species оставляют прежнюю листву. Нет alpha/второго
+renderer, shaders или нового формата каркаса. Pixel surface colorize не трогает2.
+Targeted foliage проверяет64/96/128/256, exact wood/collision/scaffold,
+fresh/frozen/text equality, размеры3/8/12, amount0, сезон palette-only и создание
+style Undo/Redo. Native disposable `-- --leaf-shoots-only` сравнивает old0,
+shoots5/8 на seed391 и shoots5 seed17, индивидуальные size Apply/Discard/Undo/
+Redo, publication/reopen и contextual dynamic fields/Undo/Discard. Артефакты
+`generation_leaf_shoots_native/front/side/preview/detail.png`; detail — реальный
+увеличенный 3D viewport, не mockup. Визуальная приёмка остаётся отдельным gate.
+Foliage targeted и4related oak/bark/editing/session PASS, disposable native
+size Apply/Discard/Undo/Redo/publication/reopen/contextual PASS, script errors
+не обнаружены. Geometry64–256 около0.28–0.87s, без meshing. Native96/seed391
+old0:182_680 vertices/91_340 triangles; shoots2:348_560/174_280 (~1.9× triangles),
+occupied125_212→75_250. Тонкие пластины открывают больше граней; не объявлять
+trial лесным perf gate. Финальная оптимизация renderer/mesh остаётся отложенной.
+
+Trial leaf clouds (2026-09-13, после трёх reference images): отдельный style3
+для oak8/11, не замена pixel1/shoots2. Тот же FoliagePattern чисто собирает
+центральную связанную массу и7–10 неодинаковых уплощённых подушек на frozen
+crown volumes. Редкие пары folded leaves на outer rim используют прежние
+_leaf/_stem; дерево/collision не меняются. Внутри спокойные крупные массы,
+без равномерного покрытия побегами и без нового renderer/формата структуры.
+Recipe.parameters: foliage_leaf_accents0–100 (missing/default35), leaf_size3–12
+переиспользован как «Размер деталей». Только два conditional controls уstyle3;
+foliage_amount/cluster_size/flatten/cohesion остаются общими. Accents selection
+deterministic/nested и не пересобирает cloud body; больше accents добавляет детали.
+Old styles0/1/2 exact; missing style0. Palette4 darken.42/6 lighten.18 только3.
+`test_voxel_foliage_pattern.gd` включает clouds на8/11 ×64/96/128/256 ×17/391,
+budgets/wood/collision/supports, fresh-frozen/text, amount0, UI Undo/Redo/Discard,
+presets и extremes size3/12. `-- --clouds-only` запускает этот поднабор отдельно.
+Native fixture `-- --foliage-clouds-only`: один oak8/height96/seed391 вpixel1,
+shoots2, clouds3 accents35/80; individual accents Apply/Discard/Undo/Redo,
+publication/reopen, contextual conditional controls/Undo/Discard. PASS, actual
+captures `generation_foliage_clouds_native/front/side/preview/detail.png`
+просмотрены. Освещение ещё отличается от рисованных references; art gate открыт.
+Read-only prefab mesh audit на oak8/height96/seed391: cloud3 occupied94_068,
+vertices217_464/triangles108_732; pixel1 193_576/96_788, shoots2 348_560/174_280,
+old0 182_680/91_340. Cloud менее затратен, чем shoots, но примерно на12% больше
+triangles, чемpixel; не обещать forest performance по одному объекту.
+Fresh cloud geometry64–256 около0.15–0.52s, prefab meshing измеряется отдельно.
+Полный foliage и7related suites oak/types/bark/editing/large-tree/generator/
+variation PASS; clouds-only PASS. Общие старые migration gates не менялись.
+
+Общие режимы листвы (2026-09-13, отдельное согласие пользователя):
+FoliagePattern.supported покрывает volume-based versions4–17 всех5 tree_type.
+Pixel1/cloud3 используют исходные center/radii/along crown volumes каждой
+породы; никакой замены scaffold дубовым или отдельного species renderer.
+supports_style отделяет oak-only shoot2 (oak8/11/16/17); option2 disabled в
+creation/candidate/contextual UI остальных пород, enum ids неизменны.
+Явный выбор другой породы после shoot2 сбрасывает style0 в том же Recipe Undo.
+Прежние controls detail/strength/leaf_size/accents переиспользуются; style0,
+каркас/physical не менялись, сохранённые assets не пересобираются при открытии.
+Legacy versions1–3 остаются прежним путём без volume dressing. Новый
+test_voxel_foliage_species проверяет all5/style1+3/seeds17+371/64+256,
+wood/collision, full scaffold, свежую freeze parity, контраст palette-only,
+bare foliage, storage budget, сериализацию точной geometry, UI/Undo/Redo/
+Discard. Он и5related suites PASS; native Forward+ gallery10 деревьев в
+disposable copy PASS без script/engine errors, capture просмотрен.
+Пользователь принял текущую итерацию и запросил commit/push;
+художественная полировка иных проб вне этого среза.
+
+Cloud caps revision2 (2026-09-13, обратная связь о тарелках/рисунке): тот же
+style3 и frozen volumes, без нового skeleton/owner. Broad central dome и3–5
+upper lobes выше опоры, нижний срез; прежнее forced flatten/radial ring убрано.
+Авторское canopy flatten сохранено. Sparse folded accents используют прежние
+leaf/stem primitives; дерево/кора/physical/supports неизменны. FoliagePattern
+colorize переиспользует pixel-art coordinate-owned surface motifs после union:
+foliage_detail0–100 (scale9→3) меняет только indices, не occupancy/structure;
+foliage_pattern_strength0–100 только palette4/6, не indices. Четыре conditional
+controls: leaf_size, leaf_accents, detail, strength. Shape controls общие.
+Recipe.parameters.foliage_cloud_version: defaults2, normalize missing1/clamp1–2.
+Revision1 painter/palette точные прежние; old styles0/1/2 неизменны. Центральный
+needs_style_upgrade используется creation/candidate/contextual UI: явный
+reselect style3 устанавливает2; draft/local history и contextual Undo возвращают1.
+Native fixture теперь сравнивает old cloud1 иcaps2 strength20/65/100, detail55/85
+на одном oak8/96/seed391. Pattern Apply/Undo/Redo, accent Discard/Apply/history,
+publication/reopen/contextual switching PASS; actual captures просмотрены.
+Targeted дополнительно проверяет old cloud1/missing parity (occupied94_068),
+явный contextual upgrade/Undo, pattern occupancy/structure и palette-only contrast.
+Read-only caps2 mesh audit96/391: occupied98_840, vertices187_160,
+triangles93_580 (pixel96_788, shoots174_280). Один объект, не forest benchmark.
+Fresh caps geometry64–256 около0.16–0.65s, meshing отдельно. Clouds-only/full
+foliage и8related oak/types/bark/editing/large-tree/generator/variation/session
+PASS; diff --check чистый. Art gate открыт, старые migration gates не менялись.
 
 Параметры партии и выбранного кандидата разделены. Общие editing descriptors
 применяются к frozen Recipe: draft имеет local Undo/Redo без meshing, Apply строит
