@@ -31,6 +31,16 @@ const SURFACE_FILL_WATER := 1
 const MAX_CONNECTED_MATERIAL_VOXELS := 131072
 const MAX_SURFACE_FILL_COLUMNS := 131072
 const AUTO_FILL_SEARCH_RADIUS := 128
+const MAX_SURFACE_NORMAL_RADIUS := 5
+const SURFACE_NORMAL_SWITCH_RATIO := 1.25
+const SURFACE_FACE_DIRECTIONS := [
+	Vector3i.RIGHT,
+	Vector3i.LEFT,
+	Vector3i.UP,
+	Vector3i.DOWN,
+	Vector3i.BACK,
+	Vector3i.FORWARD,
+]
 
 
 static func make_pilot() -> EmberVoxelModelResource:
@@ -324,6 +334,207 @@ static func line_cells(from: Vector3i, to: Vector3i) -> Array[Vector3i]:
 	return cells
 
 
+static func surface_normal_radius(brush_radius: int) -> int:
+	## A small brush still needs more than one picked voxel to ignore staircase
+	## micro-faces. Large brushes sample a wider, but deliberately bounded, area.
+	return clampi(ceili(float(maxi(1, brush_radius)) * 0.75), 1, MAX_SURFACE_NORMAL_RADIUS)
+
+
+static func averaged_surface_normal(
+	values: PackedByteArray,
+	size: Vector3i,
+	hit: Vector3i,
+	picked_normal: Vector3i,
+	sample_radius: int,
+	reference_normal := Vector3i.ZERO,
+	view_normal := Vector3.ZERO,
+) -> Vector3:
+	## Approximate Blender's area normal from exposed baseline faces around the
+	## hit. Faces opposite the picked side, current stroke side, or camera are
+	## excluded. This keeps a one-voxel floating sheet from cancelling its front
+	## and back while still letting a broad top beat a one-voxel stair riser.
+	var fallback := Vector3(axis_normal(picked_normal))
+	if (
+		values.size() != size.x * size.y * size.z
+		or hit == INVALID_CELL
+		or not contains(hit, size)
+		or values[index_of(hit, size)] == 0
+	):
+		return fallback
+	var picked_axis := axis_normal(picked_normal)
+	var reference_axis := axis_normal(reference_normal)
+	var visible_direction: Vector3 = view_normal.normalized()
+	var radius := clampi(sample_radius, 1, MAX_SURFACE_NORMAL_RADIUS)
+	var radius_squared := float(radius * radius) + 0.25
+	var total := Vector3.ZERO
+	for offset_y in range(-radius, radius + 1):
+		for offset_z in range(-radius, radius + 1):
+			for offset_x in range(-radius, radius + 1):
+				var offset := Vector3i(offset_x, offset_y, offset_z)
+				var distance_squared := float(offset.length_squared())
+				if distance_squared > radius_squared:
+					continue
+				var cell := hit + offset
+				if not contains(cell, size) or values[index_of(cell, size)] == 0:
+					continue
+				var weight := 1.0 - sqrt(distance_squared) / float(radius + 1)
+				for face: Vector3i in SURFACE_FACE_DIRECTIONS:
+					var face_direction := Vector3(face)
+					if picked_axis != Vector3i.ZERO and face_direction.dot(Vector3(picked_axis)) < 0.0:
+						continue
+					if reference_axis != Vector3i.ZERO and face_direction.dot(Vector3(reference_axis)) < 0.0:
+						continue
+					if not visible_direction.is_zero_approx() and face_direction.dot(visible_direction) < -0.001:
+						continue
+					var neighbor := cell + face
+					if not contains(neighbor, size) or values[index_of(neighbor, size)] == 0:
+						total += face_direction * weight
+	return fallback if total.is_zero_approx() else total.normalized()
+
+
+static func stable_surface_axis(
+	area_normal: Vector3,
+	fallback_normal: Vector3i,
+	previous_normal := Vector3i.ZERO,
+	switch_ratio := SURFACE_NORMAL_SWITCH_RATIO,
+) -> Vector3i:
+	var absolute := area_normal.abs()
+	var candidate_axis := 0
+	if absolute.y > absolute.x and absolute.y >= absolute.z:
+		candidate_axis = 1
+	elif absolute.z > absolute.x and absolute.z > absolute.y:
+		candidate_axis = 2
+	var candidate := Vector3i.ZERO
+	if absolute[candidate_axis] > 0.0001:
+		candidate[candidate_axis] = 1 if area_normal[candidate_axis] > 0.0 else -1
+	if candidate == Vector3i.ZERO:
+		candidate = axis_normal(fallback_normal)
+	var previous := axis_normal(previous_normal)
+	if previous == Vector3i.ZERO or candidate == previous:
+		return candidate
+	var candidate_support := maxf(0.0, area_normal.dot(Vector3(candidate)))
+	var previous_support := maxf(0.0, area_normal.dot(Vector3(previous)))
+	if previous_support > 0.0 and candidate_support < previous_support * maxf(1.0, switch_ratio):
+		return previous
+	return candidate
+
+
+static func oriented_target_cell(
+	pick: Dictionary,
+	surface_normal: Vector3i,
+	tool: int,
+	size: Vector3i,
+) -> Vector3i:
+	var hit: Vector3i = pick.get("hit", INVALID_CELL)
+	var target := hit
+	if tool == TOOL_ADD:
+		target = (
+			hit + axis_normal(surface_normal)
+			if hit != INVALID_CELL
+			else pick.get("adjacent", INVALID_CELL)
+		)
+	return target if contains(target, size) else INVALID_CELL
+
+
+static func surface_face_plane(hit: Vector3i, normal: Vector3i) -> int:
+	if hit == INVALID_CELL:
+		return -999999
+	var outward := axis_normal(normal)
+	if outward == Vector3i.ZERO:
+		return -999999
+	var axis := axis_index(outward)
+	return hit[axis] + (1 if outward[axis] > 0 else 0)
+
+
+static func single_face_target_cell(
+	values: PackedByteArray,
+	size: Vector3i,
+	pick: Dictionary,
+	locked_normal: Vector3i,
+	face_plane: int,
+	tool: int,
+	density: int,
+) -> Vector3i:
+	## "Only one face" is a plane constraint, not a raw-normal comparison. Cast
+	## the current pointer ray back onto the first exposed voxel plane and require
+	## that the pointer is still over baseline geometry on that exact plane. This
+	## distinguishes the real edge of a thin floating sheet from terrain below it.
+	if values.size() != size.x * size.y * size.z or face_plane <= -999999:
+		return INVALID_CELL
+	var outward := axis_normal(locked_normal)
+	if outward == Vector3i.ZERO:
+		return INVALID_CELL
+	var ray_origin: Vector3 = pick.get("ray_origin", Vector3(INF, INF, INF))
+	var ray_direction: Vector3 = pick.get("ray_direction", Vector3.ZERO)
+	var axis := axis_index(outward)
+	if not ray_origin.is_finite() or absf(ray_direction[axis]) <= 0.000001:
+		return INVALID_CELL
+	var safe_density := maxi(1, density)
+	var plane_world := float(face_plane) / float(safe_density)
+	var distance := (plane_world - ray_origin[axis]) / ray_direction[axis]
+	if distance < 0.0:
+		return INVALID_CELL
+	var voxel_point := (ray_origin + ray_direction * distance) * float(safe_density)
+	if tool == TOOL_ADD and bool(pick.get("empty_floor", false)):
+		var floor_target := Vector3i(
+			floori(voxel_point.x),
+			floori(voxel_point.y),
+			floori(voxel_point.z),
+		)
+		floor_target[axis] = face_plane if outward[axis] > 0 else face_plane - 1
+		return floor_target if contains(floor_target, size) else INVALID_CELL
+	var surface_cell := Vector3i(
+		floori(voxel_point.x),
+		floori(voxel_point.y),
+		floori(voxel_point.z),
+	)
+	surface_cell[axis] = face_plane - 1 if outward[axis] > 0 else face_plane
+	if not contains(surface_cell, size):
+		return INVALID_CELL
+	if values[index_of(surface_cell, size)] == 0:
+		return INVALID_CELL
+	var outside := surface_cell + outward
+	if contains(outside, size) and values[index_of(outside, size)] != 0:
+		return INVALID_CELL
+	var target := outside if tool == TOOL_ADD else surface_cell
+	return target if contains(target, size) else INVALID_CELL
+
+
+static func spaced_stroke_segment(
+	previous_input: Vector3i,
+	current_input: Vector3i,
+	distance_to_next: float,
+	spacing: int,
+	last_emitted := INVALID_CELL,
+) -> Dictionary:
+	## Carries the unused distance into the next input segment. The same geometric
+	## path therefore produces the same dabs whether it arrives in one mouse event
+	## or many, and brush density no longer depends on editor FPS.
+	var points: Array[Vector3i] = []
+	var safe_spacing := maxi(1, spacing)
+	if previous_input == INVALID_CELL:
+		if current_input != INVALID_CELL and current_input != last_emitted:
+			points.append(current_input)
+		return {"points": points, "distance_to_next": float(safe_spacing)}
+	if current_input == INVALID_CELL:
+		return {"points": points, "distance_to_next": distance_to_next}
+	var start := Vector3(previous_input)
+	var delta := Vector3(current_input - previous_input)
+	var length := delta.length()
+	if length <= 0.001:
+		return {"points": points, "distance_to_next": distance_to_next}
+	var walked := distance_to_next if distance_to_next > 0.001 else float(safe_spacing)
+	while walked <= length + 0.001:
+		var point := Vector3i((start + delta * walked / length).round())
+		if point != last_emitted and (points.is_empty() or point != points[-1]):
+			points.append(point)
+		walked += float(safe_spacing)
+	return {
+		"points": points,
+		"distance_to_next": walked - length,
+	}
+
+
 static func block_region_for_cells(
 	from: Vector3i,
 	to: Vector3i,
@@ -461,6 +672,83 @@ static func stroke_changes(
 	return changes
 
 
+static func oriented_stroke_changes(
+	resource: EmberVoxelModelResource,
+	baseline_values: PackedByteArray,
+	center: Vector3i,
+	normal: Vector3i,
+	tool: int,
+	palette_index: int,
+	brush_radius := 1,
+	brush_depth := 1,
+	coarse := false,
+	footprint_shape := "circle",
+) -> Dictionary:
+	## Fixed-layer volume/color footprint. Eligibility is always read from the
+	## pointer-down baseline, so revisiting a footprint during one gesture cannot
+	## grow into geometry produced by that same gesture.
+	var changes := {}
+	if resource == null or baseline_values.size() != resource.voxels.size():
+		return changes
+	var size := resource.grid_size()
+	if not contains(center, size):
+		return changes
+	var outward := axis_normal(normal)
+	if outward == Vector3i.ZERO:
+		return changes
+	var depth_direction := outward if tool == TOOL_ADD else -outward
+	var radius := clampi(brush_radius, 1, 32)
+	var step := 2 if coarse else 1
+	var depth := clampi(brush_depth, 1, 32)
+	if coarse:
+		depth = ceili(float(depth) / float(step)) * step
+	var extent := radius - 1
+	var tangents := tangent_axes(outward)
+	var tangent_a: Vector3i = tangents[0]
+	var tangent_b: Vector3i = tangents[1]
+	for offset_b in range(-extent, extent + 1, step):
+		for offset_a in range(-extent, extent + 1, step):
+			if (
+				footprint_shape != "square"
+				and Vector2(offset_a, offset_b).length() > float(radius) - 0.25
+			):
+				continue
+			var seed := center + tangent_a * offset_a + tangent_b * offset_b
+			var block_origin := Vector3i(
+				floori(float(seed.x) / float(step)) * step,
+				floori(float(seed.y) / float(step)) * step,
+				floori(float(seed.z) / float(step)) * step,
+			)
+			var direction_axis := axis_index(depth_direction)
+			if depth_direction[direction_axis] < 0:
+				block_origin[direction_axis] += step - 1
+			for depth_offset in range(0, depth, step):
+				var depth_origin := block_origin + depth_direction * depth_offset
+				for local_b in step:
+					for local_a in step:
+						for local_depth in step:
+							var cell := (
+								depth_origin
+								+ tangent_a * local_a
+								+ tangent_b * local_b
+								+ depth_direction * local_depth
+							)
+							if not contains(cell, size):
+								continue
+							var index := index_of(cell, size)
+							var before := int(baseline_values[index])
+							var after := before
+							if tool == TOOL_ADD and before == 0:
+								after = clampi(palette_index, 1, resource.palette.size() - 1)
+							elif tool == TOOL_REMOVE and before != 0:
+								after = 0
+							elif tool == TOOL_PAINT and before != 0:
+								after = clampi(palette_index, 1, resource.palette.size() - 1)
+							if after != before:
+								changes[index] = {"before": before, "after": after}
+	return changes
+
+
 static func material_stroke_indices(
 	resource: EmberVoxelModelResource,
 	center: Vector3i,
@@ -495,6 +783,60 @@ static func material_stroke_indices(
 						if resource.voxels[index] != 0:
 							indices.append(index)
 	return indices
+
+
+static func oriented_material_stroke_indices(
+	resource: EmberVoxelModelResource,
+	baseline_values: PackedByteArray,
+	center: Vector3i,
+	normal: Vector3i,
+	brush_radius := 1,
+	brush_depth := 1,
+	coarse := false,
+	footprint_shape := "circle",
+) -> PackedInt32Array:
+	var changes := oriented_stroke_changes(
+		resource,
+		baseline_values,
+		center,
+		normal,
+		TOOL_REMOVE,
+		1,
+		brush_radius,
+		brush_depth,
+		coarse,
+		footprint_shape,
+	)
+	var indices := PackedInt32Array()
+	for raw_index in changes:
+		indices.append(int(raw_index))
+	return indices
+
+
+static func axis_normal(direction: Vector3i) -> Vector3i:
+	if direction == Vector3i.ZERO:
+		return Vector3i.ZERO
+	var axis := axis_index(direction)
+	var result := Vector3i.ZERO
+	result[axis] = 1 if direction[axis] > 0 else -1
+	return result
+
+
+static func axis_index(direction: Vector3i) -> int:
+	var absolute := Vector3i(absi(direction.x), absi(direction.y), absi(direction.z))
+	if absolute.x >= absolute.y and absolute.x >= absolute.z:
+		return 0
+	return 1 if absolute.y >= absolute.z else 2
+
+
+static func tangent_axes(normal: Vector3i) -> Array[Vector3i]:
+	match axis_index(normal):
+		0:
+			return [Vector3i.UP, Vector3i.BACK]
+		1:
+			return [Vector3i.RIGHT, Vector3i.BACK]
+		_:
+			return [Vector3i.RIGHT, Vector3i.UP]
 
 
 static func normalized_channel(values: PackedByteArray, count: int) -> PackedByteArray:
@@ -1063,6 +1405,8 @@ static func smooth_segment_changes(
 	baseline_top_cache: Dictionary = {},
 	applied_column_cache: Dictionary = {},
 	baseline_heightfield := PackedInt32Array(),
+	common_level := false,
+	fill_pits := true,
 ) -> Dictionary:
 	var changes := {}
 	if resource == null:
@@ -1082,31 +1426,48 @@ static func smooth_segment_changes(
 	var palette_value := clampi(palette_index, 1, resource.palette.size() - 1)
 	var has_heightfield := baseline_heightfield.size() == size.x * size.z
 	var extent := radius - 1
-	var start_2d := Vector2(from.x, from.z)
-	var end_2d := Vector2(to.x, to.z)
 	var minimum_x := maxi(0, mini(from.x, to.x) - extent)
 	var maximum_x := mini(size.x - 1, maxi(from.x, to.x) + extent)
 	var minimum_z := maxi(0, mini(from.z, to.z) - extent)
 	var maximum_z := mini(size.z - 1, maxi(from.z, to.z) + extent)
 	var first_x := floori(float(minimum_x) / float(step)) * step
 	var first_z := floori(float(minimum_z) / float(step)) * step
+	var radius_limit := float(radius) - 0.25
+	var radius_squared := radius_limit * radius_limit
+	var shared_top := -1
+	if common_level:
+		shared_top = _common_surface_top(
+			baseline_values,
+			size,
+			from,
+			to,
+			radius,
+			coarse,
+			baseline_top_cache,
+			baseline_heightfield,
+		)
+		if shared_top < 0:
+			return changes
 	for base_z in range(first_z, maximum_z + 1, step):
 		for base_x in range(first_x, maximum_x + 1, step):
-			if _distance_to_segment_2d(
-				Vector2(base_x, base_z), start_2d, end_2d
-			) > float(radius) - 0.25:
-				continue
 			var base_column_index := base_x + base_z * size.x
 			if step == 1 and applied_column_cache.has(base_column_index):
 				continue
-			var average_top := _neighbor_average_top(
-				baseline_values,
-				size,
-				base_x,
-				base_z,
-				baseline_top_cache,
-				baseline_heightfield,
-			)
+			if _distance_squared_to_segment_2d(
+				float(base_x), float(base_z),
+				float(from.x), float(from.z), float(to.x), float(to.z)
+			) > radius_squared:
+				continue
+			var average_top := shared_top
+			if not common_level:
+				average_top = _neighbor_average_top(
+					baseline_values,
+					size,
+					base_x,
+					base_z,
+					baseline_top_cache,
+					baseline_heightfield,
+				)
 			if average_top < 0:
 				continue
 			if coarse:
@@ -1132,6 +1493,8 @@ static func smooth_segment_changes(
 					# surface; closing/filling a void remains an explicit Add/Level action.
 					if baseline_top < 0:
 						continue
+					if common_level and not fill_pits and baseline_top < average_top:
+						continue
 					var target_top := clampi(
 						average_top,
 						baseline_top - effective_strength,
@@ -1156,6 +1519,71 @@ static func smooth_segment_changes(
 							if before != 0:
 								changes[index] = {"before": before, "after": 0}
 	return changes
+
+
+static func _common_surface_top(
+	values: PackedByteArray,
+	size: Vector3i,
+	from: Vector3i,
+	to: Vector3i,
+	radius: int,
+	coarse: bool,
+	cache: Dictionary,
+	heightfield := PackedInt32Array(),
+) -> int:
+	## A shared-level brush should follow the surrounding terrain, not the bulk of
+	## the bump or pit it is correcting. Prefer a narrow ring outside the painted
+	## footprint and fall back to the footprint median at map boundaries.
+	var step := 2 if coarse else 1
+	# A median does not need every column of a broad ring. Keep samples anchored
+	# to the model grid so the result stays stable while avoiding a second dense
+	# radius-32 sweep before the actual smoothing pass.
+	var sample_step := maxi(step, floori(float(radius) / 8.0))
+	var outer_radius := float(radius + maxi(2, step))
+	var inner_radius := float(radius) - 0.25
+	var extent := ceili(outer_radius)
+	var minimum_x := maxi(0, mini(from.x, to.x) - extent)
+	var maximum_x := mini(size.x - 1, maxi(from.x, to.x) + extent)
+	var minimum_z := maxi(0, mini(from.z, to.z) - extent)
+	var maximum_z := mini(size.z - 1, maxi(from.z, to.z) + extent)
+	var ring_histogram := PackedInt32Array()
+	var footprint_histogram := PackedInt32Array()
+	ring_histogram.resize(size.y)
+	footprint_histogram.resize(size.y)
+	var ring_count := 0
+	var footprint_count := 0
+	var has_heightfield := heightfield.size() == size.x * size.z
+	var first_x := floori(float(minimum_x) / float(sample_step)) * sample_step
+	var first_z := floori(float(minimum_z) / float(sample_step)) * sample_step
+	for z in range(first_z, maximum_z + 1, sample_step):
+		for x in range(first_x, maximum_x + 1, sample_step):
+			if x < 0 or z < 0:
+				continue
+			var distance_squared := _distance_squared_to_segment_2d(
+				float(x), float(z),
+				float(from.x), float(from.z), float(to.x), float(to.z)
+			)
+			if distance_squared > outer_radius * outer_radius:
+				continue
+			var column_index := x + z * size.x
+			var top := (
+				int(heightfield[column_index])
+				if has_heightfield
+				else _cached_column_top(values, size, x, z, column_index, cache)
+			)
+			if top < 0:
+				continue
+			if distance_squared > inner_radius * inner_radius:
+				ring_histogram[top] += 1
+				ring_count += 1
+			else:
+				footprint_histogram[top] += 1
+				footprint_count += 1
+	if ring_count > 0:
+		return _height_histogram_median(ring_histogram, ring_count)
+	if footprint_count <= 0:
+		return -1
+	return _height_histogram_median(footprint_histogram, footprint_count)
 
 
 static func ramp_segment_changes(
@@ -1360,6 +1788,143 @@ static func relief_segment_changes(
 				var before := int(resource.voxels[index])
 				if before != 0:
 					changes[index] = {"before": before, "after": 0}
+	return changes
+
+
+static func generative_relief_segment_changes(
+	resource: EmberVoxelModelResource,
+	baseline_values: PackedByteArray,
+	from: Vector3i,
+	to: Vector3i,
+	palette_index: int,
+	brush_radius := 8,
+	amplitude := 4,
+	feature_scale := 16,
+	detail_octaves := 3,
+	seed := 0,
+	direction := 0,
+	style := "soil",
+	coarse := false,
+	baseline_top_cache: Dictionary = {},
+	applied_column_cache: Dictionary = {},
+	baseline_heightfield := PackedInt32Array(),
+) -> Dictionary:
+	## Paints a deterministic height field anchored in model coordinates. The
+	## cache stores the strongest falloff and its resulting signed offset, so
+	## overlapping dabs and different input-event densities produce one result.
+	var changes := {}
+	if resource == null:
+		return changes
+	var size := resource.grid_size()
+	if (
+		baseline_values.size() != resource.voxels.size()
+		or not contains(from, size)
+		or not contains(to, size)
+	):
+		return changes
+	var radius := clampi(brush_radius, 1, 32)
+	var safe_amplitude := clampi(amplitude, 1, size.y)
+	var step := 2 if coarse else 1
+	var palette_value := clampi(palette_index, 1, resource.palette.size() - 1)
+	var has_heightfield := baseline_heightfield.size() == size.x * size.z
+	var noise := FastNoiseLite.new()
+	noise.seed = maxi(0, seed)
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	noise.frequency = 1.0 / float(clampi(feature_scale, 4, 64))
+	noise.fractal_type = (
+		FastNoiseLite.FRACTAL_RIDGED if style == "ridges" else FastNoiseLite.FRACTAL_FBM
+	)
+	var light_detail := detail_octaves <= 0
+	var effective_amplitude := mini(safe_amplitude, 2) if light_detail else safe_amplitude
+	noise.fractal_octaves = clampi(detail_octaves, 1, 5)
+	noise.fractal_gain = 0.5
+	noise.fractal_lacunarity = 2.0
+	var extent := radius - 1
+	var minimum_x := maxi(0, mini(from.x, to.x) - extent)
+	var maximum_x := mini(size.x - 1, maxi(from.x, to.x) + extent)
+	var minimum_z := maxi(0, mini(from.z, to.z) - extent)
+	var maximum_z := mini(size.z - 1, maxi(from.z, to.z) + extent)
+	var first_x := floori(float(minimum_x) / float(step)) * step
+	var first_z := floori(float(minimum_z) / float(step)) * step
+	var radius_limit := float(radius) - 0.25
+	var radius_squared := radius_limit * radius_limit
+	for base_z in range(first_z, maximum_z + 1, step):
+		for base_x in range(first_x, maximum_x + 1, step):
+			var distance_squared := _distance_squared_to_segment_2d(
+				float(base_x), float(base_z),
+				float(from.x), float(from.z), float(to.x), float(to.z)
+			)
+			if distance_squared > radius_squared:
+				continue
+			var normalized := clampf(sqrt(distance_squared) / float(radius), 0.0, 1.0)
+			var falloff := 1.0 - smoothstep(0.0, 1.0, normalized)
+			var influence := clampi(roundi(falloff * 4096.0), 1, 4096)
+			for oz in step:
+				for ox in step:
+					var x := base_x + ox
+					var z := base_z + oz
+					if x < 0 or z < 0 or x >= size.x or z >= size.z:
+						continue
+					var column_index := x + z * size.x
+					var previous_state: Vector2i = applied_column_cache.get(
+						column_index, Vector2i.ZERO
+					)
+					if influence <= previous_state.x:
+						continue
+					var sample := clampf(noise.get_noise_2d(float(x), float(z)), -1.0, 1.0)
+					if light_detail:
+						# A quiet texture is deliberately sparse rather than merely
+						# single-octave: suppress the broad middle of the noise and keep
+						# only low-amplitude crests. Directed variants keep only the
+						# matching signed crests instead of moving the whole footprint.
+						var light_sign := signf(sample)
+						var light_magnitude := clampf((absf(sample) - 0.12) / 0.88, 0.0, 1.0)
+						sample = light_sign * smoothstep(0.0, 1.0, light_magnitude)
+						if direction > 0:
+							sample = maxf(sample, 0.0)
+						elif direction < 0:
+							sample = minf(sample, 0.0)
+					else:
+						if direction > 0:
+							sample = (sample + 1.0) * 0.5
+						elif direction < 0:
+							sample = -(sample + 1.0) * 0.5
+					var target_offset := roundi(
+						float(effective_amplitude) * float(influence) / 4096.0 * sample
+					)
+					if coarse:
+						target_offset = roundi(float(target_offset) / 2.0) * 2
+					applied_column_cache[column_index] = Vector2i(influence, target_offset)
+					var previous_offset := previous_state.y
+					if target_offset == previous_offset:
+						continue
+					var baseline_top := (
+						int(baseline_heightfield[column_index])
+						if has_heightfield
+						else _cached_column_top(
+							baseline_values, size, x, z, column_index, baseline_top_cache
+						)
+					)
+					if baseline_top < 0:
+						continue
+					var previous_top := clampi(
+						baseline_top + previous_offset, 0, size.y - 1
+					)
+					var target_top := clampi(
+						baseline_top + target_offset, 0, size.y - 1
+					)
+					if previous_top < target_top:
+						for y in range(previous_top + 1, target_top + 1):
+							var index := index_of(Vector3i(x, y, z), size)
+							var before := int(resource.voxels[index])
+							if before == 0:
+								changes[index] = {"before": before, "after": palette_value}
+					elif previous_top > target_top:
+						for y in range(target_top + 1, previous_top + 1):
+							var index := index_of(Vector3i(x, y, z), size)
+							var before := int(resource.voxels[index])
+							if before != 0:
+								changes[index] = {"before": before, "after": 0}
 	return changes
 
 
@@ -1637,6 +2202,49 @@ static func _distance_to_segment_2d(point: Vector2, from: Vector2, to: Vector2) 
 	return point.distance_to(from + delta * along)
 
 
+static func _distance_squared_to_segment_2d(
+	point_x: float,
+	point_z: float,
+	from_x: float,
+	from_z: float,
+	to_x: float,
+	to_z: float,
+) -> float:
+	var delta_x := to_x - from_x
+	var delta_z := to_z - from_z
+	var length_squared := delta_x * delta_x + delta_z * delta_z
+	if length_squared <= 0.000001:
+		var point_delta_x := point_x - from_x
+		var point_delta_z := point_z - from_z
+		return point_delta_x * point_delta_x + point_delta_z * point_delta_z
+	var along := clampf(
+		((point_x - from_x) * delta_x + (point_z - from_z) * delta_z) / length_squared,
+		0.0,
+		1.0,
+	)
+	var nearest_x := from_x + delta_x * along
+	var nearest_z := from_z + delta_z * along
+	var distance_x := point_x - nearest_x
+	var distance_z := point_z - nearest_z
+	return distance_x * distance_x + distance_z * distance_z
+
+
+static func _height_histogram_median(histogram: PackedInt32Array, count: int) -> int:
+	if count <= 0:
+		return -1
+	var lower_rank := (count - 1) / 2
+	var upper_rank := count / 2
+	var seen := 0
+	var lower_value := -1
+	for height in histogram.size():
+		seen += int(histogram[height])
+		if lower_value < 0 and seen > lower_rank:
+			lower_value = height
+		if seen > upper_rank:
+			return roundi(float(lower_value + height) * 0.5)
+	return lower_value
+
+
 static func _segment_progress_2d(point: Vector2, from: Vector2, to: Vector2) -> float:
 	var delta := to - from
 	var length_squared := delta.length_squared()
@@ -1677,6 +2285,7 @@ static func pick(
 	ray_direction: Vector3,
 	visible_height := -1,
 	allow_empty_floor := false,
+	values_override := PackedByteArray(),
 ) -> Dictionary:
 	if resource == null or ray_direction.is_zero_approx():
 		return {}
@@ -1689,6 +2298,11 @@ static func pick(
 	if interval.x < 0.0 or interval.y < interval.x:
 		return {}
 	var step := 0.32 / density
+	var values := (
+		values_override
+		if values_override.size() == resource.voxels.size()
+		else resource.voxels
+	)
 	var t := maxf(interval.x, 0.0) + step * 0.25
 	var previous_cell := INVALID_CELL
 	var last_empty := INVALID_CELL
@@ -1703,9 +2317,23 @@ static func pick(
 		cell.y = clampi(cell.y, 0, size.y - 1)
 		cell.z = clampi(cell.z, 0, size.z - 1)
 		if cell != previous_cell:
-			var value := int(resource.voxels[index_of(cell, size)])
+			var value := int(values[index_of(cell, size)])
 			if value != 0:
-				return {"hit": cell, "adjacent": last_empty}
+				var normal := (
+					axis_normal(last_empty - cell)
+					if last_empty != INVALID_CELL
+					else Vector3i.ZERO
+				)
+				if normal == Vector3i.ZERO:
+					normal = axis_normal(Vector3i(-ray_direction.round()))
+				return {
+					"hit": cell,
+					"adjacent": last_empty,
+					"normal": normal,
+					"view_normal": -ray_direction.normalized(),
+					"ray_origin": ray_origin,
+					"ray_direction": ray_direction.normalized(),
+				}
 			last_empty = cell
 			previous_cell = cell
 		t += step
@@ -1714,7 +2342,15 @@ static func pick(
 		var point := ray_origin + ray_direction * floor_t
 		var floor_cell := Vector3i(floori(point.x * density), 0, floori(point.z * density))
 		if floor_t >= 0.0 and contains(floor_cell, size):
-			return {"hit": INVALID_CELL, "adjacent": floor_cell, "empty_floor": true}
+			return {
+				"hit": INVALID_CELL,
+				"adjacent": floor_cell,
+				"normal": Vector3i.UP,
+				"view_normal": -ray_direction.normalized(),
+				"ray_origin": ray_origin,
+				"ray_direction": ray_direction.normalized(),
+				"empty_floor": true,
+			}
 	return {}
 
 

@@ -4,7 +4,7 @@ extends RefCounted
 const Selection = preload("res://addons/ember_import/ember_voxel_selection.gd")
 const Groups = preload("res://addons/ember_import/ember_voxel_groups.gd")
 const Model = preload("res://addons/ember_import/ember_voxel_sculpt_model.gd")
-const CHANNELS = ["voxels", "emissive", "shine", "transparency", "transmittance"]
+const CHANNELS = ["voxels", "emissive", "shine", "transparency", "transmittance", "collision_voxels"]
 
 static func rotate_cell(cell: Vector3i, span: Vector3i, axis: int) -> Dictionary:
 	if axis == 0:

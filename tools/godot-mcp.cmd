@@ -6,4 +6,5 @@ if not exist "project.godot" (
   echo [godot-mcp] project.godot missing in %CD% 1>&2
   exit /b 1
 )
-npx -y @keeveeg/godot-mcp
+node "%~dp0godot-mcp-supervisor.mjs"
+exit /b %ERRORLEVEL%

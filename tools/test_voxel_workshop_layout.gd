@@ -39,7 +39,7 @@ func _run() -> void:
 	check(workspace.theme.is_type_variation("WorkshopPrimaryButton", "Button"), "primary button Theme variation is missing")
 	check(workspace.theme.is_type_variation("WorkshopSegmentButton", "Button"), "segmented-control Theme variation is missing")
 	check(workspace._sidebar_panel.custom_minimum_size.x >= 340.0, "right panel is too narrow for the 125% editor scale")
-	check(workspace._sidebar_tabs.get_tab_count() == 2, "right panel must contain only parts and library")
+	check(workspace._sidebar_tabs.get_tab_count() == 3 and workspace._sidebar_tabs.is_tab_hidden(2), "ordinary model hides contextual generator tab")
 	check(workspace._sidebar_tabs.get_tab_title(0) == "Части", "parts tab is not first")
 	check(workspace._sidebar_tabs.get_tab_title(1) == "Библиотека", "library tab is not second")
 	check(workspace._object_name_input != null and not workspace._object_name_input.editable, "surface context must not expose scene-object rename")
@@ -56,6 +56,59 @@ func _run() -> void:
 	check(workspace._parts_sections.get_tab_title(2) == "Вид", "view subsection is missing")
 	check(workspace.find_child("VoxelWorkshopSelectionTool", true, false) != null, "selection is absent from the primary tool rail")
 	check(workspace.find_child("VoxelWorkshopStampTool", true, false) != null, "stamp library is absent from the primary tool rail")
+	check(workspace._depth.visible and workspace._depth.value == 1, "fixed brush depth is not visible by default")
+	check(workspace._follow_surface.visible and workspace._follow_surface.button_pressed, "surface-following direction is not the default")
+	check(workspace._follow_surface.text.contains("по поверхности"), "surface direction label is unclear")
+	check(workspace._application_mode.visible and str(workspace._application_mode.get_selected_metadata()) == "stroke", "free stroke is not the default application mode")
+	check(workspace._brush_shape.visible and str(workspace._brush_shape.get_selected_metadata()) == "circle", "circle is not the default brush footprint")
+	check(workspace._info.text.contains("не наращивает"), "fixed-layer behavior is not explained in the footer")
+	workspace._follow_surface.set_pressed_no_signal(false)
+	workspace._on_brush_setting_changed()
+	check(workspace._follow_surface.text.contains("только одна грань"), "single-face mode is not named honestly")
+	check(workspace._info.text.contains("останавливается"), "single-face edge behavior is not explained")
+	workspace._follow_surface.set_pressed_no_signal(true)
+	workspace._on_brush_setting_changed()
+	workspace._select_option_metadata(workspace._application_mode, "line")
+	workspace._on_brush_setting_changed()
+	check(not workspace._follow_surface.visible, "plane-locked line exposes an incompatible follow-surface switch")
+	check(workspace._info.text.contains("кликните A"), "two-point line lifecycle is not explained in the footer")
+	workspace._select_option_metadata(workspace._application_mode, "stroke")
+	workspace._on_brush_setting_changed()
+	workspace._activate_tool_id(Workspace.Model.TOOL_RAISE)
+	check(not workspace._depth.visible and not workspace._follow_surface.visible and not workspace._application_mode.visible and not workspace._brush_shape.visible, "relief exposes unrelated precision controls")
+	check(workspace._active_tool_label.text.contains("наращивание"), "relief is not explicitly labeled as buildup")
+	check(workspace._relief_mode.visible and workspace._buildup_rate.visible and not workspace._relief_generator_style.visible, "buildup Relief controls are not separated from the generator")
+	workspace._select_option_metadata(
+		workspace._relief_mode, Workspace.BrushProfiles.RELIEF_GENERATOR
+	)
+	workspace._on_brush_setting_changed()
+	check(not workspace._buildup_rate.visible and not workspace._relief_geometry.visible, "generator still exposes buildup-only controls")
+	check(workspace._relief_generator_style.visible and workspace._relief_generator_direction.visible and workspace._relief_generator_scale.visible and workspace._relief_generator_detail.visible and workspace._relief_variant_button.visible, "generative Relief controls are incomplete")
+	check(workspace._relief_generator_detail.get_item_metadata(0) == 0, "generative Relief is missing the light detail option")
+	check(workspace._relief_generator_detail.get_selected_metadata() == 3, "light detail unexpectedly replaced the established default")
+	check(workspace._active_tool_label.text.contains("генератор") and workspace._info.text.contains("координатах модели"), "generative Relief behavior is not explained")
+	workspace._select_option_metadata(workspace._relief_generator_detail, 0)
+	workspace._on_brush_setting_changed()
+	check(workspace._info.text.contains("редкие мягкие перепады"), "light generative Relief behavior is not explained")
+	if "--capture" in OS.get_cmdline_user_args() and DisplayServer.get_name() != "headless":
+		for frame in 3:
+			await process_frame
+		var relief_capture := "user://voxel_workshop_relief_generator_1280.png"
+		root.get_texture().get_image().save_png(relief_capture)
+		print("WORKSHOP_RELIEF_GENERATOR_CAPTURE ", ProjectSettings.globalize_path(relief_capture))
+	workspace._activate_tool_id(Workspace.Model.TOOL_SMOOTH)
+	check(workspace._smooth_mode.visible and not workspace._smooth_fill_pits.visible, "Smooth mode controls do not start in the compatible Steps mode")
+	workspace._select_option_metadata(workspace._smooth_mode, Workspace.BrushProfiles.SMOOTH_COMMON)
+	workspace._on_brush_setting_changed()
+	check(workspace._smooth_fill_pits.visible and workspace._smooth_fill_pits.button_pressed, "Common Smooth does not expose the enabled pits toggle")
+	check(workspace._active_tool_label.text.contains("общий уровень") and workspace._info.text.contains("ямки"), "Common Smooth behavior is not explained in the active tool help")
+	if "--capture" in OS.get_cmdline_user_args() and DisplayServer.get_name() != "headless":
+		for frame in 3:
+			await process_frame
+		var smooth_1280_capture := "user://voxel_workshop_smooth_1280.png"
+		root.get_texture().get_image().save_png(smooth_1280_capture)
+		print("WORKSHOP_SMOOTH_1280_CAPTURE ", ProjectSettings.globalize_path(smooth_1280_capture))
+	workspace._activate_tool_id(Workspace.Model.TOOL_ADD)
 	check(workspace._info.get_parent().name == "VoxelWorkshopFooter", "context help still occupies the right panel")
 	check(not workspace._stamp_panel._create_panel.visible, "new-stamp form must be collapsed by default")
 	workspace._stamp_panel._create_toggle.button_pressed = true
@@ -97,7 +150,7 @@ func _run() -> void:
 	check(workspace._parts_sections.current_tab == 0, "selection tool does not reveal the compact selection subsection")
 	check(workspace._selection_panel._mode_buttons.size() == 5 and not workspace._selection_panel._mode.visible, "selection modes still use the long dropdown")
 	check(workspace._selection_panel.get_combined_minimum_size().y <= 430.0, "selection controls are still a long vertical canvas")
-	check(workspace._select_tool_button.button_pressed and not workspace._stamp_tool_button.button_pressed, "selection mode is not reflected in the primary rail")
+	check(workspace._select_tool_button.button_pressed and not workspace._stamp_tool_button.button_pressed and workspace._tool.get_selected_items().is_empty(), "selection mode is not the sole primary tool in the rail")
 	check(workspace._active_tool_label.text.begins_with("Выделение"), "selection mode has no visible active-tool state")
 	check(selection_viewport.distance_to(initial_viewport) <= 2.0, "changing workshop tabs resized the Canvas: %s -> %s" % [initial_viewport, selection_viewport])
 	if "--capture" in OS.get_cmdline_user_args() and DisplayServer.get_name() != "headless":
@@ -144,7 +197,8 @@ func _run() -> void:
 	for frame in 3:
 		await process_frame
 	check(workspace._selection_interaction._controls.visible, "compact stamp operation is hidden")
-	check(workspace._selection_interaction._stamp_mode_buttons.size() == 2, "stamp mode is not a two-choice segmented control")
+	check(workspace._selection_interaction._stamp_mode_buttons.size() == 3, "stamp mode does not expose add, replace and indent")
+	check(workspace._selection_interaction._stamp_mode_buttons[2].text == "Вдавить", "volume indent mode is not explicit")
 	check(workspace._selection_interaction._stamp_mirror_buttons.size() == 4, "stamp mirror choices are incomplete")
 	check(workspace._selection_interaction._stamp_anchor_buttons.size() == 3, "stamp anchor choices are incomplete")
 	workspace._selection_interaction._select_segment(workspace._selection_interaction._stamp_mode, 1)
@@ -166,6 +220,16 @@ func _run() -> void:
 		var capture := "user://voxel_workshop_layout.png"
 		root.get_texture().get_image().save_png(capture)
 		print("WORKSHOP_LAYOUT_CAPTURE ", ProjectSettings.globalize_path(capture))
+		workspace._activate_tool_id(Workspace.Model.TOOL_SMOOTH)
+		workspace._select_option_metadata(
+			workspace._smooth_mode, Workspace.BrushProfiles.SMOOTH_COMMON
+		)
+		workspace._on_brush_setting_changed()
+		for frame in 3:
+			await process_frame
+		var smooth_capture := "user://voxel_workshop_smooth.png"
+		root.get_texture().get_image().save_png(smooth_capture)
+		print("WORKSHOP_SMOOTH_CAPTURE ", ProjectSettings.globalize_path(smooth_capture))
 	workspace.free()
 	undo.clear_history()
 	undo.free()

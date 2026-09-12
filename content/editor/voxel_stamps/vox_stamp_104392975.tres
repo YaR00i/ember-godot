@@ -1,0 +1,25 @@
+[gd_resource type="Resource" format=3 uid="uid://bnh6y5q76xjmj"]
+
+[ext_resource type="Script" uid="uid://bndlx7f0sdeg3" path="res://addons/ember_import/ember_voxel_generator_recipe.gd" id="1_xnjs3"]
+[ext_resource type="Resource" uid="uid://yauuu0hs7i6h" path="res://content/voxel_models/vox_stamp_104392975.tres" id="2_b4wwo"]
+[ext_resource type="Script" uid="uid://cfd8e3hfqcxlr" path="res://addons/ember_import/ember_voxel_stamp_preset.gd" id="3_i56r4"]
+
+[sub_resource type="Resource" id="Resource_xnjs3"]
+script = ExtResource("1_xnjs3")
+generator_id = "rock"
+seed = 7
+parameters = {
+"chips": 25,
+"density": 32,
+"dimensions": Vector3i(10, 7, 9),
+"roughness": 35,
+"size_variation": 25,
+"variant_count": 5
+}
+
+[resource]
+script = ExtResource("3_i56r4")
+display_name = "КаменьгЕн"
+geometry = ExtResource("2_b4wwo")
+kind = 2
+generator_recipe = SubResource("Resource_xnjs3")

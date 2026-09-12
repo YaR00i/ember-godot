@@ -1,7 +1,8 @@
 @tool
 extends VBoxContainer
-## Transient selection owner + bounded visualization. No saved schema or Undo stack.
+## Transient selection + independent brush-mask snapshot. No saved schema or Undo stack.
 const Selection = preload("res://addons/ember_import/ember_voxel_selection.gd")
+const Model = preload("res://addons/ember_import/ember_voxel_sculpt_model.gd")
 const DEFAULT_OVERLAY_COLOR := Color(1, 0.45, 0.05, 0.45)
 signal activation_requested
 signal transform_requested
@@ -29,15 +30,29 @@ var _through_buttons: Array[Button] = []
 var _operation_buttons: Array[Button] = []
 var _through_row: HBoxContainer
 var _overlay: MultiMeshInstance3D
+var _mask_outline: MeshInstance3D
+var _history_actions: Object
 var _job: RefCounted
 var _pending_operation := 0
+var _pending_normal := Vector3i.UP
+var _pending_history_state: Dictionary = {}
 var _drawing := false
 var _draw_indices := PackedInt32Array()
 var _draw_cursor := 0
 var _applying := false
+var _applying_history := false
 var _preserve_next_change := false
+var _clear_selected_after_next_change := false
 var _mask_kind := "none"
-var _selected_columns: Dictionary = {}
+var _mask_suspended := false
+var _selection_overlay_suspended := false
+var _selection_normal := Vector3i.UP
+var _selected_footprint: Dictionary = {}
+var _mask_indices: Dictionary = {}
+var _mask_normal := Vector3i.UP
+var _mask_footprint: Dictionary = {}
+var _mask_depths: Dictionary = {}
+var _mask_grid_size := Vector3i.ZERO
 var _overlay_color := DEFAULT_OVERLAY_COLOR
 
 
@@ -50,7 +65,7 @@ func _init() -> void:
 	_toggle.theme_type_variation = &"WorkshopToolButton"
 	_toggle.pressed.connect(func() -> void: activation_requested.emit())
 	add_child(_toggle)
-	_mode = _state_options(["Один воксель", "Связные похожего цвета", "Все похожего цвета", "Рамка · протяните мышью", "Рамка по поверхности"])
+	_mode = _state_options(["Один воксель", "Связные похожего цвета", "Все похожего цвета", "Рамка · протяните мышью", "Двухэтапное выделение"])
 	_mode.item_selected.connect(_on_mode_selected)
 	_mode.select(3)
 	var method_label := Label.new()
@@ -66,7 +81,7 @@ func _init() -> void:
 	var method_area := HBoxContainer.new()
 	method_area.add_theme_constant_override("separation", 4)
 	add_child(method_area)
-	_add_segment_buttons(method_area, method_group, _mode, [3, 4], ["Рамка", "Поверхность"], _mode_buttons)
+	_add_segment_buttons(method_area, method_group, _mode, [3, 4], ["Рамка", "Два этапа"], _mode_buttons)
 	_through = _state_options(["Рамка: видимая поверхность", "Рамка: насквозь"])
 	_through_row = HBoxContainer.new()
 	_through_row.add_theme_constant_override("separation", 4)
@@ -78,9 +93,9 @@ func _init() -> void:
 	_depth.min_value = 1
 	_depth.max_value = 256
 	_depth.value = 1
-	_depth.prefix = "Глубина внутрь · "
-	_depth.suffix = "vox"
-	_depth.tooltip_text = "Число слоёв внутрь от грани, с которой начат жест. Плоскость не огибает рельеф."
+	_depth.prefix = "Этап 2 · внутрь "
+	_depth.suffix = " vox"
+	_depth.tooltip_text = "После рамки двигайте мышь поперёк начальной грани или задайте точное число слоёв. Второй клик либо Enter подтверждает."
 	add_child(_depth)
 	_depth.hide()
 	_operation = _state_options(["Новое выделение", "Добавить · Shift", "Вычесть · Ctrl"])
@@ -143,14 +158,15 @@ func _init() -> void:
 	_mask = CheckButton.new()
 	_mask.name = "VoxelSelectionMaskBrush"
 	_mask.text = "Маска кисти"
-	_mask.tooltip_text = "Точная маска для цвета; XZ-отпечаток для формы."
+	_mask.tooltip_text = "Точная маска для цвета; плоскость первой грани для формы."
 	_mask.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_mask.toggled.connect(_on_mask_toggled)
 	selection_actions.add_child(_mask)
 	var clear := Button.new()
 	clear.text = "Снять"
-	clear.tooltip_text = "Очистить текущее выделение вокселей"
+	clear.tooltip_text = "Очистить текущее выделение и снимок маски кисти"
 	clear.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	clear.pressed.connect(clear_selection)
+	clear.pressed.connect(func() -> void: clear_selection(true))
 	selection_actions.add_child(clear)
 	_sync_segments()
 	_on_mode_selected(_mode.selected)
@@ -164,6 +180,10 @@ func _state_options(labels: Array) -> OptionButton:
 	option.hide()
 	add_child(option)
 	return option
+
+
+func configure_history(actions: Object) -> void:
+	_history_actions = actions
 
 
 func _add_segment_buttons(
@@ -220,7 +240,7 @@ func sync(resource: EmberVoxelModelResource, region: Rect2i, height: int, surfac
 		_resource = resource
 		_region = region
 		_height = height
-		clear_selection()
+		clear_selection(false)
 		if _resource != null:
 			_resource.changed.connect(_on_source_changed)
 	if not is_instance_valid(_overlay) and is_instance_valid(surface):
@@ -228,7 +248,13 @@ func sync(resource: EmberVoxelModelResource, region: Rect2i, height: int, surfac
 		_overlay.name = "VoxelSelectionOverlay"
 		_overlay.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		surface.add_child(_overlay)
+	if not is_instance_valid(_mask_outline) and is_instance_valid(surface):
+		_mask_outline = MeshInstance3D.new()
+		_mask_outline.name = "VoxelSelectionMaskOutline"
+		_mask_outline.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		surface.add_child(_mask_outline)
 	_toggle.disabled = resource == null
+	_update_overlay_visibility()
 
 
 func set_active(value: bool) -> void:
@@ -236,6 +262,7 @@ func set_active(value: bool) -> void:
 	_toggle.set_pressed_no_signal(active)
 	if not active:
 		cancel_search()
+	_update_overlay_visibility()
 
 
 func busy() -> bool:
@@ -244,40 +271,73 @@ func busy() -> bool:
 
 func set_tool_support(kind: String) -> void:
 	_mask_kind = kind
-	if kind == "none":
-		_mask.set_pressed_no_signal(false)
+	_rebuild_mask_outline()
 	_update_status()
+	_update_overlay_visibility()
+
+
+func set_mask_suspended(value: bool) -> void:
+	_mask_suspended = value
+	_update_status()
+	_update_overlay_visibility()
+
+
+func set_selection_overlay_suspended(value: bool) -> void:
+	_selection_overlay_suspended = value
+	_update_overlay_visibility()
+
+
+func has_saved_mask() -> bool:
+	return _mask.button_pressed and _has_mask_snapshot()
+
+
+func mask_is_suspended() -> bool:
+	return _mask_suspended and has_saved_mask()
 
 
 func mask_brushes_enabled() -> bool:
-	return _mask.button_pressed and _mask_kind != "none" and not selected.is_empty()
+	if _mask_suspended or not _mask.button_pressed or _mask_kind == "none":
+		return false
+	return not (_mask_indices if _mask_kind == "voxels" else _mask_footprint).is_empty()
 
 
 func preserves_mask_after_commit() -> bool:
-	return mask_brushes_enabled() and _mask_kind == "voxels"
+	return mask_brushes_enabled()
 
 
 func allows_brush_index(index: int) -> bool:
 	if not mask_brushes_enabled():
 		return true
 	if _mask_kind == "voxels":
-		return selected.has(index)
+		return _mask_indices.has(index)
 	if _resource == null or index < 0 or index >= _resource.voxels.size():
 		return false
 	var size := _resource.grid_size()
 	var cell := Selection.cell_of(index, size)
-	return _selected_columns.has(cell.x + cell.z * size.x)
+	return _mask_footprint.has(_plane_key(cell, _normal_axis(_mask_normal)))
 
 
-func preserve_next_source_change() -> void:
+func preserve_next_source_change(clear_transient_selection := false) -> void:
 	_preserve_next_change = true
+	_clear_selected_after_next_change = clear_transient_selection
 
 
-func choose(seed: Vector3i, shift := false, control := false) -> void:
+func choose(
+	seed: Vector3i,
+	shift := false,
+	control := false,
+	normal := Vector3i.UP,
+) -> void:
 	if _resource == null or _drawing:
 		return
 	_overlay_color = DEFAULT_OVERLAY_COLOR
 	_pending_operation = 2 if control else 1 if shift else _operation.selected
+	_pending_normal = (
+		Model.axis_normal(normal)
+		if _pending_operation == 0 or selected.is_empty()
+		else _selection_normal
+	)
+	_pending_history_state = history_state()
 	if _mode.selected == 3:
 		if _box_anchor.x < 0:
 			_box_anchor = seed
@@ -307,10 +367,14 @@ func _process(_delta: float) -> void:
 					message = "Лимит %d вокселей; прежнее выделение сохранено" % Selection.LIMIT
 				else:
 					selected = next
-					_rebuild_selected_columns()
+					_selection_normal = _pending_normal
+					_rebuild_selected_footprint()
+					_on_selection_updated()
 					_begin_overlay()
 					selection_changed.emit(not selected.is_empty())
+					_record_history(_pending_history_state, "Voxel Surface · изменить маску")
 			_job = null
+			_pending_history_state = {}
 			_update_status(message)
 	while _drawing and Time.get_ticks_usec() < deadline:
 		_draw_one()
@@ -321,33 +385,53 @@ func _process(_delta: float) -> void:
 func cancel_search() -> void:
 	_box_anchor = Vector3i(-1,-1,-1)
 	_job = null
+	_pending_history_state = {}
 	_update_status()
 
 
-func clear_selection() -> void:
+func clear_selection(record_history := false) -> void:
+	var before := history_state() if record_history else {}
+	_clear_selected_only()
+	_clear_mask_snapshot()
+	_update_status()
+	_update_overlay_visibility()
+	if record_history:
+		_record_history(before, "Voxel Surface · снять маску")
+
+
+func _clear_selected_only() -> void:
 	_box_anchor = Vector3i(-1,-1,-1)
 	_job = null
 	_drawing = false
 	selected.clear()
-	_selected_columns.clear()
+	_selected_footprint.clear()
 	_draw_indices.clear()
 	if is_instance_valid(_overlay):
 		_overlay.multimesh = null
-	_mask.set_pressed_no_signal(false)
-	_update_status()
 	selection_changed.emit(false)
 
 
-func set_selection(indices: PackedInt32Array, color := DEFAULT_OVERLAY_COLOR) -> void:
+func set_selection(
+	indices: PackedInt32Array,
+	color := DEFAULT_OVERLAY_COLOR,
+	normal := Vector3i.ZERO,
+	record_history := false,
+) -> void:
+	var before := history_state() if record_history else {}
 	_overlay_color = color
 	_overlay_color.a = 0.45
+	if normal != Vector3i.ZERO:
+		_selection_normal = Model.axis_normal(normal)
 	selected.clear()
 	for index in indices:
 		selected[int(index)] = true
-	_rebuild_selected_columns()
+	_rebuild_selected_footprint()
+	_on_selection_updated()
 	_begin_overlay()
 	_update_status()
 	selection_changed.emit(not selected.is_empty())
+	if record_history:
+		_record_history(before, "Voxel Surface · изменить маску")
 
 
 func selection_indices() -> PackedInt32Array:
@@ -357,10 +441,28 @@ func selection_indices() -> PackedInt32Array:
 
 
 func _on_source_changed() -> void:
-	if _preserve_next_change:
-		_preserve_next_change = false
-	elif not _applying:
-		clear_selection() # Undo/brush/palette edits cannot leave a stale mask.
+	var preserve_selection := _preserve_next_change
+	var clear_selected := _clear_selected_after_next_change
+	_preserve_next_change = false
+	_clear_selected_after_next_change = false
+	if _applying:
+		_rebuild_mask_outline()
+		_update_overlay_visibility()
+		return
+	if _has_mask_snapshot():
+		if _resource == null or _resource.grid_size() != _mask_grid_size:
+			clear_selection()
+			return
+		# Geometry/Undo may stale exact selected indices, but the editor-only mask
+		# remains useful. Column contours are rebuilt against the current surface.
+		if clear_selected or not preserve_selection:
+			_clear_selected_only()
+		_rebuild_mask_outline()
+		_update_status()
+		_update_overlay_visibility()
+		return
+	if not preserve_selection:
+		clear_selection()
 
 
 func _request_paint() -> void:
@@ -372,6 +474,8 @@ func _request_paint() -> void:
 
 
 func _begin_overlay() -> void:
+	if _resource == null or not is_instance_valid(_overlay):
+		return
 	_draw_indices = PackedInt32Array(selected.keys())
 	_draw_cursor = 0
 	_drawing = not _draw_indices.is_empty()
@@ -389,6 +493,7 @@ func _begin_overlay() -> void:
 	multi.instance_count = _draw_indices.size()
 	multi.visible_instance_count = 0
 	_overlay.multimesh = multi
+	_update_overlay_visibility()
 
 
 func _draw_one() -> void:
@@ -400,31 +505,396 @@ func _draw_one() -> void:
 		_drawing = false
 		_overlay.multimesh.visible_instance_count = _draw_cursor
 		_update_status()
+		_update_overlay_visibility()
 
 
 func _update_status(message := "") -> void:
-	_status.text = message if not message.is_empty() else "Выделено: %d vox%s" % [selected.size(), " · подсветка…" if _drawing else ""]
+	if not message.is_empty():
+		_status.text = message
+	elif _mask.button_pressed and _has_mask_snapshot():
+		if _mask_suspended or _mask_kind == "none":
+			_status.text = "Маска сохранена · не действует в текущем режиме"
+		else:
+			var mask_count := _mask_footprint.size() if _mask_kind == "columns" else _mask_indices.size()
+			var unit := "ячеек" if _mask_kind == "columns" else "vox"
+			_status.text = "Маска · %s · %s · %d %s%s" % [
+				_plane_label(_mask_normal), _normal_label(_mask_normal), mask_count, unit,
+				" · подсветка…" if _drawing else "",
+			]
+	else:
+		_status.text = "Выделено: %d vox%s" % [selected.size(), " · подсветка…" if _drawing else ""]
 	_paint.disabled = busy() or selected.is_empty()
-	_mask.disabled = selected.is_empty() or _mask_kind == "none"
+	_mask.disabled = (_mask_kind == "none") or (selected.is_empty() and not _has_mask_snapshot())
 	if _mask_kind == "voxels":
 		_mask.text = "Маска кисти"
 		_mask.tooltip_text = "Цвет или материал меняются только на точных индексах выделения; после мазка маска остаётся."
 	elif _mask_kind == "columns":
 		_mask.text = "Маска кисти"
-		_mask.tooltip_text = "Форма меняется лишь в вертикальном XZ-отпечатке выделения; после успешного мазка устаревшая маска очищается."
+		_mask.tooltip_text = "Форма меняется только в отпечатке первой грани; эта грань также фиксирует направление объёмной кисти."
 	else:
 		_mask.text = "Маска кисти"
-		_mask.tooltip_text = "Заливка уровня работает с замкнутым водоёмом, а не с voxel-маской."
+		_mask.tooltip_text = "Маска сохранена, но текущий инструмент её не использует."
 
 
-func _rebuild_selected_columns() -> void:
-	_selected_columns.clear()
+func _rebuild_selected_footprint() -> void:
+	_selected_footprint.clear()
 	if _resource == null:
 		return
 	var size := _resource.grid_size()
+	var axis := _normal_axis(_selection_normal)
 	for raw_index in selected:
 		var cell := Selection.cell_of(int(raw_index), size)
-		_selected_columns[cell.x + cell.z * size.x] = true
+		_selected_footprint[_plane_key(cell, axis)] = true
+
+
+func _on_selection_updated() -> void:
+	if _mask.button_pressed:
+		_capture_mask_from_selection()
+	elif _has_mask_snapshot():
+		# An explicitly edited selection replaces a disabled old snapshot too.
+		_clear_mask_snapshot(false)
+
+
+func _on_mask_toggled(enabled: bool) -> void:
+	var before := history_state()
+	before["mask_enabled"] = not enabled
+	if enabled and not _has_mask_snapshot():
+		_capture_mask_from_selection()
+	if enabled and not _has_mask_snapshot():
+		_mask.set_pressed_no_signal(false)
+	_rebuild_mask_outline()
+	_update_status()
+	_update_overlay_visibility()
+	if not _applying_history:
+		_record_history(before, "Voxel Surface · %s маску" % ("включить" if enabled else "выключить"))
+
+
+func _capture_mask_from_selection() -> void:
+	if selected.is_empty():
+		_clear_mask_snapshot()
+		return
+	_mask_indices = selected.duplicate()
+	_mask_normal = _selection_normal
+	_rebuild_mask_footprint()
+	_rebuild_mask_outline()
+
+
+func _clear_mask_snapshot(unpress := true) -> void:
+	_mask_indices.clear()
+	_mask_footprint.clear()
+	_mask_depths.clear()
+	_mask_normal = Vector3i.UP
+	_mask_grid_size = Vector3i.ZERO
+	if unpress:
+		_mask.set_pressed_no_signal(false)
+	if is_instance_valid(_mask_outline):
+		_mask_outline.mesh = null
+
+
+func _has_mask_snapshot() -> bool:
+	return not _mask_indices.is_empty() or not _mask_footprint.is_empty()
+
+
+func selection_normal() -> Vector3i:
+	return _selection_normal
+
+
+func mask_normal() -> Vector3i:
+	return _mask_normal
+
+
+func history_state() -> Dictionary:
+	var mask_indices := PackedInt32Array(_mask_indices.keys())
+	mask_indices.sort()
+	return {
+		"selected": selection_indices(),
+		"selection_normal": _selection_normal,
+		"mask_indices": mask_indices,
+		"mask_normal": _mask_normal,
+		"mask_enabled": _mask.button_pressed,
+		"overlay_color": _overlay_color,
+		"grid_size": _resource.grid_size() if _resource != null else Vector3i.ZERO,
+	}
+
+
+func apply_history_state(state: Dictionary) -> void:
+	if _resource == null or state.get("grid_size", Vector3i.ZERO) != _resource.grid_size():
+		return
+	_applying_history = true
+	_box_anchor = Vector3i(-1, -1, -1)
+	_job = null
+	_pending_history_state = {}
+	_drawing = false
+	_draw_indices.clear()
+	selected.clear()
+	var size := _resource.grid_size()
+	for raw_index in state.get("selected", PackedInt32Array()):
+		var index := int(raw_index)
+		if index >= 0 and index < _resource.voxels.size():
+			selected[index] = true
+	_selection_normal = Model.axis_normal(state.get("selection_normal", Vector3i.UP) as Vector3i)
+	_overlay_color = state.get("overlay_color", DEFAULT_OVERLAY_COLOR)
+	_rebuild_selected_footprint()
+	_mask_indices.clear()
+	for raw_index in state.get("mask_indices", PackedInt32Array()):
+		var index := int(raw_index)
+		if index >= 0 and index < _resource.voxels.size():
+			_mask_indices[index] = true
+	_mask_normal = Model.axis_normal(state.get("mask_normal", Vector3i.UP) as Vector3i)
+	_rebuild_mask_footprint()
+	_mask.set_pressed_no_signal(bool(state.get("mask_enabled", false)) and _has_mask_snapshot())
+	if selected.is_empty():
+		if is_instance_valid(_overlay):
+			_overlay.multimesh = null
+	else:
+		_begin_overlay()
+	_rebuild_mask_outline()
+	_update_status()
+	_update_overlay_visibility()
+	selection_changed.emit(not selected.is_empty())
+	_applying_history = false
+
+
+func _record_history(before: Dictionary, title: String) -> void:
+	if _applying_history or _history_actions == null or _resource == null or before.is_empty():
+		return
+	_history_actions.call(
+		"record_editor_state", _resource, self, before, history_state(), title
+	)
+
+
+func _rebuild_mask_footprint() -> void:
+	_mask_footprint.clear()
+	_mask_depths.clear()
+	_mask_grid_size = Vector3i.ZERO
+	if _resource == null or _mask_indices.is_empty():
+		return
+	var size := _resource.grid_size()
+	_mask_grid_size = size
+	var axis := _normal_axis(_mask_normal)
+	for raw_index in _mask_indices:
+		var index := int(raw_index)
+		if index < 0 or index >= _resource.voxels.size():
+			continue
+		var cell := Selection.cell_of(index, size)
+		var key := _plane_key(cell, axis)
+		_mask_footprint[key] = true
+		var fallback := size[axis] if _mask_normal[axis] < 0 else -1
+		var previous := int(_mask_depths.get(key, fallback))
+		_mask_depths[key] = (
+			maxi(previous, cell[axis])
+			if _mask_normal[axis] > 0
+			else mini(previous, cell[axis])
+		)
+
+
+func _normal_axis(normal: Vector3i) -> int:
+	if normal.x != 0:
+		return 0
+	if normal.y != 0:
+		return 1
+	return 2
+
+
+func _plane_key(cell: Vector3i, axis: int) -> Vector2i:
+	if axis == 0:
+		return Vector2i(cell.y, cell.z)
+	if axis == 1:
+		return Vector2i(cell.x, cell.z)
+	return Vector2i(cell.x, cell.y)
+
+
+func _cell_from_plane(key: Vector2i, depth: int, axis: int) -> Vector3i:
+	if axis == 0:
+		return Vector3i(depth, key.x, key.y)
+	if axis == 1:
+		return Vector3i(key.x, depth, key.y)
+	return Vector3i(key.x, key.y, depth)
+
+
+func _plane_label(normal: Vector3i) -> String:
+	return ["YZ", "XZ", "XY"][_normal_axis(normal)]
+
+
+func _normal_label(normal: Vector3i) -> String:
+	var axis := _normal_axis(normal)
+	return "%s%s" % ["+" if normal[axis] >= 0 else "−", ["X", "Y", "Z"][axis]]
+
+
+func _scan_bounds(size: Vector3i) -> Array[Vector3i]:
+	var low := Vector3i.ZERO
+	var high := size
+	high.y = size.y if _height < 0 else clampi(_height, 0, size.y)
+	if _region.has_area():
+		var density := _resource.normalized_density()
+		low.x = clampi(_region.position.x * density, 0, size.x)
+		low.z = clampi(_region.position.y * density, 0, size.z)
+		high.x = clampi(_region.end.x * density, low.x, size.x)
+		high.z = clampi(_region.end.y * density, low.z, size.z)
+	return [low, high]
+
+
+func _update_overlay_visibility() -> void:
+	var show_mask_outline := (
+		not active
+		and not _mask_suspended
+		and _mask_kind != "none"
+		and _mask.button_pressed
+		and _has_mask_snapshot()
+		and is_instance_valid(_mask_outline)
+		and _mask_outline.mesh != null
+	)
+	if is_instance_valid(_overlay):
+		_overlay.visible = (
+			_overlay.multimesh != null
+			and active
+			and not _selection_overlay_suspended
+		)
+	if is_instance_valid(_mask_outline):
+		_mask_outline.visible = show_mask_outline
+
+
+func _rebuild_mask_outline() -> void:
+	if not is_instance_valid(_mask_outline):
+		return
+	_mask_outline.mesh = null
+	if _resource == null or not _has_mask_snapshot():
+		return
+	var size := _resource.grid_size()
+	if _resource.voxels.size() != size.x * size.y * size.z:
+		return
+	var cells: Array[Vector3i] = []
+	var columns := _mask_kind == "columns"
+	if columns:
+		var axis := _normal_axis(_mask_normal)
+		var bounds := _scan_bounds(size)
+		var low: Vector3i = bounds[0]
+		var high: Vector3i = bounds[1]
+		for raw_key in _mask_footprint:
+			var key := raw_key as Vector2i
+			cells.append(_mask_surface_cell(key, axis, low, high, size))
+	else:
+		for raw_index in _mask_indices:
+			var index := int(raw_index)
+			if index >= 0 and index < _resource.voxels.size() and _resource.voxels[index] != 0:
+				cells.append(Selection.cell_of(index, size))
+	if cells.is_empty():
+		return
+	var edges: Dictionary = {}
+	for cell in cells:
+		var normals: Array[Vector3i] = []
+		if columns:
+			normals.append(_mask_normal)
+		else:
+			normals.assign([
+				Vector3i.RIGHT, Vector3i.LEFT, Vector3i.UP,
+				Vector3i.DOWN, Vector3i.FORWARD, Vector3i.BACK,
+			])
+		for normal in normals:
+			var neighbor := cell + normal
+			if not columns and _inside_grid(neighbor, size) and _resource.voxels[_index_of(neighbor, size)] != 0:
+				continue
+			_add_face_outline_edges(edges, cell, normal)
+	if edges.is_empty():
+		return
+	var immediate := ImmediateMesh.new()
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.albedo_color = Color(1.0, 0.63, 0.12, 0.96)
+	var density := float(_resource.normalized_density())
+	immediate.surface_begin(Mesh.PRIMITIVE_LINES, material)
+	for edge in edges.values():
+		var offset: Vector3 = Vector3(edge[2]) * (0.025 / density)
+		immediate.surface_add_vertex(Vector3(edge[0]) / density + offset)
+		immediate.surface_add_vertex(Vector3(edge[1]) / density + offset)
+	immediate.surface_end()
+	_mask_outline.mesh = immediate
+
+
+func _mask_surface_cell(
+	key: Vector2i,
+	axis: int,
+	low: Vector3i,
+	high: Vector3i,
+	size: Vector3i,
+) -> Vector3i:
+	var fallback := clampi(
+		int(_mask_depths.get(key, low[axis])),
+		low[axis], maxi(low[axis], high[axis] - 1),
+	)
+	var outward := 1 if _mask_normal[axis] > 0 else -1
+	var baseline := _cell_from_plane(key, fallback, axis)
+	if _resource.voxels[_index_of(baseline, size)] != 0:
+		var result := baseline
+		var depth := fallback + outward
+		while depth >= low[axis] and depth < high[axis]:
+			var next := _cell_from_plane(key, depth, axis)
+			if _resource.voxels[_index_of(next, size)] == 0:
+				break
+			result = next
+			depth += outward
+		return result
+	var depth := fallback - outward
+	while depth >= low[axis] and depth < high[axis]:
+		var inward := _cell_from_plane(key, depth, axis)
+		if _resource.voxels[_index_of(inward, size)] != 0:
+			return inward
+		depth -= outward
+	return baseline
+
+
+func _add_face_outline_edges(edges: Dictionary, cell: Vector3i, normal: Vector3i) -> void:
+	var origin := cell
+	var tangent_a: Vector3i
+	var tangent_b: Vector3i
+	if normal.x != 0:
+		if normal.x > 0:
+			origin.x += 1
+		tangent_a = Vector3i.UP
+		tangent_b = Vector3i.BACK
+	elif normal.y != 0:
+		if normal.y > 0:
+			origin.y += 1
+		tangent_a = Vector3i.RIGHT
+		tangent_b = Vector3i.BACK
+	else:
+		if normal.z > 0:
+			origin.z += 1
+		tangent_a = Vector3i.RIGHT
+		tangent_b = Vector3i.UP
+	var corners: Array[Vector3i] = [origin, origin + tangent_a, origin + tangent_a + tangent_b, origin + tangent_b]
+	for edge_index in 4:
+		_toggle_outline_edge(edges, corners[edge_index], corners[(edge_index + 1) % 4], normal)
+
+
+func _toggle_outline_edge(edges: Dictionary, a: Vector3i, b: Vector3i, normal: Vector3i) -> void:
+	var first := a
+	var second := b
+	if _vector3i_less(second, first):
+		first = b
+		second = a
+	var key := "%d,%d,%d|%d,%d,%d|%d,%d,%d" % [
+		normal.x, normal.y, normal.z,
+		first.x, first.y, first.z,
+		second.x, second.y, second.z,
+	]
+	if edges.has(key):
+		edges.erase(key)
+	else:
+		edges[key] = [first, second, normal]
+
+
+func _vector3i_less(a: Vector3i, b: Vector3i) -> bool:
+	return a.x < b.x or (a.x == b.x and (a.y < b.y or (a.y == b.y and a.z < b.z)))
+
+
+func _inside_grid(cell: Vector3i, size: Vector3i) -> bool:
+	return cell.x >= 0 and cell.y >= 0 and cell.z >= 0 and cell.x < size.x and cell.y < size.y and cell.z < size.z
+
+
+func _index_of(cell: Vector3i, size: Vector3i) -> int:
+	return cell.x + cell.z * size.x + cell.y * size.x * size.z
 
 
 func _exit_tree() -> void:
@@ -433,3 +903,5 @@ func _exit_tree() -> void:
 		_resource.changed.disconnect(_on_source_changed)
 	if is_instance_valid(_overlay):
 		_overlay.queue_free()
+	if is_instance_valid(_mask_outline):
+		_mask_outline.queue_free()

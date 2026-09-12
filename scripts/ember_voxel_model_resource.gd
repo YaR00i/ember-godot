@@ -4,7 +4,7 @@ extends Resource
 ## Godot-owned editable source for one Ember voxel model.
 ## Meshes, collisions, thumbnails and PackedScenes are derived build products.
 
-const SCHEMA_VERSION := 5
+const SCHEMA_VERSION := 6
 const WORLD_SURFACE_DIRECTORY := "res://content/world_surfaces"
 
 @export_category("Identity")
@@ -51,6 +51,9 @@ const WORLD_SURFACE_DIRECTORY := "res://content/world_surfaces"
 
 @export_category("Physics and light")
 @export var physical := true
+## Optional per-voxel physics ownership. Empty keeps legacy behaviour: every
+## occupied voxel collides. When populated, only non-zero entries collide.
+@export var collision_voxels := PackedByteArray()
 @export var emissive_casts_light := false
 @export_range(0.0, 128.0, 0.1) var emissive_light_range := 18.0
 @export var emissive_light_shadows := false
@@ -118,6 +121,7 @@ func validation_errors() -> Array[String]:
 		"shine": shine,
 		"transparency": transparency,
 		"transmittance": transmittance,
+		"collision_voxels": collision_voxels,
 	}
 	for channel_name in channels:
 		var values: PackedByteArray = channels[channel_name]
@@ -175,6 +179,7 @@ func to_definition() -> Dictionary:
 		"shine": Array(shine),
 		"transparency": Array(transparency),
 		"transmittance": Array(transmittance),
+		"collisionVoxels": Array(collision_voxels),
 		"surfaceFillLevels": Array(surface_fill_levels),
 		"surfaceFillMaterials": Array(surface_fill_materials),
 		"surfaceFillPalette": Array(surface_fill_palette),

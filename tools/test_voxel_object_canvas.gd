@@ -68,6 +68,27 @@ func _run() -> void:
 	var old_shape = b.get_node("Collision/Shape").shape
 	var old_faces: PackedVector3Array = old_shape.get_faces().duplicate()
 	var undo := UndoRedo.new()
+	var old_prop := packed.instantiate() as EmberVoxelProp
+	scene.add_child(old_prop)
+	old_prop.owner = scene
+	var old_visual: ArrayMesh = Session._legacy_bottom_mesh(old_prop.get_node("Mesh").mesh)
+	old_prop.get_node("Mesh").mesh = old_visual
+	old_prop.get_node("Collision/Shape").shape = old_visual.create_trimesh_shape()
+	var old_edit = session(old_prop, scene, undo)
+	check(old_edit.draft != null and FileAccess.get_sha256(source_path) == initial_hash, "old bottom compatibility rewrote canonical source")
+	var changed_mesh := ArrayMesh.new()
+	for surface in old_visual.get_surface_count():
+		var arrays := old_visual.surface_get_arrays(surface)
+		var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX].duplicate()
+		vertices[0].x += 0.01
+		arrays[Mesh.ARRAY_VERTEX] = vertices
+		changed_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		changed_mesh.surface_set_name(surface, old_visual.surface_get_name(surface))
+	old_prop.get_node("Mesh").mesh = changed_mesh
+	var protected_edit := Session.new()
+	protected_edit.source_directory = fixture.path_join("sources")
+	check(not protected_edit.open(old_prop, scene, undo), "old bottom compatibility accepted unrelated manual geometry")
+	old_prop.free()
 	var edit = session(a, scene, undo)
 	check(edit.draft != edit._source, "draft aliases canonical source")
 	check(edit.save(edit.draft).ok and FileAccess.get_sha256(source_path) == initial_hash, "open/save unchanged wrote source")

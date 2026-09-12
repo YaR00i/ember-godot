@@ -208,6 +208,33 @@ func _test_ember_region(errors: Array[String]) -> void:
 		"  shell radius-32 stamp: %dus · %d changes"
 		% [large_shell_elapsed, large_shell_changes.size()]
 	)
+	var line_resource := Model.make_pilot()
+	var line_baseline := line_resource.voxels.duplicate()
+	var line_changes := {}
+	var line_started := Time.get_ticks_usec()
+	var line_centers := Model.line_cells(Vector3i(8, 1, 64), Vector3i(119, 1, 64))
+	for center in line_centers:
+		var point_changes := Model.oriented_stroke_changes(
+			line_resource,
+			line_baseline,
+			center,
+			Vector3i.UP,
+			Model.TOOL_ADD,
+			5,
+			8,
+			4,
+			false,
+			"square",
+		)
+		for raw_index in point_changes:
+			line_changes[raw_index] = point_changes[raw_index]
+	var line_elapsed := Time.get_ticks_usec() - line_started
+	print(
+		"  precision line 112x radius-8 depth-4 plan: %dus · %d changes"
+		% [line_elapsed, line_changes.size()]
+	)
+	if line_changes.is_empty():
+		errors.append("precision line plan produced no changes")
 	var smooth_resource := Model.make_pilot()
 	var smooth_baseline := smooth_resource.voxels.duplicate()
 	var smooth_top_cache := {}
@@ -256,6 +283,52 @@ func _test_ember_region(errors: Array[String]) -> void:
 	)
 	if not smooth_revisit.is_empty():
 		errors.append("Smooth radius-32 revisit processed completed columns twice")
+	var common_started := Time.get_ticks_usec()
+	var common_changes := Model.smooth_segment_changes(
+		Model.make_pilot(),
+		smooth_baseline,
+		Vector3i(24, 0, 64),
+		Vector3i(104, 0, 64),
+		5,
+		32,
+		2,
+		false,
+		{},
+		{},
+		smooth_heightfield,
+		true,
+		true,
+	)
+	var common_elapsed := Time.get_ticks_usec() - common_started
+	print(
+		"  smooth common radius-32 sweep: %dus · %d changes"
+		% [common_elapsed, common_changes.size()]
+	)
+	var generated := Model.make_pilot()
+	var generated_started := Time.get_ticks_usec()
+	var generated_changes := Model.generative_relief_segment_changes(
+		generated,
+		generated.voxels.duplicate(),
+		Vector3i(24, 0, 64),
+		Vector3i(104, 0, 64),
+		5,
+		32,
+		8,
+		16,
+		3,
+		7,
+		0,
+		"soil",
+		false,
+		{},
+		{},
+		smooth_heightfield,
+	)
+	var generated_elapsed := Time.get_ticks_usec() - generated_started
+	print(
+		"  generative relief radius-32 sweep: %dus · %d changes"
+		% [generated_elapsed, generated_changes.size()]
+	)
 	var adapter := NativePreview.new()
 	var started := Time.get_ticks_usec()
 	var projection := adapter.build_region(

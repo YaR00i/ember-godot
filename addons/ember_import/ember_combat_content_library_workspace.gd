@@ -849,7 +849,7 @@ func _create_resource() -> void:
 	_selected_id = resource_id
 	_duplicate_source = null
 	if _editor_interface != null:
-		_editor_interface.get_resource_filesystem().scan()
+		preload("res://addons/ember_import/ember_editor_filesystem.gd").request(_editor_interface.get_resource_filesystem())
 	refresh(resource_id)
 	_status.text = "Создан %s. Заполните поля в Inspector и сохраните ресурс." % path
 	_status.modulate = Color("79d99a")

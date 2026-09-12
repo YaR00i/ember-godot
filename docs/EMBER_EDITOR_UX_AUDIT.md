@@ -140,6 +140,105 @@ reordering remain separate because they need their own authoring gestures and
 validation. Large-map overlay/storage profiling remains the next performance
 gate before any dense-to-sparse schema change.
 
+## Update 2026-09-11 · deterministic volume-stamp scatter
+
+The existing volume-stamp placement owner now exposes a fourth application mode,
+`Россыпь`. It reuses path spacing and the atomic stamp plan, adding only lateral
+spread, deterministic quarter turns around the first face normal and a transient
+`Другой вариант` seed. Releasing LMB keeps the detached preview so the variant can
+be inspected; Enter/Apply commits the complete scatter through the existing one-
+Undo fragment action.
+
+Jittered points snap locally to the source surface on all six signed faces.
+Optional `Облегать рельеф` additionally projects each occupied footprint column
+along the locked face normal and moves that complete column to the immutable
+source surface. The 1–8 voxel bend limit prevents accidental attraction across a
+cliff; missing support rejects the whole preview. This is discrete voxel-safe
+conforming, not arbitrary mesh deformation. Multi-preset sets, scaling and
+scene-prop spawning remain outside this owner.
+
+The detached scatter preview owns a transient path cursor only: Ctrl+Z retracts
+one sampled placement and Ctrl+Shift+Z/Ctrl+Y restores one without mutating the
+Resource. Enter still commits through the sole fragment Undo owner; Esc discards
+the draft. Thus draft editing cannot undo older committed model changes.
+
+Gate: `test_voxel_stamp.gd` proves stable/different seeds, local surface snap,
+six-face conforming, bend refusal, channel/part preservation, transient draft
+Undo/Redo, detached preview, variant-without-redraw, preview=commit, one Resource
+Undo and legacy single/path/line compatibility. Native Vulkan Forward+ capture
+checks the four-way application row and conform controls. A synthetic 25-point
+rigid scatter plan on a 131072-cell target measured about 0.53 ms on the test
+machine; conforming 25 instances of an 8×4×8 stamp measured about 25.5 ms,
+before the existing combined preview mesh rebuild.
+
+The same volume-stamp owner now has an explicit third operation, `Вдавить`.
+Unlike pattern cut, it uses occupied 3D stamp height as signed removal depth:
+the contact layer stays on the picked face and subsequent layers are mirrored
+inward. Removal clears voxel channels and part provenance, refuses locked or
+out-of-work-area cells atomically and renders a pink detached cutter preview.
+Single, path, line and scatter share the same planner; scatter can additionally
+conform each contact column to the immutable source surface. Raised snow rims,
+material compaction and physics remain out of scope.
+
+Gate: `test_voxel_stamp.gd` proves variable depth, six signed normals, channel
+and owner clearing, lock refusal, surface conform, all four application modes,
+preview immutability and one Undo. The layout gate requires three explicit volume
+operations while patterns still expose only Add/Cut. Native Vulkan Forward+
+capture verifies the compact third segment and pink cutter preview.
+
+## Update 2026-09-11 · reliable stamp interaction polish
+
+Ordinary sculpt brushes keep their direct press-drag-release rhythm, while all
+volume-stamp and flat-pattern placement modes now share one preview-first rule.
+Single placement requires an explicit LMB pick; path release and the second line
+point finish a detached draft; scatter retains its detached draft. Enter/Apply is
+the only Resource commit, Esc discards it, and Ctrl+Z/Ctrl+Shift+Z retract or
+restore sampled path, line and scatter placements without touching committed
+history. The final plan still enters the existing fragment action as one Undo.
+
+Before the first click the complete planned footprint follows the pointer with
+the actual operation colors, orientation and depth instead of showing only a
+one-cell cursor. During placement the top row hides sculpt-only radius, depth,
+shape, direction and material controls; a flat pattern keeps the palette because
+it affects additive placement. Cancelling restores the prior tool visibility.
+
+Mode, mirror, anchor, application, spacing, scatter options, pattern depth and
+rotation are remembered per selected preset for the lifetime of the Canvas
+workspace. This is transient editor UI state: no preset Resource, serialization,
+runtime or gameplay schema changed. A possible editor-wide fast mode remains a
+separate design decision after manual acceptance; it may alter commit timing but
+must not create a second planner or Undo owner.
+
+Gate: stamp and pattern interaction tests cover the pre-click footprint,
+contextual controls, per-preset recall, detached path/line drafts, draft
+Undo/Redo, Enter-only commit, preview parity and one Resource Undo. Native
+Forward+ remains the visual/input gate for the quieter toolbar and pointer feel.
+
+## Update 2026-09-11 · oriented persistent brush mask
+
+The transient brush mask now keeps the signed normal of the first face of a new
+selection. Shape tools project selected voxels into the corresponding XZ, XY or
+YZ footprint and extrude that footprint along its normal; Shift/Ctrl retain the
+current plane, while a new selection can establish another face. The panel names
+the active plane and replaces filled selection cubes with a depth-tested boundary
+contour while sculpting. Paint and Material still use exact voxel indices.
+For oriented volume tools the active mask's signed normal is also authoritative
+for the stroke direction. A thin side edge therefore extends outward from the
+selected side even when the viewport ray reports its neighbouring top face.
+
+Selection edits, enabling/disabling the mask and explicit Clear use the existing
+SculptActions Undo manager in chronological order with geometry strokes. This is
+editor-only state: no Resource property, schema, serialization or runtime owner
+was added. Context/model/region/slice changes still clear it without recording a
+cross-context action.
+
+Gate: `test_voxel_selection_mask.gd` covers six signed normals, a real side-face
+shape stroke, ambiguous top-face picking with outward side extension, mixed
+mask/stroke Undo/Redo, contour and context lifecycle.
+`test_voxel_selection_interaction.gd` covers selection acquisition through the
+shared Undo owner and first-face propagation. Native Forward+ remains the visual
+gate for a side-facing contour.
+
 ## Update 2026-09-05 · v2.44 compact brush families and shape footprint
 
 The rail now presents eight author-facing tools instead of twelve concrete backend operations. Volume owns Add/Remove; Relief owns Up/Down × Solid/Shell. A new pure `ember_voxel_brush_profiles.gd` maps those contextual controls back to the unchanged model IDs and defines each tool's selection-mask kind. Level, Smooth and Ramp remain separate because their gestures are respectively first-hit plane, neighbourhood averaging and two-point interpolation. Local material and basin fill remain separate data owners.

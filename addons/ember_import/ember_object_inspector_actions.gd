@@ -949,7 +949,7 @@ func _restore_dialogue(previous_snapshot: Dictionary) -> void:
 
 func _refresh_filesystem() -> void:
 	if Engine.is_editor_hint():
-		EditorInterface.get_resource_filesystem().scan_sources()
+		preload("res://addons/ember_import/ember_editor_filesystem.gd").request(null, true)
 
 
 func _refresh(prop: EmberVoxelProp) -> void:

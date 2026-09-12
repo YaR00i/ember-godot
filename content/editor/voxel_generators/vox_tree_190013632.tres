@@ -1,0 +1,29 @@
+[gd_resource type="Resource" format=3 uid="uid://cimyt453nfuew"]
+
+[ext_resource type="Script" uid="uid://bndlx7f0sdeg3" path="res://addons/ember_import/ember_voxel_generator_recipe.gd" id="1_eiige"]
+
+[resource]
+script = ExtResource("1_eiige")
+generator_id = "large_tree"
+seed = 7
+parameters = {
+"bark_color": Color(0.4627451, 0.3137255, 0.22352941, 1),
+"branch_curve": 80,
+"branch_start": 30,
+"branch_taper": 60,
+"branch_thickness": 75,
+"branchiness": 90,
+"canopy_cohesion": 30,
+"cluster_flatten": 60,
+"cluster_size": 130,
+"crown_shape": 2,
+"crown_spread": 65,
+"density": 16,
+"foliage_color": Color(0.30980393, 0.56078434, 0.3137255, 1),
+"generation_version": 2,
+"height": 96,
+"irregularity": 42,
+"leaf_density": 62,
+"root_flare": 65,
+"trunk_width": 7
+}

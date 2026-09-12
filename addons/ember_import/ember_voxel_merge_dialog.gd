@@ -145,6 +145,6 @@ func _commit() -> void:
 		_status.text = _session.error if _session != null else "Обновите предпросмотр."
 		return
 	if Engine.is_editor_hint():
-		EditorInterface.get_resource_filesystem().scan()
+		preload("res://addons/ember_import/ember_editor_filesystem.gd").request()
 	hide()
 	queue_free()

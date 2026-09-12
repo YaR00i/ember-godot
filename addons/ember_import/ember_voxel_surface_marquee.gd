@@ -37,7 +37,7 @@ func begin(cell: Vector3i, origin: Vector3, direction: Vector3, voxels_per_block
 	plane = Plane(normal,position)
 	return true
 
-func bounds(origin: Vector3, direction: Vector3, depth: int) -> Dictionary:
+func footprint_bounds(origin: Vector3, direction: Vector3) -> Dictionary:
 	var point: Variant = plane.intersects_ray(origin,direction)
 	if point == null:
 		return {"error":"Курсор параллелен плоскости. Измените ракурс перед выделением."}
@@ -47,8 +47,38 @@ func bounds(origin: Vector3, direction: Vector3, depth: int) -> Dictionary:
 	end[axis] = anchor[axis]
 	var low := anchor.min(end)
 	var high := anchor.max(end)
+	return {"low":low,"high":high,"box":_box(low,high)}
+
+func bounds_from_footprint(low: Vector3i, high: Vector3i, depth: int) -> Dictionary:
+	var first := low
+	low = first.min(high)
+	high = first.max(high)
 	if outward > 0:
 		low[axis] -= maxi(1,depth)-1
 	else:
 		high[axis] += maxi(1,depth)-1
-	return {"low":low,"high":high,"box":AABB(Vector3(low)/density,Vector3(high-low+Vector3i.ONE)/density)}
+	return {"low":low,"high":high,"box":_box(low,high)}
+
+func bounds(origin: Vector3, direction: Vector3, depth: int) -> Dictionary:
+	var footprint := footprint_bounds(origin,direction)
+	if footprint.has("error"):
+		return footprint
+	return bounds_from_footprint(footprint.low,footprint.high,depth)
+
+func maximum_depth(grid_size: Vector3i) -> int:
+	return anchor[axis]+1 if outward > 0 else grid_size[axis]-anchor[axis]
+
+static func depth_from_screen(
+	origin: Vector2,
+	pointer: Vector2,
+	inward_voxel_step: Vector2,
+	maximum: int,
+) -> int:
+	var length_squared := inward_voxel_step.length_squared()
+	if length_squared < 0.0001:
+		return 1
+	var distance := (pointer-origin).dot(inward_voxel_step)/length_squared
+	return clampi(1+roundi(distance),1,maxi(1,maximum))
+
+func _box(low: Vector3i, high: Vector3i) -> AABB:
+	return AABB(Vector3(low)/density,Vector3(high-low+Vector3i.ONE)/density)

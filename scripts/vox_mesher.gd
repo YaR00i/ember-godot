@@ -631,9 +631,9 @@ static func _append_face_arrays(
 		d = o + Vector3(s, s, s)
 	elif normal == Vector3.DOWN:
 		a = o + Vector3(0, 0, 0)
-		b = o + Vector3(s, 0, 0)
+		b = o + Vector3(0, 0, s)
 		c = o + Vector3(s, 0, s)
-		d = o + Vector3(0, 0, s)
+		d = o + Vector3(s, 0, 0)
 	elif normal == Vector3.BACK:
 		a = o + Vector3(0, 0, s)
 		b = o + Vector3(0, s, s)

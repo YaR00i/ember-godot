@@ -1,10 +1,594 @@
 # Ember — актуальные проверки и migration gates
 
+## Общий Git checkpoint2026-09-13
+
+Проверены все128 `tools/test_*.gd`:125 PASS с учётом повторных проверок в
+изолированном export подготовленного Git index и native screenshot сборки.
+Остались3 незелёных gates, не скрывать их при передаче:
+
+- `test_voxel_split_preview.gd:12` ожидает EmberVoxelProp в
+  `Map/Terrain/TimberPier/Visual`; сейчас там сборка Node3D с деталями.
+- `test_voxel_placement_preview.gd:23` жёстко ожидает12 children той же сборки;
+  авторская сцена уже изменена. Native повтор подтверждает устаревшее ожидание.
+- `test_voxel_sandbox_native_batch.gd`: устарели prefab signatures для
+  vox_ms8vsb53,vox_vil_bush,vox_vil_counter,vox_vil_mailbox,vox_vil_planter,
+  vox_vil_sign. Нужна отдельная проверка/пересборка, не переписывать авторские
+  assets автоматически ради Git checkpoint.
+
+`test_voxel_assembly_preview.gd` требует настоящего renderer для безусловного
+screenshot, native Forward+ PASS. Старые migration_queue/prefab_rebuild tests
+пишут production res://, запускать только в disposable copy. Migration_queue
+PASS при правильном legacy pack path, prefab_rebuild PASS после первоначальной
+пересборки в копии. Рабочие prefab после неуспешного cleanup старого теста
+восстановлены точно из подготовленного index; изменения тестов не включены.
+Новая генерация/история/породы/кора/выделение/маски/штампы/паттерны/рельеф/
+пересборка и связанные gameplay/persistence suites PASS. Пользовательская
+визуальная приёмка ели подтверждена отдельно.
+
+## Ель v10: ярусный хвойный профиль (силуэт принят)
+
+«Тип · Ель» или явный выбор type4 используют10. Новая мастерская начинает
+с актуальной саванны9; все5 типов доступны рядом. Loaded Recipes сохраняют
+алгоритм и отмечены «прежняя форма»; явный reselect обновляет его с Undo.
+Старые алгоритмы остаются в дополнительных настройках совместимости.
+
+`tools/test_voxel_spruce_shape.gd`:64/96/128/256×seeds17/371/391, непрерывный
+leader,9ярусов/сужение ветвей, >90%leaf row coverage в основной кроне,
+max budget/directions, validation/exact fresh-frozen/text roundtrip/collision,
+bare/season/thickness support stability, type choice/loaded compatibility,
+discard/Apply/publication Undo/Redo/reopen10. Native disposable fixture:
+`-- --spruce-shape-only`, seeds371/391/17 и391bare, реальные front/right views.
+Финальный targeted PASS,11related suites PASS. Native isolated Forward+
+gallery/bare/Apply/Undo/Redo/publication/reopen10 PASS; итоговые front/right/
+gallery captures просмотрены, лог без script errors. Первый редкий вариант
+исправлен до handoff; тест row coverage ловит голый leader между ярусами.
+
+Ручная приёмка: открыть «Тип · Ель»,96vox,seeds391/17/371, сравнить спереди
+и сбоку с референсами — острый leader, широкие нижние/короткие верхние ветви,
+неравные вытянутые массы хвои, не шарики и не сплошной конус.
+Количество пучков0 → тот же каркас; изменить толщину/цвет/количество,
+Apply/Undo/Redo,save/reopen. Старые объекты не должны самопроизвольно меняться.
+После принятия формы ели обсудить общую систему листьев/хвои отдельно.
+Пользователь выполнил проверку и принял ель («Мне нравится, проверил»).
+
+## Саванна v9: зонтичный профиль (силуэт принят)
+
+Новый «Тип · Саванна» и явный выбор типа →9. Default/saved v2/v3 не
+обновляются на load; shared frozen structure1/paint/bark/emitter/Source/Recipe/
+workshop/publisher прежние. Изогнутый ствол,3–4 основные стволики и тонкие
+боковые развилки под широкой неглубокой слегка выпуклой кроной, без pole.
+Foliage_along использует прежний descriptor/projection и доступен для v9.
+Профиль кроны учитывает реальный ограниченный размах и на256vox.
+
+`tools/test_voxel_savanna_shape.gd` PASS:12samples64–256, saved v2 golden
+parity, no pole, реальная высокая shallow/wide крона, bounded scaffold/max
+storage/directions, source validation, fresh/frozen geometry+collision exact,
+Recipe text roundtrip, bare/season/thickness support stability, shared
+foliage control, UI choice Undo/Redo, discard/Apply/publication Undo/Redo/reopen9.
+Oak/maple/birch/types/bark и common generator editing/session regressions PASS.
+Native disposable `-- --savanna-shape-only`: №1v2/№2v9/№3v9bare/№4v9seed17,
+индивидуальные Apply/Undo/Redo/publication/reopen PASS. Gallery и реальные
+передний/правый ортогональные `generation_savanna_front.png`/
+`generation_savanna_side.png` просмотрены. Финальный native лог без script
+errors; неполный ненормализованный Recipe старого образца был ошибкой fixture,
+исправлен нормализацией через общий owner, не изменением старого алгоритма.
+
+Для ручной проверки заново выбрать preset «Тип · Саванна»,height96,
+seeds391/17/371. Сравнить спереди/сбоку с фото: тонкий изогнутый ствол,
+раскрытые сучья, широкая неглубокая неровная крона, без центральной башенки.
+Количество пучков0 показывает тот же каркас. Apply/Undo/Redo,save/reopen
+и старые деревья проверить в рабочем редакторе. Художественная приёмка
+пользователем отдельно от assertions. Силуэт принят («Проверил, красиво»).
+Новая очередь: ель, затем обсуждение листьев/хвои.
+
+## Дуб v8: взрослый раскидистый профиль (силуэт принят)
+
+Пользователь принял форму v8 («форма мне нравится»).
+
+Новый «Тип · Дуб» и явный выбор типа используют v8. Сохранённые v3/v4
+остаются прежними; oak suite сохраняет их golden hashes64/128/256.
+Массивный искривлённый ствол/непрерывный collar, короткие слитые buttresses,
+разные высоты основных сучьев, длинные боковые нижние ветви и вторичные
+развилки, несколько восходящих верхних сучьев. Крона глубже по высоте,
+внутренние опоры связывают внешние массы, нижние развилки видны.
+Shared Source/Recipe/structure1/registry/bark/projection/workshop/publisher;
+без новых knobs, leaf microdetail и branch editor не входят.
+
+`tools/test_voxel_oak_crown.gd` PASS: 3seeds×64/96/128/256, max budget,
+разные origins/нижний размах/deep foliage/collar, structure/source validation,
+fresh/frozen geometry+collision exact/text roundtrip, bare/season/thickness,
+UI choice Undo/Redo, discard, Apply/publication Undo/Redo/reopen v8.
+Maple/birch/types/bark, generator editing/session regressions PASS.
+Native disposable `-- --oak-crown-only` сравнивает №1v4/№2v8/№3v8bare/№4seed17,
+индивидуальный Apply/Undo/Redo и publication/reopen PASS. Gallery и передний/
+правый ортогональные `generation_oak_mature_front.png`/`generation_oak_mature_side.png`
+просмотрены. Прежние copied fan_town UID warnings не исправлялись этим срезом.
+
+Ручная проверка: заново выбрать «Тип · Дуб», height96, seeds391/17/371.
+Сравнить с фото спереди/сбоку: массивное плавное основание, широкие кривые
+сучья, глубокая неровная крона без одной плоской шапки. Количество пучков0
+показывает тот же скелет. Проверить Apply/Undo/Redo/save/reopen и сохранённые
+старые деревья. Узнаваемость подтверждает пользователь, не shape asserts.
+
+## Клён v7: высокая крона по фото референсу (силуэт принят)
+
+Пользователь принял силуэт v7 («да, похоже на клён»); возвращаемся к дубу.
+
+V6 ниже — технически проверенный, но не принятый пользователем этап.
+Повторный согласованный проход v7 меняет высотное распределение опор и масс:
+пять уровней, широкая середина/более узкий округлый верх, внутреннее заполнение
+и перекрытие соседних масс. Новый «Тип · Клён»/выбор типа → v7, saved v3/v6
+не обновляются. Golden v6 сняты до правки, проверка добавлена в maple suite.
+Финальный maple suite PASS: v6 exact golden parity, пять высот/широкая середина/
+узкий верх, реальная высота листвы и отсутствие пустых горизонтальных рядов,
+12samples и maximal envelope, fresh/frozen/text exact roundtrip, Apply/discard/
+publication Undo/Redo/reopen. Oak/birch/types/bark, generator editing/session PASS.
+Native `-- --maple-shape-only` Apply/Undo/Redo/publication/reopen PASS;
+`generation_maple_upright_native.png`, передний/правый ортогональные
+`generation_maple_front.png`/`generation_maple_side.png` просмотрены.
+
+Для ручной проверки v7 заново выбрать preset, height96, seed391/17/371.
+Оценить дерево на уровне кроны спереди и сбоку, а не только сверху: сравнить
+пропорции с фото пользователя, наличие общей высокой кроны вместо чаши,
+широкой середины и более узкой верхушки. Голый каркас показывает ветви на
+нескольких высотах. Проверить Apply/Undo/Redo/discard, save/reopen и отдельную
+вариацию; старые деревья остаются прежними. Мелкие детали листьев не входят.
+После оценки клёна вернуться к дубу; Ель пока не реализовывать.
+
+2026-09-12: `tools/test_voxel_maple_shape.gd` PASS: 3 seed × 64/96/128/256,
+ascending/lateral supports, Source/structure validation, extreme envelope,
+exact fresh/frozen/text Recipe roundtrip/collision, bare/season/thickness без
+перемещения опор, explicit direction/tiered, type choice Undo/Redo,
+draft discard/Apply/publication Undo/Redo/reopen. Oak/types/birch/bark и
+generator editing/session regressions PASS.
+Native disposable `-- --maple-shape-only` individual Apply/Undo/Redo/publication/
+reopen PASS; `user://generation_maple_shape_native.png` просмотрен:
+№1 старый v3, №2 v6 seed391, №3 тот же v6 без листвы, №4 v6 seed17.
+
+1. Заново выбрать «Тип · Клён», height96, seed391/17/371. Оценить округлую
+   связанную крону, раскрывающиеся в стороны восходящие развилки, отсутствие
+   отдельной высокой цепочки шариков/низких «тарелок». Оценивать форму, не цвет.
+2. «Настроить» одного дерева → количество листвы0 → Apply: проверить голый
+   каркас, Undo/Redo. Изменить толщину/сужение ветвей, цвет/заполнение листвы:
+   опоры не двигаются, другие варианты неизменны. Discard не меняет source.
+3. Сохранить, reopen в Canvas «Генератор», создать вариацию/новую генерацию
+   из настроек. Старый saved v3 не обновляется без явного нового каркаса.
+4. Проверить высоты64/128/256; 256 соблюдает прежний envelope и может быть
+   относительно уже. Детализация листьев пока не входит в оценку этого среза.
+
+Тип «Ель» добавлен в продуктовый план, ещё не реализован.
+
+## Общий рисунок коры (распределение v2 принято пользователем)
+
+2026-09-12: `tools/test_voxel_bark_pattern.gd` PASS: marks rotation covariance
+по оси support, surface-only, direction/length/seed determinism, zero/off,
+все large_tree породы без изменения occupancy/collision/skeleton, custom colour
+в palette[7], exact off colours, native bool/enum descriptors в common creation
+и contextual Canvas, Undo/Redo/discard. Birch/oak/types и 6 related suites PASS.
+Recipe text roundtrip exact: устранён negative-zero atan2 seam; старые missing
+pattern keys остаются off. Native disposable `-- --bark-pattern-only` PASS:
+cross birch/longitudinal oak/custom slanted birch/plain oak, toggle/direction/
+colour/length Apply Undo, library publication Undo/Redo и reopen.
+Capture `user://generation_bark_pattern_native.png` просмотрен.
+
+Полировка v2: новые presets/defaults используют независимые смещённые штрихи
+с промежутками, cross/slanted length ограничена радиусом ветви. Saved Recipe
+без `bark_pattern_version` остаётся v1; off/on toggle явно выбирает v2,
+Undo возвращает старую версию. Bark v1 parity/v2 rotation/thin-support rings,
+creation/contextual upgrade Undo, oak/birch/types, editing/session/generator PASS.
+Recipe text save/reopen exact colours PASS для обеих версий рисунка.
+Native `-- --bark-pattern-only --scattered-bark` Apply/Undo/Redo/publication/
+reopen PASS; сравнение №1 v1 birch391 / №2 v2 birch391 / №3 v2 birch17 /
+№4 v2 oak371, capture `user://generation_bark_scattered_native.png`.
+Gallery и отдельные крупные планы `user://generation_bark_detail_1/2/3.png`
+просмотрены.
+Пользователь затем принял распределение v2 («да это лучше»); bark gate закрыт.
+
+Дополнительная ручная проверка v2: старое дерево открыть без изменения рисунка;
+off/on «Рисунок коры» → Apply/preview должен обновить только окраску.
+На берёзе height96, seed391/17/371, без листвы осмотреть ствол крупно с четырёх
+сторон: отметины не должны складываться в одинаковые пояса. Density100,
+length24 на тонких ветвях — остаются светлые промежутки. Undo возвращает
+прежнюю окраску/версию, save/reopen сохраняет выбранное распределение.
+
+1. Заново выбрать «Тип · Берёза»/«Тип · Дуб», height 96. Оценить cross/longitudinal
+   рисунок крупным планом на стволе и ветвях. Для удобства временно убрать листву.
+2. «Настроить» → прокрутить до «Рисунок коры»: toggle off/on, direction, colour,
+   length 2/12/24 и density 0/30/100. До Apply source не меняется; Apply один раз,
+   Undo/Redo возвращают exact tree. Геометрия и расположение ветвей неизменны.
+3. Изменить радиусы ветвей и проверить соответствие рисунка новой толщине.
+   Другие варианты неизменны. Discard возвращает настройки черновика.
+4. Сохранить лучший, reopen в Canvas «Генератор», поменять рисунок и сохранить
+   вариацию. Reopen/preset/new generation сохраняют параметры; saved old Recipe
+   не получает рисунок автоматически. В настройках новой партии блок находится
+   в дополнительных параметрах. Это окраска, не объёмные бороздки/шейдер.
+
+## Берёза: тонкий ствол и поникающие веточки (силуэт принят пользователем)
+
+2026-09-12: `tools/test_voxel_birch_shape.gd` PASS: 3 seed × 64/96/128/256,
+continuous leader, descending outer twigs, bounded/maximal source/structure,
+exact fresh/frozen/text Recipe roundtrip и collision, bare/season/thickness
+support stability, draft discard, Apply и common publication Undo/Redo/reopen.
+Oak compatibility и 6 related suites PASS. Новый preset/выбор типа → v5,
+загрузка saved v3 birch не обновляет алгоритм. Leaf 128 vox примерно 60 ms,
+meshing отдельно. Native disposable fixture `-- --birch-shape-only`:
+№1 saved-style v3, №2 новый v5, №3 тот же seed без листвы, №4 seed 17;
+capture `user://generation_birch_shape_native.png`, normal Forward+ viewport.
+Финальный native comparison/individual Apply/Undo/Redo/publication/reopen PASS,
+capture просмотрен. Shared type UI/Undo/Redo regression PASS.
+
+1. «Тип · Берёза», height 96, seed 391/17/371. Оценить вытянутый воздушный
+   силуэт, тонкий изгибающийся ствол, боковые восходящие ветви и поникающие
+   окончания. Не оценивать узнаваемость только по белому цвету коры.
+2. «Настроить» одного дерева → количество пучков 0 → Apply; осмотреть bare
+   branches, Undo/Redo. Остальные варианты неизменны. Толщина/сужение меняют
+   радиусы без перемещения опор, цвет/заполнение/размер листвы — не ветви.
+3. Discard черновика; сохранить лучший, reopen в Canvas «Генератор», сохранить
+   вариацию. Старый v3 восстанавливается как раньше; новый сохраняет v5/seed/
+   каркас. Новый именованный preset используется для новой партии без skeleton.
+4. 64 и 256 vox, нижние грани, вращение/3D comparison/остановка между моделями.
+   Отдельный проход по детальной форме листвы — после силуэтов остальных presets.
+
+## Полировка дуба: развилки и связная крона (силуэт принят пользователем)
+
+2026-09-12: `tools/test_voxel_oak_crown.gd` PASS: новый oak v4 при 3 seed и
+высотах 64/96/128/256, отсутствие высокой центральной оси, несколько ранних
+развилок, bounded/maximal geometry и validation, exact fresh/frozen/text Recipe
+roundtrip, bare/season без смены каркаса, invalid radii rejection,
+individual Apply Undo/Redo и library publication Undo/Redo/reopen в `user://`.
+Golden samples сохраняют старый v3 oak byte-identical и геометрию v4 после
+ускорения union; types и 6 related suites PASS. На 128 vox leaf build примерно
+0.86–0.95 s без meshing. В рабочем checkout не запускать headless editor.
+Native opt-in в disposable `ember-generation-smoke-*`, аргумент
+`-- --oak-crown-only`: №1 старый v3, №2 новый v4, №3 тот же seed/каркас без
+листвы, №4 другой seed; native selection/F/wheel, Apply Undo/Redo, publication
+Undo/Redo и Recipe reopen. Capture `user://generation_oak_crown_native.png`.
+Финальный native прогон PASS, capture просмотрен; пользователь принял силуэт
+дуба («дубы стали похожи на дубы»). Детальная форма листвы — отдельный этап.
+
+1. В мастерской выбрать «Тип · Дуб», height 96, seed 391; затем 17 и 371.
+   Оценить широкий округлый силуэт, сильные развилки и боковой объём, а не
+   столбик отдельных одинаковых шапок. Сравнить несколько партий через «3D».
+2. Выбрать одно дерево → «Настроить» → количество листвы 0, Apply. Проверить
+   ход сучьев без листвы; Undo возвращает ту же полную крону. Толщина/сужение
+   ветвей сохраняют положение развилок; другие варианты не меняются.
+3. Поменять заполнение вдоль ветвей, размер/приплюснутость масс и осенний цвет.
+   Apply/Undo/Redo/Discard; сохранить лучший и открыть в Canvas «Генератор».
+   Reopen восстанавливает Recipe/seed/каркас; свой preset генерирует новые
+   каркасы, а не копирует старый. Старый saved дуб v3 остаётся старым.
+4. Проверить 64 и 256 vox, вращение и нижние грани, сравнение до 4/2 деревьев.
+   Остановка между кандидатами; на крупном дереве synchronous build ещё может
+   задерживать кадр. Узнаваемость дуба и форма кроны требуют оценки пользователя.
+
+## Типы и боковой объём деревьев (ручная художественная приёмка открыта)
+
+2026-09-12: `tools/test_voxel_tree_types.gd` проверяет 4 типа при одинаковом seed
+и height 64/128/256, bounded source/structure, exact frozen rebuild, season и
+interior foliage 0/30/100 без движения древесины, unchanged branch RNG при 0%,
+направления up/lateral/down, максимальные размеры нового типа, Resource text
+roundtrip с exact voxel parity, type Undo/Redo в общей панели. Golden pre-type
+hashes v1/v2 проверяют сохранение старых формул на seed 371 во всех 3 размерах.
+Related: generator/editing/session/large_tree_object/dialog/library_layout PASS.
+Native opt-in fixture дополнен четырьмя type presets в разных партиях и общим
+сравнением, interior foliage Apply/Undo/Redo, existing library publication и
+typed Recipe reopen; capture `user://generation_types_native.png`.
+Native сценарий PASS; в первом прогоне выявлено отсутствие нового editing field
+из-за сборки candidate controls только при ready. Общая панель обновляет набор
+descriptors при выборе другого типа; regression есть в targeted test, следующий
+native прогон с реальным полем Apply/Undo/Redo и saved Recipe reopen PASS.
+
+Ручные проверки после сохранения рабочих сцен и перезапуска Godot:
+
+1. «Объекты → Генерация…», пресеты «Тип · Саванна/Дуб/Берёза/Клён»; height 96,
+   по одному варианту, одинаковый seed. Все 4 партии остаются в истории; собрать
+   галочками «3D» сравнение четырёх. В строках подписан тип, номера над моделями
+   совпадают. Саванна прежняя; дуб объёмный, берёза стройная, клён ярусный.
+2. Дуб: новые партии с направлением вверх/в стороны/слегка вниз. Проверить,
+   что меняется реальный ход ветвей, а не только положение шапок листвы.
+3. «Настроить» дуб → «Листва вдоль ветвей» 0/30/100, Apply/Undo/Redo. Меняется
+   боковое/внутреннее заполнение, но существующие ветви и другие модели стоят
+   на месте. Осенний цвет тоже не перестраивает каркас. Discard возвращает draft.
+4. Сохранить лучший, открыть его в Canvas «Генератор», изменить листву/толщину,
+   сохранить вариацию. Reopen сохраняет тип, параметры, seed и каркас; старые
+   saved v1/v2 деревья восстанавливаются как раньше. Typed presets можно сохранить
+   своим именем и использовать для следующей партии без старого skeleton.
+5. Height 256 → сравнение до 2. Проверить вращение, нижние грани, scene save без
+   temporary candidates, cancel между моделями. Тонкие детали/форма кроны требуют
+   художественной оценки, не заменяются автоматической voxel parity.
+
+## Общая мастерская генерации в native 3D (новая рабочая приёмка открыта)
+
+2026-09-12: `test_voxel_generation_session.gd` проверяет provider descriptors,
+parameter/seed и candidate choice Undo/Redo, индивидуальный draft/discard/apply
+Undo/Redo, unchanged other candidate и exact skeleton, один explicit skeleton
+reroll + Undo, осенняя palette только выбранного дерева и exact reopen,
+стабильные номера/Label3D между family/pass, solo/gallery,
+studio/map suspension с dirty draft и восстановление утратившей nodes галереи,
+publication lock после file Undo (не расходятся preview и file Redo), разные seeds,
+frozen skeleton, один family/card для двух выбранных вариантов, точный source
+и восстановление тех же voxels после recipe reopen, asset-only Save/Undo/Redo,
+отсутствие placement/physics/scene serialization у preview, историю всех партий,
+освобождение geometry архивных записей, точное восстановление unsaved/saved,
+cross-batch comparison, favorite не уменьшает новые партии, фильтры batch/best,
+сохранение лучших из архива по очереди и file Undo/Redo архивного варианта,
+cancel, limits 4/2, presets save/reopen/duplicate guard,
+освобождение discarded Creation (без удержания mesh сигналами/choice history),
+защиту использования сохранённого объекта. Все fixtures только `user://`.
+Related: generator, generator_editing, large_tree_object/dialog,
+object_library_layout; plugin.gd и native fixture `--check-only`.
+
+`editor_test_voxel_generation.gd` opt-in только в disposable
+`ember-generation-smoke-*`: реальная library create button, studio scene tab + bottom panel,
+четыре exact previews в обычном Forward+ viewport, native selection/center F/
+wheel scale, save-only history с filesystem settle между Undo/Redo, preset
+reopen, studio save без preview, карта без временных objects, открыть saved source
+в существующем Canvas, individual apply + native selection, dirty draft при
+scene switch/return, 8 вариантов/2 партии, восстановление точной geometry старого,
+сравнение старого/нового, batch filter и confirmation Cancel всей истории без
+удаления. Capture
+`user://generation_native.png`; adaptive native wheel fit учитывает сохранённый
+camera zoom disposable scene, не вмешивается в рабочий editor пользователя.
+Прежние UID warnings authored fan_town в копии не относятся к новой генерации.
+Результат: новый session test + 5 related suites PASS; native Forward+ полный
+сценарий и generate-similar command PASS, cross-batch comparison двух деревьев
+в обычном editor capture просмотрено. Новых script errors нет. Предыдущую
+мастерскую пользователь принял; ручная приёмка истории всех партий открыта.
+Synchronous build не отменяется посреди
+одного дерева, лимит памяти — консервативный, без нового GPU performance gate.
+В промежуточном native прогоне обнаружены exclusive-window conflict и crash
+после confirmation Cancel; lifecycle исправлен явным hide перед queue_free.
+Финальный прогон использует реальную Cancel button, полный сценарий PASS без
+exclusive-window/script errors, editor штатно закрыт; capture просмотрен.
+
+Рабочая ручная последовательность (сохранить draft/сцену, перезапустить Godot):
+
+1. «Объекты → Генерация…»: отдельная вкладка сцены «Генерация» в Godot 3D и
+   нижняя мастерская, не новое окно. Рабочая карта остаётся в своей вкладке.
+2. Height 96, 4 варианта → сгенерировать; «Показать сравнение · F», F в 3D, колесо для
+   масштаба. Камеру можно свободно вращать стандартной навигацией Godot.
+3. Номера над деревьями совпадают со списком. Выбрать №2 в 3D или «Настроить»;
+   справа изменить толщину/листву: сначала draft без remesh, затем «Применить».
+   №1/3/4 не меняются; Undo/Redo справа возвращает draft и applied geometry.
+   «Сбросить правки» тоже undoable. Dirty draft не теряется при попытке сменить
+   вариант/сохранить/начать новую партию. Solo/gallery не удаляет остальные.
+   Отметить два лучших; Undo/Redo выбора кнопками «↶ Настройки»/«↷».
+   Настройки слева относятся только к новой партии.
+   Сгенерировать ещё две партии по 4: история содержит 12, даже если первые
+   отмечены лучшими; каждая новая партия всё равно имеет 4. Проверить фильтры
+   «Все партии»/«Только лучшие»/«Партия 1»; номер и seed старых не меняются.
+   «Настроить» старого №2 восстанавливает его одного; добавить галочкой «3D»
+   новый №9 для сравнения. Изменить листву №2, Apply/Undo/Redo — только его.
+   «Последняя партия в 3D» не удаляет историю. Более 4 одновременно не добавляется,
+   если есть дерево выше 128 vox — лимит 2. Снять «3D» не значит снять «лучший».
+4. Отметить лучшие из разных партий, включая не показанные в 3D, и сохранить
+   выбранные по очереди: одно семейство с concrete вариантами, без placement.
+   Ctrl+Z/Shift+Ctrl+Z отменяет/возвращает публикацию по одному варианту.
+   Поздние правки файлов и используемые в карте объекты не удаляются историей.
+5. «Сохранить свой пресет…»: имя, save; закрыть/открыть панель, выбрать пресет.
+   «Объекты → Ещё → Генерировать похожие» загружает настройки saved дерева;
+   «Создать вариант из рецепта» редактирует тот же frozen skeleton в Canvas.
+6. Попробовать 256 vox: до 2 точных объектов, cancel между деревьями. Сохранить
+   studio scene с preview: после reopen temporary objects не сериализованы.
+7. С dirty draft переключиться на карту: мастерская paused, в карте никаких
+   previews. «Открыть вкладку 3D» возвращает тот же набор и draft. Закрыть именно
+   studio scene tab, снова открыть мастерскую: candidates восстанавливаются.
+   «Закрыть набор» → Cancel ничего не удаляет; подтвердить удаление — очистить
+   temporary candidates, saved library files остаются. Restart editor теряет
+   unsaved session: перед ним сохранить лучшие и scene/Canvas drafts.
+8. «Настройки дерева → новая партия» переносит параметры для presets/новых seeds.
+   «Новый каркас из настроек партии» заменяет только выбранный, Undo возвращает
+   прежний каркас. После publication правки через Canvas либо новую партию;
+   file Undo не разблокирует local edits. Типы/направление ветвей уже расширены
+   следующим срезом выше; редактирование отдельных веток пока не реализовано.
+
+## Общий voxel refresh и 3D viewport (ручная приёмка открыта)
+
+Следующий пользовательский прогон: 205 rebuilt/21 disk rename Failed, другие IDs.
+`test_editor_filesystem` проверяет nested weak scan leases/coalescing/release.
+`test_voxel_scene_refresh` — два transient FAILED и success без повторного meshing,
+а также настоящий FileAccess READ handle на Windows: после release запись проходит
+на третьей попытке (PASS), per-model Undo/Redo остаётся exact. Native isolated
+library button проверяет отсутствие наших scans внутри batch и retry/history.
+Queue ждёт active scan/import до 30 s, публикацию повторяет до 3 s с 100 ms yield;
+перед retry проверяются source/prefab/instance conflicts. Save/reopen Source не
+переписывается. После reload повторить список ошибок (или всю очередь, если список
+сбросился). Финальный рабочий прогон пользователь подтвердил: 226/226 rebuilt,
+0 skipped — batch gate принят. Конкретный reader,
+удерживавший файл в рабочем Godot, не доказан. Не отключать антивирус для проверки.
+
+Рабочая очередь пользователя 226/226: 196 rebuilt, 30 skips. Fix regression
+`tools/test_voxel_refresh_legacy.gd` читает доступные 30 исходных assets из отчёта,
+но публикует только user:// copies: indexed/unit-adapter и opaque VOX ShadowBody
+compatibility, source/prefab hashes, unchanged bounds/node frames/authored children,
+UID, exact Undo bytes/references, Redo и normalized prefab reopen. Все 30 PASS.
+Suite безопасно пропускает недоступные local author cases и сообщает tested count.
+`test_voxel_scene_refresh` также покрывает equivalent indexing vs custom color,
+never-built UID и точные failed IDs. Native isolated editor проверяет existing
+no-UID text prefab publication и реальную retry button после исправления fixture
+source, без публикации production assets. После перезагрузки plugin (сохранить
+draft/scene) в Migration повторить failed IDs; если editor session уже сменился,
+запустить всю библиотеку снова. Проверить отсутствие 30 прежних skips, размер,
+низ/тени обычных объектов, Undo/Redo и save/reopen. Retry list editor-only.
+Repair final: scene_refresh, all 30 legacy author-copy regressions, object Canvas,
+generator editing, object library/workshop layout, plugin parse и diff check PASS.
+Native isolated Forward+ publication/retry/EditorUndoRedoManager PASS; ERROR нет,
+только прежние два tree external mesh UID text-path fallback warnings.
+
+Полная библиотека: `test_voxel_scene_refresh` дополнен очередью без active scene,
+deduplicate ID, force rebuild current, cancel после первого, Undo/Redo prefab bytes,
+Source hashes и созданием отсутствующего prefab (Undo оставляет recoverable asset).
+Команда «Объекты → Пересобрать всю библиотеку» / Ember Migration: следить за N/M,
+нажать остановку между моделями, проверить список пропусков, Undo по моделям,
+вид снизу у обычных/деревьев и save/reopen размещённых экземпляров. В полном
+production каталоге пользователь уже запустил: authored assets тестами не используются
+как write-fixture. Очень большой объект может задержать текущий кадр; yield/cancel
+между моделями, не прерывает meshing на половине.
+Расширенный targeted suite, library/workshop layout, object Canvas и generator
+editing прошли; native isolated editor проверяет реальную library button на двух
+fixture ID, включая outside-scene asset, прогресс и per-model history. Fixture
+source/import setup settle выполняется до capture стартового source hash:
+изменения setup/UID import не приписываются library-команде.
+
+`tools/test_voxel_scene_refresh.gd`: обычные/прозрачные модели, четыре inline
+instances, subset collision, clockwise winding всех треугольников и нижние грани,
+Source/map hashes, prefab UID, transforms/placement_id/authored descendants/visual
+overrides. Undo возвращает точные prefab bytes и прежние mesh/shape references,
+Redo — подготовленные; старые snapshots не мутируются. Save/reopen, skip current,
+отказ при произвольном custom mesh/его surface material, сохранение per-instance
+surface material override. Surface configure того же source + explicit
+refresh меняет chunks без canonical изменения; доступный native adapter также
+проверяется на winding (при отсутствии Voxel Tools используется GDScript fallback).
+Headless fixture 2 models/4 props около 0.13 с; это не профиль больших деревьев.
+Новый targeted suite и девять related suites PASS (object/assembly Canvas,
+generator editing, object library/workshop layout, Surface Canvas workflow,
+world Surface projection, native cutaway, projection cache). В актуальных
+авторских tree_190013632/tree_1511837690_canvas_1665774388 остаются UID warnings
+по старым external meshes с корректным text-path fallback; их исходники не
+переписывались. Cold isolated editor также предупреждает о legacy material UIDs.
+Это отдельно от ошибок/готовности самой refresh-транзакции.
+Native Forward+ scene-refresh before/after captures и сценарий PASS; изображения
+просмотрены. После обновления нижние грани обычных voxel props закрыты.
+
+В рабочем Godot: сохранить/отменить Canvas draft, перейти в 3D → «Ещё…» →
+«Обновить воксели сцены». Статус открывается в Ember Migration и перечисляет
+обновлённые модели/экземпляры/Surface и причины пропуска. Покрутить снизу обычный
+объект и дерево, проверить обновление без закрытия сцены, Ctrl+Z/Redo, Ctrl+S и
+повторное открытие. Inspector → Rebuild prefab обновляет только выбранный model_id
+(все его экземпляры), другие модели не меняются. Проверить авторские mesh-правки:
+они должны приводить к пропуску модели, а не исчезать. Source/recipe не пишутся.
+Surface requeue идёт асинхронно в штатном frame budget; scene Undo касается
+замены экземпляров/prefab, а не canonical source или временных Surface chunks.
+
+`tools/editor_test_voxel_scene_refresh.gd` — opt-in только в отдельной
+ember-canvas-smoke-refresh-* копии: реальная кнопка dock, EditorUndoRedoManager,
+изменение open inline mesh/shape, неизменность source/map/pose и editor save/reopen.
+Native isolated editor сценарий PASS; рабочая пользовательская приёмка открыта.
+
+## Общий редактор рецептов генерации (ручная приёмка открыта)
+
+2026-09-12: после вариаций/bottom fix 15 targeted/related suites PASS без ERROR/WARNING — generator_editing,
+workshop_layout, large_tree_object/dialog, generator, tree/bush/grass_generator,
+object_canvas, assembly_canvas, projection_cache, stamp, selection_interaction,
+surface_canvas_workflow, object_library_layout. Assembly Canvas повторно проверен
+после capability guard общей панели (target_name/generator_context).
+Native Forward+ generator_editing capture и весь сценарий — PASS; изображение
+просмотрено, параметры прокручиваются отдельно, кнопки доступны. Скриншот не
+заменяет пользовательскую оценку формы и живой workflow в рабочем editor.
+
+`tools/test_voxel_generator_editing.gd`: exact skeleton capture 64/128/256 и три
+формы, неподвижные wood/collision при всех foliage controls, palette-only geometry,
+bare tree, thickness без перестановки lines, validation, recipe save/reopen и
+детерминированная пересборка. Реальный Canvas: contextual tab, descriptor control,
+draft buttons/Ctrl+Z/Ctrl+Shift+Z, exact prefab mesh preview без изменения source,
+RMB camera, отдельный variant source/recipe/prefab, scene Undo/Redo/save/reopen,
+preview==saved geometry, discard, выбор кисти/смена вкладки, ordinary tab hiding.
+Fixtures пишут только в отдельные `user://` sources/recipes/prefabs.
+Native Forward+ `-- --capture` сохраняет `user://voxel_generator_editing.png`
+и `user://voxel_generator_bottom.png` (камера снизу).
+
+Дополнение 2026-09-12: generator_editing проверяет clockwise triangles всех шести
+сторон, family grouping одной карточкой, dropdown concrete variation Place/Edit,
+case-insensitive duplicate names, standalone отдельную карточку, update одного
+model_id и двух linked props с Undo/Redo source+recipe+mesh, внешний source hash
+конфликт. object_canvas проверяет opening точного старого DOWN winding без записи
+source и отказ при посторонней ручной mesh-правке; старые BarrelA/CargoA открываются.
+Prefab rebuild gate повторно PASS после пересборки только control lantern_stone
+prefab/двух mesh; source и карта не изменены, UID/четыре placements сохранены.
+
+Вручную: открыть готовое большое v2 дерево в Canvas → Генератор. Поменять цвет
+листвы на осенний, количество 100/30/0, размеры/приплюснутость/сомкнутость;
+собирать preview после каждой правки и смотреть, что ветви не перемещаются.
+Толщина/сужение меняют только объём ветвей. Проверить draft Undo/Redo, RMB/MMB/zoom,
+Esc и выход в Части, затем Save variant — рядом появляется отдельный объект.
+Выйти из генератора для общего scene Undo/Redo; сохранить и открыть сцену заново,
+открыть variant в Canvas и убедиться, что recipe/cаркас восстановлены.
+Исходное дерево и ручная лепка остаются нетронутыми; ручные правки не копируются
+в рецепт. Смена объекта сбрасывает parameter draft. Classic/остальные генераторы
+ещё не показывают эту вкладку; это не исчезновение их старого инструмента создания.
+
+Проверка вариаций в рабочем editor:
+1. Сохранить «Лето», затем «Осень» как новые вариации одного дерева: в Объектах
+   одна карточка, справа dropdown; выбранную вариацию можно открыть и поставить.
+2. Обновить выбранную «Осень»: изменяются только её экземпляры; выйти из
+   Генератора, проверить общий scene Undo/Redo, сохранить и повторно открыть сцену.
+3. «Отдельный объект» создаёт самостоятельную карточку. Пустые/повторяющиеся
+   имена запрещены. Старые независимые деревья автоматически не объединяются.
+4. При ручной лепке обновление поверх вариации блокируется; новый вариант
+   доступен, но не включает ручные правки. Другая вариация не должна меняться.
+5. Проверить дерево снизу. Для старого уже записанного mesh выбрать prop в
+   Inspector → «Rebuild prefab»; исходник/placement не меняются.
+
+## Полировка больших деревьев (художественная приёмка открыта)
+
+Проверено 2026-09-12: все восемь targeted suites — generator, tree_generator,
+large_tree_object, large_tree_dialog, object_library_layout, stamp, object_canvas,
+editor_filesystem — PASS. Native Forward+ capture диалога при 1280×720 — PASS,
+изображение просмотрено: preview и кнопки доступны, параметры прокручиваются
+отдельно. Fixture timings: генерация 64/128/256 — 79/329/169 мс; точный prefab
+256 — 1414 мс (выше 128 используется предусмотренная плотность 32 vox/block).
+Это не заменяет ручную оценку силуэта и поведения в рабочем редакторе.
+
+`test_voxel_large_tree_object`: 64/128/256, height-1 без деревянного spike,
+determinism, classic fallback с прежними defaults, влияние новых параметров,
+различная ярусная крона, связность v2 fixture, storage envelope крайних параметров,
+collision/Canvas и source+recipe+prefab save/reopen, placement Undo/Redo.
+`test_voxel_large_tree_dialog`: default v2, invalidation после правки,
+classic visibility, точный preview, layout 1280×900; native `-- --capture`
+добавляет 1280×720, `user://voxel_large_tree_dialog.png`.
+
+Вручную: Объекты → + Большое дерево → Крупные формы, 64 vox → собрать preview.
+Сравнить с classic; проверить толщину ветвей 35/75, сужение 0/80, изгиб 0/80,
+начало ветвления 20/50; пучки 80/160, приплюснутость 20/80, сомкнутость 15/85.
+Изменения требуют нового preview и не пишут assets. Повторить три формы кроны,
+Другой вариант, 128/256, цвета/корни. Создать → Undo/Redo → сохранить сцену →
+открыть повторно; старый recipe открывает classic и не меняет старый экземпляр.
+Это проверка геометрии/удобства; красивые toon shadows и свет — отдельный срез.
+
+## Обновление файлов после сохранения (ручной gate открыт)
+
+`tools/test_editor_filesystem.gd`: восемь запросов → один scan; импорт/scan
+блокирует исполнение, но не теряет запрос; full supersedes source-only;
+запрос из scan callback не теряется; слабая ссылка освобождает pending.
+Обычный runtime-вызов не обращается к EditorInterface.
+Связанные: party_save_v2, party_progression, voxel_object_canvas,
+surface_canvas_workflow, voxel_stamp, voxel_generator, voxel_large_tree_object,
+voxel_pattern, object_inspector_actions, voxel_selection_interaction,
+voxel_merge, voxel_object_split, voxel_primitive_conversion, voxel_shapes.
+12 сентября: 15 focused/related gates и 13 parse checks PASS без ERROR/WARNING.
+
+`tools/editor_test_filesystem.gd` — opt-in EditorPlugin только в отдельном
+ember-canvas-smoke-* project с отдельным config/name/user:// и cache. Скопировать
+скрипт в папку тестового плагина; plugin.cfg использует относительный script.
+Legacy pack_path нужен только temp-копии для прежних библиотек. Проверяются
+Canvas Save + burst (один scan), Undo/Redo, scene save/reopen, detached discard,
+повторная компиляция Party/Explore/progression/save scripts после сканирования.
+Non-tool `Script.can_instantiate()` в editor не является parse gate: использовать
+`reload(true) == OK`. Каждый запуск создаёт новый scene_path, иначе open_scene
+может вернуть восстановленную старую вкладку, а не переписанный fixture-файл.
+Логи обязательны: fixture PASS без проверки ERROR/WARNING недостаточен.
+12 сентября: финальный native Forward+ запуск на RTX 5070 прошёл весь fixture
+и завершился без ERROR/WARNING; diagnostics scans=3, merged=9, pending=0.
+При успешном выходе fixture адресует WM_CLOSE_REQUEST только родителю
+EditorInterface.get_base_control() (EditorNode), deferred. Propagate root close
+ломает child traversal, а прямой SceneTree.quit обходил штатный editor exit
+и оставлял Scan thread aborted; это ошибки автоматического выхода fixture,
+не parse errors Party/Explore. Этот synthetic lifecycle не закрывает более
+широкий ручной Причал/сохранения всех открытых authoring-сцен.
+
+Вручную: после сохранения черновиков и перезапуска Godot очистить Output,
+создать/изменить и сохранить несколько штампов и модель Canvas; Undo/Redo,
+закрыть/открыть сцену, вернуться в окно после внешней правки. Проверить новые
+Party/Explore parse errors и момент их появления. Полную причину прежних
+intermittent diagnostics нельзя считать установленной по этому hardening-срезу.
+
 ## Одиночные объёмные штампы (manual gate открыт)
 
 Автоматически: `tools/godot/Godot_v4.7.2-stable_win64_console.exe --headless
 --path . --script res://tools/test_voxel_workshop_layout.gd` и затем тот же запуск
-для `test_voxel_stamp.gd`. Native: без `--headless`, добавить `-- --capture`;
+для `test_voxel_selection_interaction.gd`, `test_voxel_selection_mask.gd`,
+`test_voxel_stamp.gd`, `test_voxel_pattern.gd`, `test_voxel_generator.gd` и
+`test_voxel_tree_generator.gd`.
+Native: без `--headless`, добавить `-- --capture`;
 captures `user://voxel_workshop_compact.png`, `user://voxel_workshop_layout.png`
 и `user://voxel_stamp.png`. Fixtures только user://.
 Связанные: test_voxel_selection_interaction, test_voxel_fragment,
@@ -12,19 +596,23 @@ test_voxel_merge, test_voxel_object_canvas; plugin check-only.
 
 1. Слева выбрать `Выделение`, отметить небольшую разноцветную деталь. Открыть
    `Штамп` → `Библиотека` → `+ Новый штамп`, ввести название и сохранить. Источник не меняется.
-2. Найти пресет по карточке/миниатюре → `Разместить`. ЛКМ задаёт опору (для Add — перед
+2. Найти пресет по карточке/миниатюре → `Выбрать`. ЛКМ задаёт опору (для Add — перед
    видимой гранью), стрелки/XYZ уточняют позицию. Проверить поворот 90°,
    отражение и три опоры через прямые кнопки без выпадающих списков. Esc не меняет модель.
 3. «Добавить»: занятое не перекрашивается. «Заменить»: occupied footprint меняет
    цвета/материальные каналы; пустой угол/дырка шаблона не стирает объект.
-   Enter фиксирует один отпечаток. Undo/Redo возвращает geometry/palette/parts.
+   Enter фиксирует один отпечаток, но тот же штамп остаётся под курсором для
+   следующего. Два Enter создают две отдельные Undo-команды; Undo/Redo не снимает
+   выбранный штамп и возвращает geometry/palette/parts каждого отпечатка отдельно.
 4. В склейке выбрать часть для новых voxels; новые ячейки получают эту часть,
    replaced occupied сохраняют прежнюю. Проверить Save Canvas и F6 collision.
 5. Save/reopen сцены и редактора: пресет в библиотеке, отпечаток в объекте.
    «Редактировать модель штампа…»: изменить шаблон, Save, затем новый отпечаток
    использует новую форму, ранее поставленные не меняются. Проверить discard.
 6. Lock, выход за холст/срез, несовпадающие плотности, palette overflow — отказ
-   целиком. Маску/изоляцию/скрытие нужно отключить; чужие authored files не удаляются.
+   целиком. Маска кисти при открытии штампа сохраняется, но её контур и действие
+   приостановлены до возврата к совместимой кисти. Изоляцию/скрытие групп нужно
+   отключить; чужие authored files не удаляются.
 7. Повторить при 1280×720 и 1600×900: параметры и Apply/Cancel не обрезаны,
    footer-подсказка не занимает правую панель, обе панели сворачиваются, Canvas
    расширяется, `Не сохранено`, disabled и красная ошибка явно различимы. Внутри
@@ -37,7 +625,7 @@ test_voxel_merge, test_voxel_object_canvas; plugin check-only.
 8. В реальном editor при системном 125% масштабе видны обе правые вкладки. Scoped
    Theme меняет только мастерскую: normal/hover/active/primary/disabled различимы,
    шрифты и editor icons остаются из текущей темы Godot. Карточки прокручиваются
-   отдельно, а выбранный штамп и `Разместить / Редактировать` остаются видимыми.
+   отдельно, а выбранный штамп и `Выбрать / Редактировать` остаются видимыми.
 9. В Object Canvas поле `Объект` меняет только имя выбранного экземпляра сцены.
    Пустое, недопустимое и занятое соседним узлом имя отклоняются; Enter и потеря
    фокуса применяют, Esc отменяет ввод. Undo/Redo и Ctrl+S + reopen сохраняют имя,
@@ -45,6 +633,64 @@ test_voxel_merge, test_voxel_object_canvas; plugin check-only.
 10. В палитре выбрать тёмный цвет и сравнить образец с hex в подписи: normal,
     hover и selected не меняют сам цвет swatch. Более светлая грань в 3D допустима
     как результат освещения; цвет образца должен оставаться точным.
+11. Пройти `Кисть → Выделение → Маска → Кисть → Штамп → Кисть`: только текущий
+    основной инструмент янтарный, Canvas не меняет размер. В библиотеке ЛКМ по
+    модели ничего не лепит. Начать stamp path и сразу выбрать кисть: preview
+    отменяется без изменения Resource и не возвращается сам. В активном штампе
+    первый `Esc` отменяет только текущий черновик, второй `Esc` возвращает последнюю
+    кисть; обычное выделение скрыто, но снова видно по V.
+12. Пока штамп выбран и следует за мышью, вращать ПКМ, двигать СКМ и приблизить
+    колесом у края Canvas. Черновик не применяется и не сбрасывается, ghost снова
+    оказывается под курсором. Камера проходит через боковой ракурс к виду снизу;
+    СКМ двигает также по вертикали, а off-center zoom удерживает деталь под мышью.
+13. `Сгладить`: на широком бугорке сравнить `Ступени` и `Общий уровень`, затем
+    сделать неглубокую ямку и переключить `Обрабатывать ямки`. Пустое отверстие
+    не закрывается; радиусы 16/32 не дают заметного стоп-кадра. В `Рельефе`
+    проверить прежнее `Наращивание`, затем `Генератор · Почва / Гребни`, отдельно
+    сравнить `Детали · лёгкие` с прежним `Детали · мало` (лёгкий вариант должен
+    оставлять редкие мягкие перепады примерно на 1–2 вокселя), затем проверить три
+    направления и `Другой вариант`. Одинаковый вариант бесшовно продолжается
+    соседним мазком, повтор внутри LMB не копит высоту; Undo отменяет весь жест.
+14. `Штамп → Библиотека → + Новый источник → Камень`: изменить XYZ,
+    `Неровность`, `Сколы`, `Форм в россыпи` 1/4/8 и `Размер форм ±` 0/25/50%,
+    нажать `Другой вариант` и сохранить. Миниатюра показывает до четырёх форм,
+    карточка — полный размер набора; `Редактировать` возвращает тот же рецепт.
+    Затем через `Выбрать` проверить основную форму в `Один` и разные силуэты в
+    `Россыпь` с автоматически предложенным шагом и облеганием. `Другой вариант`
+    стабильно меняет расположение/выбор форм, preview не меняет Resource, Enter
+    применяет, Undo возвращает весь отпечаток. Старые штампы, одноформенные камни
+    и паттерны продолжают работать как раньше. В уже поставленном камне изменение
+    рецепта будущих отпечатков ничего не меняет.
+15. `+ Новый источник → Дерево`: сравнить высоту 10/18/32, толщину ствола,
+    радиус кроны, ветвистость и неровность 0/50/100, затем задать разные цвета
+    ствола и листвы. Боковая миниатюра должна показывать ствол и до четырёх форм.
+    Сохранить набор из 4–6 форм, поставить `Один`, затем провести `Россыпью` по
+    ровной и ступенчатой земле. Проверить предложенный шаг, `Другой вариант`,
+    облегание, Enter и одну Undo. Редактирование рецепта не меняет уже поставленные
+    деревья; старые штампы, камни и паттерны продолжают работать.
+16. `+ Новый источник → Куст`: сравнить высоту 4/10/24, размах 2/6/12,
+    стебли 1/6/12, пышность и неровность 20/60/100, затем два цвета и набор
+    1/4/8 форм. Боковая миниатюра должна показывать низкие широкие силуэты, а
+    `Другой вариант` — заметно менять ветвление без распада формы. Сохранить,
+    поставить `Один`, провести `Россыпью` по ровной и ступенчатой земле и
+    проверить предложенный шаг, облегание, Enter, одну Undo и edit/reopen.
+17. `+ Новый источник → Трава`: сравнить высоту 2/6/12, размах 1/2/4,
+    2/8/16 травинок, разброс высоты и наклон 0/50/100, два цвета и набор
+    1/4/8 форм. Первый выбор предлагает `Россыпь` и полезный шаг; пучки растут
+    вверх и привязываются корнем к каждой локальной верхней поверхности без
+    внутренней деформации. Боковая грань получает явный отказ. До Enter только
+    preview, после Enter одна Undo. В F6 земля остаётся физической, сквозь траву
+    можно пройти. Обычный штамп на том же explicit-collision target физичен;
+    save/reopen и discard рецепта сохраняют результат.
+18. `Выделение → Два этапа`: начать сверху и протянуть область на первой грани.
+    После первого отпускания прежнее выделение остаётся, геометрия не меняется,
+    голубой preview фиксирует плоскость. Движением мыши внутрь проверить глубину
+    1/2/8, точный SpinBox, второй клик и Enter. Повторить на четырёх боковых
+    гранях и снизу; направление всегда задаёт первая грань. Почти фронтальный
+    ракурс использует вертикальный ruler. Проверить `Новое`, Shift-add, Ctrl-
+    subtract, одну Undo/Redo после подтверждения, Esc на обоих этапах, смену
+    инструмента, маску кисти и обычную экранную `Рамку`. Ни один draft не меняет
+    Resource; рельеф не огибается автоматически.
 
 Большие штампы измерены отдельно (16384 vox, plan ~60ms); полная производительность
 на авторском Причале и визуальная/input-приёмка остаются ручным gate.
@@ -53,23 +699,45 @@ test_voxel_merge, test_voxel_object_canvas; plugin check-only.
 
 Автоматически: `tools/godot/Godot_v4.7.2-stable_win64_console.exe --headless
 --path . --script res://tools/test_voxel_object_library_layout.gd`, затем
-`test_voxel_visual_library.gd`; `plugin.gd --check-only`. Native capture: тот же
-layout test без `--headless` с `-- --capture`, результат
-`user://voxel_object_library.png`.
+`test_voxel_visual_library.gd`, `test_voxel_large_tree_object.gd` и
+`test_voxel_large_tree_dialog.gd`; `plugin.gd --check-only`. Native captures:
+layout и large-tree dialog без `--headless` с `-- --capture`, результаты
+`user://voxel_object_library.png` и `user://voxel_large_tree_dialog.png`.
 
 1. В 3D нажать `Объекты`: снизу открывается полка, сцена и selection остаются
    видимы; модального окна нет. Повторить вход через Ember Migration.
 2. Проверить поиск и фильтры `Все / Готовы в Godot / Ожидают переноса`.
    Выбранная карточка показывает превью, название, стабильный ID, размер, теги и
-   owner; `Поставить в сцену` и `Ещё…` не уезжают при прокрутке каталога.
+   owner; `Редактировать шаблон`, `Поставить в сцену` и `Ещё…` не уезжают при
+   прокрутке каталога.
 3. При выборе объекта сцены шапка пишет `рядом с … · смещение +X`; без selection —
    player_start или начало Map. Сменить selection при открытой полке: подпись и
    anchor должны обновиться.
-4. Поставить native и legacy-модель. Сохраняются прежние Map/Props owner, Undo/Redo,
+4. Для native-модели нажать `Редактировать шаблон`: открывается Object Canvas с
+   тем же Resource. Подсказка предупреждает, что Save затронет все экземпляры;
+   проверить правку, Save, Undo/Redo и reopen на двух экземплярах этой модели.
+5. Для legacy-модели кнопка называется `Перенести и редактировать`: одна migration
+   Undo-команда создаёт Godot Resource и сразу открывает его в Canvas. Отменить
+   перенос после выхода из Canvas и проверить возврат карточки в legacy-фильтр.
+6. Поставить native и legacy-модель. Сохраняются прежние Map/Props owner, Undo/Redo,
    Ctrl+S и reopen; legacy prefab собирается существующим import owner. Открытие
    Godot Resource и перенос доступны только для подходящего owner.
-5. Повторить при 1280×720 и 1600×900: каталог расширяется, правый details остаётся
+7. Повторить при 1280×720 и 1600×900: каталог расширяется, правый details остаётся
    фиксированным, основная кнопка видима, текст не выходит за границы.
+8. Нажать `+ Большое дерево`; проверить высоты 64, 128 и 256, толщину ствола,
+   размах кроны, ветвистость, неровность, плотность листвы, цвета и
+   `Другой вариант`. До `Собрать точный предпросмотр` файлы не создаются, OK
+   disabled. После сборки изменение параметра снова требует явного preview.
+9. Создать дерево: оно появляется как один обычный объект в `Map/Props` и как
+   native-карточка в каталоге. Ctrl+Z/Redo снимает/возвращает placement; Save и
+   reopen сцены сохраняют его. `Редактировать шаблон` открывает прежний Canvas.
+   Долепить и удалить voxel, проверить Canvas Undo/Redo, Save/reopen и prefab.
+10. В `Ещё…` выбрать `Создать вариант из рецепта…`: параметры и seed исходного
+    дерева восстановлены, но подтверждение создаёт новый model ID и новый объект,
+    не меняя прежние instances. У обычной модели без recipe команда disabled.
+11. В F6 пройти персонажем вокруг кроны: ствол и толстые ветви имеют collision,
+    листья не образуют невидимую стену. Сравнить silhouette/масштаб 64 и 256 с
+    маленьким stamp-деревом 8–32; последнее остаётся в библиотеке штампов.
 
 Ghost под курсором и выбор точки кликом не входят в этот срез: размещение пока
 сохраняет прежнюю семантику +X/player_start и отдельно согласуется после UI gate.
@@ -143,15 +811,17 @@ Undo перемещения, Undo отделения, Redo; сохранить �
 
 ## Фрагменты Canvas — фаза 1 (manual gate открыт)
 
-«Рамка по поверхности»: test_voxel_surface_marquee проверяет 6 направлений,
-16/32 density, inward depth, обратное протягивание, параллельный луч, bounds clip.
-test_voxel_selection_interaction дополнительно проверяет жест сверху: depth 1
-выбирает 16 верхних из 32 ячеек, preview не меняет предыдущую маску или source.
-Native capture сохраняет user://surface_marquee.png.
-Вручную: V → «Рамка по поверхности» → глубина 1 → протянуть по верху доски;
-глубина 2 → повторить; повернуть камеру и начать на боку. Объём должен идти
-внутрь от начальной грани и не перескакивать на соседние грани. Проверить
-Shift/Ctrl, Esc, начало вне объекта, дальнейший перенос/Undo/save/reopen.
+«Двухэтапное выделение»: test_voxel_surface_marquee проверяет 6 направлений,
+16/32 density, раздельные footprint/depth bounds, screen ruler, обратное
+протягивание, параллельный луч и bounds clip. test_voxel_selection_interaction
+проверяет плоский первый этап без commit, второй этап глубиной 2, второй клик,
+одну Undo/Redo, Ctrl-subtract и Esc с сохранением прежнего selection; Resource
+не меняется. Native capture сохраняет user://surface_marquee.png.
+Вручную: V → «Два этапа» → протянуть верх доски → после отпускания вытянуть
+голубой объём внутрь → подтвердить вторым кликом или Enter. Повернуть камеру и
+начать на каждом боку и снизу; направление не перескакивает на соседние грани.
+Проверить точную глубину, Shift/Ctrl, Esc, начало вне объекта, маску кисти,
+дальнейший перенос/Undo и отсутствие изменений Resource/save/reopen.
 
 UX-коррекция: `tools/test_voxel_selection_interaction.gd` проверяет видимую
 поверхность против насквозь, живой detached ghost, mouse-release selection,

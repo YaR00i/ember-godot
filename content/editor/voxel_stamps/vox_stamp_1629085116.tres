@@ -1,0 +1,28 @@
+[gd_resource type="Resource" format=3 uid="uid://dd6frrgitlye0"]
+
+[ext_resource type="Script" uid="uid://bndlx7f0sdeg3" path="res://addons/ember_import/ember_voxel_generator_recipe.gd" id="1_7ek2t"]
+[ext_resource type="Resource" uid="uid://dalwrdqyi6tvg" path="res://content/voxel_models/vox_stamp_1629085116.tres" id="2_xo3f6"]
+[ext_resource type="Script" uid="uid://cfd8e3hfqcxlr" path="res://addons/ember_import/ember_voxel_stamp_preset.gd" id="3_makuc"]
+
+[sub_resource type="Resource" id="Resource_7ek2t"]
+script = ExtResource("1_7ek2t")
+generator_id = "grass"
+parameters = {
+"base_color": Color(0.29560813, 0.45819262, 0.546875, 1),
+"blade_count": 7,
+"density": 32,
+"height": 3,
+"height_variation": 35,
+"lean": 30,
+"size_variation": 20,
+"spread_radius": 2,
+"tip_color": Color(0.5372549, 0.7411765, 0.34509805, 1),
+"variant_count": 6
+}
+
+[resource]
+script = ExtResource("3_makuc")
+display_name = "трва тест"
+geometry = ExtResource("2_xo3f6")
+kind = 2
+generator_recipe = SubResource("Resource_7ek2t")

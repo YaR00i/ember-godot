@@ -7,7 +7,7 @@ const MESH_DIR := "res://prefabs/voxels/meshes"
 const MAT_PATH := "res://materials/ember_voxel_toon.tres"
 const TRANSPARENT_MAT_PATH := "res://materials/ember_voxel_transparent.tres"
 const SOURCE_SIGNATURE_META := "ember_source_signature"
-const BUILD_CONTRACT := "normalized-block-v1"
+const BUILD_CONTRACT := "normalized-block-v2-bottom-winding"
 
 static var _json_cache: Dictionary = {}
 
@@ -255,7 +255,7 @@ static func make_preview_instance(model_id: String, tile_size := 16.0) -> EmberV
 		return null
 	_apply_visual_materials(visual)
 	var size := _ember_size(model_id, prefab, visual)
-	return _make_tree(model_id, model, size, vw, tile_size, visual, null)
+	return _make_tree(model_id, model, size, vw, tile_size, visual, null, _collision_mesh(model, vw))
 
 
 static func preview_source_revision(model_id: String) -> String:
@@ -281,7 +281,9 @@ static func prepare_resource(resource: EmberVoxelModelResource, projection_cache
 	_apply_visual_materials(visual)
 	var size := resource.grid_size()
 	var body := _body_mesh(resource.model_id, definition, model, vw, size)
-	var instance := _make_tree(resource.model_id, model, size, vw, 16.0, visual, body)
+	var instance := _make_tree(
+		resource.model_id, model, size, vw, 16.0, visual, body, _collision_mesh(model, vw)
+	)
 	_set_pack_owner(instance, instance)
 	var packed := PackedScene.new()
 	var result := packed.pack(instance)
@@ -309,7 +311,9 @@ static func _write_prefab(model_id: String, tile_size: float, stats: Dictionary)
 			return null
 	# PackedScene stays context-free at the legacy/world adapter. Every caller
 	# can apply its own block size without rebuilding the normalized mesh.
-	var root := _make_tree(model_id, model, size, vw, 16.0, visual, body)
+	var root := _make_tree(
+		model_id, model, size, vw, 16.0, visual, body, _collision_mesh(model, vw)
+	)
 	root.set_meta(SOURCE_SIGNATURE_META, source_signature(model_id))
 	_set_pack_owner(root, root)
 	var packed := PackedScene.new()
@@ -472,6 +476,20 @@ static func _body_mesh(
 	return null
 
 
+static func _collision_mesh(model: Dictionary, vw: float) -> ArrayMesh:
+	var collision := VoxMesher.model_channel(model, "collisionVoxels")
+	var raw: Variant = model.get("collisionVoxels", [])
+	if raw.size() == 0:
+		return null
+	var voxels := VoxMesher.model_channel(model, "voxels")
+	var skip := PackedByteArray()
+	skip.resize(voxels.size())
+	for index in voxels.size():
+		skip[index] = 1 if voxels[index] == 0 or collision[index] == 0 else 0
+	var built := VoxMesher.build_from_ember_model(model, vw, skip)
+	return built if built.get_surface_count() > 0 else ArrayMesh.new()
+
+
 static func _make_tree(
 	model_id: String,
 	model: Dictionary,
@@ -480,6 +498,7 @@ static func _make_tree(
 	tile_size: float,
 	visual_mesh: ArrayMesh,
 	shadow_mesh: ArrayMesh,
+	collision_mesh: ArrayMesh = null,
 ) -> EmberVoxelProp:
 	var w := size.x * vw
 	var d := size.z * vw
@@ -518,8 +537,9 @@ static func _make_tree(
 		body.collision_mask = 0
 		var shape := CollisionShape3D.new()
 		shape.name = "Shape"
-		if visual.mesh.get_surface_count() > 0:
-			shape.shape = visual.mesh.create_trimesh_shape()
+		var physics_mesh := collision_mesh if collision_mesh != null else visual.mesh
+		if physics_mesh.get_surface_count() > 0:
+			shape.shape = physics_mesh.create_trimesh_shape()
 		# Keep generated slots stable for authored descendants and Undo.
 		# A null shape has no physics; leave disabled as an instance override.
 		shape.position = inner_pos

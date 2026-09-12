@@ -79,6 +79,9 @@ static func plan(inputs: Array[Dictionary], align_grid := false) -> Dictionary:
 	if size.x > 256 or size.z > 256 or size.y > 8*density or size.x*size.y*size.z > MAX_CELLS:
 		return {"error":"Общий холст превышает 524 288 ячеек, 256 vox по XZ или допустимую высоту. Склейте меньший участок."}
 	var result := first.duplicate(true) as EmberVoxelModelResource
+	var has_collision_channel := false
+	for input in inputs:
+		has_collision_channel = has_collision_channel or not (input.source as EmberVoxelModelResource).collision_voxels.is_empty()
 	result.model_id = "merge_draft"
 	result.display_name = "Склейка"
 	result.schema_version = EmberVoxelModelResource.SCHEMA_VERSION
@@ -121,7 +124,9 @@ static func plan(inputs: Array[Dictionary], align_grid := false) -> Dictionary:
 						channels.voxels[destination] = slot.colors[source.voxels[index]]
 						for channel in Fragment.CHANNELS:
 							var values: PackedByteArray = source.get(channel)
-							if channel != "voxels" and not values.is_empty():
+							if channel == "collision_voxels" and has_collision_channel:
+								channels[channel][destination] = values[index] if not values.is_empty() else 1
+							elif channel != "voxels" and not values.is_empty():
 								channels[channel][destination] = values[index]
 						var owner := 1 if source.voxel_part_ids.is_empty() else source.voxel_part_ids[index]
 						result.voxel_part_ids[destination] = owner+int(slot.part_offset) if owner != 0 else 0
@@ -138,7 +143,10 @@ static func plan(inputs: Array[Dictionary], align_grid := false) -> Dictionary:
 				copy.indices = members
 				result.voxel_groups.append(copy)
 	for channel in channels:
-		result.set(channel,channels[channel])
+		if channel == "collision_voxels" and not has_collision_channel:
+			result.collision_voxels = PackedByteArray()
+		else:
+			result.set(channel,channels[channel])
 	return {"source":result,"frame":base*Transform3D(Basis.IDENTITY,Vector3(low)/density),"overlap":PackedInt32Array(overlap.keys()),"adjustments":adjustments}
 
 static func separate(source: EmberVoxelModelResource) -> Dictionary:

@@ -37,6 +37,24 @@ func configure(undo_redo: Object) -> void:
 	_undo_redo = undo_redo
 
 
+func record_editor_state(
+	context: Object,
+	target: Object,
+	before: Dictionary,
+	after: Dictionary,
+	title: String,
+) -> bool:
+	## Transient editor state shares the canonical chronological Undo history,
+	## but does not write into EmberVoxelModelResource or emit source_changed.
+	if _undo_redo == null or context == null or target == null or before == after:
+		return false
+	_create_action(title, context)
+	_add_do_method_with_state(target, &"apply_history_state", after.duplicate(true))
+	_add_undo_method_with_state(target, &"apply_history_state", before.duplicate(true))
+	_commit_action(false)
+	return true
+
+
 func grow_canvas(resource: EmberVoxelModelResource, size: Vector3i) -> Dictionary:
 	var result := preload("res://addons/ember_import/ember_voxel_canvas_growth.gd").plan(resource, size)
 	if result.has("error"):
@@ -103,6 +121,7 @@ func apply_stroke(resource: EmberVoxelModelResource, changes: Dictionary) -> boo
 		return false
 	_create_action("Voxel Surface · мазок (%d voxels)" % changes.size(), resource)
 	_record_parts(resource,before,after,PackedInt32Array(changes.keys()))
+	_record_collision(resource, before, after, PackedInt32Array(changes.keys()))
 	_add_do_property(resource, &"voxels", after)
 	_add_undo_property(resource, &"voxels", before)
 	var indices := PackedInt32Array()
@@ -124,6 +143,7 @@ func commit_applied_stroke(
 		return false
 	_create_action("Voxel Surface · непрерывный мазок (%d voxels)" % indices.size(), resource)
 	_record_parts(resource,before,after,indices,true)
+	_record_collision(resource, before, after, indices, true)
 	_add_do_property(resource, &"voxels", after)
 	_add_undo_property(resource, &"voxels", before)
 	_add_do_method_with_args(self, &"_notify_source_changed", [resource, indices])
@@ -207,7 +227,7 @@ func reset_pilot(resource: EmberVoxelModelResource) -> bool:
 	_create_action("Voxel Surface · сбросить пилот", resource)
 	for property_name in [
 		&"palette", &"voxels", &"material", &"emissive", &"shine",
-		&"transparency", &"transmittance",
+		&"transparency", &"transmittance", &"collision_voxels",
 		&"surface_fill_levels", &"surface_fill_materials", &"surface_fill_palette",
 		&"voxel_groups", &"merge_parts", &"voxel_part_ids",
 	]:
@@ -217,6 +237,34 @@ func reset_pilot(resource: EmberVoxelModelResource) -> bool:
 	_add_undo_method_with_args(self, &"_notify_source_changed", [resource, PackedInt32Array()])
 	_commit_action()
 	return true
+
+
+func _record_collision(
+	resource: EmberVoxelModelResource,
+	before_voxels: PackedByteArray,
+	after_voxels: PackedByteArray,
+	indices: PackedInt32Array,
+	applied := false,
+) -> void:
+	if resource.collision_voxels.is_empty():
+		return
+	var before := resource.collision_voxels.duplicate()
+	var after := before.duplicate()
+	for index in indices:
+		if index < 0 or index >= after.size():
+			continue
+		if after_voxels[index] == 0:
+			after[index] = 0
+		elif before_voxels[index] == 0:
+			# Hand-sculpted additions are physical by default. Existing generated
+			# leaves keep their non-physical value when merely repainted.
+			after[index] = 1
+	if before == after:
+		return
+	_add_do_property(resource, &"collision_voxels", after)
+	_add_undo_property(resource, &"collision_voxels", before)
+	if applied:
+		resource.collision_voxels = after
 
 
 func _create_action(title: String, context: Object) -> void:
@@ -266,6 +314,20 @@ func _add_undo_method_with_args(object: Object, method: StringName, args: Array)
 		(_undo_redo as EditorUndoRedoManager).add_undo_method(object, method, args[0], args[1])
 	else:
 		(_undo_redo as UndoRedo).add_undo_method(Callable(object, method).bindv(args))
+
+
+func _add_do_method_with_state(object: Object, method: StringName, state: Dictionary) -> void:
+	if _undo_redo is EditorUndoRedoManager:
+		(_undo_redo as EditorUndoRedoManager).add_do_method(object, method, state)
+	else:
+		(_undo_redo as UndoRedo).add_do_method(Callable(object, method).bind(state))
+
+
+func _add_undo_method_with_state(object: Object, method: StringName, state: Dictionary) -> void:
+	if _undo_redo is EditorUndoRedoManager:
+		(_undo_redo as EditorUndoRedoManager).add_undo_method(object, method, state)
+	else:
+		(_undo_redo as UndoRedo).add_undo_method(Callable(object, method).bind(state))
 
 
 func _notify_source_changed(

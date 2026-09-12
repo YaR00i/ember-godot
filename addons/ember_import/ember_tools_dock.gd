@@ -10,6 +10,7 @@ signal voxel_library_requested
 signal voxel_migrate_requested(model_id: String)
 signal voxel_batch_migrate_requested(model_ids: Array[String])
 signal close_requested
+signal voxel_assets_refreshed
 
 const SHADOW_PROFILES := [0, 2, 4, 8, 12, 16]
 const VisualLibraryPicker = preload("res://addons/ember_import/ember_visual_library_picker.gd")
@@ -54,6 +55,15 @@ var _source_path := ""
 var _vox_path := ""
 var _json_path := ""
 var _source_owner := ""
+var _refreshing_voxels := false
+var voxel_undo: Object
+var refresh_guard: Callable
+var _library_operation: RefCounted
+var _library_progress: ProgressBar
+var _library_cancel: Button
+var _library_retry: Button
+var _library_skipped_ids: Array[String] = []
+var library_ids_provider: Callable # Optional fixture provider; default is full catalog.
 
 
 func _ready() -> void:
@@ -161,6 +171,23 @@ func _build_ui() -> void:
 	voxel_body.add_child(_show_source)
 	_rebuild = _button("Пересобрать только этот prefab", _rebuild_selected_prefab)
 	voxel_body.add_child(_rebuild)
+	var refresh_scene := _button("Обновить воксели сцены", refresh_scene_voxels)
+	refresh_scene.name = "RefreshSceneVoxels"
+	refresh_scene.tooltip_text = "Обновить устаревшие экземпляры и Surface прямо в 3D. Source/рецепты не меняются; ручные mesh-правки пропускаются. Undo/Redo для экземпляров."
+	voxel_body.add_child(refresh_scene)
+	voxel_body.add_child(_button("Пересобрать всю библиотеку", rebuild_library_voxels))
+	_library_progress = ProgressBar.new()
+	_library_progress.visible = false
+	voxel_body.add_child(_library_progress)
+	_library_cancel = _button("Остановить после текущей модели", func():
+		if _library_operation != null: _library_operation.cancel_library()
+	)
+	_library_cancel.visible = false
+	voxel_body.add_child(_library_cancel)
+	_library_retry = _button("Повторить пропущенные модели", func(): rebuild_library_voxels(true))
+	_library_retry.name = "RetryVoxelLibrary"
+	_library_retry.visible = false
+	voxel_body.add_child(_library_retry)
 	_duplicate = _button("Дублировать безопасно · +X", _duplicate_selected_prop)
 	_duplicate.tooltip_text = "Создаёт scene-owned копию с новым placement_id; поддерживает Undo/Redo."
 	voxel_body.add_child(_duplicate)
@@ -518,35 +545,66 @@ func _show_selected_source() -> void:
 
 
 func _rebuild_selected_prefab() -> void:
-	if _selected_prop == null:
+	if is_instance_valid(_selected_prop):
+		await _refresh_voxels(_selected_prop.model_id, false)
+
+
+func refresh_scene_voxels() -> void:
+	await _refresh_voxels("", true)
+
+
+func rebuild_library_voxels(retry_skipped := false) -> void:
+	if _refreshing_voxels: return
+	if retry_skipped and _library_skipped_ids.is_empty(): return
+	if refresh_guard.is_valid():
+		var guard_error: String = refresh_guard.call()
+		if not guard_error.is_empty():
+			_set_status(guard_error, true)
+			return
+	_refreshing_voxels = true
+	_library_progress.visible = true
+	_library_cancel.visible = true
+	_library_retry.visible = false
+	_library_operation = preload("res://addons/ember_import/ember_voxel_scene_refresh.gd").new()
+	_library_operation.library_progress.connect(func(done: int, total: int, id: String):
+		_library_progress.max_value = maxi(1, total)
+		_library_progress.value = done
+		_set_status("Библиотека: %d/%d · %s" % [done, total, id])
+	)
+	var ids: Array[String] = library_ids_provider.call() if library_ids_provider.is_valid() else EmberVoxelCatalog.ids()
+	if retry_skipped: ids = _library_skipped_ids.duplicate()
+	var result: Dictionary = await _library_operation.rebuild_library(ids, self, EditorInterface.get_edited_scene_root(), voxel_undo)
+	_library_operation = null
+	_refreshing_voxels = false
+	_library_progress.visible = false
+	_library_cancel.visible = false
+	_library_skipped_ids.assign(result.skipped_ids)
+	_library_retry.visible = not _library_skipped_ids.is_empty()
+	voxel_assets_refreshed.emit()
+	_set_status("%s: %d/%d · пересобрано %d · пропущено %d. Undo — по моделям.\n%s" % ["Остановлено" if result.cancelled else "Готово", result.completed, result.total, result.rebuilt, result.skipped.size(), "\n".join(result.skipped)], not result.skipped.is_empty())
+
+
+func _refresh_voxels(model_id: String, stale_only: bool) -> void:
+	if _refreshing_voxels: return
+	if refresh_guard.is_valid():
+		var guard_error: String = refresh_guard.call()
+		if not guard_error.is_empty():
+			_set_status(guard_error, true)
+			return
+	_refreshing_voxels = true
+	var operation := preload("res://addons/ember_import/ember_voxel_scene_refresh.gd").new()
+	operation.progress.connect(func(message: String): _set_status(message))
+	operation.assets_changed.connect(func(): voxel_assets_refreshed.emit())
+	var result: Dictionary = await operation.refresh(EditorInterface.get_edited_scene_root(), voxel_undo, model_id, stale_only)
+	_refreshing_voxels = false
+	if not result.ok:
+		_set_status(str(result.error), true)
 		return
-	var model_id := _selected_prop.model_id
-	var map := _find_map()
-	var tile_size := map.imported_tile_size if map and map.imported_tile_size > 0.0 else 16.0
-	var scene_root := EditorInterface.get_edited_scene_root()
-	var scene_hash_before := _scene_file_hash(scene_root)
-	var placements_before := _placement_snapshot(model_id)
-	var stats := {}
-	EmberVoxelPrefab.begin_import()
-	var packed := EmberVoxelPrefab.ensure_saved(model_id, tile_size, stats, true)
-	if packed == null:
-		_set_status("Prefab %s не собран: проверьте исходник." % model_id, true)
-		return
-	var report := EmberVoxelPrefab.validate_packed(model_id, packed)
-	if not bool(report["ok"]):
-		_set_status("Prefab %s собран, но проверка не прошла: %s" % [model_id, "; ".join(report["errors"])], true)
-		return
-	EditorInterface.get_resource_filesystem().scan()
-	var scene_unchanged := scene_hash_before == _scene_file_hash(scene_root)
-	var placements_unchanged := placements_before == _placement_snapshot(model_id)
-	if not scene_unchanged or not placements_unchanged:
-		_set_status("Prefab проверен, но защита карты не прошла: file=%s, placements=%s" % [scene_unchanged, placements_unchanged], true)
-		return
-	_set_status("%s пересобран · %s · %d instance · viewport обновлён, файл карты и transforms не изменены." % [
-		model_id,
-		" + ".join(report["checks"]),
-		placements_before.size(),
-	])
+	var message := "3D обновлён: %d моделей, %d экземпляров, %d Surface · Ctrl+Z отменяет замену экземпляров." % [result.models, result.instances, result.surfaces]
+	if not result.skipped.is_empty():
+		message += "\nПропущены (правки сохранены):\n" + "\n".join(result.skipped)
+	_set_status(message, not result.skipped.is_empty())
+	_status.tooltip_text = message
 	_refresh_selection()
 
 

@@ -21,6 +21,7 @@ const DEFAULT_STATE := {
 
 var _states: Dictionary = {}
 var _recent_keys: Array[String] = []
+var _brush_profiles: Dictionary = {}
 
 
 static func resource_key(resource: Resource, hinted_path: String) -> String:
@@ -64,7 +65,7 @@ static func normalize(state: Dictionary) -> Dictionary:
 	var fit_margin := _finite_float(state.get("fit_margin", DEFAULT_STATE.fit_margin), DEFAULT_STATE.fit_margin)
 	return {
 		"yaw": wrapf(yaw, -PI, PI),
-		"pitch": clampf(pitch, deg_to_rad(-78.0), deg_to_rad(-18.0)),
+		"pitch": clampf(pitch, deg_to_rad(-88.0), deg_to_rad(88.0)),
 		"ortho_size": clampf(ortho_size, 1.5, 128.0),
 		"fit_margin": clampf(fit_margin, 1.0, 2.5),
 		"camera_target": target_vector,
@@ -99,14 +100,27 @@ func export_data() -> Dictionary:
 		"version": VERSION,
 		"states": _states.duplicate(true),
 		"recent_keys": _recent_keys.duplicate(),
+		"brush_profiles": _brush_profiles.duplicate(true),
 	}
+
+
+func remember_brush_profiles(profiles: Dictionary) -> void:
+	_brush_profiles = profiles.duplicate(true)
+
+
+func recall_brush_profiles() -> Dictionary:
+	return _brush_profiles.duplicate(true)
 
 
 func import_data(data: Dictionary) -> void:
 	_states.clear()
 	_recent_keys.clear()
+	_brush_profiles.clear()
 	if int(data.get("version", 0)) != VERSION:
 		return
+	var incoming_profiles: Variant = data.get("brush_profiles", {})
+	if incoming_profiles is Dictionary:
+		_brush_profiles = (incoming_profiles as Dictionary).duplicate(true)
 	var incoming: Variant = data.get("states", {})
 	if not incoming is Dictionary:
 		return

@@ -1,0 +1,40 @@
+[gd_resource type="Resource" format=3 uid="uid://jbdn3ft4ktmn"]
+
+[ext_resource type="Script" uid="uid://bndlx7f0sdeg3" path="res://addons/ember_import/ember_voxel_generator_recipe.gd" id="1_vbfti"]
+
+[resource]
+resource_name = "дуб мой"
+script = ExtResource("1_vbfti")
+generator_id = "large_tree"
+seed = 837832
+parameters = {
+"bark_color": Color(0.4627451, 0.3137255, 0.22352941, 1),
+"bark_pattern": false,
+"bark_pattern_color": Color(0.1882353, 0.16862746, 0.16078432, 1),
+"bark_pattern_density": 60,
+"bark_pattern_direction": 0,
+"bark_pattern_length": 6,
+"bark_pattern_version": 2,
+"branch_curve": 55,
+"branch_direction": 0,
+"branch_start": 27,
+"branch_taper": 60,
+"branch_thickness": 50,
+"branchiness": 80,
+"canopy_cohesion": 55,
+"cluster_flatten": 60,
+"cluster_size": 130,
+"crown_shape": 0,
+"crown_spread": 65,
+"density": 16,
+"foliage_along": 65,
+"foliage_amount": 100,
+"foliage_color": Color(0.30980393, 0.56078434, 0.3137255, 1),
+"generation_version": 8,
+"height": 96,
+"irregularity": 42,
+"leaf_density": 62,
+"root_flare": 65,
+"tree_type": 1,
+"trunk_width": 10
+}

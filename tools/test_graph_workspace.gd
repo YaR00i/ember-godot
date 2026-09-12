@@ -152,13 +152,18 @@ func _test_voxel_surface_entry(errors: Array[String], workspace: EmberGraphWorks
 	sculpt.open_pilot()
 	for control_name in [
 		"VoxelSculptHeader", "VoxelSculptToolSettings", "VoxelSculptToolRail",
-		"VoxelSculptSidebarScroll", "VoxelSurfaceViewMenu", "VoxelSurfaceLayerView",
+		"VoxelWorkshopSidebar", "VoxelWorkshopSidebarTabs", "VoxelWorkshopPartsSections",
+		"VoxelSurfaceViewMenu", "VoxelSurfaceLayerView",
 		"VoxelSculptActiveTool",
 		"VoxelSculptViewportContainer",
 		"VoxelSculptTool", "VoxelSculptRadius", "VoxelSculptHeightLimit",
 		"VoxelSculptBuildupRate", "VoxelSculptSmoothStrength", "VoxelSculptCoarse",
-		"VoxelSculptVolumeOperation", "VoxelSculptReliefDirection",
-		"VoxelSculptReliefGeometry",
+		"VoxelSculptSmoothMode", "VoxelSculptSmoothFillPits",
+		"VoxelSculptVolumeOperation", "VoxelSculptReliefMode",
+		"VoxelSculptReliefDirection", "VoxelSculptReliefGeometry",
+		"VoxelSculptReliefGeneratorStyle", "VoxelSculptReliefGeneratorDirection",
+		"VoxelSculptReliefGeneratorScale", "VoxelSculptReliefGeneratorDetail",
+		"VoxelSculptReliefVariant",
 		"VoxelSculptMaterialPreset", "VoxelSculptMaterialScope",
 		"VoxelSculptMaterialTolerance",
 		"VoxelSculptRegionSelect", "VoxelSculptWholeRegion", "VoxelSculptRegionLabel",
@@ -229,7 +234,12 @@ func _test_voxel_surface_entry(errors: Array[String], workspace: EmberGraphWorks
 	if radius.get_parent().name != "VoxelSculptToolSettings":
 		errors.append("Voxel Surface radius left the contextual tool-settings row")
 	var region_button := workspace.find_child("VoxelSculptRegionSelect", true, false)
-	if region_button == null or region_button.get_parent().name != "VoxelSculptSidebar":
+	var current_sidebar := sculpt.find_child("VoxelWorkshopSidebar", true, false)
+	if (
+		region_button == null
+		or current_sidebar == null
+		or not current_sidebar.is_ancestor_of(region_button)
+	):
 		errors.append("Voxel Surface edit-region controls left the resizable sidebar")
 	if tool.item_count != 8:
 		errors.append("Voxel Surface compact rail should expose 8 families, got %d" % tool.item_count)

@@ -86,7 +86,7 @@ func _extract(part: Dictionary, id: String) -> EmberVoxelModelResource:
 	result.display_name = "%s · %d,%d" % [source.display_name,origin.x,origin.z]
 	result.size_blocks = Vector3i(size.x/density,ceili(float(size.y)/density),size.z/density)
 	result.height_voxels = size.y
-	for channel in ["voxels","emissive","shine","transparency","transmittance"]:
+	for channel in ["voxels","emissive","shine","transparency","transmittance","collision_voxels"]:
 		var values: PackedByteArray = source.get(channel)
 		if values.is_empty():
 			continue

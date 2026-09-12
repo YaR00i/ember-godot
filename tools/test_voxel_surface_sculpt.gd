@@ -52,9 +52,11 @@ func _run() -> int:
 		else:
 			_test_stroke_undo(resource, adjacent, errors)
 	_test_interpolated_drag(errors)
+	_test_oriented_fixed_layer(errors)
 	_test_material_brush(errors)
 	_test_surface_level_fill(errors)
 	_test_relief_brush(errors)
+	_test_generative_relief(errors)
 	_test_swept_relief(errors)
 	_test_shell_relief(errors)
 	_test_shell_lower(errors)
@@ -686,6 +688,310 @@ func _test_interpolated_drag(errors: Array[String]) -> void:
 	undo.free()
 
 
+func _test_oriented_fixed_layer(errors: Array[String]) -> void:
+	var normals: Array[Vector3i] = [
+		Vector3i.RIGHT, Vector3i.LEFT, Vector3i.UP,
+		Vector3i.DOWN, Vector3i.BACK, Vector3i.FORWARD,
+	]
+	for normal in normals:
+		var resource := _fixed_layer_fixture()
+		var baseline := resource.voxels.duplicate()
+		var hit := Vector3i(8, 8, 8)
+		for axis in 3:
+			if normal[axis] > 0:
+				hit[axis] = 11
+			elif normal[axis] < 0:
+				hit[axis] = 4
+		var removed := Model.oriented_stroke_changes(
+			resource, baseline, hit, normal, Model.TOOL_REMOVE, 2, 1, 3, false
+		)
+		if removed.size() != 3:
+			errors.append("fixed Remove depth is not three voxels on normal %s: %d" % [normal, removed.size()])
+			continue
+		resource.voxels = Model.values_with_changes(resource.voxels, removed, true)
+		var revisited := Model.oriented_stroke_changes(
+			resource, baseline, hit, normal, Model.TOOL_REMOVE, 2, 1, 3, false
+		)
+		if revisited.keys() != removed.keys():
+			errors.append("same-gesture revisit changed the fixed footprint on normal %s" % normal)
+		var next_baseline := resource.voxels.duplicate()
+		var next_hit := hit - normal * 3
+		var next_layer := Model.oriented_stroke_changes(
+			resource, next_baseline, next_hit, normal, Model.TOOL_REMOVE, 2, 1, 2, false
+		)
+		if next_layer.size() != 2:
+			errors.append("new gesture could not remove the next layer on normal %s" % normal)
+
+		var add_resource := _fixed_layer_fixture()
+		var add_baseline := add_resource.voxels.duplicate()
+		var added := Model.oriented_stroke_changes(
+			add_resource, add_baseline, hit + normal, normal,
+			Model.TOOL_ADD, 2, 1, 3, false
+		)
+		if added.size() != 3:
+			errors.append("fixed Add depth is not three voxels on normal %s: %d" % [normal, added.size()])
+
+	var paint_resource := _fixed_layer_fixture()
+	var paint_baseline := paint_resource.voxels.duplicate()
+	var painted := Model.oriented_stroke_changes(
+		paint_resource, paint_baseline, Vector3i(8, 11, 8), Vector3i.UP,
+		Model.TOOL_PAINT, 2, 1, 2, false
+	)
+	if painted.size() != 2:
+		errors.append("fixed Paint did not use the selected inward depth")
+	var material_indices := Model.oriented_material_stroke_indices(
+		paint_resource, paint_baseline, Vector3i(8, 11, 8), Vector3i.UP, 1, 2, false
+	)
+	if material_indices.size() != 2:
+		errors.append("fixed Material did not use the selected inward depth")
+	var coarse := Model.oriented_stroke_changes(
+		paint_resource, paint_baseline, Vector3i(8, 11, 8), Vector3i.UP,
+		Model.TOOL_REMOVE, 2, 1, 3, true
+	)
+	if coarse.size() != 16:
+		errors.append("coarse fixed depth did not align to a 2x2x2 grid: %d" % coarse.size())
+	var circle := Model.oriented_stroke_changes(
+		paint_resource, paint_baseline, Vector3i(8, 11, 8), Vector3i.UP,
+		Model.TOOL_REMOVE, 2, 3, 1, false, "circle"
+	)
+	var square := Model.oriented_stroke_changes(
+		paint_resource, paint_baseline, Vector3i(8, 11, 8), Vector3i.UP,
+		Model.TOOL_REMOVE, 2, 3, 1, false, "square"
+	)
+	if circle.size() != 21 or square.size() != 25:
+		errors.append("circle/square footprints are not exact: %d/%d" % [circle.size(), square.size()])
+
+	var picked := Model.pick(
+		_fixed_layer_fixture(), Vector3(0.5, 0.5, 1.2), Vector3.FORWARD
+	)
+	if picked.get("normal", Vector3i.ZERO) != Vector3i.BACK:
+		errors.append("voxel pick did not report the visible face direction")
+	_test_sculpt_stroke_sampling(errors)
+
+
+func _test_sculpt_stroke_sampling(errors: Array[String]) -> void:
+	for density in [16, 32]:
+		var stepped := _surface_normal_fixture(density, true)
+		var middle: int = density / 2
+		var micro_face_hit := Vector3i(middle, 5, middle)
+		var micro_axis := Vector3i.ZERO
+		for brush_radius in [1, 2]:
+			var micro_area := Model.averaged_surface_normal(
+				stepped.voxels,
+				stepped.grid_size(),
+				micro_face_hit,
+				Vector3i.LEFT,
+				Model.surface_normal_radius(brush_radius),
+			)
+			micro_axis = Model.stable_surface_axis(
+				micro_area, Vector3i.LEFT, Vector3i.UP
+			)
+			if micro_axis != Vector3i.UP:
+				errors.append(
+					"density %d radius %d staircase micro-face replaced the averaged top normal: %s"
+					% [density, brush_radius, micro_axis]
+				)
+		var micro_target := Model.oriented_target_cell(
+			{
+				"hit": micro_face_hit,
+				"adjacent": micro_face_hit + Vector3i.LEFT,
+				"normal": Vector3i.LEFT,
+			},
+			micro_axis,
+			Model.TOOL_ADD,
+			stepped.grid_size(),
+		)
+		if micro_target != micro_face_hit + Vector3i.UP:
+			errors.append(
+				"density %d Add still followed the raw staircase face" % density
+			)
+
+		var wall := _surface_normal_fixture(density, false)
+		var wall_hit := Vector3i(middle - 1, middle, middle)
+		var wall_area := Model.averaged_surface_normal(
+			wall.voxels,
+			wall.grid_size(),
+			wall_hit,
+			Vector3i.RIGHT,
+			Model.surface_normal_radius(2),
+		)
+		if Model.stable_surface_axis(wall_area, Vector3i.RIGHT, Vector3i.UP) != Vector3i.RIGHT:
+			errors.append("density %d real vertical wall did not switch the area normal" % density)
+
+		var island := _thin_island_fixture(density)
+		var island_hit := Vector3i(4, 6, middle)
+		var island_area := Model.averaged_surface_normal(
+			island.voxels,
+			island.grid_size(),
+			island_hit,
+			Vector3i.LEFT,
+			Model.surface_normal_radius(4),
+			Vector3i.ZERO,
+			Vector3(-0.45, 0.80, 0.35),
+		)
+		if Model.stable_surface_axis(island_area, Vector3i.LEFT) != Vector3i.UP:
+			errors.append(
+				"density %d thin floating island cancelled its visible top face" % density
+			)
+		var face_plane := Model.surface_face_plane(island_hit, Vector3i.UP)
+		var inside_face := Model.single_face_target_cell(
+			island.voxels,
+			island.grid_size(),
+			{
+				"ray_origin": Vector3(4.5, float(density + 4), float(middle) + 0.5) / float(density),
+				"ray_direction": Vector3.DOWN,
+			},
+			Vector3i.UP,
+			face_plane,
+			Model.TOOL_ADD,
+			density,
+		)
+		if inside_face != Vector3i(4, 7, middle):
+			errors.append("density %d single-face plane stopped before the island edge" % density)
+		var outside_face := Model.single_face_target_cell(
+			island.voxels,
+			island.grid_size(),
+			{
+				# The real pick may hit terrain below; its projection onto the locked
+				# island plane is what must decide the edge.
+				"hit": Vector3i(2, 0, middle),
+				"ray_origin": Vector3(2.5, float(density + 4), float(middle) + 0.5) / float(density),
+				"ray_direction": Vector3.DOWN,
+			},
+			Vector3i.UP,
+			face_plane,
+			Model.TOOL_ADD,
+			density,
+		)
+		if outside_face != Model.INVALID_CELL:
+			errors.append("density %d single-face plane continued onto terrain below" % density)
+
+	var normal := Vector3i.UP
+	for area in [Vector3(0.55, 0.50, 0.0), Vector3(0.80, 0.40, 0.0)]:
+		normal = Model.stable_surface_axis(area, Vector3i.RIGHT, normal)
+	if normal != Vector3i.RIGHT:
+		errors.append("surface normal hysteresis did not switch once at a clear corner")
+	normal = Model.stable_surface_axis(Vector3(0.50, 0.55, 0.0), Vector3i.UP, normal)
+	if normal != Vector3i.RIGHT:
+		errors.append("surface normal hysteresis oscillated on near-equal corner samples")
+
+	var one_event := Model.spaced_stroke_segment(
+		Vector3i.ZERO, Vector3i(12, 0, 0), 3.0, 3, Vector3i.ZERO
+	)
+	var one_points: Array[Vector3i] = []
+	one_points.assign(one_event.points)
+	var many_points: Array[Vector3i] = []
+	var previous := Vector3i.ZERO
+	var remaining := 3.0
+	var last_emitted := Vector3i.ZERO
+	for current in [Vector3i(2, 0, 0), Vector3i(5, 0, 0), Vector3i(9, 0, 0), Vector3i(12, 0, 0)]:
+		var sampled := Model.spaced_stroke_segment(
+			previous, current, remaining, 3, last_emitted
+		)
+		var sampled_points: Array[Vector3i] = []
+		sampled_points.assign(sampled.points)
+		many_points.append_array(sampled_points)
+		if not sampled_points.is_empty():
+			last_emitted = sampled_points[-1]
+		remaining = float(sampled.distance_to_next)
+		previous = current
+	if many_points != one_points or one_points != [
+		Vector3i(3, 0, 0), Vector3i(6, 0, 0),
+		Vector3i(9, 0, 0), Vector3i(12, 0, 0),
+	]:
+		errors.append("distance-based dabs changed with input event frequency")
+
+	var benchmark := _surface_normal_fixture(32, true)
+	var benchmark_started := Time.get_ticks_usec()
+	for sample_index in 100:
+		Model.averaged_surface_normal(
+			benchmark.voxels,
+			benchmark.grid_size(),
+			Vector3i(16 + sample_index % 2, 5, 16 + sample_index % 8),
+			Vector3i.UP,
+			Model.surface_normal_radius(8),
+		)
+	var benchmark_elapsed := Time.get_ticks_usec() - benchmark_started
+	print("  sculpt area-normal benchmark 100 samples: %.2f ms" % (benchmark_elapsed / 1000.0))
+	if benchmark_elapsed > 2500000:
+		errors.append("area-normal sampling exceeded the 2.5 s editor safety budget")
+
+
+func _surface_normal_fixture(density: int, stepped: bool) -> EmberVoxelModelResource:
+	var resource := EmberVoxelModelResource.new()
+	resource.model_id = "surface_normal_fixture_%d" % density
+	resource.voxels_per_block = density
+	resource.size_blocks = Vector3i.ONE
+	resource.height_voxels = density
+	resource.palette = PackedColorArray([Color.TRANSPARENT, Color.WHITE])
+	var size := resource.grid_size()
+	resource.voxels.resize(size.x * size.y * size.z)
+	resource.voxels.fill(0)
+	var middle: int = density / 2
+	for z in size.z:
+		for x in size.x:
+			var top := 5 if stepped and x >= middle else 4
+			if not stepped and x >= middle:
+				continue
+			for y in range(top + 1):
+				resource.voxels[Model.index_of(Vector3i(x, y, z), size)] = 1
+	return resource
+
+
+func _thin_island_fixture(density: int) -> EmberVoxelModelResource:
+	var resource := EmberVoxelModelResource.new()
+	resource.model_id = "thin_island_fixture_%d" % density
+	resource.voxels_per_block = density
+	resource.size_blocks = Vector3i.ONE
+	resource.height_voxels = density
+	resource.palette = PackedColorArray([Color.TRANSPARENT, Color.WHITE])
+	var size := resource.grid_size()
+	resource.voxels.resize(size.x * size.y * size.z)
+	resource.voxels.fill(0)
+	for z in range(3, density - 3):
+		for x in range(3, density - 3):
+			resource.voxels[Model.index_of(Vector3i(x, 6, z), size)] = 1
+	return resource
+
+
+func _fixed_layer_fixture() -> EmberVoxelModelResource:
+	var resource := EmberVoxelModelResource.new()
+	resource.model_id = "fixed_layer_fixture"
+	resource.display_name = "Fixed layer fixture"
+	resource.voxels_per_block = 16
+	resource.size_blocks = Vector3i.ONE
+	resource.height_voxels = 16
+	resource.palette = PackedColorArray([
+		Color(0, 0, 0, 0), Color(0.35, 0.45, 0.55), Color(0.9, 0.35, 0.2),
+	])
+	resource.voxels.resize(16 * 16 * 16)
+	resource.voxels.fill(0)
+	var size := resource.grid_size()
+	for y in range(4, 12):
+		for z in range(4, 12):
+			for x in range(4, 12):
+				resource.voxels[Model.index_of(Vector3i(x, y, z), size)] = 1
+	return resource
+
+
+func _smooth_common_fixture() -> EmberVoxelModelResource:
+	var resource := EmberVoxelModelResource.new()
+	resource.model_id = "smooth_common_fixture"
+	resource.display_name = "Smooth common fixture"
+	resource.voxels_per_block = 16
+	resource.size_blocks = Vector3i.ONE
+	resource.height_voxels = 16
+	resource.palette = PackedColorArray([Color.TRANSPARENT, Color.WHITE])
+	var size := resource.grid_size()
+	resource.voxels.resize(size.x * size.y * size.z)
+	resource.voxels.fill(0)
+	for z in size.z:
+		for x in size.x:
+			for y in 5:
+				resource.voxels[Model.index_of(Vector3i(x, y, z), size)] = 1
+	return resource
+
+
 func _test_relief_brush(errors: Array[String]) -> void:
 	if Model.buildup_height(0.0, 8.0, 16) != 1:
 		errors.append("relief buildup must start at one art voxel")
@@ -756,6 +1062,117 @@ func _test_relief_brush(errors: Array[String]) -> void:
 	if not repeated_lower.is_empty():
 		errors.append("Lower brush accumulated past the pointer-down baseline")
 	_test_incremental_relief_parity(center, errors)
+
+
+func _test_generative_relief(errors: Array[String]) -> void:
+	var resource := _smooth_common_fixture()
+	var size := resource.grid_size()
+	var baseline := resource.voxels.duplicate()
+	var heightfield := Model.column_heights(baseline, size)
+	var from := Vector3i(3, 4, 8)
+	var to := Vector3i(12, 4, 8)
+	var cache := {}
+	var changes := Model.generative_relief_segment_changes(
+		resource, baseline, from, to, 1, 8, 4, 16, 3, 7, 0, "soil", false,
+		{}, cache, heightfield,
+	)
+	if changes.is_empty():
+		errors.append("generative Relief produced no terrain changes")
+		return
+	var added := 0
+	var removed := 0
+	for raw_change in changes.values():
+		var change: Dictionary = raw_change
+		if int(change.after) == 0:
+			removed += 1
+		else:
+			added += 1
+	if added == 0 or removed == 0:
+		errors.append("signed generative Relief did not produce both bumps and pits")
+	var result := Model.values_with_changes(baseline, changes, true)
+	resource.voxels = result
+	var revisit := Model.generative_relief_segment_changes(
+		resource, baseline, to, from, 1, 8, 4, 16, 3, 7, 0, "soil", false,
+		{}, cache, heightfield,
+	)
+	if not revisit.is_empty():
+		errors.append("generative Relief accumulated on a revisited stroke footprint")
+
+	var split := _smooth_common_fixture()
+	var split_cache := {}
+	var first := Model.generative_relief_segment_changes(
+		split, baseline, from, Vector3i(8, 4, 8), 1, 8, 4, 16, 3, 7, 0,
+		"soil", false, {}, split_cache, heightfield,
+	)
+	split.voxels = Model.values_with_changes(split.voxels, first, true)
+	var second := Model.generative_relief_segment_changes(
+		split, baseline, Vector3i(8, 4, 8), to, 1, 8, 4, 16, 3, 7, 0,
+		"soil", false, {}, split_cache, heightfield,
+	)
+	split.voxels = Model.values_with_changes(split.voxels, second, true)
+	if split.voxels != result:
+		errors.append("generative Relief depends on input-event segment density")
+
+	var alternate := _smooth_common_fixture()
+	var alternate_changes := Model.generative_relief_segment_changes(
+		alternate, baseline, from, to, 1, 8, 4, 16, 3, 8, 0, "soil", false,
+		{}, {}, heightfield,
+	)
+	if Model.values_with_changes(baseline, alternate_changes, true) == result:
+		errors.append("generative Relief variant seed did not change the terrain")
+
+	var light := _smooth_common_fixture()
+	var light_changes := Model.generative_relief_segment_changes(
+		light, baseline, from, to, 1, 8, 16, 16, 0, 7, 0, "soil", false,
+		{}, {}, heightfield,
+	)
+	light.voxels = Model.values_with_changes(light.voxels, light_changes, true)
+	var light_heights := Model.column_heights(light.voxels, size)
+	var standard := _smooth_common_fixture()
+	var standard_changes := Model.generative_relief_segment_changes(
+		standard, baseline, from, to, 1, 8, 16, 16, 1, 7, 0, "soil", false,
+		{}, {}, heightfield,
+	)
+	standard.voxels = Model.values_with_changes(standard.voxels, standard_changes, true)
+	var standard_heights := Model.column_heights(standard.voxels, size)
+	var light_changed_columns := 0
+	var standard_changed_columns := 0
+	var maximum_light_offset := 0
+	for column_index in heightfield.size():
+		var light_offset := absi(light_heights[column_index] - heightfield[column_index])
+		var standard_offset := absi(standard_heights[column_index] - heightfield[column_index])
+		if light_offset > 0:
+			light_changed_columns += 1
+		if standard_offset > 0:
+			standard_changed_columns += 1
+		maximum_light_offset = maxi(maximum_light_offset, light_offset)
+	if light_changed_columns == 0:
+		errors.append("light generative Relief produced no visible terrain detail")
+	if maximum_light_offset > 2:
+		errors.append("light generative Relief exceeded its two-voxel ceiling at maximum height")
+	if light_changed_columns >= standard_changed_columns:
+		errors.append("light generative Relief is not sparser than the established low detail")
+
+	for direction in [-1, 1]:
+		var directed := _smooth_common_fixture()
+		var directed_changes := Model.generative_relief_segment_changes(
+			directed, baseline, from, to, 1, 8, 4, 16, 3, 7, direction,
+			"ridges", false, {}, {}, heightfield,
+		)
+		for raw_change in directed_changes.values():
+			var change: Dictionary = raw_change
+			if direction > 0 and int(change.after) == 0:
+				errors.append("up-only generative Relief removed a voxel")
+				break
+			if direction < 0 and int(change.after) != 0:
+				errors.append("down-only generative Relief added a voxel")
+				break
+		if direction < 0:
+			directed.voxels = Model.values_with_changes(
+				directed.voxels, directed_changes, true
+			)
+			if Model.column_heights(directed.voxels, size).has(-1):
+				errors.append("generative Relief punched a through-hole in occupied terrain")
 
 
 func _test_incremental_relief_parity(
@@ -1290,6 +1707,49 @@ func _test_smooth_brush(errors: Array[String]) -> void:
 			if _column_top(coarse.voxels, size, x, z) % 2 != 1:
 				errors.append("Coarse Smooth did not end on a complete 2-voxel layer")
 				return
+
+	var common_center := Vector3i(8, 4, 8)
+	var common_bump := _smooth_common_fixture()
+	var common_size := common_bump.grid_size()
+	for z in range(6, 11):
+		for x in range(6, 11):
+			for y in range(5, 9):
+				common_bump.voxels[Model.index_of(Vector3i(x, y, z), common_size)] = 1
+	var bump_before := common_bump.voxels.duplicate()
+	var bump_changes := Model.smooth_segment_changes(
+		common_bump, bump_before, common_center, common_center, 1, 4, 2, false,
+		{}, {}, Model.column_heights(bump_before, common_size), true, true,
+	)
+	common_bump.voxels = Model.values_with_changes(common_bump.voxels, bump_changes, true)
+	if _column_top(common_bump.voxels, common_size, 8, 8) != 6:
+		errors.append("Common-level Smooth did not lower a broad bump toward its surrounding level")
+
+	var common_pit := _smooth_common_fixture()
+	for z in range(7, 10):
+		for x in range(7, 10):
+			for y in range(3, 5):
+				common_pit.voxels[Model.index_of(Vector3i(x, y, z), common_size)] = 0
+	var pit_before := common_pit.voxels.duplicate()
+	var pit_heightfield := Model.column_heights(pit_before, common_size)
+	var pit_changes := Model.smooth_segment_changes(
+		common_pit, pit_before, common_center, common_center, 1, 4, 2, false,
+		{}, {}, pit_heightfield, true, true,
+	)
+	common_pit.voxels = Model.values_with_changes(common_pit.voxels, pit_changes, true)
+	if _column_top(common_pit.voxels, common_size, 8, 8) != 4:
+		errors.append("Common-level Smooth did not raise a pit when the pits toggle is enabled")
+	var peaks_only := _smooth_common_fixture()
+	for z in range(7, 10):
+		for x in range(7, 10):
+			for y in range(3, 5):
+				peaks_only.voxels[Model.index_of(Vector3i(x, y, z), common_size)] = 0
+	var peaks_before := peaks_only.voxels.duplicate()
+	var peaks_changes := Model.smooth_segment_changes(
+		peaks_only, peaks_before, common_center, common_center, 1, 4, 2, false,
+		{}, {}, Model.column_heights(peaks_before, common_size), true, false,
+	)
+	if not peaks_changes.is_empty():
+		errors.append("Peaks-only Common Smooth changed a pit while its pits toggle was disabled")
 
 
 func _test_ramp_brush(errors: Array[String]) -> void:

@@ -92,6 +92,13 @@ func surface() -> EmberVoxelModelResource:
 	return _surface
 
 
+func refresh_geometry() -> void:
+	# configure intentionally ignores the same Resource. Explicit editor refresh
+	# must invalidate derived chunks even though canonical data did not change.
+	if _surface != null:
+		_begin_rebuild(true)
+
+
 func pending_chunk_count() -> int:
 	return _pending.size()
 

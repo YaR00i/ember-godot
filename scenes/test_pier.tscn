@@ -3,29 +3,35 @@
 [ext_resource type="Script" uid="uid://dechqn8w4wnur" path="res://scripts/test_pier.gd" id="1"]
 [ext_resource type="Script" uid="uid://ctwn2o6mocfe2" path="res://scripts/ember_map_loader.gd" id="2"]
 [ext_resource type="Script" uid="uid://4lkb6w8l82y0" path="res://scripts/ember_region.gd" id="3"]
-[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_467332258_canvas_493047929.tscn" id="3_s7jpf"]
-[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_0.tscn" id="3_u116l"]
-[ext_resource type="PackedScene" uid="uid://d28adjshhn515" path="res://prefabs/voxels/vox_fan_crate_stack.tscn" id="4"]
-[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_182068941.tscn" id="4_j5jts"]
-[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_1_canvas_120981611.tscn" id="4_u116l"]
-[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_fan_barrel_canvas_31516427_canvas_62266144.tscn" id="4_y8t1g"]
-[ext_resource type="PackedScene" uid="uid://bj4jbb1n0u8kt" path="res://prefabs/voxels/vox_fan_barrel.tscn" id="5"]
-[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_2.tscn" id="5_sijwm"]
-[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_3.tscn" id="6_ikush"]
-[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_4_canvas_121360778.tscn" id="7_lxf6b"]
-[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_5.tscn" id="8_ga0ds"]
-[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_6.tscn" id="9_yb5pd"]
-[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_7_canvas_121725901.tscn" id="10_sijwm"]
-[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_8.tscn" id="11_1txye"]
-[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_9.tscn" id="12_2lfjq"]
-[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_10.tscn" id="13_a55yo"]
-[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_11.tscn" id="14_hlj1e"]
-[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_block_82315914_canvas_194380203_canvas_117373020_canvas_106179708_canvas_1509328469.tscn" id="20_ikush"]
-[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_fragment_112205362.tscn" id="22_sijwm"]
-[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_merge_60949294_0.tscn" id="22_yjp2r"]
-[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_merge_60959363_1.tscn" id="23_ga0ds"]
-[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_fragment_1508100958.tscn" id="24_yb5pd"]
-[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_shape_sphere_253874193_canvas_374568229.tscn" id="25_yjp2r"]
+[ext_resource type="PackedScene" uid="uid://b5b153gkhkaip" path="res://prefabs/voxels/vox_shape_block_467332258_canvas_493047929.tscn" id="3_s7jpf"]
+[ext_resource type="PackedScene" uid="uid://b1l67qsoqyls7" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_0.tscn" id="3_u116l"]
+[ext_resource type="PackedScene" uid="uid://bwafqv2l6m5sl" path="res://prefabs/voxels/vox_fan_crate_stack.tscn" id="4"]
+[ext_resource type="PackedScene" uid="uid://d0lu4udsiu0so" path="res://prefabs/voxels/vox_shape_block_182068941.tscn" id="4_j5jts"]
+[ext_resource type="PackedScene" uid="uid://bn5p6vhhar8e1" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_1_canvas_120981611.tscn" id="4_u116l"]
+[ext_resource type="PackedScene" uid="uid://dgs3s3fcxlh0i" path="res://prefabs/voxels/vox_fan_barrel_canvas_31516427_canvas_62266144.tscn" id="4_y8t1g"]
+[ext_resource type="PackedScene" uid="uid://c7qrgepeqllsw" path="res://prefabs/voxels/vox_fan_barrel.tscn" id="5"]
+[ext_resource type="PackedScene" uid="uid://b6jgfus8n6h3g" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_2.tscn" id="5_sijwm"]
+[ext_resource type="PackedScene" uid="uid://c3ns4um17hslr" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_3.tscn" id="6_ikush"]
+[ext_resource type="PackedScene" uid="uid://c0bx42hck3oe6" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_4_canvas_121360778.tscn" id="7_lxf6b"]
+[ext_resource type="PackedScene" uid="uid://bgm043vovoin4" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_5.tscn" id="8_ga0ds"]
+[ext_resource type="PackedScene" uid="uid://ccc6d6hute7ww" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_6.tscn" id="9_yb5pd"]
+[ext_resource type="PackedScene" uid="uid://c7bmhjtdryo8k" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_7_canvas_121725901.tscn" id="10_sijwm"]
+[ext_resource type="PackedScene" uid="uid://bwflxr4qfadxr" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_8.tscn" id="11_1txye"]
+[ext_resource type="PackedScene" uid="uid://bd3mdwrl48rtg" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_9.tscn" id="12_2lfjq"]
+[ext_resource type="PackedScene" uid="uid://b8kk2blv12hgt" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_10.tscn" id="13_a55yo"]
+[ext_resource type="PackedScene" uid="uid://d3hhh86jg804h" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_11.tscn" id="14_hlj1e"]
+[ext_resource type="PackedScene" uid="uid://bxsqfhrh63o6a" path="res://prefabs/voxels/vox_shape_block_82315914_canvas_194380203_canvas_117373020_canvas_106179708_canvas_1509328469.tscn" id="20_ikush"]
+[ext_resource type="PackedScene" uid="uid://cjnb3khsmjdvc" path="res://prefabs/voxels/vox_fragment_112205362.tscn" id="22_sijwm"]
+[ext_resource type="PackedScene" uid="uid://b4lqiv7858j17" path="res://prefabs/voxels/vox_merge_60949294_0.tscn" id="22_yjp2r"]
+[ext_resource type="PackedScene" uid="uid://cedb224b6vw7h" path="res://prefabs/voxels/vox_merge_60959363_1.tscn" id="23_ga0ds"]
+[ext_resource type="PackedScene" uid="uid://yix2he7uekm0" path="res://prefabs/voxels/vox_fragment_1508100958.tscn" id="24_yb5pd"]
+[ext_resource type="PackedScene" uid="uid://dnq8ifgjr1ujg" path="res://prefabs/voxels/vox_shape_sphere_253874193_canvas_374568229.tscn" id="25_yjp2r"]
+[ext_resource type="PackedScene" uid="uid://yh3xnawmwfa2" path="res://prefabs/voxels/vox_tree_1511837690_canvas_1665774388.tscn" id="26_ga0ds"]
+[ext_resource type="PackedScene" uid="uid://rsdmtiysth2a" path="res://prefabs/voxels/vox_tree_190013632.tscn" id="27_yb5pd"]
+[ext_resource type="PackedScene" uid="uid://dby3a1tfdko4s" path="res://prefabs/voxels/vox_tree_120664056.tscn" id="28_1txye"]
+[ext_resource type="PackedScene" uid="uid://d4noldkinh100" path="res://prefabs/voxels/vox_tree_246540068.tscn" id="29_2lfjq"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_tree_352459298.tscn" id="30_a55yo"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_tree_522448705.tscn" id="31_hlj1e"]
 
 [sub_resource type="Environment" id="env"]
 background_mode = 1
@@ -939,10 +945,33 @@ placement_id = "placed_fragment_1508100958"
 
 [node name="placed_shape_sphere_253874193" parent="Map/Props" unique_id=570295176 instance=ExtResource("25_yjp2r")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0, 164)
-model_id = "vox_shape_sphere_253874193_canvas_374568229"
 placement_id = "placed_shape_sphere_253874193"
-metadata/ember_source_signature = "7008f96ed6f6367483ea043e7bc3208530e7766d13bad382790f550d8d9a5da7"
 metadata/ember_canvas_unique_source = "vox_shape_sphere_253874193_canvas_374568229"
+
+[node name="placed_tree_1511837690" parent="Map/Props" unique_id=1287706502 instance=ExtResource("26_ga0ds")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 298.9474, 0, 307.49658)
+placement_id = "placed_tree_1511837690"
+metadata/ember_canvas_unique_source = "vox_tree_1511837690_canvas_1665774388"
+
+[node name="placed_tree_190013632" parent="Map/Props" unique_id=2053885899 instance=ExtResource("27_yb5pd")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0, 164)
+placement_id = "placed_tree_190013632"
+
+[node name="placed_tree_120664056" parent="Map/Props" unique_id=838188635 instance=ExtResource("28_1txye")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 112, 0, 0)
+placement_id = "placed_tree_120664056"
+
+[node name="placed_tree_246540068" parent="Map/Props" unique_id=283226052 instance=ExtResource("29_2lfjq")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 112, 0, 0)
+placement_id = "placed_tree_246540068"
+
+[node name="placed_tree_352459298" parent="Map/Props" unique_id=2039884460 instance=ExtResource("30_a55yo")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 112, 0, 0)
+placement_id = "placed_tree_352459298"
+
+[node name="placed_tree_522448705" parent="Map/Props" unique_id=1586572773 instance=ExtResource("31_hlj1e")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0, 164)
+placement_id = "placed_tree_522448705"
 
 [node name="Regions" type="Node3D" parent="Map" unique_id=1328498943]
 

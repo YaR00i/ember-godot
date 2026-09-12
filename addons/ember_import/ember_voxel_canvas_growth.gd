@@ -23,7 +23,7 @@ static func plan(source: EmberVoxelModelResource, size: Vector3i) -> Dictionary:
 			for x in old.x:
 				mapping[VoxMesher.cell_index(x, y, z, old.x, old.z)] = VoxMesher.cell_index(x + offset.x, y, z + offset.z, size.x, size.z)
 	var properties := {"size_blocks": Vector3i(size.x / density, ceili(float(size.y) / density), size.z / density), "height_voxels": size.y}
-	for channel in ["voxels", "emissive", "shine", "transparency", "transmittance"]:
+	for channel in ["voxels", "emissive", "shine", "transparency", "transmittance", "collision_voxels"]:
 		var before: PackedByteArray = source.get(channel)
 		if before.is_empty():
 			continue

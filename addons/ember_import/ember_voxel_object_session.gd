@@ -5,6 +5,7 @@ extends RefCounted
 
 const Store = preload("res://addons/ember_import/ember_voxel_model_store.gd")
 const Parity = preload("res://addons/ember_import/ember_voxel_migration_parity.gd")
+const Equivalence = preload("res://addons/ember_import/ember_voxel_projection_equivalence.gd")
 const UNIQUE_META := "ember_canvas_unique_source"
 const GENERATED := ["Mesh", "ShadowBody", "Collision", "Collision/Shape", "Omni"]
 
@@ -26,10 +27,14 @@ var _expected_id := ""
 var _unique_id := ""
 var _context_mesh_frame := Transform3D.IDENTITY
 var _context_size := Vector3i.ONE
+var _refresh_compatibility := false
+var _refresh_adapters := {}
 
 
-func open(prop: EmberVoxelProp, scene_root: Node, undo_redo: Object, edit_shared := false) -> bool:
+func open(prop: EmberVoxelProp, scene_root: Node, undo_redo: Object, edit_shared := false, refresh_compatibility := false) -> bool:
 	error = ""
+	_refresh_compatibility = refresh_compatibility
+	_refresh_adapters.clear()
 	_unique_id = ""
 	_legacy_signature = ""
 	if not is_instance_valid(prop) or not is_instance_valid(scene_root):
@@ -72,6 +77,16 @@ func label() -> String:
 func target_name() -> String:
 	var prop := _target.get_ref() as EmberVoxelProp if _target != null else null
 	return str(prop.name) if is_instance_valid(prop) else ""
+
+
+func generator_context() -> Dictionary:
+	var prop := _target.get_ref() as EmberVoxelProp if _target != null else null
+	var scene := _root.get_ref() as Node if _root != null else null
+	if not is_instance_valid(prop) or not is_instance_valid(scene) or not scene.is_ancestor_of(prop):
+		return {}
+	return {"root": scene, "parent": prop.get_parent(), "position": prop.position,
+		"world_size": prop.block_world_size, "source_id": _expected_id,
+		"transform": prop.transform, "undo": _undo}
 
 
 func rename_target(requested_name: String) -> Dictionary:
@@ -262,6 +277,54 @@ func can_grow_canvas() -> bool:
 	return true
 
 
+func prepare_geometry_refresh(targets: Array) -> Dictionary:
+	# Derived-data repair only: retain source, identity, transforms and overrides.
+	var packed := EmberVoxelPrefab.prepare_resource(_baseline, _projection_cache)
+	if packed == null:
+		return _result_error("Не удалось подготовить геометрию.")
+	var template := packed.instantiate() as EmberVoxelProp
+	var defaults := _capture(template)
+	var old_states: Array[Dictionary] = []
+	var new_states: Array[Dictionary] = []
+	var adapted := {}
+	for target in targets:
+		if not is_instance_valid(target) or target.model_id != _expected_id or not _projection_errors(target, _baseline, packed).is_empty():
+			template.free()
+			return _result_error("В экземпляре есть отдельная геометрия/коллизия. Модель пропущена; ручные изменения сохранены.")
+		var old := _capture(target)
+		var next := old.duplicate(true)
+		for path in ["Mesh", "ShadowBody", "Collision/Shape"]:
+			if old.nodes.has(path) != defaults.nodes.has(path):
+				template.free()
+				return _result_error("Структура экземпляра отличается от source. Модель пропущена.")
+			if old.nodes.has(path):
+				var field := "shape" if path == "Collision/Shape" else "mesh"
+				var adapter := 1.0
+				if field == "mesh":
+					var original_mesh: ArrayMesh = old.nodes[path][field]
+					var expected_mesh: ArrayMesh = defaults.nodes[path][field]
+					for surface in original_mesh.get_surface_count():
+						if original_mesh.surface_get_material(surface) != expected_mesh.surface_get_material(surface):
+							template.free()
+							return _result_error("Материал поверхности mesh изменён вручную. Модель пропущена.")
+					if _refresh_compatibility:
+						adapter = float((_refresh_adapters.get(target.get_instance_id(), {}) as Dictionary).get(path, 1.0))
+				elif _refresh_compatibility and old.nodes[path].shape != null and defaults.nodes[path].shape != null:
+					adapter = float((_refresh_adapters.get(target.get_instance_id(), {}) as Dictionary).get(path, 1.0))
+				next.nodes[path][field] = defaults.nodes[path][field]
+				if adapter != 1.0:
+					# Preserve the actual node frame AND all authored descendants.
+					# Adapt the replacement buffers, not the user's parent transform.
+					var key := "%s:%s" % [path, adapter]
+					if not adapted.has(key):
+						adapted[key] = Equivalence.scaled_mesh(defaults.nodes[path][field], adapter) if field == "mesh" else Equivalence.scaled_shape(defaults.nodes[path][field], adapter)
+					next.nodes[path][field] = adapted[key]
+		old_states.append(old)
+		new_states.append(next)
+	template.free()
+	return {"ok": true, "packed": packed, "old_states": old_states, "new_states": new_states}
+
+
 func _apply(states: Array[Dictionary], asset: Dictionary) -> void:
 	if not asset.is_empty():
 		var result := Store.install_prepared_asset(asset.source, asset.packed, asset.path, asset.prefab)
@@ -302,8 +365,8 @@ func _apply(states: Array[Dictionary], asset: Dictionary) -> void:
 					node.set(key, values[key])
 		prop.notify_property_list_changed()
 	if Engine.is_editor_hint():
-		EditorInterface.mark_scene_as_unsaved()
-		EditorInterface.get_resource_filesystem().scan()
+		if not states.is_empty(): EditorInterface.mark_scene_as_unsaved()
+		preload("res://addons/ember_import/ember_editor_filesystem.gd").request()
 
 
 func create_independent_copy() -> bool:
@@ -357,7 +420,7 @@ func _attach_copy(scene_root: Node, source: EmberVoxelProp, parent: Node, copy: 
 		scene_root.set_editable_instance(copy, true)
 	if Engine.is_editor_hint():
 		EditorInterface.mark_scene_as_unsaved()
-		EditorInterface.get_resource_filesystem().scan()
+		preload("res://addons/ember_import/ember_editor_filesystem.gd").request()
 
 
 func _detach_copy(parent: Node, copy: EmberVoxelProp) -> void:
@@ -411,6 +474,107 @@ func _projection_errors(prop: EmberVoxelProp, source: EmberVoxelModelResource, p
 	if prepared == null:
 		return ["source не создаёт поддерживаемый prefab"]
 	var expected := prepared.instantiate() as EmberVoxelProp
+	problems = _compare_projection(prop, expected)
+	if not problems.is_empty():
+		# Accept only the exact previous mesher output, never arbitrary geometry.
+		# Opening does not rewrite authored assets; the next explicit rebuild/save
+		# publishes the corrected clockwise bottom faces.
+		var mesh := expected.get_node("Mesh") as MeshInstance3D
+		mesh.mesh = _legacy_bottom_mesh(mesh.mesh)
+		var shadow := expected.get_node_or_null("ShadowBody") as MeshInstance3D
+		if shadow != null and shadow.mesh is ArrayMesh:
+			if _refresh_compatibility:
+				# Historical VOX shadow-body builder omitted the transparency
+				# channel. Reproduce that exact derived candidate, not an arbitrary
+				# one-surface mesh supplied by the stored prefab.
+				var body_model: Dictionary = source.to_definition().model
+				body_model.transparency = PackedByteArray()
+				shadow.mesh = VoxMesher.build_from_ember_model(body_model, 1.0 / source.normalized_density(), EmberVoxelLight.skip_mask(body_model, source.grid_size()))
+			shadow.mesh = _legacy_bottom_mesh(shadow.mesh)
+		var shape := expected.get_node_or_null("Collision/Shape") as CollisionShape3D
+		if shape != null and shape.shape != null:
+			var physics_mesh := EmberVoxelPrefab._collision_mesh(source.to_definition().model, 1.0 / source.normalized_density())
+			var old_physics: ArrayMesh = _legacy_bottom_mesh(physics_mesh) if physics_mesh != null else mesh.mesh
+			if old_physics.get_surface_count() > 0:
+				shape.shape = old_physics.create_trimesh_shape()
+		var legacy_problems := _compare_projection(prop, expected)
+		if legacy_problems.is_empty():
+			problems.clear()
+		elif _refresh_compatibility:
+			var adapters := _indexed_projection_adapters(prop, expected, source.normalized_density())
+			if not adapters.is_empty():
+				_refresh_adapters[prop.get_instance_id()] = adapters
+				problems.clear()
+	expected.free()
+	if not problems.is_empty() and _refresh_compatibility:
+		expected = prepared.instantiate() as EmberVoxelProp
+		var adapters := _indexed_projection_adapters(prop, expected, source.normalized_density())
+		if not adapters.is_empty():
+			_refresh_adapters[prop.get_instance_id()] = adapters
+			problems.clear()
+		expected.free()
+	return problems
+
+
+static func _collision_adapter(old: ConcavePolygonShape3D, expected: ConcavePolygonShape3D, density: int) -> float:
+	for factor in [1.0, float(density)]:
+		if Equivalence.faces_match(old.get_faces(), expected.get_faces(), factor): return factor
+	return 0.0
+
+
+static func _indexed_projection_adapters(prop: EmberVoxelProp, expected: EmberVoxelProp, density: int) -> Dictionary:
+	var adapters := {}
+	for path in ["Mesh", "ShadowBody"]:
+		var old := prop.get_node_or_null(path) as MeshInstance3D
+		var fresh := expected.get_node_or_null(path) as MeshInstance3D
+		if (old == null) != (fresh == null): return {}
+		if old != null:
+			if not old.mesh is ArrayMesh: return {}
+			var factor := Equivalence.mesh_scale(old.mesh, fresh.mesh, density)
+			if factor == 0.0: return {}
+			adapters[path] = factor
+	var old_shape := prop.get_node_or_null("Collision/Shape") as CollisionShape3D
+	var fresh_shape := expected.get_node_or_null("Collision/Shape") as CollisionShape3D
+	if (old_shape == null) != (fresh_shape == null): return {}
+	if old_shape != null:
+		if old_shape.shape == null and fresh_shape.shape == null: return adapters
+		if not old_shape.shape is ConcavePolygonShape3D or not fresh_shape.shape is ConcavePolygonShape3D: return {}
+		var factor := _collision_adapter(old_shape.shape, fresh_shape.shape, density)
+		if factor == 0.0: return {}
+		adapters["Collision/Shape"] = factor
+	return adapters
+
+
+static func _legacy_bottom_mesh(mesh: ArrayMesh) -> ArrayMesh:
+	var result := ArrayMesh.new()
+	for surface in mesh.get_surface_count():
+		var arrays := mesh.surface_get_arrays(surface)
+		var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX].duplicate()
+		var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		for first in range(0, vertices.size() - 3, 4):
+			if normals[first].dot(Vector3.DOWN) > 0.9999:
+				var old_b := vertices[first + 1]
+				vertices[first + 1] = vertices[first + 3]
+				vertices[first + 3] = old_b
+		arrays[Mesh.ARRAY_VERTEX] = vertices
+		result.add_surface_from_arrays(mesh.surface_get_primitive_type(surface), arrays)
+		result.surface_set_name(surface, mesh.surface_get_name(surface))
+		result.surface_set_material(surface, mesh.surface_get_material(surface))
+	return result
+
+
+static func _compare_projection(prop: EmberVoxelProp, expected: EmberVoxelProp) -> Array[String]:
+	var problems: Array[String] = []
+	var shadow := prop.get_node_or_null("ShadowBody") as MeshInstance3D
+	var expected_shadow := expected.get_node_or_null("ShadowBody") as MeshInstance3D
+	if (shadow == null) != (expected_shadow == null):
+		problems.append("изменена структура shadow mesh")
+	elif shadow != null:
+		if not shadow.mesh is ArrayMesh or not expected_shadow.mesh is ArrayMesh:
+			problems.append("shadow mesh задан вручную")
+		elif shadow.mesh.get_surface_count() > 0 or expected_shadow.mesh.get_surface_count() > 0:
+			var shadow_checks: Array[String] = []
+			Parity._compare_meshes(shadow.mesh, expected_shadow.mesh, problems, shadow_checks)
 	var visual := prop.get_node_or_null("Mesh") as MeshInstance3D
 	if visual == null or not visual.mesh is ArrayMesh:
 		problems.append("изменён тип визуальной геометрии")
@@ -430,7 +594,6 @@ func _projection_errors(prop: EmberVoxelProp, source: EmberVoxelModelResource, p
 			problems.append("коллизия задана вручную")
 		else:
 			Parity._compare_vectors(collision.shape.get_faces(), expected_collision.shape.get_faces(), "collision", problems)
-	expected.free()
 	return problems
 
 

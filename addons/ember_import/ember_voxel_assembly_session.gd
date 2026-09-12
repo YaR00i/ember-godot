@@ -6,7 +6,7 @@ const Session = preload("res://addons/ember_import/ember_voxel_object_session.gd
 const Split = preload("res://addons/ember_import/ember_voxel_object_split.gd")
 const Store = preload("res://addons/ember_import/ember_voxel_model_store.gd")
 const WalkSurface = preload("res://addons/ember_import/ember_walk_surface.gd")
-const CHANNELS := ["voxels","emissive","shine","transparency","transmittance"]
+const CHANNELS := ["voxels","emissive","shine","transparency","transmittance","collision_voxels"]
 var source_directory := EmberVoxelCatalog.NATIVE_DIR
 var prefab_directory := EmberVoxelPrefab.PREFAB_DIR
 var draft: EmberVoxelModelResource
@@ -98,9 +98,13 @@ func open(group: Node3D, scene: Node, undo: Object) -> bool:
 		draft.merge_parts = names.duplicate()
 	if not draft.merge_parts.is_empty():
 		draft.voxel_part_ids.resize(cells)
+	var has_collision_channel := false
+	for slot in _slots:
+		has_collision_channel = has_collision_channel or not (slot.session.draft as EmberVoxelModelResource).collision_voxels.is_empty()
 	for channel in CHANNELS:
 		var values := PackedByteArray()
-		values.resize(cells)
+		if channel != "collision_voxels" or has_collision_channel:
+			values.resize(cells)
 		draft.set(channel,values)
 	var coverage := PackedByteArray()
 	coverage.resize(cells)
@@ -122,6 +126,12 @@ func open(group: Node3D, scene: Node, undo: Object) -> bool:
 		for channel in CHANNELS:
 			var values: PackedByteArray = source.get(channel)
 			var joined: PackedByteArray = draft.get(channel)
+			if channel == "collision_voxels" and has_collision_channel and values.is_empty():
+				for index in source.voxels.size():
+					if source.voxels[index] != 0:
+						joined[mapping[index]] = 1
+				draft.set(channel,joined)
+				continue
 			for index in values.size():
 				if channel == "voxels" and values[index] >= slot.remap.size():
 					return _fail("В секции есть индекс вне палитры; автоматическое исправление не выполняется.")
@@ -251,7 +261,7 @@ func _piece_equal(a: EmberVoxelModelResource, b: EmberVoxelModelResource, palett
 		return false
 	if a.voxel_groups != b.voxel_groups:
 		return false
-	for channel in ["emissive","shine","transparency","transmittance"]:
+	for channel in ["emissive","shine","transparency","transmittance","collision_voxels"]:
 		if a.get(channel) != b.get(channel):
 			return false
 	if palette_only:

@@ -1,0 +1,9 @@
+[gd_resource type="Resource" format=3 uid="uid://bwjhxj005d7n0"]
+
+[ext_resource type="Resource" uid="uid://d3ui374h0j6re" path="res://content/voxel_models/vox_stamp_281316130.tres" id="1_v5274"]
+[ext_resource type="Script" uid="uid://cfd8e3hfqcxlr" path="res://addons/ember_import/ember_voxel_stamp_preset.gd" id="2_jlnqt"]
+
+[resource]
+script = ExtResource("2_jlnqt")
+display_name = "камушек дороги"
+geometry = ExtResource("1_v5274")

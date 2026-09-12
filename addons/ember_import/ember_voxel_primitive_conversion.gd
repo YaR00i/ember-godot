@@ -207,4 +207,4 @@ func _swap(prop: EmberVoxelProp, forward: bool) -> void:
 		EditorInterface.get_selection().clear()
 		EditorInterface.get_selection().add_node(added)
 		EditorInterface.mark_scene_as_unsaved()
-		EditorInterface.get_resource_filesystem().scan()
+		preload("res://addons/ember_import/ember_editor_filesystem.gd").request()

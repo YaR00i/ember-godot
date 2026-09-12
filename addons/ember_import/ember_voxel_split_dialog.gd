@@ -92,5 +92,5 @@ func _commit() -> void:
 	if Engine.is_editor_hint():
 		EditorInterface.get_selection().clear()
 		EditorInterface.get_selection().add_node(group)
-		EditorInterface.get_resource_filesystem().scan()
+		preload("res://addons/ember_import/ember_editor_filesystem.gd").request()
 	queue_free()

@@ -8,6 +8,76 @@ const Catalog = preload("res://scripts/ember_voxel_catalog.gd")
 const Importer = preload("res://scripts/ember_voxel_legacy_importer.gd")
 const Parity = preload("res://addons/ember_import/ember_voxel_migration_parity.gd")
 static var _canvas_cache: Dictionary = {}
+static var derived_rename_override: Callable # Test-only transient sharing violation.
+
+
+static func install_derived_prefab(packed: PackedScene, path: String, signature: String) -> Dictionary:
+	# Rebuild never reserializes the canonical source. Like Canvas Save, serialize
+	# outside res://, then publish atomically without mutating live subresources.
+	var directory := "user://ember-editor-staging/refresh-%d-%d" % [OS.get_process_id(), Time.get_ticks_usec()]
+	var temporary := directory.path_join(path.get_file())
+	if DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(directory)) != OK:
+		return {"ok": false, "error": "Не удалось открыть staging папку."}
+	var node := packed.instantiate()
+	node.scene_file_path = ""
+	node.set_meta(EmberVoxelPrefab.SOURCE_SIGNATURE_META, signature)
+	var detached := PackedScene.new()
+	var result := detached.pack(node)
+	node.free()
+	if result == OK:
+		result = ResourceSaver.save(detached, temporary)
+	var uid := EmberVoxelPrefab.resource_uid_from_header(path)
+	if uid == ResourceUID.INVALID_ID:
+		uid = ResourceUID.create_id()
+	if result != OK:
+		return {"ok": false, "error": "Сериализация staging: " + error_string(result)}
+	# set_uid rewrites text through a .uidren file and resource-directory access.
+	# Avoid that second filesystem transaction for user:// staging, especially
+	# in the native editor. Change only the generated header before publication.
+	var text := FileAccess.get_file_as_string(temporary)
+	var end := text.find("\n")
+	if end < 0 or not text.begins_with("[gd_scene "):
+		return {"ok": false, "error": "Staging не содержит заголовок PackedScene."}
+	var header := text.left(end).strip_edges()
+	var uid_start := header.find(" uid=\"")
+	if uid_start >= 0:
+		var uid_end := header.find("\"", uid_start + 6)
+		if uid_end < 0: return {"ok": false, "error": "Некорректный UID staging."}
+		header = header.left(uid_start) + header.substr(uid_end + 1)
+	header = header.trim_suffix("]") + " uid=\"" + ResourceUID.id_to_text(uid) + "\"]"
+	var published := restore_derived_prefab((header + text.substr(end)).to_utf8_buffer(), path)
+	if not Engine.is_editor_hint():
+		_cleanup_serialization([temporary], directory)
+	return published
+
+
+static func restore_derived_prefab(bytes: PackedByteArray, path: String) -> Dictionary:
+	if DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(path.get_base_dir())) != OK:
+		return {"ok": false, "error": "Не удалось открыть папку prefab."}
+	var temporary := path + ".refresh-%d.tmp" % Time.get_ticks_usec()
+	var had_target := FileAccess.file_exists(path)
+	var file := FileAccess.open(temporary, FileAccess.WRITE)
+	if file == null:
+		return {"ok": false, "error": "Запись временного prefab: " + error_string(FileAccess.get_open_error())}
+	file.store_buffer(bytes)
+	var result := file.get_error()
+	file.close()
+	if result == OK:
+		result = derived_rename_override.call(temporary, path) if derived_rename_override.is_valid() else DirAccess.rename_absolute(ProjectSettings.globalize_path(temporary), ProjectSettings.globalize_path(path))
+	if result != OK:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(temporary))
+		return {"ok": false, "error": "Замена prefab на диске: %s · %s" % [error_string(result), path], "retryable": result in [FAILED, ERR_FILE_CANT_WRITE, ERR_FILE_CANT_OPEN, ERR_CANT_CREATE], "published": had_target and not FileAccess.file_exists(path)}
+	var uid := EmberVoxelPrefab.resource_uid_from_header(path)
+	if uid != ResourceUID.INVALID_ID:
+		ResourceUID.set_id(uid, path) if ResourceUID.has_id(uid) else ResourceUID.add_id(uid, path)
+	var cached := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as PackedScene
+	if cached == null:
+		return {"ok": false, "error": "Опубликованный prefab не читается.", "published": true}
+	cached.resource_path = ""
+	cached.take_over_path(path)
+	_canvas_cache[path] = cached
+	EmberVoxelPrefab.begin_import()
+	return {"ok": true, "packed": cached}
 
 
 static func install_prepared_asset(

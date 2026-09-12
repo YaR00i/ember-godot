@@ -67,7 +67,7 @@ func _attach(root: Node, parent: Node3D, prop: EmberVoxelProp) -> void:
 		EditorInterface.get_selection().clear()
 		EditorInterface.get_selection().add_node(prop)
 		EditorInterface.mark_scene_as_unsaved()
-		EditorInterface.get_resource_filesystem().scan()
+		preload("res://addons/ember_import/ember_editor_filesystem.gd").request()
 
 func _detach(parent: Node3D, prop: EmberVoxelProp) -> void:
 	if is_instance_valid(parent) and prop.get_parent() == parent:

@@ -29,6 +29,9 @@ const GRAPH_LAYOUT_WORKSPACE := "workspace_layout"
 
 var _dock: VBoxContainer
 var _object_library
+var _generation_panel
+var _generation_initialization_pending := false
+var _generation_next_recipe: Resource
 var _confirm: ConfirmationDialog
 var _voxel_gizmo: EditorNode3DGizmoPlugin
 var _trigger_gizmo: EditorNode3DGizmoPlugin
@@ -100,6 +103,7 @@ func _enter_tree() -> void:
 	more.get_popup().add_item("Повторить дублирование",5)
 	more.get_popup().add_item("Склеить voxel-детали…",8)
 	more.get_popup().add_item("Разобрать склейку…",9)
+	more.get_popup().add_item("Обновить воксели сцены",10)
 	more.get_popup().add_separator()
 	more.get_popup().add_item("Поверхность прохода…",6)
 	more.get_popup().add_check_item("Показать поверхности прохода",7)
@@ -113,6 +117,9 @@ func _enter_tree() -> void:
 			_walk_surface_selected()
 		elif id in [8,9]:
 			_merge_voxel_selected(id == 9)
+		elif id == 10:
+			make_bottom_panel_item_visible(_dock)
+			_dock.refresh_scene_voxels()
 		elif id == 7:
 			var index := more.get_popup().get_item_index(7)
 			var enabled := not more.get_popup().is_item_checked(index)
@@ -142,6 +149,11 @@ func _enter_tree() -> void:
 	_walk_surface_gizmo = preload("res://addons/ember_import/ember_walk_surface_gizmo.gd").new()
 	add_node_3d_gizmo_plugin(_walk_surface_gizmo)
 	_dock = EmberToolsDock.new()
+	_dock.voxel_undo = get_undo_redo()
+	_dock.refresh_guard = _voxel_refresh_guard
+	_dock.voxel_assets_refreshed.connect(func():
+		if is_instance_valid(_object_library): _object_library.refresh()
+	)
 	# Keep this identity distinct from the legacy right-slot dock name "Ember".
 	# Godot restores dock placement by Control.name from editor_layout.cfg.
 	_dock.name = "EmberMigrationWorkflow"
@@ -155,10 +167,21 @@ func _enter_tree() -> void:
 	_dock.close_requested.connect(_close_migration_panel)
 	add_control_to_bottom_panel(_dock, "Ember Migration")
 	_object_library = EmberVoxelObjectLibrary.new()
+	_object_library.rebuild_library_requested.connect(func():
+		make_bottom_panel_item_visible(_dock)
+		_dock.rebuild_library_voxels()
+	)
 	_object_library.place_requested.connect(_create_voxel_prop)
+	_object_library.edit_requested.connect(_edit_voxel_library_template)
 	_object_library.open_resource_requested.connect(_open_voxel_library_resource)
 	_object_library.migrate_requested.connect(_migrate_voxel_from_library)
 	_object_library.new_shape_requested.connect(_new_voxel_shape)
+	_object_library.new_tree_requested.connect(_new_voxel_tree)
+	_object_library.tree_variant_requested.connect(_new_voxel_tree_variant)
+	_object_library.generate_similar_requested.connect(func(id: String):
+		var recipe := preload("res://addons/ember_import/ember_voxel_tree_object_creation.gd").load_recipe(id)
+		if recipe != null: _open_voxel_tree_dialog(recipe)
+	)
 	_object_library.close_requested.connect(_close_object_library)
 	add_control_to_bottom_panel(_object_library, "Объекты")
 	_interact_actions = EmberInspectorActions.new()
@@ -260,6 +283,10 @@ func _configure_fullscreen_playtest() -> void:
 
 
 func _exit_tree() -> void:
+	if is_instance_valid(_generation_panel):
+		remove_control_from_bottom_panel(_generation_panel)
+		_generation_panel.free()
+		_generation_panel = null
 	if is_instance_valid(_voxel_object_toolbar):
 		remove_control_from_container(EditorPlugin.CONTAINER_SPATIAL_EDITOR_MENU, _voxel_object_toolbar)
 		_voxel_object_toolbar.queue_free()
@@ -415,7 +442,7 @@ func _open_battlefield_surface(field: EmberBattlefieldResource) -> void:
 			push_error("Ember Surface: не удалось создать %s: %s" % [surface_path, error_string(save_error)])
 			return
 		surface.take_over_path(surface_path)
-		get_editor_interface().get_resource_filesystem().scan()
+		preload("res://addons/ember_import/ember_editor_filesystem.gd").request(get_editor_interface().get_resource_filesystem())
 	elif not EmberVoxelSculptModel.is_writable_resource_path(surface.resource_path):
 		# v2.19 initially saved the bytes but did not change the in-memory
 		# Resource path, so saving Battlefield could embed a second 1–2 MB copy.
@@ -436,7 +463,7 @@ func _open_battlefield_surface(field: EmberBattlefieldResource) -> void:
 					% error_string(owner_save_error)
 				)
 				return
-		get_editor_interface().get_resource_filesystem().scan()
+		preload("res://addons/ember_import/ember_editor_filesystem.gd").request(get_editor_interface().get_resource_filesystem())
 	if field.visual_surface != surface:
 		_battlefield_paint_actions.assign_visual_surface(field, surface)
 	_open_surface_canvas(surface, surface_path)
@@ -498,6 +525,7 @@ func _open_voxel_assembly(group: Node3D) -> void:
 		push_warning("Surface Canvas отключён.")
 		return
 	workspace.open_object(session)
+	_connect_generator_library(workspace)
 	EditorInterface.set_main_screen_editor(SURFACE_MAIN_SCREEN)
 
 func _open_voxel_object(prop: EmberVoxelProp, shared: bool) -> void:
@@ -512,6 +540,7 @@ func _open_voxel_object(prop: EmberVoxelProp, shared: bool) -> void:
 		push_warning("Surface Canvas отключён. Включите его editor plugin.")
 		return
 	workspace.open_object(session)
+	_connect_generator_library(workspace)
 	EditorInterface.set_main_screen_editor(SURFACE_MAIN_SCREEN)
 
 
@@ -572,7 +601,7 @@ func _open_world_surface(map: EmberMapLoader, region_blocks: Rect2i) -> void:
 			push_error("Ember Surface: не удалось создать %s: %s" % [surface_path, error_string(save_error)])
 			return
 		surface.take_over_path(surface_path)
-		get_editor_interface().get_resource_filesystem().scan()
+		preload("res://addons/ember_import/ember_editor_filesystem.gd").request(get_editor_interface().get_resource_filesystem())
 	elif not EmberVoxelSculptModel.is_writable_resource_path(surface.resource_path):
 		var externalize_error := ResourceSaver.save(
 			surface, surface_path, ResourceSaver.FLAG_CHANGE_PATH
@@ -612,13 +641,32 @@ func _open_surface_canvas(
 			_graph_workspace.open_voxel_surface(surface, surface_path, region_blocks)
 		return
 	workspace.open_surface(surface, surface_path, region_blocks)
+	_connect_generator_library(workspace)
 	EditorInterface.set_main_screen_editor(SURFACE_MAIN_SCREEN)
+
+
+func _connect_generator_library(workspace: EmberVoxelSculptWorkspace) -> void:
+	if not workspace.generator_assets_changed.is_connected(_refresh_generator_library):
+		workspace.generator_assets_changed.connect(_refresh_generator_library)
+
+
+func _refresh_generator_library(model_id: String) -> void:
+	if is_instance_valid(_object_library):
+		_object_library.refresh(model_id)
 
 
 func _rebuild_from_inspector(prop: EmberVoxelProp) -> void:
 	if _dock:
+		make_bottom_panel_item_visible(_dock)
 		_dock.rebuild_prop(prop)
 		prop.notify_property_list_changed()
+
+
+func _voxel_refresh_guard() -> String:
+	var workspace := EditorInterface.get_editor_main_screen().find_child(SURFACE_WORKSPACE_NODE, true, false) as EmberVoxelSculptWorkspace
+	if workspace != null and workspace.has_unsaved_changes():
+		return "Сначала сохраните или отмените ручные изменения Canvas. Они не заменены."
+	return ""
 
 
 func _save_interact_from_inspector(prop: EmberVoxelProp, values: Dictionary) -> void:
@@ -929,12 +977,16 @@ func _voxel_object_library_context() -> Dictionary:
 		for selected in selection.get_selected_nodes():
 			var current := selected as Node
 			var selected_3d := selected as Node3D
+			var transient := false
 			while current != null:
+				if current.has_meta(preload("res://addons/ember_import/ember_voxel_generation_session.gd").PREVIEW_META):
+					transient = true
+					break
 				if current is EmberVoxelProp:
 					selected_3d = current as Node3D
 					break
 				current = current.get_parent()
-			if selected_3d != null:
+			if selected_3d != null and not transient:
 				anchor = selected_3d
 				break
 	if anchor != null:
@@ -960,6 +1012,19 @@ func _open_voxel_library_resource(model_id: String) -> void:
 		return
 	EditorInterface.edit_resource(resource)
 	_object_library.show_status("Открыт Resource модели %s." % model_id)
+
+
+func _edit_voxel_library_template(model_id: String) -> void:
+	if EmberVoxelCatalog.owner(model_id) == "legacy_import":
+		if _interact_actions == null or not _interact_actions.migrate_voxel_model(model_id, self):
+			_object_library.show_status("Не удалось перенести модель %s для редактирования." % model_id, true)
+			return
+	var resource := EmberVoxelCatalog.native_resource(model_id)
+	if resource == null:
+		_object_library.show_status("Godot Resource для %s не найден." % model_id, true)
+		return
+	_open_surface_canvas(resource, resource.resource_path)
+	_object_library.show_status("Шаблон %s открыт в Canvas · изменения затронут все экземпляры." % model_id)
 
 
 func _migrate_voxel_from_library(model_id: String) -> void:
@@ -1008,6 +1073,73 @@ func _new_voxel_shape() -> void:
 	dialog.canceled.connect(dialog.queue_free)
 	var map := root.get_node_or_null("Map") as EmberMapLoader
 	dialog.open_for(root, parent, get_undo_redo(), position, map.imported_tile_size if map != null and map.imported_tile_size > 0 else 16.0)
+
+
+func _new_voxel_tree() -> void:
+	_open_voxel_tree_dialog(null)
+
+
+func _new_voxel_tree_variant(model_id: String) -> void:
+	var creation := preload("res://addons/ember_import/ember_voxel_tree_object_creation.gd")
+	var recipe := creation.load_recipe(model_id)
+	if recipe == null:
+		if _object_library:
+			_object_library.show_status("Для %s не найден рецепт большого дерева." % model_id, true)
+		return
+	if not preload("res://addons/ember_import/ember_voxel_generator.gd").editing_fields(recipe).is_empty():
+		_edit_voxel_library_template(model_id)
+		var workspace := EditorInterface.get_editor_main_screen().find_child(SURFACE_WORKSPACE_NODE, true, false) as EmberVoxelSculptWorkspace
+		if workspace != null and workspace._resource != null and workspace._resource.model_id == model_id:
+			workspace._sidebar_tabs.current_tab = 2
+		return
+	_open_voxel_tree_dialog(recipe)
+
+
+func _open_voxel_tree_dialog(recipe: Resource) -> void:
+	if is_instance_valid(_generation_panel):
+		var keep: bool = _generation_panel.session.running or not _generation_panel.session.candidates.is_empty()
+		if keep:
+			_resume_generation_workshop()
+			make_bottom_panel_item_visible(_generation_panel)
+			_generation_panel._status.text = "Открыт текущий набор. Для другого шаблона сначала сохраните лучшие и закройте набор."
+			return
+	if not is_instance_valid(_generation_panel):
+		_generation_panel = preload("res://addons/ember_import/ember_voxel_generation_panel.gd").new()
+		add_control_to_bottom_panel(_generation_panel, "Генерация")
+		_generation_panel.assets_changed.connect(func(id: String):
+			if is_instance_valid(_object_library): _object_library.refresh(id)
+		)
+		_generation_panel.edit_requested.connect(_edit_voxel_library_template)
+		_generation_panel.studio_requested.connect(_resume_generation_workshop)
+		_generation_panel.close_requested.connect(func():
+			remove_control_from_bottom_panel(_generation_panel)
+			_generation_panel.queue_free()
+			_generation_panel = null
+		)
+	_generation_initialization_pending = true
+	_generation_next_recipe = recipe
+	_resume_generation_workshop()
+
+
+func _resume_generation_workshop() -> void:
+	var path: String = preload("res://addons/ember_import/ember_voxel_generation_session.gd").STUDIO_PATH
+	EditorInterface.open_scene_from_path(path)
+	EditorInterface.set_main_screen_editor("3D")
+	_bind_generation_workshop.call_deferred()
+
+
+func _bind_generation_workshop() -> void:
+	if not is_instance_valid(_generation_panel): return
+	var root := EditorInterface.get_edited_scene_root()
+	if root == null or root.scene_file_path != preload("res://addons/ember_import/ember_voxel_generation_session.gd").STUDIO_PATH: return
+	if _generation_initialization_pending:
+		_generation_initialization_pending = false
+		_generation_panel.open_for({"root": root, "parent": root, "undo": get_undo_redo(),
+			"world_size": 1.0, "position": Vector3.ZERO}, _generation_next_recipe)
+		_generation_next_recipe = null
+	else:
+		_generation_panel.scene_context_changed(root, get_undo_redo())
+	make_bottom_panel_item_visible(_generation_panel)
 
 
 func _merge_voxel_selected(separating: bool) -> void:
@@ -1211,7 +1343,7 @@ func _add_authored_voxel(parent: Node, prop: EmberVoxelProp, root: Node) -> void
 	selection.clear()
 	selection.add_node(prop)
 	EditorInterface.mark_scene_as_unsaved()
-	EditorInterface.get_resource_filesystem().scan()
+	preload("res://addons/ember_import/ember_editor_filesystem.gd").request()
 	if _dock:
 		_dock.show_status("Добавлен %s в Map/Props · %s. Ctrl+Z отменяет." % [prop.model_id, prop.placement_id])
 		_dock.refresh()
@@ -1235,6 +1367,11 @@ func _remove_authored_voxel(parent: Node, prop: EmberVoxelProp) -> void:
 
 
 func _on_scene_changed(root: Node) -> void:
+	if is_instance_valid(_generation_panel):
+		if root != null and root.scene_file_path == preload("res://addons/ember_import/ember_voxel_generation_session.gd").STUDIO_PATH:
+			_bind_generation_workshop.call_deferred()
+		else:
+			_generation_panel.scene_context_changed(root, get_undo_redo())
 	if _graph_workspace:
 		_graph_workspace.set_scene_root(root)
 	if _dock:
@@ -1376,7 +1513,7 @@ func _reimport_and_save() -> void:
 		push_warning("ember import: no Map (EmberMapLoader) in scene")
 		return
 	map.load_map(map.map_id)
-	EditorInterface.get_resource_filesystem().scan()
+	preload("res://addons/ember_import/ember_editor_filesystem.gd").request()
 	_pack_save(root)
 	if _dock:
 		_dock.refresh()
