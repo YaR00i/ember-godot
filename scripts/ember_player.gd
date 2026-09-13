@@ -1,12 +1,13 @@
 class_name EmberPlayer
 extends CharacterBody3D
-## Explore walk. Radius / height / step match JOI `DEFAULT_WORLD_BODY`.
+## Exploration controller: collision-checked smooth stepping over low obstacles.
 ## WASD is projected through the follow-camera yaw, matching JOI explore play.
 
 const RADIUS_VOXELS := 2.5
 const HEIGHT_VOXELS := 12.0
 const STEP_VOXELS := 4.0
-const SPEED := 28.0
+const SPEED_BLOCKS := 3.0
+const STEP_SECONDS := 0.16
 const ACTION_MESSAGE_MS := 1400
 const WaterContact := preload("res://scripts/ember_water_contact_3d.gd")
 const PartyState := preload("res://scripts/ember_party_state.gd")
@@ -33,6 +34,10 @@ var _respawn_grace_frames := 0
 var _visual_material: StandardMaterial3D
 var _facing_material: StandardMaterial3D
 var _status_label: Label3D
+var _step_active := false
+var _step_top := 0.0
+var _step_direction := Vector3.ZERO
+var _step_elapsed := 0.0
 
 
 func _ready() -> void:
@@ -137,6 +142,7 @@ func _bind(action: String, key: Key) -> void:
 
 func _physics_process(dt: float) -> void:
 	if _defeated:
+		_cancel_step()
 		velocity.x = 0.0
 		velocity.z = 0.0
 		if not is_on_floor():
@@ -158,17 +164,32 @@ func _physics_process(dt: float) -> void:
 			"move_south",
 		)
 	var camera_yaw := camera_rig.yaw if is_instance_valid(camera_rig) else 0.0
-	var wish := EmberCameraMovement.world_direction(input_axis, camera_yaw) * SPEED
+	var wish := EmberCameraMovement.world_direction(input_axis, camera_yaw) * (SPEED_BLOCKS * tile_size)
 	velocity.x = wish.x
 	velocity.z = wish.z
+	var motion := Vector3(wish.x, 0.0, wish.z) * dt
+	if _step_active and (
+		motion.is_zero_approx()
+		or motion.normalized().dot(_step_direction) < 0.5
+		or _step_elapsed > STEP_SECONDS + 0.3
+	):
+		_cancel_step()
+	if not _step_active and is_on_floor() and not motion.is_zero_approx():
+		_try_start_step(motion)
 	if _respawn_grace_frames > 0:
 		_respawn_grace_frames -= 1
 		velocity.y = 0.0
+	elif _step_active:
+		_step_elapsed += dt
+		var remaining := maxf(0.0, _step_top - global_position.y)
+		velocity.y = minf(STEP_VOXELS * tile_size / 16.0 / STEP_SECONDS, remaining / maxf(dt, 0.00001))
 	elif not is_on_floor():
 		velocity.y -= 48.0 * dt
 	else:
 		velocity.y = 0.0
 	move_and_slide()
+	if _step_active:
+		_finish_step_if_supported()
 	_prompt = "" if _ui_blocks_movement() else _nearest_prompt()
 	if Input.is_action_just_pressed("inventory"):
 		if (
@@ -204,6 +225,70 @@ func _physics_process(dt: float) -> void:
 		_apply_debug_damage()
 	if interact_hud:
 		interact_hud.text = _hud_text()
+
+
+func _try_start_step(motion: Vector3) -> void:
+	# Probe the entire capsule up, forward and down before beginning an ascent.
+	# Queries use the same world collision mask as ordinary movement, including
+	# authored props; there is no second heightfield or navigation owner.
+	var blocked := KinematicCollision3D.new()
+	if not test_move(global_transform, motion, blocked):
+		return
+	if blocked.get_normal().dot(Vector3.UP) >= cos(floor_max_angle):
+		return
+	var height := STEP_VOXELS * tile_size / 16.0
+	var clearance := maxf(safe_margin * 2.0, tile_size * 0.0001)
+	var up := Vector3.UP * (height + clearance)
+	if test_move(global_transform, up):
+		return
+	var raised := global_transform
+	raised.origin += up
+	var radius := RADIUS_VOXELS * tile_size / 16.0
+	var forward := motion.normalized() * maxf(motion.length(), radius + clearance * 2.0)
+	if test_move(raised, forward):
+		return
+	raised.origin += forward
+	var landing := KinematicCollision3D.new()
+	if not test_move(raised, -Vector3.UP * (height + clearance * 2.0), landing):
+		return
+	if landing.get_normal().dot(Vector3.UP) < cos(floor_max_angle):
+		return
+	var top := maxf(raised.origin.y + landing.get_travel().y, landing.get_position().y + safe_margin)
+	var rise := top - global_position.y
+	if rise <= clearance or rise > height + clearance:
+		return
+	_step_active = true
+	_step_top = top
+	_step_direction = motion.normalized()
+	_step_elapsed = 0.0
+	# Downward snapping during the ascent would undo the lift at the old floor.
+	floor_snap_length = 0.0
+
+
+func _finish_step_if_supported() -> void:
+	var clearance := maxf(safe_margin * 3.0, tile_size * 0.0002)
+	if global_position.y < _step_top - clearance:
+		if is_on_ceiling():
+			_cancel_step()
+		return
+	# Capsule recovery at a corner may leave a tiny gap above the tread. Probe
+	# only near the planned top, never snap back down to the previous floor.
+	var support_distance := maxf(clearance, STEP_VOXELS * tile_size / 16.0 * 0.08)
+	var floor_hit := KinematicCollision3D.new()
+	if test_move(global_transform, Vector3.DOWN * support_distance, floor_hit):
+		if floor_hit.get_normal().dot(Vector3.UP) >= cos(floor_max_angle):
+			var supported_height := global_position.y + floor_hit.get_travel().y
+			if supported_height >= _step_top - support_distance:
+				_cancel_step()
+				apply_floor_snap()
+
+
+func _cancel_step() -> void:
+	if _step_active and velocity.y > 0.0:
+		velocity.y = 0.0
+	_step_active = false
+	_step_elapsed = 0.0
+	floor_snap_length = STEP_VOXELS * tile_size / 16.0
 
 
 func _hud_text() -> String:
@@ -295,6 +380,9 @@ func request_respawn() -> void:
 
 
 func complete_respawn() -> void:
+	_cancel_step()
+	if is_instance_valid(camera_rig):
+		camera_rig.reset_follow_height()
 	_defeated = false
 	velocity = Vector3.ZERO
 	_respawn_grace_frames = 1

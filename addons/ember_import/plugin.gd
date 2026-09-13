@@ -36,6 +36,7 @@ var _confirm: ConfirmationDialog
 var _voxel_gizmo: EditorNode3DGizmoPlugin
 var _trigger_gizmo: EditorNode3DGizmoPlugin
 var _walk_surface_gizmo: EditorNode3DGizmoPlugin
+var _walk_surface_panel: Control
 var _object_inspector: EditorInspectorPlugin
 var _camera_rig_inspector: EditorInspectorPlugin
 var _battlefield_inspector: EditorInspectorPlugin
@@ -283,6 +284,10 @@ func _configure_fullscreen_playtest() -> void:
 
 
 func _exit_tree() -> void:
+	if is_instance_valid(_walk_surface_panel):
+		remove_control_from_bottom_panel(_walk_surface_panel)
+		_walk_surface_panel.free()
+		_walk_surface_panel = null
 	if is_instance_valid(_generation_panel):
 		remove_control_from_bottom_panel(_generation_panel)
 		_generation_panel.free()
@@ -784,6 +789,10 @@ func _make_visible(visible: bool) -> void:
 
 
 func _forward_3d_gui_input(viewport_camera: Camera3D, event: InputEvent) -> int:
+	if is_instance_valid(_walk_surface_panel):
+		var support_result: int = _walk_surface_panel.forward_3d_gui_input(viewport_camera,event)
+		if support_result == EditorPlugin.AFTER_GUI_INPUT_STOP:
+			return support_result
 	var world_result: int = (
 		_world_surface_selector.forward_3d_gui_input(viewport_camera, event)
 		if _world_surface_selector != null
@@ -1158,13 +1167,23 @@ func _walk_surface_selected() -> void:
 	if selected.size() != 1 or not selected[0] is Node3D:
 		push_warning("Выберите одну группу настила, объект или существующую поверхность прохода.")
 		return
-	var dialog := preload("res://addons/ember_import/ember_walk_surface_dialog.gd").new()
-	EditorInterface.get_base_control().add_child(dialog)
-	dialog.canceled.connect(dialog.queue_free)
-	dialog.applied.connect(dialog.queue_free)
-	if not dialog.open_for(selected[0], EditorInterface.get_edited_scene_root(), get_undo_redo()):
-		push_warning(dialog._status.text)
-		dialog.queue_free()
+	# Tool-script hot reload does not rebuild an already constructed panel.
+	# Reopening the command must expose controls added since its construction.
+	if is_instance_valid(_walk_surface_panel) and not is_instance_valid(_walk_surface_panel.get("_replace")):
+		remove_control_from_bottom_panel(_walk_surface_panel)
+		_walk_surface_panel.queue_free()
+		_walk_surface_panel = null
+	if not is_instance_valid(_walk_surface_panel):
+		_walk_surface_panel = preload("res://addons/ember_import/ember_walk_surface_panel.gd").new()
+		add_control_to_bottom_panel(_walk_surface_panel, "Опора")
+		_walk_surface_panel.closed.connect(_close_walk_surface_panel)
+	make_bottom_panel_item_visible(_walk_surface_panel)
+	if not _walk_surface_panel.open_for(selected[0], EditorInterface.get_edited_scene_root(), get_undo_redo()):
+		push_warning(_walk_surface_panel._status.text)
+
+func _close_walk_surface_panel() -> void:
+	if is_instance_valid(_walk_surface_panel) and _walk_surface_panel.is_visible_in_tree():
+		hide_bottom_panel()
 
 func _scene_assembly_command(command: int) -> void:
 	var selected := EditorInterface.get_selection().get_selected_nodes()
@@ -1367,6 +1386,8 @@ func _remove_authored_voxel(parent: Node, prop: EmberVoxelProp) -> void:
 
 
 func _on_scene_changed(root: Node) -> void:
+	if is_instance_valid(_walk_surface_panel):
+		_walk_surface_panel.scene_context_changed(root)
 	if is_instance_valid(_generation_panel):
 		if root != null and root.scene_file_path == preload("res://addons/ember_import/ember_voxel_generation_session.gd").STUDIO_PATH:
 			_bind_generation_workshop.call_deferred()

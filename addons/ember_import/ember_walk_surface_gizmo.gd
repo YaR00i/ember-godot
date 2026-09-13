@@ -14,11 +14,11 @@ func _has_gizmo(node: Node3D) -> bool:
 
 func _redraw(gizmo: EditorNode3DGizmo) -> void:
 	gizmo.clear()
-	if not show_surfaces:
+	if not show_surfaces or (gizmo.get_node_3d().collision_layer & 1) == 0:
 		return
 	var size := Surface.dimensions(gizmo.get_node_3d())
 	if size.x <= 0 or size.y <= 0:
 		return
-	var lines := Surface.grid_lines(size)
+	var lines := Surface.node_lines(gizmo.get_node_3d())
 	gizmo.add_lines(lines, get_material("grid", gizmo))
 	gizmo.add_collision_segments(lines)

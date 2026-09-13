@@ -1120,7 +1120,7 @@ MultiMesh ghost + чистый план, события объединены д�
 
 ### Поверхность прохода — явная физическая опора
 
-Первый срез для исследовательских сцен: ember_walk_surface/session/dialog/gizmo
+Первый срез для исследовательских сцен: ember_walk_surface/session/panel/gizmo
 в addons/ember_import. Пользователь явно создаёт прямоугольную опору поверх
 декора, задаёт локальные размеры, положение и наклон менее 44°. Owner — карта
 `.tscn`: обычный scriptless StaticBody3D с BoxShape3D (слой 1), без игрового Mesh.
@@ -1133,7 +1133,93 @@ Editor gizmo и preview не сериализуются; источники voxe
 разгруппировка группы с helper пока безопасно отклоняется.
 Операция атомарна с Undo/Redo, отмена preview не меняет сцену. Красные рамки —
 консервативные габариты видимого декора, не доказательство физического прохода.
-Вход надо состыковать с землёй; автоматического подъёма на ступени пока нет.
+Вход надо состыковать с землёй. Контроллер исследования теперь автоматически
+поднимается на низкие ступени до четверти блока (срез 13 сентября ниже).
+
+13 сентября диалог с копией сцены/фиксированной камерой заменён нижней панелью
+«Опора», открываемой прежней командой. `ember_walk_surface_panel.gd` вызывает
+прежний Session.plan/commit; preview использует native RenderingServer instances
+в world открытой сцены, без Node/physics/serialization mutations. Основная
+editor camera не перехватывается. Изменение полей обновляет plane/grid/warnings,
+ошибочный план очищает preview и блокирует Apply. Cancel/scene change/deleted
+context/changed parent/plugin exit освобождают RID и Resource references.
+Collapse панели скрывает только черновик. Saved Surface/schema/gizmo прежние;
+Apply — одна existing Undo/Redo-команда. Editor-only handles пока не добавлены.
+Поля используют адаптивные 1–4 колонки по ширине native bottom panel.
+Targeted panel/serialization/refusal и related tests PASS. Disposable native
+Forward+ editor fixture подтвердил viewport orbit/zoom с открытой панелью,
+Apply/Undo/Redo/save и Cancel; captures 1280×720/1600×900 просмотрены.
+Fresh-copy UID fallback и прежний get_node outside active tree при teardown
+не считаются zero-warning editor lifecycle PASS. Пользователь подтвердил работу
+нового 3D-flow в живом редакторе; итоговая приёмка отмечена ниже.
+
+Следующий согласованный срез 13 сентября — voxel-footprint/кисти. Чистый leaf
+`ember_walk_surface_mask.gd` растеризует верхние треугольники выбранных Mesh
+в целые XZ-клетки, закрывает ограниченные пропуски между исходными опорами по
+двум осям и объединяет заполненные клетки в неперекрывающиеся прямоугольники.
+Это ограниченное правило, не распознавание намеренных дыр: мелкую выемку можно
+оставить кистью. Нижние грани/балки вне допуска от верхней плоскости пропускаются.
+Для voxel props шаг и ориентация берутся из фактического Mesh transform и
+voxels_per_block (16/32); общая сетка секций проверяется без скрытого resample.
+Простые Mesh без voxel prop используют исходный шаг 1 локальная единица.
+Пределы — 65 536 клеток и 2048 прямоугольников; превышение блокирует Apply.
+
+Saved owner прежний: scriptless StaticBody3D в `.tscn`, layer 1, несколько
+тонких BoxShape3D. Metadata `ember_walk_mask` v1 содержит count/cell/bits/allowed
+и height_cell; `ember_walk_source` — относительный NodePath выбранного настила
+для повторной генерации (у voxel prop helper остаётся sibling). Это сценовая
+authoring-разметка существующей опоры, без нового gameplay Resource/runtime
+скрипта. Preview и collider используют одну mask/rectangles математику.
+Gizmo показывает занятые участки; черновик показывает сетку с шагом 1 vox.
+«Вернуть» восстанавливает allowed, не добавляет внешние клетки. ЛКМ работает
+только в явном brush mode, orbit/zoom проходят редактору. DDA соединяет клетки
+быстрого мазка; полный preview обновляется на pointer-up. Esc/скрытие панели
+отменяют незавершённый мазок. Черновик хранит до 64 Undo/Redo-состояний; Apply
+фиксирует одну прежнюю сценовую action. Cancel не пишет сцену. На изменённой
+геометрии/сетке/родителе безопасный отказ. Отсутствие исходника после переименования
+не запрещает кисти по сохранённой разметке, но требует нового выбора для генерации.
+Для старого helper без корректной привязки открыть его, выбрать доски в сцене
+и нажать «По геометрии»: Session.rebind_geometry меняет только source контекст,
+сохраняя существующий edit target. Apply/Undo вместе меняют/возвращают footprint
+и относительную привязку; дополнительный StaticBody3D не создаётся.
+Координаты положения остаются в единицах родителя, без округления при открытии;
+размеры разметки, допуск, щель и кисть — целые vox. Поля положения свёрнуты.
+
+`test_walk_surface_mask.gd`: gap/end/lower beam, 16/32 и nonuniform voxel scale,
+stroke Undo/Redo/abort, collision holes, smooth real-player passage, pack/save/
+reopen, stale geometry и fractional placement PASS. Fixture 192×256 (49 152
+клетки) генерируется примерно за 26–33 ms, 5 collider rectangles; это замер
+простого настила, не обещание для произвольной сложной модели. Opt-in
+`-- --benchmark-native` также проверил существующий native prefab без записи:
+16×16 vox, шаг 1, около 0.9 ms. Приёмка авторского моста подтверждена пользователем.
+Native Forward+ editor fixture functional PASS: реальная команда plugin, ЛКМ
+erase/restore, draft Undo/Redo без dirty, orbit при активной кисти, компактная
+панель и раскрытое «Положение» в 720p/900p, Apply/сценовые Undo/Redo/save/Cancel.
+Известный get_node outside active tree при teardown остаётся отдельным долгом.
+
+Регрессия после ручного отчёта: в сохранённом test_pier были одновременно
+активны Map/Props/WalkSurface и WalkSurface_new, одинаковые source/pose/grid/
+allowed, но второй mask был дополнительно обрезан. Старый helper физически
+закрывал удалённые клетки. Read-only subtree fixture подтвердил ray collider
+WalkSurface Y=1.95745 против настоящего VoxelMerged/Collision Y=−0.04255;
+реальный EmberPlayer после отключения старого helper опустился ровно на 2 vox.
+При диагностике author scene снаружи не изменялась (editor MCP not connected).
+После исправления пользователь подтвердил «все работает» в живой игре:
+ручная приёмка voxel-кистей и устранения левитации на балке закрыта.
+
+Session.open теперь переиспользует одну связанную active scene-owned опору;
+при нескольких требует выбрать helper, не создаёт следующий _new. duplicates
+сравнивает родителя, owner scene, source Node, pose, grid/cell и allowed; другие
+площадки/instanced prefab helpers не отключаются. Обычный Apply при совпадающих
+активных mask helpers блокируется. Явная кнопка «Оставить эту опору» применяет
+target mask и ставит collision_layer=0 у указанных дубликатов одной action;
+Undo восстанавливает target данные/привязку и прежние collision layers.
+Ни Node, ни voxel-источник не удаляются. Gizmo не рисует отключённую физику.
+Reopen команды реконструирует старую constructed panel без новой кнопки после
+tool-script hot reload; рабочий editor/другие черновики не перезапускаются.
+Headless duplicate/collision/serialization/Undo/Redo/source-reuse gate и
+6 связанных editor/placement/pier suites PASS. Native duplicate button/save/
+Undo/Redo/reopen fixture functional PASS; teardown diagnostic остаётся.
 
 ### Группы и linked-ряды — awaiting manual
 
@@ -1524,6 +1610,24 @@ stale prefab меняют видимые грани, 18 — collision, поэт�
 live checkout с `--headless --editor`.
 
 ## Текущее состояние партии и exploration loop
+
+Передвижение вне боя (13 сентября 2026): `EmberPlayer` остаётся единственным
+CharacterBody/controller. Скорость равна 3 * tile_size; высота шага — tile_size/4.
+Три capsule test_move (вверх/вперёд/вниз) проверяют existing world collision,
+свободное место и landing перед подъёмом. Подъём выполняется move_and_slide
+постепенно со скоростью полной ступени за 0.16 с, без teleport/visual-only lift.
+Во время подъёма downward snap отключён; восстановление требует опоры рядом
+с новой высотой. Release/смена направления, defeat, потолок и timeout отменяют
+transient step и обнуляют положительную скорость подъёма. Respawn сбрасывает
+step и camera height. Save schema, Surface, authored сцены и combat не менялись.
+
+`EmberFollowCamera` сглаживает только подъём высоты экспоненциально (response 8/s).
+XZ follow прямой; уменьшение высоты передаётся без нового сглаживания и без
+внезапного удаления остаточного отставания после подъёма. Первый кадр, новый
+target, большой teleport и explicit respawn reset устанавливают высоту сразу.
+Targeted stepping и related gates PASS; native Forward+ fixture PASS.
+Пользователь подтвердил работу движения в живом Причале. Небольшие проседания
+между досками не означают отказ шага: для настила применяется общая опора.
 
 Партия постоянна: протагонист, Мира, Орик и Сена. В мире выбранный лидер остаётся
 единственным controller, а трое спутников — presentation-проекция безопасного

@@ -1,5 +1,30 @@
 # Ember — актуальные проверки и migration gates
 
+## Передвижение вне боя — 13 сентября 2026 (ручная приёмка открыта)
+
+`tools/test_explore_stepping.gd` PASS: настоящая CharacterBody capsule и
+StaticBody collision, плавный физический подъём до 1/4 блока при 30/60/120 Hz,
+декоративная ступень 0.5 world units, последовательные ступени, диагональный
+подход, отказ у высокой стены/низкого потолка, release без зависания.
+Camera gate: initial height без задержки, upward lag/catch-up, XZ direct,
+малый downward recovery не удаляет ascent lag, descent direct и reset.
+Native Vulkan Forward+ на RTX 5070 проходит тот же fixture с -- --capture;
+mid-ascent capture просмотрен. Это автоматический input/physics/render fixture,
+не ручная оценка движения в пользовательском редакторе.
+
+Related headless PASS: camera_relative_movement, party_followers, party_save_v2,
+health_consumables, inventory_equipment, explore_pause_menu и test_test_pier.
+Pier gate использует изолированный user:// save root, проверяет menu load/reopen
+и неизменность обычных v1/v2 saves. Логи Temp/ember-explore-step.log,
+ember-explore-step-forward.log и ember-explore-test_*.log.
+
+Ручной gate: F6 Причала → WASD через края досок и обратно; затем пройти несколько
+ступеней подряд и по диагонали, отпустить движение на подъёме. Герой не должен
+резко прыгать/зависать; камера плавно догоняет новую высоту, XZ без задержки.
+Высокие грузы остаются препятствиями. Проверить Миру следом, Tab и сумку,
+save/load после остановки наверху. Сцену/authoring sources тесты не переписывают.
+Свободный jump, sprint и изменение боевого MOVE/JUMP сюда не входят.
+
 ## Общий Git checkpoint2026-09-13
 
 Новый checkpoint после Grab/clip/library/merge scene-axis bake:16 повторных
@@ -1282,7 +1307,95 @@ Shift добавляет, Ctrl вычитает второй объём. «Пе�
 Undo/Redo, отмену, запрет перекрытия; сохранить Canvas/сцену и открыть снова.
 Отделение в новый объект не входит в готовую фазу 1; общий контракт остаётся открыт.
 
-## Поверхность прохода (ручной gate открыт)
+## Поверхность прохода (ручная приёмка подтверждена 13 сентября)
+
+Пользователь подтвердил «все работает» после исправления перекрывающихся опор.
+Панель в основном 3D-окне, voxel-кисти и отсутствие левитации над балкой приняты.
+Ниже сохранены сценарии повторной проверки; остальные editor/combat gates
+и известный teardown diagnostic этой приёмкой не закрываются.
+
+Перед запрошенным commit/push повторно PASS: test_explore_stepping,
+test_walk_surface_mask, test_test_pier (exit 0). Логи:
+Temp/ember-checkpoint-test_explore_stepping.log,
+Temp/ember-checkpoint-test_walk_surface_mask.log,
+Temp/ember-checkpoint-test_test_pier.log.
+
+Ручная регрессия 13 сентября: удалённая mask область оставалась коллизионной
+из-за второй активной опоры. В saved test_pier найдены WalkSurface и
+WalkSurface_new на одинаковом source/pose/allowed. Read-only subtree/реальный
+EmberPlayer probe: старая опора держит Y≈1.958, после её отключения в fixture
+герой стоит на балке Y≈−0.042. Лог Temp/ember-walk-support-probe.log. Авторская
+сцена не переписывалась, editor MCP недоступен.
+`test_walk_surface_mask.gd` дополнительно проверяет неоднозначный source-open
+без создания третьего helper, явный warning/resolve, ordinary Apply refusal,
+отключение дубликата без удаления Node, physical erased-cell clearance,
+Undo/Redo layers, saved inactive layer и reopening source→active helper. PASS.
+6 related suites PASS: walk_surface, voxel_scene_assembly, voxel_assembly_canvas,
+voxel_placement, voxel_object_library_layout, test_test_pier.
+Native fixture: видимая «Оставить эту опору», emit реальной кнопки, native Undo/
+Redo, save/reopen и source reuse PASS. Снимок walk-panel-editor-duplicate-warning
+просмотрен. Логи Temp/ember-walk-duplicate-test.log, ember-walk-duplicate-editor.log.
+Последний native rebuild-after-update gate PASS:
+Temp/ember-walk-duplicate-editor-final.log; known teardown get_node diagnostic.
+Ручной шаг: открыть Map/Props/WalkSurface_new, «Оставить эту опору», save/F6;
+проверить стойку на балке и отсутствие старой коллизии над удалёнными клетками.
+
+Voxel/brush срез 13 сентября: `tools/test_walk_surface_mask.gd` проверяет
+ограничение ширины щелей, открытые края и рваные концы, отсечение нижней балки,
+точность объединённых collider rectangles, voxel scale 16/32/nonuniform,
+быстрый мазок без пропусков, restore только allowed, одну action на мазок,
+черновые Undo/Redo/abort, отсутствие записи preview, сценовые Apply/Undo/Redo,
+collision hole и save/reopen. Настоящий EmberPlayer проходит плоские стыки
+без проседания; fractional origin не округляется при открытии. PASS.
+Замер fixture 192×256 — около 26–33 ms generation, 5 rectangles. Opt-in
+`-- --benchmark-native` читает существующий prefab, не меняет source/сцену.
+Логи: Temp/ember-walk-mask-final.log, ember-walk-mask-test.log.
+8 headless suites PASS: walk_surface, walk_surface_mask, explore_stepping,
+voxel_scene_assembly, voxel_assembly_canvas, voxel_placement,
+voxel_object_library_layout, test_test_pier. Native Forward+ fixture functional
+PASS: реальный viewport ЛКМ erase/restore, draft Undo/Redo, orbit с активной
+кистью, compact/expanded «Положение» при 1280×720/1600×900, Apply/сценовые Undo/
+Redo/save/Cancel. Captures walk-panel-editor-voxel[-position]-720/900.png
+просмотрены; логи Temp/ember-walk-mask-editor-final.log и последней проверки
+ember-walk-mask-editor-review.log. Последний native rebind/duplicate/Undo gate:
+Temp/ember-walk-mask-editor-rebind.log. На exit остаётся прежняя ошибка get_node
+outside active scene tree; не заявлять zero-warning editor lifecycle.
+
+Ручной gate: выбрать только настил/его группу → «Поверхность прохода» →
+«По геометрии». Проверить соответствие сетки размеру vox исходника, щель/допуск,
+сохранность внешних концов. «Убрать» ЛКМ и протягиванием; «Вернуть» не создаёт
+клеток за контуром. Отменить мазок кнопкой и незавершённый мазок Esc; камера
+вращается и при активной кисти. Раскрыть «Положение», Apply, native Undo/Redo,
+save/reopen/F6. Сетка в игре отсутствует, малые зазоры не вызывают проседания,
+оставленные отверстия и пустота за концами не имеют добавленной коллизии.
+Исходные доски и авторская карта автоматически не перезаписываются.
+Если прямоугольник уже существует, сначала открыть именно WalkSurface, затем
+выбрать доски и нажать «По геометрии». Проверить, что после Apply число опор
+не выросло; Undo возвращает исходную форму/привязку. Новая опора рядом со старым
+необрезанным прямоугольником не устранит его коллизию за краями.
+
+13 сентября: прежний диалог заменён нижней панелью «Опора» и черновиком
+в основном 3D-окне. `test_walk_surface.gd` дополнительно проверяет отсутствие
+scene-tree mutation и сериализации при активном preview, invalid plan clear/
+refusal/recovery, Cancel и scene switch cleanup. Native editor fixture
+`tools/editor_test_walk_surface_panel.gd` устанавливается только в disposable
+ember-canvas-smoke-walk-panel-* project; обычный рабочий editor не запускается
+headless. Новый ручной gate: открыть панель, вращать/приближать основную камеру,
+изменить Y/size/tilt, Apply/Undo/Redo/save/reopen, Cancel и переключить сцену.
+
+Related headless PASS: voxel_scene_assembly, voxel_assembly_canvas,
+voxel_placement, voxel_object_library_layout, test_test_pier. Native Forward+
+editor fixture PASS: actual plugin command, свободный viewport orbit/zoom,
+preview без dirty/serialization, Apply, native Undo/Redo, save и Cancel.
+Layout 1280×720/1600×900: адаптивные колонки без горизонтальной прокрутки полей,
+captures walk-panel-editor-preview-720/900.png просмотрены. Логи:
+Temp/ember-walk-panel-test.log, ember-walk-panel-direct.log и ember-walk-panel-*.log.
+Первый fresh import копии диагностировал существующий legacy pack fallback;
+для fixture задан исходный pack_path только в disposable config. Не добавлено
+новых production JOI calls. Неиспользуемая zylann extension в fixture отключена
+после library-copy failure. UID fallback старых сцен и get_node outside active
+tree после функционального PASS остаются отдельными startup/teardown diagnostics;
+это не zero-warning/full editor lifecycle gate.
 
 `--headless --path . --script res://tools/test_walk_surface.gd`: создание,
 редактирование, Undo/Redo, отмена, stale/invalid отказ, pack/save/reopen,
@@ -1290,8 +1403,8 @@ Undo/Redo, отмену, запрет перекрытия; сохранить C
 Связанные gates: test_voxel_canvas_context, test_voxel_assembly_canvas
 (включая сохранение секций рядом с опорой), test_voxel_placement,
 test_voxel_scene_assembly, test_party_followers.
-Native Forward+ capture: тот же script без --headless с `-- --capture`;
-проверяет диалог на 1280×720 и 1600×900, но не заменяет редактор.
+Исторические captures диалога на 1280×720/1600×900 относятся к предыдущему UI;
+для нового flow применяется native editor fixture выше.
 Вручную: выбрать группу настила → Ещё… → Поверхность прохода…; проверить
 preview/применение, размер/наклон/высоту, предупреждения выступов, отмену;
 выбрать WalkSurface и повторно открыть; Undo/Redo; переместить всю группу;

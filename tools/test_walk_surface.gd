@@ -1,7 +1,7 @@
 extends SceneTree
 const Surface = preload("res://addons/ember_import/ember_walk_surface.gd")
 const Session = preload("res://addons/ember_import/ember_walk_surface_session.gd")
-const Dialog = preload("res://addons/ember_import/ember_walk_surface_dialog.gd")
+const WalkPanel = preload("res://addons/ember_import/ember_walk_surface_panel.gd")
 var failures: Array[String] = []
 class FixturePlayer extends EmberPlayer:
 	func _progress() -> EmberExploreState:
@@ -70,7 +70,7 @@ func _run() -> void:
 		await physics_frame
 	check(player.is_on_floor(), "player does not stand on surface")
 	Input.action_press("move_east")
-	for frame in 120:
+	for frame in 75:
 		await physics_frame
 	Input.action_release("move_east")
 	check(player.global_position.x > 50 and player.is_on_floor(), "player stuck walking deck")
@@ -108,29 +108,32 @@ func _run() -> void:
 	check(not stale.plan(Vector2(-1, 2), slope), "invalid dimensions")
 	check(not stale.plan(Vector2(10, 10), Transform3D(Basis(Vector3.RIGHT, PI / 3), Vector3.ZERO)), "steep slope accepted")
 	check(stale.commit(undo) == null, "invalid plan remained applicable")
-	# Native dialog uses the exact same plan and leaves scene unchanged on Cancel.
-	var dialog := Dialog.new()
-	root.add_child(dialog)
-	check(dialog.open_for(surface, scene, undo), "dialog open")
+	# Native panel previews in the same world, with zero scene-tree mutation.
+	var panel := WalkPanel.new()
+	root.add_child(panel)
+	check(panel.open_for(surface, scene, undo), "panel open")
 	var prior := surface.transform
-	dialog._numbers[3].value = 0.5
+	var child_count := group.get_child_count()
+	panel._numbers[3].value = 0.5
 	check(surface.transform.is_equal_approx(prior), "UI preview modified scene")
-	check(not dialog.session.warnings.is_empty(), "UI protrusion report")
-	if "--capture" in OS.get_cmdline_user_args():
-		root.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
-		root.content_scale_size = Vector2i.ZERO
-		for dimensions in [Vector2i(1280,720), Vector2i(1600,900)]:
-			root.size = dimensions
-			dialog.popup_centered(Vector2i(730,620))
-			for frame in 12:
-				await process_frame
-			check(dialog.position.y + dialog.size.y <= root.size.y, "dialog height")
-			RenderingServer.force_draw(false)
-			var image_path := "user://walk-surface-preview-%d-%d.png" % [dimensions.y, OS.get_process_id()]
-			root.get_texture().get_image().save_png(image_path)
-			print("WALK_PREVIEW ", ProjectSettings.globalize_path(image_path))
-	dialog.free()
+	check(not panel.session.warnings.is_empty(), "UI protrusion report")
+	check(group.get_child_count() == child_count, "preview added authored nodes")
+	var preview_packed := PackedScene.new()
+	check(preview_packed.pack(scene) == OK, "pack during preview")
+	var preview_reopened := preview_packed.instantiate()
+	check(preview_reopened.get_node("Bridge").get_child_count() == child_count, "preview serialized")
+	preview_reopened.free()
+	panel._numbers[0].value = -1
+	check(panel._apply.disabled and panel._instances.is_empty(), "invalid plan still visible/applicable")
+	panel._numbers[0].value = 60
+	check(not panel._apply.disabled, "valid plan did not recover")
+	panel.cancel_edit()
+	check(panel._instances.is_empty() and panel.session == null, "Cancel left preview alive")
 	check(surface.transform.is_equal_approx(prior), "Cancel modified surface")
+	check(panel.open_for(surface, scene, undo), "panel reopen")
+	panel.scene_context_changed(null)
+	check(panel._instances.is_empty() and panel.session == null, "scene switch left preview alive")
+	panel.free()
 	_finish(scene, undo)
 
 func _ray(scene: Node3D, from: Vector3, to: Vector3) -> Dictionary:
