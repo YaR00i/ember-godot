@@ -21,6 +21,9 @@ const RELIEF_GENERATOR := "generator"
 const RELIEF_SOIL := "soil"
 const RELIEF_RIDGES := "ridges"
 const RELIEF_FACETS := "facets"
+const RELIEF_SHORE := "shore"
+const PAINT_PLAIN := "plain"
+const PAINT_SAND := "sand"
 
 const DEFAULT_RADIUS := 4
 const DEFAULT_DEPTH := 1
@@ -41,7 +44,7 @@ static func normalize_profile(profile: Dictionary) -> Dictionary:
 	if relief_mode not in [RELIEF_BUILDUP, RELIEF_GENERATOR]:
 		relief_mode = RELIEF_BUILDUP
 	var relief_style := str(profile.get("relief_style", RELIEF_SOIL))
-	if relief_style not in [RELIEF_SOIL, RELIEF_RIDGES, RELIEF_FACETS]:
+	if relief_style not in [RELIEF_SOIL, RELIEF_RIDGES, RELIEF_FACETS, RELIEF_SHORE]:
 		relief_style = RELIEF_SOIL
 	var follow_surface := bool(profile.get("follow_surface", true))
 	# Profiles saved before the corner-safe behavior used the old first-face
@@ -75,6 +78,18 @@ static func normalize_profile(profile: Dictionary) -> Dictionary:
 		"relief_facet_tilt": clampi(int(profile.get("relief_facet_tilt", 60)), 0, 100),
 		"relief_joint_width": clampi(int(profile.get("relief_joint_width", 1)), 0, 4),
 		"relief_joint_depth": clampi(int(profile.get("relief_joint_depth", 3)), 0, 16),
+		"shore_direction": clampi(int(profile.get("shore_direction", 0)), 0, 3),
+		"shore_width": clampi(int(profile.get("shore_width", 96)), 4, 256),
+		"shore_slope": clampi(int(profile.get("shore_slope", 3 if profile.has("shore_width") else 0)), 0, 3),
+		"height_limit": clampi(int(profile.get("height_limit", 8)), 1, 24),
+		"shore_roughness": clampi(int(profile.get("shore_roughness", 15)), 0, 40),
+		"paint_mode": PAINT_SAND if str(profile.get("paint_mode", PAINT_PLAIN)) == PAINT_SAND else PAINT_PLAIN,
+		"sand_palette": clampi(int(profile.get("sand_palette", 2)), 1, 255),
+		"sand_scale": clampi(int(profile.get("sand_scale", 24)), 8, 64),
+		"sand_coverage": clampi(int(profile.get("sand_coverage", 35)), 0, 100),
+		"sand_seed": maxi(0, int(profile.get("sand_seed", 0))),
+		"fill_mode": "open" if str(profile.get("fill_mode", "basin")) == "open" else "basin",
+		"open_water_level": clampi(int(profile.get("open_water_level", 16)), 1, 256),
 	}
 
 

@@ -46,7 +46,12 @@ static func source_signature(model_id: String) -> String:
 		return ""
 	var vox_path := str(paths["vox"])
 	var vox_hash := FileAccess.get_sha256(vox_path) if not vox_path.is_empty() else "json-only"
-	return (BUILD_CONTRACT + ":" + FileAccess.get_sha256(json_path) + ":" + vox_hash).sha256_text()
+	var contract := BUILD_CONTRACT
+	if str(paths.get("owner", "")) == "godot":
+		var model := model_of(load_json(model_id))
+		if PackedByteArray(model.get("surfaceFillMaterials", [])).has(EmberVoxelSurfaceMesher.SURFACE_FILL_WATER):
+			contract += ":column-water-v1"
+	return (contract + ":" + FileAccess.get_sha256(json_path) + ":" + vox_hash).sha256_text()
 
 
 static func validate_packed(model_id: String, packed: PackedScene) -> Dictionary:
@@ -278,6 +283,7 @@ static func prepare_resource(resource: EmberVoxelModelResource, projection_cache
 	var visual: ArrayMesh = projection_cache.build(model, vw) if projection_cache != null else _build_visual_mesh(resource.model_id, definition, vw, {})
 	if visual == null:
 		return null
+	_append_surface_fill_overlay(model, visual, vw)
 	_apply_visual_materials(visual)
 	var size := resource.grid_size()
 	var body := _body_mesh(resource.model_id, definition, model, vw, size)
@@ -367,11 +373,52 @@ static func _copy_mesh_surfaces(target: ArrayMesh, source: ArrayMesh) -> void:
 static func _apply_visual_materials(mesh: ArrayMesh) -> void:
 	var opaque := voxel_material()
 	var transparent := voxel_transparent_material()
+	# Resolve lazily: SurfaceMaterials already uses this builder for opaque props.
+	var surface_materials = load("res://scripts/ember_voxel_surface_materials.gd")
 	for surface in mesh.get_surface_count():
+		var channel := mesh.surface_get_name(surface)
 		mesh.surface_set_material(
 			surface,
-			transparent if mesh.surface_get_name(surface) == "transparent" else opaque,
+			surface_materials.water_material() if channel == "water"
+			else surface_materials.foam_material() if channel == "water_foam"
+			else transparent if channel == "transparent" else opaque,
 		)
+
+
+static func _append_surface_fill_overlay(model: Dictionary, mesh: ArrayMesh, voxel_size: float) -> void:
+	# Explicit column fills are shared Surface data, even on a placed prop.
+	# Ordinary per-voxel glass/transparency keeps its original prop semantics.
+	var fills := PackedByteArray(model.get("surfaceFillMaterials", []))
+	if not fills.has(EmberVoxelSurfaceMesher.SURFACE_FILL_WATER):
+		return
+	for surface in mesh.get_surface_count():
+		if mesh.surface_get_name(surface) == "water": return
+	var resource := EmberVoxelModelResource.new()
+	var size := VoxMesher.ember_grid_size(model)
+	resource.voxels_per_block = VoxMesher.voxels_per_block(model)
+	resource.size_blocks = Vector3i(size.x/resource.voxels_per_block, size.y/resource.voxels_per_block, size.z/resource.voxels_per_block)
+	resource.height_voxels = size.y
+	resource.palette = VoxMesher._model_colors(model)
+	resource.voxels = VoxMesher.model_channel(model, "voxels")
+	resource.surface_fill_levels = PackedInt32Array(model.get("surfaceFillLevels", []))
+	resource.surface_fill_materials = fills
+	resource.surface_fill_palette = PackedByteArray(model.get("surfaceFillPalette", []))
+	EmberVoxelSurfaceMesher.append_water_overlay(resource, mesh, Vector3i.ZERO, size, voxel_size)
+
+
+static func _terrain_collision_mesh(mesh: ArrayMesh) -> ArrayMesh:
+	# A visual water plane must never become a walkable collider on a prefab.
+	var has_water := false
+	for surface in mesh.get_surface_count():
+		if mesh.surface_get_name(surface) in ["water", "water_foam"]:
+			has_water = true
+			break
+	if not has_water: return mesh
+	var terrain := ArrayMesh.new()
+	for surface in mesh.get_surface_count():
+		if mesh.surface_get_name(surface) in ["water", "water_foam"]: continue
+		terrain.add_surface_from_arrays(mesh.surface_get_primitive_type(surface), mesh.surface_get_arrays(surface))
+	return terrain
 
 
 static func _set_pack_owner(node: Node, scene_owner: Node) -> void:
@@ -403,10 +450,12 @@ static func _build_visual_mesh(
 	var model := model_of(prefab)
 	var from_vox := _mesh_from_vox(model_id, prefab, model, vw)
 	if from_vox != null:
+		_append_surface_fill_overlay(model, from_vox, vw)
 		stats["vox_mesh"] = int(stats.get("vox_mesh", 0)) + 1
 		return from_vox
 	var from_json := _mesh_from_json(prefab, vw)
 	if from_json != null:
+		_append_surface_fill_overlay(model, from_json, vw)
 		stats["json_mesh"] = int(stats.get("json_mesh", 0)) + 1
 		return from_json
 	stats["missing_mesh"] = int(stats.get("missing_mesh", 0)) + 1
@@ -537,7 +586,7 @@ static func _make_tree(
 		body.collision_mask = 0
 		var shape := CollisionShape3D.new()
 		shape.name = "Shape"
-		var physics_mesh := collision_mesh if collision_mesh != null else visual.mesh
+		var physics_mesh := collision_mesh if collision_mesh != null else _terrain_collision_mesh(visual.mesh)
 		if physics_mesh.get_surface_count() > 0:
 			shape.shape = physics_mesh.create_trimesh_shape()
 		# Keep generated slots stable for authored descendants and Undo.

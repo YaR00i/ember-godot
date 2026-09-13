@@ -1,5 +1,104 @@
 # Ember — актуальные проверки и migration gates
 
+## Мультяшная вода / поставленный prefab2026-09-14 — последний рисунок принят
+
+Пользователь подтвердил последнюю коррекцию разрыва пятен («окей работает»).
+Ниже сохранены автоматические и расширенные ручные gates; это не подтверждение
+всех экзотических transform combinations или полного игрового прохождения.
+
+tools/test_voxel_cartoon_water.gd PASS: ordinary/cached preparation retains
+explicit fill, shared water geometry/material, dry-vs-wet collider face equality,
+source definition unchanged, PackedScene save/reopen, actual harbour BayWater
+material uses shared shader + background mode. Native disposable Forward+ PASS:
+shoal/rock islands/pier, two frozen water animation samples visibly differ;
+scene state read only, gameplay not launched. Related world Surface projection,
+projection cache, contact boundaries, surface sculpt, Canvas workflow, palette PASS.
+Pilot derived rebuild verified water presence and unchanged source/scene hashes.
+Art correction: rotated/warped broad patches, shorter/thinner subdued glints;
+tools/test_water_pattern_seams.gd PASS headless/native Forward+: independently
+translated adjacent planes versus one plane have pixel diff0; animation PASS.
+Standalone and combined native captures inspected. Cartoon water, world projection
+and contact boundaries rerun PASS. Disable editor grid to distinguish its lines
+from water seams; this fixture does not validate arbitrary author transforms.
+Perspective reflection regression isolates camera reflection without patch contrast,
+network or glints: abrupt quantized Fresnel reproduced FAIL (max jump0.168627),
+continuous reflection PASS (0.003922, threshold0.012); seam diff0/motion still PASS.
+Manual: tilt/move perspective camera and inspect long cuts through otherwise
+continuous patches. Deliberate pixel-art patch/depth boundaries remain discrete.
+Remaining user tear independently reproduced on harbour BoxMesh1800×2×1500
+using live editor camera; visible even in unshaded continuous grayscale noise.
+GPU X/Y lattice-boundary probe: old float hash FAIL591498 torn pixels; integer
+hash PASS0. Native seam/motion/reflection still PASS. Check actual author view:
+patches should cross former straight cuts continuously; their layout changes.
+Manual: reopen 3D scene if cached old mesh persists; inspect water on placed pilot,
+background harbour, gentle shoal and depth, shadows, moving broad patches, sparse
+glints, thin shore/contact foam, chunk seams at offset/rotation/scale; reopen saved
+scene, verify voxel geometry/collider unchanged. Deep water deliberately hides more
+floor than shallow water. No full library rebuild, swimming or new physical water.
+Latest author scene judgement accepted the corrected pattern; broader gates above
+are not implied solely by this acceptance or automated PASS.
+
+## Мягкий край берега2026-09-14 — ручная приёмка открыта
+
+tools/test_voxel_shore_soft_edge.gd PASS: parallel coast stroke radius16/depth4/
+length60/−X, quiet full center depth and cross-rim jumps≤1 voxel, midpoint/rim
+strength, repeated gesture and split-event invariance. Real UI roughness15,
+surviving colors unchanged, no water mutations, Undo/Redo/save/reopen/discard.
+Native disposable Forward+ PASS; before/after captures inspected. Shore/facets/
+surface pattern related PASS. No general ≤1 guarantee for other depth/noise.
+Manual: Undo previous steep cut, «Новое начало», set source anchor at shore,
+paint along and toward−X with reported settings; compare soft rim, repeat and
+Undo. Exposed green below sand is original data: use sand paint after sculpt.
+Verify water/props unchanged. Acceptance on actual author coast remains open.
+
+## Совместный берег / песчаные стенки / открытая вода2026-09-14
+
+tools/test_voxel_coastal_workflow.gd PASS: quiet gentle slope, non-accumulating
+separate/adjacent strokes, presets/custom/legacy profile, persistent/reset anchor,
+exposed walls versus buried terrain, shortcut radius, actual UI water fill from
+dry source, level lowering/fringe removal, scope-clipped replacement preserving
+outside water, count limit, old basin guard, Undo/Redo, save/reopen/discard.
+Shore/surface pattern + six related suites PASS (facets, surface sculpt, Canvas
+workflow, palette, water boundaries, height slice). Disposable native Forward+
+PASS; combined coastal_workflow_native.png inspected, no author map mutations.
+Manual acceptance remains open: depth8/12 + presets, custom length96/256; paint
+separate overlapping/adjacent strokes from same anchor, then «Новое начало»;
+sand chosen colors/coverage/scale on top and step walls, masks/locks; open water
+height and click below plane, lower level/remove, region edge, Undo/save/reopen.
+For already carved steep coast Undo first: gentle preset does not raise terrain.
+Compare floor-only and floor+water views; shader readability is not accepted by
+these technical checks. The following first-trial limitations are historical.
+
+## Рисунок поверхности / песок — первая проба2026-09-14
+
+tools/test_voxel_surface_pattern.gd PASS: controls/seed, top voxels only,
+occupied/heights/channel invariance, repeat/coarse/segment density, 0/100 endpoints,
+profile serialization/defaults/fresh workspace reopen, shore shortcut/plain paint,
+actual picker beneath water, one Undo/Redo, source save/reopen/cancel/discard,
+region clipping, locked voxel, height-slice guard and canonical palette edits.
+Seven related suites PASS: shore, facets, surface sculpt, Canvas workflow, palette,
+water contact boundaries, height slice. Native disposable Forward+ PASS; floor
+and combined-water captures inspected. This is not user artistic acceptance.
+Manual: shore → «Оформить дно», or Покраска → рисунок поверхности/песок; select
+base and patch colors, size8/24/64, coverage0/35/100, repeat/adjacent strokes and
+new seed. Verify shape/water untouched, Ctrl+Z, save/reopen, group mask/locks.
+For clearer color judgement use «Слои · только дно», then return combined view.
+Side walls/buried layers are not painted; contrast comes from chosen colors.
+
+## Отмель и дно — первая проба2026-09-14
+
+Automated tools/test_voxel_shore_relief.gd PASS: fixed origin, monotonic shoal,
+width/direction/roughness/seed, carving/depth/deep holes, coarse/density/revisits,
+edge/region clipping, real pick, editor profile/tool switch, one Undo/Redo,
+save/reopen/cancel/discard, unchanged water channels and preview water surfaces.
+Related faceted relief, surface sculpt (water fills), palette, water contact
+boundaries, Surface Canvas workflow PASS. Native disposable Forward+ PASS.
+Manual: Canvas → Рельеф → Генератор → берег и дно; paint toward ±X/±Z from first
+click; compare width4/24/64, roughness0/15/40, coarse, edit region, Undo, reopen.
+Test existing water fill then floor-only view; same plane, props/pier unchanged.
+Water appearance not artistically accepted by technical capture; no shader
+redesign in this slice. Gate remains open until user's scene/visual acceptance.
+
 ## Передвижение вне боя — 13 сентября 2026 (ручная приёмка открыта)
 
 `tools/test_explore_stepping.gd` PASS: настоящая CharacterBody capsule и
@@ -2364,3 +2463,84 @@ Ctrl+Z/Redo — весь мазок, Save/reopen — реальные экзем
 поверхность/окно — незавершённые ghosts исчезают без scene edits.
 После выключения возвращается обычное выделение. Проверить выбор другого
 шаблона, переключение Surface/Battlefield/Walk Surface tools и открытие Canvas.
+
+### Кусты в общей мастерской2026-09-13
+
+Agreed slice: bush v2 в существующем provider/studio, три крупных формы и
+pixel-art/leaf clouds; без ягод, цветов, анимации или нового placement owner.
+Missing generation_version сохраняет компактный v1 и его random sequence.
+test_voxel_bush_objects — PASS headless и native Forward+ RTX5070 в disposable
+Temp/ember-generation-smoke-20260912. Шесть form/style recipes, determinism,
+различие occupancy по seed и неподвижная форма при diversity0, ground stems,
+storage budget, заметные параметры, palette-only strength/detail/colour edits.
+Настоящие UI bindings проверяют options values[1,3], batch, candidate Apply,
+draft/discard, isolated neighbour, Undo/Redo, source+recipe+custom preset save,
+reopen и saved generator editor. Assets только user://ember-tests, карты не меняются.
+Native comparison: user://generation_bushes_native.png; это runtime render/UI
+fixture, не ручная проверка кисти и полного input в рабочем Godot editor.
+
+Ручной gate: Объекты → Генерация → Кусты; проверить три пресета с несколькими
+сидами, оба режима, размер/пышность/уплощение. Цвета рисунка доступны отдельно,
+strength0 возвращает только основной цвет. Сохранить выбранный куст, найти в
+библиотеке, открыть его настройки, сохранить вариацию; Undo/Redo и reopen.
+Расставить несколько кустов общей кистью на земле, проверить pivot/contact,
+масштаб и вид из обычной игровой камеры. После этого закрыть визуальную приёмку.
+
+Уточнение2026-09-13: первый визуал v2 отклонён. Новый согласованный шаг — только
+базовый силуэт v3 без рисунка, не все формы. test_voxel_bush_silhouette PASS:
+3seeds,6-connected geometry, широкая нижняя масса вместо заострённого низа,
+one foliage colour, opt-in нового preset и неизменная репродукция старого v2.
+BUSH v3 остаётся в общих source/recipe/preset/save/edit/history owners.
+Native bush_objects --basic-silhouette в disposable Forward+ fixture PASS;
+comparison user://generation_bush_basic_native.png: v2 слева, v3 дваseed справа,
+одинаковые параметры размеров и отключённый рисунок. Полный UI roundtrip и
+Undo/Redo покрываются bush_objects с новым default preset.
+Ручной gate теперь сначала только «Кусты · Базовый силуэт · пробный»:
+проверить широкое основание, неодинаковые пучки, небольшую пустоту у ветвей,
+несколькоseed и вид со всех сторон. Не включать рисунок для приёмки формы.
+Этот v3 также отклонён как «шапочки», его визуальный gate не закрыт приёмкой.
+Следующая согласованная проба — v4, только «Кусты · Крупные листовые пучки · пробный»:
+побеги от земли, плотный центр из перекрытий, крупные наклонённые внешние группы,
+без общей юбки/купола. Старые v1–v3 воспроизводятся; другие presets остаются v2.
+Восемь suites PASS: bush_silhouette, bush_objects, bush_generator, generator,
+generator_editing, generation_session, workshop_generator_save, workshop_layout.
+Silhouette проверяет пять seed × два режима, связность и normalized reproduction;
+общий objects fixture — save/reopen/presets/Apply/discard/Undo/Redo.
+Native --shoot-shrub Forward+ RTX5070 PASS; generation_bush_shoots_native.png:
+v3 слева, v4 seeds73/391 справа. Рисунок0, одноцветный кадр не является
+подтверждением читаемости объёма или ручного editor/input.
+Ручной gate открыт: несколько seed, оба режима, вид со всех сторон и игровой
+камеры, толщина внешних пучков, читаемость побегов и плотность центра; затем
+save/reopen и кисть на карте. После явного принятия вернуться к рисунку и
+другим формам, не раньше.
+
+V4 впоследствии отвергнут пользователем как «монстр», приёмка не закрыта.
+Новые references/approval: только базовый v5 cloud shrub с независимым основанием
+и числом веток. Base_height0–32, высота листвы8–96, ветки1–12. Recipe/source/
+preset/save/edit/history owners общие, v1–v4 load не обновляется автоматически.
+Восемь bush/generator/session/workshop suites PASS; silhouette — пятьseed ×
+два режима, сохранённый контур при подъёме, connectivity и крайние количества.
+Objects fixture — base SpinBox binding/Undo/Redo, candidate height Apply,
+source+recipe+custom preset roundtrip, saved height binding/Undo/discard.
+Native --cloud-shrub Forward+ RTX5070 PASS, generation_bush_clouds_native.png:
+два низких seed, основание16/12веток; max storage524288 и pure build≈0.49–0.55s.
+Ручной gate теперь «Кусты · Облака листвы · пробный»: base0/2/16/32 и ветки1/3/12,
+листва не растягивается при подъёме, нижний каркас расходится и поддерживает массы.
+Проверить оба режима/пышность/край/цвета, вид со всех сторон и игровой камеры;
+сохранить вариацию, reopen, Undo/Redo и кисть на карте. Ягоды/цветы вне scope.
+Пользователь2026-09-13 подтвердил базовый визуал v5 («вот эти хорошие»):
+cloud shape gate принят. Остальные крайние настройки и полный ручной
+input/save/placement checklist не объявлять пройденными без подтверждения.
+
+Следующий согласованный срез2026-09-13 реализован: низкий раскидистый и высокий
+ветвистый на облачной основе, explicit v6; принятый базовый preset остаётся v5.
+Восемь bush/generator/session/workshop suites PASS. Silhouette проверяет оба
+v6 ×3seed ×2режима, exact normalized roundtrip, v2 distinction, base0/32 ×
+ветки1/12, maximum524288/source validation/connectivity. Objects — реальные
+studio type bindings/Undo и публикация/reopen/saved edit/height history/discard
+обоих новых типов на user:// fixtures. Native --cloud-profiles Forward+
+RTX5070 PASS; generation_bush_profiles_native.png — три пресета рядом.
+Ручной gate двух v6 форм открыт: низкий широкий/высокий вытянутый характер,
+несколько seed, оба режима, основание/ветки/пышность/край/цвета, вид со всех
+сторон и игровой камеры; save/reopen/Undo/Redo и посадка кистью на карте.
+Old recipes v1–v5 не мигрируют, ягоды/цветы/renderer work вне scope.

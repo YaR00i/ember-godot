@@ -1,5 +1,7 @@
 [gd_scene format=4 uid="uid://ct2d14u6i5fm0"]
 
+[ext_resource type="Shader" path="res://shaders/ember_voxel_surface_water.gdshader" id="water_cartoon_shader"]
+
 [ext_resource type="Script" uid="uid://dechqn8w4wnur" path="res://scripts/test_pier.gd" id="1"]
 [ext_resource type="Script" uid="uid://ctwn2o6mocfe2" path="res://scripts/ember_map_loader.gd" id="2"]
 [ext_resource type="Script" uid="uid://4lkb6w8l82y0" path="res://scripts/ember_region.gd" id="3"]
@@ -44,9 +46,23 @@ fog_enabled = true
 fog_light_color = Color(0.48, 0.63, 0.66, 1)
 fog_density = 0.0005
 
-[sub_resource type="StandardMaterial3D" id="water"]
-albedo_color = Color(0.075, 0.28, 0.34, 1)
-roughness = 0.88
+[sub_resource type="ShaderMaterial" id="water"]
+shader = ExtResource("water_cartoon_shader")
+shader_parameter/background_water = true
+shader_parameter/coordinate_scale = 16.0
+shader_parameter/water_light_tone = Color(0.25, 0.77, 0.68, 1)
+shader_parameter/water_deep_tone = Color(0.055, 0.40, 0.46, 1)
+shader_parameter/tone_strength = 0.4
+shader_parameter/ripple_alpha = 0.01
+shader_parameter/network_cell_size = 24.0
+shader_parameter/network_width = 0.04
+shader_parameter/animation_fps = 8.0
+shader_parameter/glint_strength = 0.28
+shader_parameter/glint_alpha = 0.04
+shader_parameter/glint_cell_size = 32.0
+shader_parameter/glint_density = 0.045
+shader_parameter/glint_length = 5.0
+shader_parameter/glint_thickness = 0.8
 
 [sub_resource type="BoxMesh" id="b1"]
 material = SubResource("water")

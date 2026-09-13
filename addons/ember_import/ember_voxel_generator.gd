@@ -4,6 +4,25 @@ extends RefCounted
 ## Creation UI descriptors share the provider's normalized parameters. Adding an
 ## object provider does not require another panel, preset format or batch owner.
 static func creation_fields(generator_id: String) -> Array[Dictionary]:
+	if generator_id == BUSH:
+		return [
+			{"key": "bush_type", "title": "Форма куста", "options": ["Округлый пышный", "Низкий раскидистый", "Высокий ветвистый"], "identity": true},
+			{"key": "height", "title": "Высота · vox", "min": 8, "max": 96},
+			{"key": "base_height", "title": "Высота веточного основания · vox", "min": 0, "max": 32, "since_version": 5},
+			{"key": "spread_radius", "title": "Радиус куста · vox", "min": 4, "max": 30},
+			{"key": "stem_count", "title": "Количество основных веток", "min": 1, "max": 12},
+			{"key": "foliage_density", "title": "Пышность · %", "min": 20, "max": 100},
+			{"key": "cluster_flatten", "title": "Уплощение масс · %", "min": 0, "max": 100},
+			{"key": "structure_diversity", "title": "Разнообразие формы · %", "min": 0, "max": 100},
+			{"key": "roughness", "title": "Неровность края · %", "min": 0, "max": 100},
+			{"key": "foliage_style", "title": "Стиль листвы", "options": ["Пиксель-арт", "Лиственные облака"], "values": [1, 3]},
+			{"key": "foliage_detail", "title": "Детализация рисунка", "min": 0, "max": 100},
+			{"key": "foliage_pattern_strength", "title": "Выраженность рисунка · %", "min": 0, "max": 100},
+			{"key": "foliage_color", "title": "Листва · основной цвет", "type": "color"},
+			{"key": "foliage_highlight_color", "title": "Листва · светлый рисунок", "type": "color"},
+			{"key": "foliage_shadow_color", "title": "Листва · тёмный рисунок", "type": "color"},
+			{"key": "stem_color", "title": "Стебли", "type": "color"},
+		]
 	if generator_id == ROCK:
 		var rock_fields: Array[Dictionary] = [
 			{"key": "rock_type", "title": "Форма объекта", "options": ["Валун", "Угловатый камень", "Плоская плита", "Сросток кристаллов", "Ледяные глыбы"], "identity": true},
@@ -70,6 +89,23 @@ static func creation_description(recipe: Resource) -> String:
 
 static func creation_presets(generator_id: String) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
+	if generator_id == BUSH:
+		for item in [
+			{"name": "Кусты · Облака листвы · пробный", "type": 0, "height": 24, "radius": 20, "flatten": 15},
+			{"name": "Кусты · Низкий раскидистый", "type": 1, "height": 16, "radius": 23, "flatten": 45},
+			{"name": "Кусты · Высокий ветвистый", "type": 2, "height": 42, "radius": 15, "flatten": 10},
+		]:
+			var recipe := default_recipe(BUSH)
+			recipe.parameters.merge({"generation_version": 2, "bush_type": item.type, "height": item.height,
+				"spread_radius": item.radius, "cluster_flatten": item.flatten, "foliage_density": 85, "stem_count": 6}, true)
+			if int(item.type) == 0:
+				recipe.parameters.merge({"generation_version": 5, "base_height": 2, "foliage_style": 3, "foliage_pattern_strength": 60}, true)
+			else:
+				recipe.parameters.merge({"generation_version": 6, "base_height": 1 if int(item.type) == 1 else 3, "foliage_style": 3, "foliage_pattern_strength": 60}, true)
+			recipe.parameters = normalized_parameters(BUSH, recipe.parameters)
+			recipe.resource_name = item.name
+			result.append({"name": item.name, "recipe": recipe})
+		return result
 	if generator_id == ROCK:
 		for item in [
 			{"name": "Камни · Валун", "type": 0, "dimensions": Vector3i(24,18,21), "roughness": 35, "chips": 15},
@@ -113,6 +149,8 @@ static func candidate_limit(recipe: Resource) -> int:
 	# Exact meshes, not lower-detail previews. Bound simultaneous CPU/GPU memory.
 	if recipe.generator_id == LARGE_TREE:
 		return 2 if int(recipe.parameters.get("height", 96)) > 128 else 4
+	if recipe.generator_id == BUSH:
+		return 2 if int(recipe.parameters.get("height", 10)) > 64 or int(recipe.parameters.get("spread_radius", 5)) > 24 else 4
 	if recipe.generator_id == ROCK:
 		var dimensions: Vector3i = normalized_parameters(ROCK, recipe.parameters).dimensions
 		if maxi(dimensions.x, maxi(dimensions.y, dimensions.z)) > 64: return 1
@@ -218,6 +256,17 @@ static func build(
 
 ## Provider capabilities and UI descriptors. The panel contains no tree math.
 static func editing_fields(recipe: Resource) -> Array:
+	if validation_errors(recipe).is_empty() and recipe.generator_id == BUSH and int(recipe.parameters.get("generation_version", 1)) >= 2:
+		var fields: Array = []
+		for descriptor in creation_fields(BUSH):
+			if int(descriptor.get("since_version", 2)) > int(recipe.parameters.generation_version): continue
+			var field := descriptor.duplicate(true)
+			if field.key == "stem_count" and int(recipe.parameters.generation_version) < 5: field["min"] = 3
+			field["label"] = field.title
+			if field.key == "height" and int(recipe.parameters.generation_version) >= 5: field["label"] = "Высота листвы · vox"
+			field["group"] = "Куст"
+			fields.append(field)
+		return fields
 	if validation_errors(recipe).is_empty() and recipe.generator_id == ROCK and int(recipe.parameters.get("generation_version", 1)) == 2:
 		var fields: Array = []
 		for descriptor in creation_fields(ROCK):
@@ -268,8 +317,8 @@ static func freeze_structure(recipe: Resource) -> Dictionary:
 	var errors := validation_errors(recipe)
 	if not errors.is_empty():
 		return {"error": errors[0]}
-	if recipe.generator_id == ROCK and not editing_fields(recipe).is_empty():
-		# Rocks have no branching frame to freeze: seed + planes are deterministic.
+	if recipe.generator_id in [ROCK, BUSH] and not editing_fields(recipe).is_empty():
+		# These providers reproduce geometry from parameters + seed, without a tree frame.
 		return {"recipe": recipe.duplicate(true)}
 	if not recipe.structure.is_empty():
 		return {"recipe": recipe.duplicate(true)}

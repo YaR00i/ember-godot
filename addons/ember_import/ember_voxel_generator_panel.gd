@@ -141,9 +141,9 @@ func _rebuild_fields() -> void:
 		elif field.has("options"):
 			var option := OptionButton.new()
 			for title in field.options: option.add_item(title)
-			option.select(int(recipe.parameters[field.key]))
-			if field.key == "foliage_style": option.set_item_disabled(2, not Generator.LargeTreeProvider.FoliagePattern.supports_style(recipe.parameters, 2))
-			option.item_selected.connect(func(value: int): set_parameter(field.key, value))
+			option.select(field.values.find(recipe.parameters[field.key]) if field.has("values") else int(recipe.parameters[field.key]))
+			if field.key == "foliage_style" and recipe.generator_id == Generator.LARGE_TREE: option.set_item_disabled(2, not Generator.LargeTreeProvider.FoliagePattern.supports_style(recipe.parameters, 2))
+			option.item_selected.connect(func(value: int): set_parameter(field.key, field.values[value] if field.has("values") else value))
 			_fields.add_child(option)
 			controls[field.key] = option
 		elif str(field.get("type", "number")) == "color":
@@ -194,13 +194,13 @@ func set_parameter(key: String, value: Variant) -> void:
 	if recipe.generator_id == Generator.ROCK and key == "mineral_pattern" and int(value) == 2:
 		history.add_do_method(_assign.bind("mineral_vein_style", 1))
 		history.add_undo_method(_assign.bind("mineral_vein_style", recipe.parameters.get("mineral_vein_style", 0)))
-	if key == "foliage_style" and int(value) == 3:
+	if recipe.generator_id == Generator.LARGE_TREE and key == "foliage_style" and int(value) == 3:
 		history.add_do_method(_assign.bind("foliage_cloud_version", 2))
 		history.add_undo_method(_assign.bind("foliage_cloud_version", recipe.parameters.get("foliage_cloud_version", 1)))
 	if key == "bark_pattern" and bool(value):
 		history.add_do_method(_assign.bind("bark_pattern_version", 2))
 		history.add_undo_method(_assign.bind("bark_pattern_version", recipe.parameters.get("bark_pattern_version", 1)))
-	if key == "foliage_style" and int(value) == 1:
+	if recipe.generator_id == Generator.LARGE_TREE and key == "foliage_style" and int(value) == 1:
 		if int(recipe.parameters.get("foliage_style", 0)) == 1 and int(recipe.parameters.get("foliage_pattern_version", 1)) < 2:
 			history.add_do_method(_assign.bind("foliage_geometry_detail", recipe.parameters.foliage_detail))
 			history.add_undo_method(_assign.bind("foliage_geometry_detail", recipe.parameters.get("foliage_geometry_detail", 55)))
@@ -233,7 +233,8 @@ func _sync_controls() -> void:
 		elif controls[key] is CheckButton:
 			controls[key].button_pressed = bool(recipe.parameters[key])
 		elif controls[key] is OptionButton:
-			controls[key].select(int(recipe.parameters[key]))
+			for field in descriptors:
+				if field.key == key: controls[key].select(field.values.find(recipe.parameters[key]) if field.has("values") else int(recipe.parameters[key]))
 		else:
 			controls[key].value = recipe.parameters[key]
 	_sync_rock_fields()

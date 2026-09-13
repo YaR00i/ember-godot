@@ -5,7 +5,7 @@ const Generator = preload("res://addons/ember_import/ember_voxel_generator.gd")
 const Session = preload("res://addons/ember_import/ember_voxel_generation_session.gd")
 const Presets = preload("res://addons/ember_import/ember_voxel_generator_presets.gd")
 const VectorField = preload("res://addons/ember_import/ember_voxel_vector_field.gd")
-const PROVIDERS := [Generator.LARGE_TREE, Generator.ROCK]
+const PROVIDERS := [Generator.LARGE_TREE, Generator.ROCK, Generator.BUSH]
 var _provider: OptionButton
 var _creation_fields: VBoxContainer
 var _fields_provider := ""
@@ -88,6 +88,7 @@ func _ready() -> void:
 	_provider.name = "GenerationObjectType"
 	_provider.add_item("Деревья")
 	_provider.add_item("Камни")
+	_provider.add_item("Кусты")
 	_provider.item_selected.connect(_select_provider)
 	_fields.add_child(_provider)
 	_preset = OptionButton.new()
@@ -297,19 +298,21 @@ func _field_changed(key: String, value: Variant, candidate_field: bool) -> void:
 func _change_parameter(key: String, value: Variant) -> void:
 	if _syncing: return
 	# Explicit type choice uses today's profile; opening saved recipes does not.
-	if recipe.parameters.get(key) == value and not (recipe.generator_id == Generator.ROCK and Generator.Rock.Surface.needs_vein_upgrade(recipe.parameters, key, value)) and not (key == "rock_type" and int(recipe.parameters.generation_version) != 2) and not (key == "tree_type" and int(recipe.parameters.generation_version) != int(Generator.LargeTreeProvider.LATEST_VERSIONS[int(value)])) and not (key == "foliage_style" and Generator.LargeTreeProvider.FoliagePattern.needs_style_upgrade(recipe.parameters, int(value))): return
+	var upgrade_bush: bool = recipe.generator_id == Generator.BUSH and key == "bush_type" and int(recipe.parameters.get("generation_version", 1)) != (5 if int(value) == 0 else 6)
+	if recipe.parameters.get(key) == value and not upgrade_bush and not (recipe.generator_id == Generator.ROCK and Generator.Rock.Surface.needs_vein_upgrade(recipe.parameters, key, value)) and not (key == "rock_type" and int(recipe.parameters.generation_version) != 2) and not (key == "tree_type" and int(recipe.parameters.generation_version) != int(Generator.LargeTreeProvider.LATEST_VERSIONS[int(value)])) and not (key == "foliage_style" and Generator.LargeTreeProvider.FoliagePattern.needs_style_upgrade(recipe.parameters, int(value))): return
 	var next := recipe.duplicate(true)
 	next.parameters[key] = value
 	if next.generator_id == Generator.ROCK and key == "mineral_pattern" and int(value) == 2: next.parameters.mineral_vein_style = 1
 	# A new type choice opts into its latest form; loading old recipes does not.
 	if key == "tree_type": next.parameters.generation_version = Generator.LargeTreeProvider.LATEST_VERSIONS[int(value)]
 	if key == "rock_type": next.parameters.generation_version = 2
+	if recipe.generator_id == Generator.BUSH and key == "bush_type": next.parameters.generation_version = 5 if int(value) == 0 else 6
 	if key == "tree_type" and int(next.parameters.foliage_style) == 2 and not Generator.LargeTreeProvider.FoliagePattern.supports_style(next.parameters, 2):
 		next.parameters.foliage_style = 0
-	if key == "foliage_style" and int(value) == 1 and int(recipe.parameters.get("foliage_style", 0)) == 1 and int(recipe.parameters.get("foliage_pattern_version", 1)) < 2:
+	if recipe.generator_id == Generator.LARGE_TREE and key == "foliage_style" and int(value) == 1 and int(recipe.parameters.get("foliage_style", 0)) == 1 and int(recipe.parameters.get("foliage_pattern_version", 1)) < 2:
 		next.parameters.foliage_geometry_detail = recipe.parameters.foliage_detail
-	if key == "foliage_style" and int(value) == 1: next.parameters.foliage_pattern_version = 2
-	if key == "foliage_style" and int(value) == 3: next.parameters.foliage_cloud_version = 2
+	if recipe.generator_id == Generator.LARGE_TREE and key == "foliage_style" and int(value) == 1: next.parameters.foliage_pattern_version = 2
+	if recipe.generator_id == Generator.LARGE_TREE and key == "foliage_style" and int(value) == 3: next.parameters.foliage_cloud_version = 2
 	if key == "bark_pattern" and bool(value): next.parameters.bark_pattern_version = 2
 	next.parameters = Generator.normalized_parameters(next.generator_id, next.parameters)
 	_change_recipe(next)
@@ -324,8 +327,8 @@ func _change_recipe(next: Resource) -> void:
 
 func _apply_recipe(next: Resource) -> void:
 	recipe = next.duplicate(true)
-	if _fields_provider != recipe.generator_id and _title.text in ["Дерево", "Камень"]:
-		_title.text = "Камень" if recipe.generator_id == Generator.ROCK else "Дерево"
+	if _fields_provider != recipe.generator_id and _title.text in ["Дерево", "Камень", "Куст"]:
+		_title.text = _provider_title(recipe.generator_id)
 	_sync_controls()
 	_status.text = "Настройки для следующего прохода. Уже собранные варианты не меняются."
 
@@ -353,7 +356,7 @@ func _sync_controls() -> void:
 				control.set_axis_maximum(Generator.Rock.dimension_limits(recipe.parameters))
 				control.tooltip_text = "Максимум сетки — 524 288 ячеек, включая округление X/Z до блока. Высота зависит от плотности."
 			control.set_vector_value(value)
-		elif control is SpinBox: control.value = value
+		elif control is SpinBox: control.value = value if value != null else 0
 		elif control is ColorPickerButton: control.color = value
 		elif control is CheckButton: control.button_pressed = bool(value)
 		elif control is OptionButton: control.select(field.values.find(value) if field.has("values") else int(value) - int(field.get("offset", 0)))
@@ -367,18 +370,22 @@ func _sync_controls() -> void:
 			if int(recipe.parameters.generation_version) != int(Generator.LargeTreeProvider.LATEST_VERSIONS[int(value)]):
 				control.set_item_text(int(value), "%s · прежняя форма" % field.options[int(value)])
 		control.set_block_signals(false)
+		if field.has("since_version"):
+			control.get_parent().visible = int(recipe.parameters.get("generation_version", 1)) >= int(field.since_version)
+		if recipe.generator_id == Generator.BUSH and field.key == "height":
+			control.get_parent().get_child(0).text = "Высота листвы · vox" if int(recipe.parameters.generation_version) >= 5 else "Высота · vox"
 		if field.key == "leaf_density": control.get_parent().visible = int(recipe.parameters.generation_version) == 1
-		if field.key == "structure_diversity": control.get_parent().visible = Generator.LargeTreeProvider.TreeVariation.supported(recipe.parameters)
+		if field.key == "structure_diversity": control.get_parent().visible = recipe.generator_id == Generator.BUSH or Generator.LargeTreeProvider.TreeVariation.supported(recipe.parameters)
 		if field.key == "foliage_amount": control.get_parent().visible = int(recipe.parameters.generation_version) >= 2
 		if field.key == "foliage_style":
-			control.visible = Generator.LargeTreeProvider.FoliagePattern.supported(recipe.parameters)
-			control.set_item_disabled(2, not Generator.LargeTreeProvider.FoliagePattern.supports_style(recipe.parameters, 2))
+			control.visible = recipe.generator_id == Generator.BUSH or Generator.LargeTreeProvider.FoliagePattern.supported(recipe.parameters)
+			if recipe.generator_id == Generator.LARGE_TREE: control.set_item_disabled(2, not Generator.LargeTreeProvider.FoliagePattern.supports_style(recipe.parameters, 2))
 		if field.key == "foliage_leaf_size":
 			control.get_parent().visible = Generator.LargeTreeProvider.FoliagePattern.supported(recipe.parameters) and int(recipe.parameters.foliage_style) in [2, 3]
 			control.get_parent().get_child(0).text = "Размер деталей · vox" if int(recipe.parameters.foliage_style) == 3 else "Размер листика · vox"
 		if field.key == "foliage_leaf_accents": control.get_parent().visible = Generator.LargeTreeProvider.FoliagePattern.supported(recipe.parameters) and int(recipe.parameters.foliage_style) == 3
-		if field.key == "foliage_detail": control.get_parent().visible = Generator.LargeTreeProvider.FoliagePattern.supported(recipe.parameters) and (int(recipe.parameters.foliage_style) == 1 or (int(recipe.parameters.foliage_style) == 3 and int(recipe.parameters.foliage_cloud_version) >= 2))
-		if field.key == "foliage_pattern_strength": control.get_parent().visible = Generator.LargeTreeProvider.FoliagePattern.supported(recipe.parameters) and ((int(recipe.parameters.foliage_style) == 1 and int(recipe.parameters.foliage_pattern_version) >= 2) or (int(recipe.parameters.foliage_style) == 3 and int(recipe.parameters.foliage_cloud_version) >= 2))
+		if field.key == "foliage_detail": control.get_parent().visible = recipe.generator_id == Generator.BUSH or (Generator.LargeTreeProvider.FoliagePattern.supported(recipe.parameters) and (int(recipe.parameters.foliage_style) == 1 or (int(recipe.parameters.foliage_style) == 3 and int(recipe.parameters.foliage_cloud_version) >= 2)))
+		if field.key == "foliage_pattern_strength": control.get_parent().visible = recipe.generator_id == Generator.BUSH or (Generator.LargeTreeProvider.FoliagePattern.supported(recipe.parameters) and ((int(recipe.parameters.foliage_style) == 1 and int(recipe.parameters.foliage_pattern_version) >= 2) or (int(recipe.parameters.foliage_style) == 3 and int(recipe.parameters.foliage_cloud_version) >= 2)))
 		if str(field.key) in ["branch_thickness", "branch_taper", "branch_curve", "branch_start", "cluster_size", "cluster_flatten", "canopy_cohesion", "root_flare"]:
 			control.get_parent().visible = int(recipe.parameters.generation_version) >= 2
 		if field.key == "crown_shape": control.visible = int(recipe.parameters.generation_version) >= 2
@@ -390,6 +397,10 @@ func _sync_controls() -> void:
 	_syncing = false
 
 
+func _provider_title(id: String) -> String:
+	return "Куст" if id == Generator.BUSH else ("Камень" if id == Generator.ROCK else "Дерево")
+
+
 func _select_provider(index: int) -> void:
 	if _syncing: return
 	if _busy() or not _draft_resolved():
@@ -399,7 +410,7 @@ func _select_provider(index: int) -> void:
 	if recipe.generator_id == id: return
 	var next: Resource = Generator.creation_presets(id)[0].recipe.duplicate(true)
 	_change_recipe(next)
-	_title.text = "Камень" if id == Generator.ROCK else "Дерево"
+	_title.text = _provider_title(id)
 	_status.text = "Новая партия: %s. Готовые варианты и избранное не изменены." % _provider.get_item_text(index)
 
 
@@ -423,7 +434,7 @@ func open_for(next_context: Dictionary, base_recipe: Resource = null) -> void:
 	context = next_context
 	suspended = false
 	recipe = Session.preset_recipe(base_recipe) if base_recipe != null else Generator.creation_presets(Generator.LARGE_TREE)[0].recipe.duplicate(true)
-	_title.text = str(base_recipe.family_title) if base_recipe != null and not str(base_recipe.family_title).is_empty() else ("Камень" if recipe.generator_id == Generator.ROCK else "Дерево")
+	_title.text = str(base_recipe.family_title) if base_recipe != null and not str(base_recipe.family_title).is_empty() else _provider_title(recipe.generator_id)
 	_sync_controls()
 	_reload_presets()
 	_status.text = "Мастерская 3D: номера над объектами совпадают со списком. Настройки партии — слева, выбранного объекта — справа."
@@ -848,8 +859,10 @@ func _sync_candidate_controls() -> void:
 		elif control is SpinBox: control.value = value
 		elif control is ColorPickerButton: control.color = value
 		elif control is CheckButton: control.button_pressed = bool(value)
-		elif control is OptionButton: control.select(int(value))
-		if key == "foliage_style": control.set_item_disabled(2, not Generator.LargeTreeProvider.FoliagePattern.supports_style(candidate_recipe.parameters, 2))
+		elif control is OptionButton:
+			for field in Generator.editing_fields(candidate_recipe):
+				if field.key == key: control.select(field.values.find(value) if field.has("values") else int(value))
+		if key == "foliage_style" and candidate_recipe.generator_id == Generator.LARGE_TREE: control.set_item_disabled(2, not Generator.LargeTreeProvider.FoliagePattern.supports_style(candidate_recipe.parameters, 2))
 		if candidate_recipe.generator_id == Generator.ROCK and key == "dimensions":
 			control.set_axis_maximum(Generator.Rock.dimension_limits(candidate_recipe.parameters))
 			control.set_vector_value(candidate_recipe.parameters.dimensions)
@@ -868,11 +881,11 @@ func _change_candidate_parameter(key: String, value: Variant) -> void:
 	var next := candidate_recipe.duplicate(true)
 	next.parameters[key] = value
 	if next.generator_id == Generator.ROCK and key == "mineral_pattern" and int(value) == 2: next.parameters.mineral_vein_style = 1
-	if key == "foliage_style" and int(value) == 1 and int(candidate_recipe.parameters.get("foliage_style", 0)) == 1 and int(candidate_recipe.parameters.get("foliage_pattern_version", 1)) < 2:
+	if candidate_recipe.generator_id == Generator.LARGE_TREE and key == "foliage_style" and int(value) == 1 and int(candidate_recipe.parameters.get("foliage_style", 0)) == 1 and int(candidate_recipe.parameters.get("foliage_pattern_version", 1)) < 2:
 		next.parameters.foliage_geometry_detail = candidate_recipe.parameters.foliage_detail
 	if key == "bark_pattern" and bool(value): next.parameters.bark_pattern_version = 2
-	if key == "foliage_style" and int(value) == 1: next.parameters.foliage_pattern_version = 2
-	if key == "foliage_style" and int(value) == 3: next.parameters.foliage_cloud_version = 2
+	if candidate_recipe.generator_id == Generator.LARGE_TREE and key == "foliage_style" and int(value) == 1: next.parameters.foliage_pattern_version = 2
+	if candidate_recipe.generator_id == Generator.LARGE_TREE and key == "foliage_style" and int(value) == 3: next.parameters.foliage_cloud_version = 2
 	next.parameters = Generator.normalized_parameters(next.generator_id, next.parameters)
 	history.create_action("Черновик объекта № %d" % candidate.number)
 	history.add_do_method(_apply_candidate_draft.bind(active_id, next))

@@ -83,8 +83,9 @@ static func _paint_caps(leaves: Dictionary, wood: Dictionary, center: Vector3,
 	# Keep author flattening; remove the extra forced flatten from revision1.
 	var roof := center + Vector3.UP * extent.y * 0.14
 	roof.y = minf(roof.y, float(settings.height - 1) - ceilf(extent.y * 1.12))
-	var floor_height := roof.y - extent.y * 0.35
-	_lobe(leaves, wood, roof, extent * Vector3(0.85, 0.82, 0.85), 5, noise, 0.045, 2, floor_height)
+	var floor_height := roof.y - extent.y * float(settings.get("cloud_floor_ratio", 0.35))
+	var roughness := float(settings.get("cloud_roughness", 1.0))
+	_lobe(leaves, wood, roof, extent * Vector3(0.85, 0.82, 0.85), 5, noise, 0.045 * roughness, 2, floor_height)
 	var count := random.randi_range(3, 5)
 	var phase := random.randf() * TAU
 	var pads := []
@@ -95,7 +96,7 @@ static func _paint_caps(leaves: Dictionary, wood: Dictionary, center: Vector3,
 		offset.y = extent.y * random.randf_range(0.25, 0.48)
 		var size := random.randf_range(0.48, 0.61)
 		var pad := extent * Vector3(size, random.randf_range(0.48, 0.62), size * random.randf_range(0.88, 1.10))
-		_lobe(leaves, wood, roof + offset, pad, 5, noise, 0.075, 2, floor_height)
+		_lobe(leaves, wood, roof + offset, pad, 5, noise, 0.075 * roughness, 2, floor_height)
 		pads.append({"center": roof + offset, "radii": pad, "radial": radial})
 	var accents := float(settings.foliage_leaf_accents) / 100.0
 	for pad: Dictionary in pads:
@@ -159,6 +160,26 @@ static func paint_shoots(leaves: Dictionary, wood: Dictionary, center: Vector3,
 			if width_axis.length_squared() < 0.01: width_axis = side
 			var length := size * random.randf_range(0.75, 1.2)
 			_leaf(leaves, wood, base, leaf_axis, width_axis, length, settings.height, tone)
+
+## Provider-neutral compact masses and substantial folded leaf groups.
+static func paint_mass(leaves: Dictionary, wood: Dictionary, center: Vector3, radii: Vector3,
+	noise: FastNoiseLite, roughness: float, tone: int = 5) -> void:
+	_lobe(leaves, wood, center, radii, tone, noise, roughness, 2)
+
+
+static func paint_leaf_group(leaves: Dictionary, wood: Dictionary, base: Vector3,
+	direction: Vector3, length: float, height: int, tone: int = 5) -> void:
+	var axis := direction.normalized()
+	var side := axis.cross(Vector3.UP).normalized()
+	if side.length_squared() < 0.1: side = Vector3.RIGHT
+	var normal := axis.cross(side).normalized()
+	var thickness := maxf(0.5, length * 0.10)
+	# Three touching folded layers read as one meaty group, not a flat leaf card.
+	for layer in [-1, 0, 1]:
+		var attachment := base + normal * float(layer) * thickness
+		_stem(leaves, wood, base, attachment, height, tone)
+		_leaf(leaves, wood, attachment, axis, side, length, height, tone)
+
 
 static func _stem(leaves: Dictionary, wood: Dictionary, start: Vector3, finish: Vector3,
 	height: int, tone: int) -> void:
@@ -239,7 +260,12 @@ static func colorize(leaves: Dictionary, wood: Dictionary, settings: Dictionary,
 	if not supported(settings): return
 	var cloud := int(settings.get("foliage_style", 0)) == 3 and int(settings.get("foliage_cloud_version", 1)) >= 2
 	if not cloud and (int(settings.get("foliage_style", 0)) != 1 or int(settings.get("foliage_pattern_version", 1)) < 2): return
-	var size := roundi(lerpf(9.0, 3.0, float(settings.foliage_detail) / 100.0))
+	colorize_motifs(leaves, wood, int(settings.foliage_detail), seed)
+
+
+## Provider-neutral surface motifs. Geometry and palette are owned by the caller.
+static func colorize_motifs(leaves: Dictionary, wood: Dictionary, detail: int, seed: int) -> void:
+	var size := roundi(lerpf(9.0, 3.0, float(detail) / 100.0))
 	var offset := Vector3i(posmod(seed, 37), posmod(seed / 37, 41), posmod(seed / 1517, 43))
 	var neighbors := [Vector3i.LEFT, Vector3i.RIGHT, Vector3i.UP, Vector3i.DOWN, Vector3i.FORWARD, Vector3i.BACK]
 	for cell: Vector3i in leaves:

@@ -629,6 +629,58 @@ static func refresh_column_heights(
 	)
 
 
+static func surface_pattern_segment_changes(
+	resource: EmberVoxelModelResource, from: Vector3i, to: Vector3i,
+	base_palette: int, patch_palette: int, brush_radius := 8,
+	feature_scale := 24, coverage := 35, seed := 0, coarse := false,
+	heightfield := PackedInt32Array(),
+) -> Dictionary:
+	# One world-locked, single-scale pattern; no per-voxel speckles or new colors.
+	var changes := {}
+	if resource == null or resource.palette.size() < 2:
+		return changes
+	var size := resource.grid_size()
+	if not contains(from, size) or not contains(to, size):
+		return changes
+	var heights := heightfield if heightfield.size() == size.x * size.z else column_heights(resource.voxels, size)
+	var radius := clampi(brush_radius, 1, 32)
+	var extent := radius - 1
+	var noise := FastNoiseLite.new()
+	noise.seed = maxi(0, seed)
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	noise.fractal_type = FastNoiseLite.FRACTAL_NONE
+	noise.frequency = 1.0 / float(clampi(feature_scale, 8, 64))
+	var amount := clampi(coverage, 0, 100)
+	var primary := clampi(base_palette, 1, resource.palette.size()-1)
+	var secondary := clampi(patch_palette, 1, resource.palette.size()-1)
+	var pixel_step := 2 if coarse else 1
+	var limit_squared := pow(float(radius)-0.25, 2)
+	for z in range(maxi(0,mini(from.z,to.z)-extent),mini(size.z-1,maxi(from.z,to.z)+extent)+1):
+		for x in range(maxi(0,mini(from.x,to.x)-extent),mini(size.x-1,maxi(from.x,to.x)+extent)+1):
+			if _distance_squared_to_segment_2d(x,z,from.x,from.z,to.x,to.z) > limit_squared:
+				continue
+			var top := int(heights[x+z*size.x])
+			if top < 0: continue
+			var lowest_neighbor := top
+			for offset in [Vector2i.RIGHT,Vector2i.LEFT,Vector2i.UP,Vector2i.DOWN]:
+				var neighbor: Vector2i = Vector2i(x,z)+offset
+				var neighbor_top := int(heights[neighbor.x+neighbor.y*size.x]) if neighbor.x >= 0 and neighbor.y >= 0 and neighbor.x < size.x and neighbor.y < size.z else -1
+				lowest_neighbor = mini(lowest_neighbor,neighbor_top)
+			var px := floori(float(x)/pixel_step)*pixel_step
+			var pz := floori(float(z)/pixel_step)*pixel_step
+			var value := clampf(0.5 + noise.get_noise_2d(px,pz)*0.85,0,1)
+			var patch := amount == 100 or (amount > 0 and value < float(amount)/100.0)
+			var after := secondary if patch else primary
+			# Continue the same X/Z motif down exposed step risers, not into the
+			# buried terrain or cavities beneath another column's upper surface.
+			for y in range(maxi(0,mini(top,lowest_neighbor+1)),top+1):
+				var index := index_of(Vector3i(x,y,z),size)
+				var before := int(resource.voxels[index])
+				if before != 0 and after != before:
+					changes[index] = {"before":before,"after":after}
+	return changes
+
+
 static func stroke_changes(
 	resource: EmberVoxelModelResource,
 	center: Vector3i,
@@ -907,6 +959,25 @@ static func surface_fill_selection(
 	return selection
 
 
+static func open_surface_fill_selection(
+	resource: EmberVoxelModelResource, seed: Vector3i, level: int,
+	region_blocks := Rect2i(), heightfield := PackedInt32Array(),
+	maximum_count := MAX_SURFACE_FILL_COLUMNS,
+) -> Dictionary:
+	if resource == null or not contains(seed,resource.grid_size()):
+		return _empty_surface_fill_result("invalid_seed")
+	var size := resource.grid_size()
+	var bounds := _surface_fill_scope_bounds(resource,region_blocks)
+	if not bounds.has_point(Vector2i(seed.x,seed.z)):
+		return _empty_surface_fill_result("outside_scope")
+	if heightfield.size() != size.x*size.z:
+		heightfield = column_heights(resource.voxels,size)
+	var selection := _connected_columns_below_level(heightfield,size,bounds,Vector2i(seed.x,seed.z),clampi(level,1,size.y),maximum_count,true)
+	selection["level"] = clampi(level,1,size.y)
+	selection["spill_level"] = selection.level
+	return selection
+
+
 static func connected_surface_fill_columns(
 	resource: EmberVoxelModelResource,
 	seed: Vector2i,
@@ -965,6 +1036,7 @@ static func surface_fill_replacement_columns(
 	target_material: int,
 	region_blocks := Rect2i(),
 	maximum_count := MAX_SURFACE_FILL_COLUMNS,
+	clip_to_scope := false,
 ) -> Dictionary:
 	## Re-authoring a level fill replaces its complete connected liquid family.
 	## This removes shallower fringe columns and also repairs adjacent rings left
@@ -1051,7 +1123,7 @@ static func surface_fill_replacement_columns(
 			):
 				continue
 			if not bounds.has_point(neighbor):
-				escaped_scope = true
+				escaped_scope = not clip_to_scope
 				continue
 			if queued[neighbor_index] == 0:
 				queued[neighbor_index] = 1
@@ -1193,6 +1265,7 @@ static func _connected_columns_below_level(
 	seed: Vector2i,
 	level: int,
 	maximum_count: int,
+	allow_open := false,
 ) -> Dictionary:
 	var count := size.x * size.z
 	var visited := PackedByteArray()
@@ -1230,7 +1303,7 @@ static func _connected_columns_below_level(
 			if visited[neighbor_index] == 0:
 				visited[neighbor_index] = 1
 				queue.append(neighbor)
-	if touches_boundary:
+	if touches_boundary and not allow_open:
 		return {
 			"columns": PackedInt32Array(), "truncated": false,
 			"open": true, "reason": "open_basin",
@@ -1810,6 +1883,7 @@ static func generative_relief_segment_changes(
 	applied_column_cache: Dictionary = {},
 	baseline_heightfield := PackedInt32Array(),
 	facet_settings: Dictionary = {},
+	shore_settings: Dictionary = {},
 ) -> Dictionary:
 	## Paints a deterministic height field anchored in model coordinates. The
 	## cache stores the strongest falloff and its resulting signed offset, so
@@ -1830,6 +1904,7 @@ static func generative_relief_segment_changes(
 	var palette_value := clampi(palette_index, 1, resource.palette.size() - 1)
 	var has_heightfield := baseline_heightfield.size() == size.x * size.z
 	var facets := style == "facets"
+	var shore := style == "shore"
 	var facet_sites := {}
 	var noise := FastNoiseLite.new()
 	noise.seed = maxi(0, seed)
@@ -1838,11 +1913,12 @@ static func generative_relief_segment_changes(
 	noise.fractal_type = (
 		FastNoiseLite.FRACTAL_RIDGED if style == "ridges" else FastNoiseLite.FRACTAL_FBM
 	)
-	var light_detail := detail_octaves <= 0 and not facets
+	var light_detail := detail_octaves <= 0 and not facets and not shore
 	var effective_amplitude := mini(safe_amplitude, 2) if light_detail else safe_amplitude
 	noise.fractal_octaves = clampi(detail_octaves, 1, 5)
 	noise.fractal_gain = 0.5
 	noise.fractal_lacunarity = 2.0
+	if shore: noise.fractal_type = FastNoiseLite.FRACTAL_NONE
 	var extent := radius - 1
 	var minimum_x := maxi(0, mini(from.x, to.x) - extent)
 	var maximum_x := mini(size.x - 1, maxi(from.x, to.x) + extent)
@@ -1865,6 +1941,8 @@ static func generative_relief_segment_changes(
 			# Flat strength across facet interiors; blend only at the brush rim.
 			# A dome-shaped falloff would bend every polygon's plane into a hill.
 			if facets: falloff = 1.0 - smoothstep(0.8, 1.0, normalized)
+			# A shore blends across the whole radius, including strokes parallel
+			# to the coast. Sharing a facet's narrow rim would cut a raised lip.
 			var influence := clampi(roundi(falloff * 4096.0), 1, 4096)
 			for oz in step:
 				for ox in step:
@@ -1879,7 +1957,25 @@ static func generative_relief_segment_changes(
 					if influence <= previous_state.x:
 						continue
 					var sample := clampf(noise.get_noise_2d(float(x), float(z)), -1.0, 1.0)
-					if facets:
+					var shore_offset := 0
+					if shore:
+						var origin: Vector2 = shore_settings.get("origin", Vector2(from.x, from.z))
+						var axes := [Vector2.RIGHT, Vector2.LEFT, Vector2.DOWN, Vector2.UP]
+						var axis: Vector2 = axes[clampi(int(shore_settings.get("direction", 0)), 0, 3)]
+						var width := clampf(float(shore_settings.get("width", 96)), 4, 256)
+						var progress := clampf((Vector2(x, z) - origin).dot(axis) / width, 0, 1)
+						var roughness := clampf(float(shore_settings.get("roughness", 15)), 0, 40) / 100.0
+						var depth := clampf(smoothstep(0.08, 1.0, progress) + sample * roughness * smoothstep(0.0, 0.3, progress), 0, 1)
+						var baseline_top := int(baseline_heightfield[column_index]) if has_heightfield else _cached_column_top(baseline_values, size, x, z, column_index, baseline_top_cache)
+						var origin_top := int(shore_settings.get("height", from.y))
+						var foundation: PackedInt32Array = shore_settings.get("foundation",baseline_heightfield)
+						var initial_top := int(foundation[column_index]) if foundation.size() == size.x*size.z else baseline_top
+						var desired_top := minf(initial_top,float(origin_top)-safe_amplitude*depth)
+						var target := roundi(lerpf(initial_top,desired_top,float(influence)/4096.0))
+						# Absolute plan across gestures: even the faded rim must not
+						# deepen again when the pointer is released and pressed again.
+						shore_offset = clampi(target-baseline_top,-safe_amplitude,0)
+					elif facets:
 						var facet := _relief_facet_sample(Vector2(x, z), feature_scale, seed, facet_sites)
 						var anchor: Vector2i = Vector2i(facet.anchor).clamp(Vector2i.ZERO, Vector2i(size.x - 1, size.z - 1))
 						var baseline_top := int(baseline_heightfield[column_index]) if has_heightfield else _cached_column_top(baseline_values, size, x, z, column_index, baseline_top_cache)
@@ -1915,6 +2011,8 @@ static func generative_relief_segment_changes(
 					var target_offset := roundi(
 						float(effective_amplitude) * float(influence) / 4096.0 * sample
 					)
+					if shore:
+						target_offset = shore_offset
 					if coarse:
 						target_offset = roundi(float(target_offset) / 2.0) * 2
 					applied_column_cache[column_index] = Vector2i(influence, target_offset)

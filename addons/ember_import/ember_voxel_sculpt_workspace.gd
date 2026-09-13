@@ -109,6 +109,13 @@ var _follow_surface: CheckButton
 var _application_mode: OptionButton
 var _brush_shape: OptionButton
 var _volume_operation: OptionButton
+var _paint_mode: OptionButton
+var _sand_palette: OptionButton
+var _sand_scale: SpinBox
+var _sand_coverage: SpinBox
+var _sand_variant: Button
+var _sand_seed := 0
+var _shore_paint_button: Button
 var _relief_mode: OptionButton
 var _relief_direction: OptionButton
 var _relief_geometry: OptionButton
@@ -117,6 +124,14 @@ var _relief_generator_direction: OptionButton
 var _relief_generator_scale: OptionButton
 var _relief_generator_detail: OptionButton
 var _relief_facet_tilt: SpinBox
+var _shore_direction: OptionButton
+var _shore_width: SpinBox
+var _shore_roughness: SpinBox
+var _shore_stroke_origin := Model.INVALID_CELL
+var _shore_anchor := Model.INVALID_CELL
+var _shore_foundation := PackedInt32Array()
+var _shore_slope: OptionButton
+var _shore_reset: Button
 var _relief_joint_width: SpinBox
 var _relief_joint_depth: SpinBox
 var _relief_variant_button: Button
@@ -147,6 +162,8 @@ var _material_preset: OptionButton
 var _material_scope: OptionButton
 var _material_tolerance: OptionButton
 var _surface_fill_material: OptionButton
+var _surface_fill_mode: OptionButton
+var _open_water_level: SpinBox
 var _surface_fill_level: OptionButton
 var _surface_fill_inset: OptionButton
 var _surface_fill_tint: OptionButton
@@ -535,12 +552,14 @@ func import_editor_view_data(data: Dictionary) -> void:
 	_load_tool_profiles()
 	if is_instance_valid(_tool):
 		_restore_tool_profile(_selected_base_tool_id())
+		_update_paint_controls()
 
 
 func _open_surface_unchecked(
 	resource: EmberVoxelModelResource, resource_path: String,
 	initial_region_blocks := Rect2i(),
 ) -> void:
+	_reset_shore_anchor()
 	if _object_session != null:
 		_object_session.release_projection_cache()
 	_object_session = null
@@ -728,6 +747,7 @@ func _restore_editor_view_state(state: Dictionary) -> void:
 
 
 func discard_changes() -> void:
+	_reset_shore_anchor()
 	_cancel_stroke()
 	_cancel_precision_line(false)
 	if is_instance_valid(_groups_panel):
@@ -1076,6 +1096,8 @@ func _build() -> void:
 	_relief_generator_style.set_item_metadata(1, BrushProfiles.RELIEF_RIDGES)
 	_relief_generator_style.add_item("Характер · грани")
 	_relief_generator_style.set_item_metadata(2, BrushProfiles.RELIEF_FACETS)
+	_relief_generator_style.add_item("Характер · берег и дно · пробный")
+	_relief_generator_style.set_item_metadata(3, BrushProfiles.RELIEF_SHORE)
 	_relief_generator_style.item_selected.connect(func(_index: int) -> void: _on_brush_setting_changed())
 	_relief_generator_style.visible = false
 	tool_settings.add_child(_relief_generator_style)
@@ -1140,6 +1162,58 @@ func _build() -> void:
 		spin.value_changed.connect(func(_value: float): _on_brush_setting_changed())
 		spin.visible = false
 		tool_settings.add_child(spin)
+	_shore_direction = OptionButton.new()
+	_shore_direction.name = "VoxelSculptShoreDirection"
+	for title in ["Глубже · +X", "Глубже · −X", "Глубже · +Z", "Глубже · −Z"]:
+		_shore_direction.add_item(title)
+	_shore_direction.tooltip_text = "Общее начало берега сохраняется между мазками до «Новое начало». Направление задаёт ось углубления; вода не меняет уровень."
+	_shore_direction.item_selected.connect(func(_index: int): _on_brush_setting_changed())
+	_shore_direction.visible = false
+	tool_settings.add_child(_shore_direction)
+	_shore_slope = OptionButton.new()
+	_shore_slope.name = "VoxelSculptShoreSlope"
+	for title in ["Уклон · пологий","Уклон · средний","Уклон · крутой","Уклон · свой"]:
+		_shore_slope.add_item(title)
+	_shore_slope.tooltip_text = "Пресет подбирает длину спуска под глубину. Для своего уклона задайте длину вручную."
+	_shore_slope.item_selected.connect(func(_index: int): _on_brush_setting_changed())
+	_shore_slope.visible = false
+	tool_settings.add_child(_shore_slope)
+	_shore_reset = Button.new()
+	_shore_reset.name = "VoxelSculptShoreReset"
+	_shore_reset.text = "Новое начало"
+	_shore_reset.tooltip_text = "Следующий клик задаст новое начало берега. До этого все мазки продолжают общий спуск."
+	_shore_reset.pressed.connect(func():
+		_flush_pending_stroke_position()
+		_finish_stroke()
+		_reset_shore_anchor()
+		_set_status("Следующий клик — новое начало берега; готовый грунт не меняется."))
+	_shore_reset.visible = false
+	tool_settings.add_child(_shore_reset)
+	_shore_paint_button = Button.new()
+	_shore_paint_button.name = "VoxelSculptShorePaint"
+	_shore_paint_button.text = "Оформить дно"
+	_shore_paint_button.tooltip_text = "Перейти к рисунку поверхности: два выбранных цвета, без изменения рельефа и воды."
+	_shore_paint_button.pressed.connect(_open_sand_paint)
+	_shore_paint_button.visible = false
+	tool_settings.add_child(_shore_paint_button)
+	_shore_width = SpinBox.new()
+	_shore_roughness = SpinBox.new()
+	for entry in [[_shore_width, "Длина спуска · vox", 4, 256, 96], [_shore_roughness, "Неровность дна · %", 0, 40, 15]]:
+		var spin: SpinBox = entry[0]
+		spin.prefix = entry[1]
+		spin.min_value = entry[2]
+		spin.max_value = entry[3]
+		spin.value = entry[4]
+		spin.step = 1
+		spin.custom_minimum_size.x = 250
+		if spin == _shore_width:
+			spin.value_changed.connect(func(_value: float):
+				_shore_slope.select(3)
+				_on_brush_setting_changed())
+		else:
+			spin.value_changed.connect(func(_value: float): _on_brush_setting_changed())
+		spin.visible = false
+		tool_settings.add_child(spin)
 	_relief_variant_button = Button.new()
 	_relief_variant_button.name = "VoxelSculptReliefVariant"
 	_relief_variant_button.text = "Другой вариант"
@@ -1147,6 +1221,45 @@ func _build() -> void:
 	_relief_variant_button.pressed.connect(_on_relief_variant_pressed)
 	_relief_variant_button.visible = false
 	tool_settings.add_child(_relief_variant_button)
+	_paint_mode = OptionButton.new()
+	_paint_mode.name = "VoxelSculptPaintMode"
+	_paint_mode.add_item("Покраска · обычная")
+	_paint_mode.set_item_metadata(0, BrushProfiles.PAINT_PLAIN)
+	_paint_mode.add_item("Рисунок поверхности · Песок · пробный")
+	_paint_mode.set_item_metadata(1, BrushProfiles.PAINT_SAND)
+	_paint_mode.item_selected.connect(func(_index: int): _on_brush_setting_changed())
+	_paint_mode.visible = false
+	tool_settings.add_child(_paint_mode)
+	_sand_palette = OptionButton.new()
+	_sand_palette.name = "VoxelSculptSandPalette"
+	_sand_palette.tooltip_text = "Цвет крупных пятен из палитры. Основной цвет выбирается обычным селектором цвета. Контраст задаётся этими двумя цветами; новые оттенки не создаются."
+	_sand_palette.item_selected.connect(func(_index: int): _on_brush_setting_changed())
+	_sand_palette.visible = false
+	tool_settings.add_child(_sand_palette)
+	_sand_scale = SpinBox.new()
+	_sand_coverage = SpinBox.new()
+	for entry in [[_sand_scale,"Размер пятен · vox",8,64,24],[_sand_coverage,"Доля пятен · %",0,100,35]]:
+		var spin: SpinBox = entry[0]
+		spin.prefix = entry[1]
+		spin.min_value = entry[2]
+		spin.max_value = entry[3]
+		spin.value = entry[4]
+		spin.step = 1
+		spin.custom_minimum_size.x = 230
+		spin.tooltip_text = "Крупный рисунок закреплён в координатах поверхности. Доля приблизительная: 0 — только основа, 100 — только цвет пятен."
+		spin.value_changed.connect(func(_value: float): _on_brush_setting_changed())
+		spin.visible = false
+		tool_settings.add_child(spin)
+	_sand_variant = Button.new()
+	_sand_variant.name = "VoxelSculptSandVariant"
+	_sand_variant.text = "Другой рисунок"
+	_sand_variant.pressed.connect(func():
+		_flush_pending_stroke_position()
+		_finish_stroke()
+		_sand_seed = (_sand_seed+1)%2147483647
+		_on_brush_setting_changed())
+	_sand_variant.visible = false
+	tool_settings.add_child(_sand_variant)
 	_height_limit = OptionButton.new()
 	_height_limit.name = "VoxelSculptHeightLimit"
 	_height_limit.tooltip_text = (
@@ -1286,6 +1399,29 @@ func _build() -> void:
 	_surface_fill_material.item_selected.connect(_on_surface_fill_options_changed)
 	_surface_fill_material.visible = false
 	tool_settings.add_child(_surface_fill_material)
+	_surface_fill_mode = OptionButton.new()
+	_surface_fill_mode.name = "VoxelSculptFillMode"
+	_surface_fill_mode.add_item("Заливка · замкнутая впадина")
+	_surface_fill_mode.set_item_metadata(0,"basin")
+	_surface_fill_mode.add_item("Заливка · открытая вода в участке")
+	_surface_fill_mode.set_item_metadata(1,"open")
+	_surface_fill_mode.item_selected.connect(func(_index: int):
+		if _surface_fill_mode.get_selected_metadata() == "open" and _shore_anchor != Model.INVALID_CELL:
+			_open_water_level.set_value_no_signal(_shore_anchor.y+1)
+		_on_brush_setting_changed())
+	_surface_fill_mode.visible = false
+	tool_settings.add_child(_surface_fill_mode)
+	_open_water_level = SpinBox.new()
+	_open_water_level.name = "VoxelSculptOpenWaterLevel"
+	_open_water_level.prefix = "Высота воды · vox"
+	_open_water_level.min_value = 1
+	_open_water_level.max_value = 256
+	_open_water_level.value = 16
+	_open_water_level.custom_minimum_size.x = 250
+	_open_water_level.tooltip_text = "Абсолютная высота плоскости от низа Canvas. Кликните ниже неё: вода покроет связное дно до границ рабочей области; замкнутые борта не нужны."
+	_open_water_level.value_changed.connect(func(_value: float): _on_brush_setting_changed())
+	_open_water_level.visible = false
+	tool_settings.add_child(_open_water_level)
 	_surface_fill_level = OptionButton.new()
 	_surface_fill_level.name = "VoxelSculptSurfaceFillLevel"
 	_surface_fill_level.tooltip_text = (
@@ -2065,11 +2201,14 @@ func _sync_viewport_size() -> void:
 
 func _refresh_palette() -> void:
 	var selected := int(_palette.get_item_metadata(_palette.selected)) if _palette.selected >= 0 else 1
+	var sand := int(_sand_palette.get_selected_metadata()) if _sand_palette.selected >= 0 else 2
 	var tint := _surface_fill_tint.selected
 	if _resource != null and _displayed_palette.size() != _resource.palette.size():
 		selected = _matching_palette_index(selected)
+		sand = _matching_palette_index(sand)
 		tint = _matching_palette_index(tint)
 	_palette.clear()
+	_sand_palette.clear()
 	_surface_fill_tint.clear()
 	_surface_fill_tint.add_item("Вода · оттенок авто")
 	_surface_fill_tint.set_item_metadata(0, 0)
@@ -2080,9 +2219,12 @@ func _refresh_palette() -> void:
 	for index in range(1, _resource.palette.size()):
 		_palette.add_icon_item(PalettePanel.swatch(_resource.palette[index], 18), "Цвет %d · #%s" % [index, _resource.palette[index].to_html(false)])
 		_palette.set_item_metadata(_palette.item_count - 1, index)
+		_sand_palette.add_icon_item(PalettePanel.swatch(_resource.palette[index],18), "Пятна · цвет %d · #%s" % [index,_resource.palette[index].to_html(false)])
+		_sand_palette.set_item_metadata(_sand_palette.item_count-1,index)
 		_surface_fill_tint.add_item("Вода · цвет %d" % index)
 		_surface_fill_tint.set_item_metadata(_surface_fill_tint.item_count - 1, index)
 	_surface_fill_tint.select(clampi(tint, 0, _surface_fill_tint.item_count - 1))
+	_select_option_metadata(_sand_palette,clampi(sand,1,_resource.palette.size()-1))
 	_displayed_palette = _resource.palette.duplicate()
 	_select_palette_color(selected)
 
@@ -2118,6 +2260,9 @@ func _apply_palette_operation(resource: EmberVoxelModelResource, operation: Dict
 		return
 	_finish_palette_gesture()
 	var tint := _surface_fill_tint.selected
+	var sand := int(_sand_palette.get_selected_metadata()) if _sand_palette.selected >= 0 else 1
+	if _selected_base_tool_id() != Model.TOOL_PAINT and _tool_profiles.has(Model.TOOL_PAINT):
+		sand = int(_tool_profiles[Model.TOOL_PAINT].get("sand_palette",sand))
 	var result := _actions.apply_palette(resource, operation)
 	if result.has("error"):
 		_set_status(str(result["error"]), true)
@@ -2127,6 +2272,9 @@ func _apply_palette_operation(resource: EmberVoxelModelResource, operation: Dict
 		if tint == removed:
 			tint = int(operation["target"])
 		tint -= 1 if tint > removed else 0
+		if sand == removed:
+			sand = int(operation["target"])
+		sand -= 1 if sand > removed else 0
 	elif operation.get("kind") == "ramp" and tint > 0:
 		var source := int(operation["index"])
 		var ramp_size := (operation.get("colors", PackedColorArray()) as PackedColorArray).size()
@@ -2134,7 +2282,15 @@ func _apply_palette_operation(resource: EmberVoxelModelResource, operation: Dict
 			tint = source + ramp_size / 2
 		elif tint > source:
 			tint += ramp_size - 1
+		if sand == source:
+			sand = source + ramp_size / 2
+		elif sand > source:
+			sand += ramp_size - 1
 	_surface_fill_tint.select(clampi(tint, 0, _surface_fill_tint.item_count - 1))
+	_select_option_metadata(_sand_palette,clampi(sand,1,maxi(1,_sand_palette.item_count)))
+	# Keep the paint profile aligned even when the palette is edited from relief.
+	if _tool_profiles.has(Model.TOOL_PAINT):
+		_tool_profiles[Model.TOOL_PAINT]["sand_palette"] = sand
 	_select_palette_color(int(result["selected"]))
 	_set_status(str(result["label"]) + " · вся модель · Ctrl+Z отменить · Ctrl+S сохранить")
 
@@ -3160,6 +3316,7 @@ func _on_tool_selected(index: int) -> void:
 	_update_material_scope_controls()
 	_update_smooth_controls()
 	_update_tool_help(tool_id)
+	_update_paint_controls()
 	if _slice_height >= 0:
 		_info.text += "\n\nСрез защищает верх. " + (
 			"Материал наносится локально; водный эффект виден после отключения среза."
@@ -3287,6 +3444,18 @@ func _store_active_tool_profile() -> void:
 		"relief_facet_tilt": int(_relief_facet_tilt.value),
 		"relief_joint_width": int(_relief_joint_width.value),
 		"relief_joint_depth": int(_relief_joint_depth.value),
+		"shore_direction": _shore_direction.selected,
+		"shore_width": int(_shore_width.value),
+		"shore_slope": _shore_slope.selected,
+		"height_limit": int(_height_limit.get_selected_metadata()),
+		"shore_roughness": int(_shore_roughness.value),
+		"paint_mode": _paint_mode.get_selected_metadata(),
+		"sand_palette": int(_sand_palette.get_selected_metadata()) if _sand_palette.selected >= 0 else 2,
+		"sand_scale": int(_sand_scale.value),
+		"sand_coverage": int(_sand_coverage.value),
+		"sand_seed": _sand_seed,
+		"fill_mode": _surface_fill_mode.get_selected_metadata(),
+		"open_water_level": int(_open_water_level.value),
 	})
 
 
@@ -3318,6 +3487,18 @@ func _restore_tool_profile(base_tool: int) -> void:
 	_relief_facet_tilt.set_value_no_signal(profile.relief_facet_tilt)
 	_relief_joint_width.set_value_no_signal(profile.relief_joint_width)
 	_relief_joint_depth.set_value_no_signal(profile.relief_joint_depth)
+	_shore_direction.select(profile.shore_direction)
+	_shore_width.set_value_no_signal(profile.shore_width)
+	_shore_slope.select(profile.shore_slope)
+	_select_option_metadata(_height_limit,profile.height_limit)
+	_shore_roughness.set_value_no_signal(profile.shore_roughness)
+	_select_option_metadata(_paint_mode,profile.paint_mode)
+	_select_option_metadata(_sand_palette,clampi(profile.sand_palette,1,maxi(1,_sand_palette.item_count)))
+	_sand_scale.set_value_no_signal(profile.sand_scale)
+	_sand_coverage.set_value_no_signal(profile.sand_coverage)
+	_sand_seed = profile.sand_seed
+	_select_option_metadata(_surface_fill_mode,profile.fill_mode)
+	_open_water_level.set_value_no_signal(profile.open_water_level)
 	_relief_seed_value = int(profile.relief_seed)
 	_active_profile_tool = base_tool
 	_sync_coarse_depth()
@@ -3332,14 +3513,19 @@ func _on_brush_setting_changed() -> void:
 		_grab_interaction.cancel()
 	_flush_pending_stroke_position()
 	_finish_stroke()
+	if _selected_base_tool_id() == Model.TOOL_RAISE and _shore_slope.selected < 3:
+		var depth := int(_height_limit.get_selected_metadata())
+		_shore_width.set_value_no_signal(clampi(depth*int([8,4,2][_shore_slope.selected]),4,256))
 	_cancel_precision_line(false)
 	_sync_coarse_depth()
 	_sync_direction_label()
 	_store_active_tool_profile()
 	_update_material_scope_controls()
+	_update_surface_fill_controls()
 	_update_relief_controls()
 	_update_smooth_controls()
 	_update_tool_help(_selected_tool_id())
+	_update_paint_controls()
 	if is_instance_valid(_viewport_container):
 		_update_cursor(_viewport_container.get_local_mouse_position())
 
@@ -3373,7 +3559,15 @@ func _update_relief_controls() -> void:
 	_relief_generator_direction.visible = generator
 	_relief_generator_scale.visible = generator
 	var facets := generator and str(_relief_generator_style.get_selected_metadata()) == BrushProfiles.RELIEF_FACETS
-	_relief_generator_detail.visible = generator and not facets
+	var shore := generator and str(_relief_generator_style.get_selected_metadata()) == BrushProfiles.RELIEF_SHORE
+	_relief_generator_detail.visible = generator and not facets and not shore
+	_relief_generator_direction.visible = generator and not shore
+	_shore_direction.visible = shore
+	_shore_width.visible = shore
+	_shore_slope.visible = shore
+	_shore_reset.visible = shore
+	_shore_paint_button.visible = shore
+	_shore_roughness.visible = shore
 	_relief_facet_tilt.visible = facets
 	_relief_joint_width.visible = facets
 	_relief_joint_depth.visible = facets
@@ -3381,7 +3575,7 @@ func _update_relief_controls() -> void:
 	for item in _height_limit.item_count:
 		var value := int(_height_limit.get_item_metadata(item))
 		_height_limit.set_item_text(
-			item, ("Высота %d vox" if generator else "Предел %d vox") % value
+			item, ("Глубина %d vox" if shore else ("Высота %d vox" if generator else "Предел %d vox")) % value
 		)
 	_relief_variant_button.tooltip_text = (
 		"Текущий вариант: %d. Нажмите, чтобы получить другой устойчивый рисунок."
@@ -3398,6 +3592,43 @@ func _on_relief_variant_pressed() -> void:
 	_update_tool_help(_selected_tool_id())
 	if is_instance_valid(_viewport_container):
 		_update_cursor(_viewport_container.get_local_mouse_position())
+
+
+func _reset_shore_anchor() -> void:
+	_shore_anchor = Model.INVALID_CELL
+	_shore_foundation = PackedInt32Array()
+
+
+func _is_sand_paint() -> bool:
+	return _selected_base_tool_id() == Model.TOOL_PAINT and is_instance_valid(_paint_mode) and _paint_mode.get_selected_metadata() == BrushProfiles.PAINT_SAND
+
+
+func _open_sand_paint() -> void:
+	_flush_pending_stroke_position()
+	_finish_stroke()
+	var radius := int(_radius.get_selected_metadata())
+	_activate_tool_id(Model.TOOL_PAINT)
+	_select_option_metadata(_radius,radius)
+	_select_option_metadata(_paint_mode,BrushProfiles.PAINT_SAND)
+	_on_brush_setting_changed()
+	_set_status("Выберите основной цвет и цвет пятен, затем рисуйте по дну. Рельеф и вода не меняются.")
+
+
+func _update_paint_controls() -> void:
+	var sand := _is_sand_paint()
+	_paint_mode.visible = _selected_base_tool_id() == Model.TOOL_PAINT
+	_sand_palette.visible = sand
+	_sand_scale.visible = sand
+	_sand_coverage.visible = sand
+	_sand_variant.visible = sand
+	if sand:
+		_depth.visible = false
+		_application_mode.visible = false
+		_brush_shape.visible = false
+		_follow_surface.visible = false
+		_active_tool_label.text = "Покраска · рисунок поверхности · песок"
+		_info.text = "Ведите ЛКМ по дну, пляжу или дорожке. Рисунок продолжается вниз по открытым стенкам ступеней; скрытая толща и вода не меняются. Один Undo на мазок; Esc отменяет."
+		_info.tooltip_text = _info.text
 
 
 func _update_smooth_controls() -> void:
@@ -3518,6 +3749,10 @@ func _update_tool_help(tool_id: int) -> void:
 			else "почва"
 		)
 		if str(_relief_generator_style.get_selected_metadata()) == BrushProfiles.RELIEF_FACETS: style = "грани"
+		if str(_relief_generator_style.get_selected_metadata()) == BrushProfiles.RELIEF_SHORE:
+			_active_tool_label.text = "Рельеф · генератор · берег и дно"
+			_info.text = "Первый клик — общее начало берега для нескольких мазков. «Пологий» подбирает длину под глубину; «Новое начало» сбрасывает опорную точку. Ведите вдоль выбранной оси. Вода не меняется; один Undo на мазок."
+			return
 		var direction := int(_relief_generator_direction.get_selected_metadata())
 		var direction_text := "бугры и ямки"
 		if direction > 0:
@@ -3557,6 +3792,8 @@ func _update_tool_help(tool_id: int) -> void:
 				+ "отдельную плоскость, не меняя дно, рельеф или коллизию. "
 				+ "Открытая область безопасно отклоняется."
 			)
+			if _surface_fill_mode.get_selected_metadata() == "open":
+				help = "Задайте абсолютную высоту воды и кликните по дну ниже неё. Связное дно заливается внутри рабочей области, даже у открытого края; грунт не меняется. Ctrl+Z отменяет."
 		Model.TOOL_RAISE:
 			title = "Рельеф · наращивание вверх · сплошной"
 			help = "Удерживайте LMB: холм растёт с выбранной скоростью до заданного предела."
@@ -3617,6 +3854,8 @@ func _is_relief_tool(tool_id: int) -> bool:
 
 
 func _is_oriented_brush_tool(tool_id: int) -> bool:
+	if tool_id == Model.TOOL_PAINT and _is_sand_paint():
+		return false
 	return tool_id in [
 		Model.TOOL_ADD,
 		Model.TOOL_REMOVE,
@@ -3677,13 +3916,18 @@ func _update_surface_fill_controls() -> void:
 			_surface_fill_material.selected
 		)) == Model.SURFACE_FILL_NONE
 	)
-	_surface_fill_level.visible = fill_tool and not deleting
+	var open_water: bool = _surface_fill_mode.get_selected_metadata() == "open"
+	_surface_fill_mode.visible = fill_tool
+	_open_water_level.visible = fill_tool and not deleting and open_water
+	if _resource != null:
+		_open_water_level.max_value = _resource.grid_size().y
+	_surface_fill_level.visible = fill_tool and not deleting and not open_water
 	_surface_fill_tint.visible = fill_tool and not deleting
 	var auto_level := (
 		_surface_fill_level.selected >= 0
 		and int(_surface_fill_level.get_item_metadata(_surface_fill_level.selected)) == 0
 	)
-	_surface_fill_inset.visible = fill_tool and not deleting and auto_level
+	_surface_fill_inset.visible = fill_tool and not deleting and auto_level and not open_water
 
 
 func _update_material_scope_controls() -> void:
@@ -3710,6 +3954,9 @@ func _update_material_scope_controls() -> void:
 
 func _begin_stroke(position: Vector2) -> void:
 	if _resource == null or _actions == null:
+		return
+	if _is_sand_paint() and _slice_height >= 0:
+		_set_status("Рисунок поверхности работает по верху колонок · выключите срез",true)
 		return
 	var tool_id := _selected_tool_id()
 	if not _slice_allows_tool(tool_id):
@@ -3749,6 +3996,7 @@ func _apply_surface_fill_click(position: Vector2) -> void:
 		else Model.SURFACE_FILL_WATER
 	)
 	var selection: Dictionary
+	var open_water: bool = _surface_fill_mode.get_selected_metadata() == "open"
 	if fill_material == Model.SURFACE_FILL_NONE:
 		selection = {
 			"columns": PackedInt32Array(),
@@ -3757,6 +4005,8 @@ func _apply_surface_fill_click(position: Vector2) -> void:
 			"truncated": false,
 			"open": false,
 		}
+	elif open_water:
+		selection = Model.open_surface_fill_selection(_resource,cell,int(_open_water_level.value),_edit_region_blocks,_surface_heightfield)
 	else:
 		var manual_raise := int(
 			_surface_fill_level.get_item_metadata(_surface_fill_level.selected)
@@ -3796,6 +4046,8 @@ func _apply_surface_fill_click(position: Vector2) -> void:
 		next_columns,
 		fill_material,
 		_edit_region_blocks,
+		Model.MAX_SURFACE_FILL_COLUMNS,
+		open_water,
 	)
 	if bool(replacement.get("truncated", false)):
 		_set_status(
@@ -3815,7 +4067,7 @@ func _apply_surface_fill_click(position: Vector2) -> void:
 	if affected_columns.is_empty():
 		_set_status(
 			"На этой точке нет заливки" if fill_material == Model.SURFACE_FILL_NONE
-			else "Автоуровень не нашёл замкнутую впадину",
+			else ("Кликните по дну ниже заданной высоты воды" if open_water else "Автоуровень не нашёл замкнутую впадину"),
 			true,
 		)
 		return
@@ -3890,6 +4142,7 @@ func _prepare_stroke(tool_id: int) -> void:
 	_stroke_shell_foundation_cache.clear()
 	_stroke_smooth_column_cache.clear()
 	_stroke_generator_column_cache.clear()
+	_shore_stroke_origin = Model.INVALID_CELL
 	_stroke_heightfield = PackedInt32Array()
 	_stroke_normal = Vector3i.ZERO
 	_last_stroke_normal = Vector3i.ZERO
@@ -3901,7 +4154,7 @@ func _prepare_stroke(tool_id: int) -> void:
 	_has_stroke_smoothed_position = false
 	_surface_normal_cache_key.clear()
 	_surface_normal_cache_value = Vector3.ZERO
-	if _is_smooth_tool(tool_id) or _is_relief_generator():
+	if _is_smooth_tool(tool_id) or _is_relief_generator() or _is_sand_paint():
 		if _surface_heightfield.size() != _resource.grid_size().x * _resource.grid_size().z:
 			_surface_heightfield = Model.column_heights(
 				_stroke_before, _resource.grid_size(), _resource.palette.size() - 1
@@ -4351,6 +4604,10 @@ func _extend_stroke(position: Vector2, exact_position := false) -> bool:
 			_set_status("Для наращивания нужна свободная грань внутри холста", true)
 		return false
 	var segment_from := center if _last_stroke_cell == Model.INVALID_CELL else _last_stroke_cell
+	if _is_sand_paint():
+		_last_stroke_cell = center
+		_last_stroke_normal = picked_normal
+		return _apply_sand_segment(segment_from,center)
 	var centers: Array[Vector3i] = [center]
 	if (
 		_last_stroke_cell != Model.INVALID_CELL
@@ -4404,6 +4661,17 @@ func _extend_stroke(position: Vector2, exact_position := false) -> bool:
 		# jump directly to the selected height cap.
 		return true
 	return _apply_stroke_centers(centers)
+
+
+func _apply_sand_segment(from: Vector3i, to: Vector3i) -> bool:
+	var primary := int(_palette.get_selected_metadata()) if _palette.selected >= 0 else 1
+	var secondary := int(_sand_palette.get_selected_metadata()) if _sand_palette.selected >= 0 else primary
+	var changes := Model.surface_pattern_segment_changes(
+		_resource,from,to,primary,secondary,int(_radius.get_selected_metadata()),
+		int(_sand_scale.value),int(_sand_coverage.value),_sand_seed,_coarse.button_pressed,_stroke_heightfield)
+	var dirty := {}
+	_merge_live_changes(changes,dirty)
+	return _finish_live_changes(dirty,Model.TOOL_PAINT,-1)
 
 
 func _apply_level_segment(from: Vector3i, to: Vector3i) -> bool:
@@ -4499,6 +4767,13 @@ func _apply_relief_segment(
 
 
 func _apply_generative_relief_segment(from: Vector3i, to: Vector3i) -> bool:
+	if _shore_stroke_origin == Model.INVALID_CELL:
+		_shore_stroke_origin = from
+	if str(_relief_generator_style.get_selected_metadata()) == BrushProfiles.RELIEF_SHORE:
+		if _shore_anchor == Model.INVALID_CELL:
+			_shore_anchor = from
+			_shore_foundation = _stroke_heightfield.duplicate()
+		_shore_stroke_origin = _shore_anchor
 	var radius := int(_radius.get_item_metadata(_radius.selected))
 	var amplitude := int(_height_limit.get_item_metadata(_height_limit.selected))
 	var palette_index := (
@@ -4522,6 +4797,8 @@ func _apply_generative_relief_segment(from: Vector3i, to: Vector3i) -> bool:
 		_stroke_generator_column_cache,
 		_stroke_heightfield,
 		{"tilt": int(_relief_facet_tilt.value), "joint_width": int(_relief_joint_width.value), "joint_depth": int(_relief_joint_depth.value)},
+		{"origin": Vector2(_shore_stroke_origin.x, _shore_stroke_origin.z), "height": _shore_stroke_origin.y,
+			"direction": _shore_direction.selected, "width": int(_shore_width.value), "roughness": int(_shore_roughness.value), "foundation": _shore_foundation},
 	)
 	var dirty := {}
 	_merge_live_changes(changes, dirty)
@@ -4792,6 +5069,8 @@ func _finish_live_changes(dirty: Dictionary, tool_id: int, relief_height: int) -
 			message = "Генератор · %s · высота %d vox · %d изменений · Esc отменяет" % [
 				"грани" if str(_relief_generator_style.get_selected_metadata()) == BrushProfiles.RELIEF_FACETS else style, height_limit, _stroke_changes.size(),
 			]
+			if str(_relief_generator_style.get_selected_metadata()) == BrushProfiles.RELIEF_SHORE:
+				message = "Берег и дно · глубина %d vox · %d изменений · уровень воды сохранён · Esc отменяет" % [height_limit, _stroke_changes.size()]
 		else:
 			var mode := (
 				"Оболочка вниз"
@@ -4910,6 +5189,7 @@ func _cancel_stroke() -> void:
 
 func _clear_stroke_state() -> void:
 	_stroke_active = false
+	_shore_stroke_origin = Model.INVALID_CELL
 	_stroke_tool_id = -1
 	_stroke_before = PackedByteArray()
 	_stroke_live_values = PackedByteArray()
@@ -5481,6 +5761,7 @@ func _on_source_changed(indices: PackedInt32Array) -> void:
 func _sync_canvas_dimensions() -> void:
 	if _resource == null or _resource.grid_size() == _displayed_grid:
 		return
+	_reset_shore_anchor()
 	_displayed_grid = _resource.grid_size()
 	for mesh in _chunk_meshes.values():
 		mesh.queue_free()
