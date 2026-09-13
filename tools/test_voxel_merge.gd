@@ -147,6 +147,7 @@ func _scene_test() -> void:
 	failing.prefab_directory = directory.path_join("part_0.tres")
 	check(not failing.commit(failure_undo) and scene.get_child_count() == 2,"publication failure leaves all scene nodes")
 	failure_undo.free()
+	await _orientation_test(nodes,scene,directory)
 	await _alignment_test(nodes,scene,directory)
 	var dialog := Dialog.new()
 	root.add_child(dialog)
@@ -221,6 +222,121 @@ func _scene_test() -> void:
 	scene.free()
 	undo.clear_history()
 	undo.free()
+
+func _orientation_test(nodes: Array, scene: Node3D, directory: String) -> void:
+	var original_scene_pose := scene.transform
+	var original_poses: Array = nodes.map(func(node): return node.transform)
+	scene.transform = Transform3D(Basis(Vector3.UP,0.23).scaled(Vector3(3,2,4)),Vector3(500,30,-800))
+	var turn := Basis(Vector3.RIGHT,PI/2.0)
+	nodes[0].transform = Transform3D(turn,Vector3(20,4,10))
+	nodes[1].transform = Transform3D(turn,Vector3(20,4,10)+turn*Vector3(12.1,0,0))
+	var poses: Array = nodes.map(func(node): return node.transform)
+	var undo := UndoRedo.new()
+	var dialog := Dialog.new()
+	root.add_child(dialog)
+	dialog.source_directory = directory
+	dialog.prefab_directory = directory
+	dialog.open_merge(nodes,scene,undo)
+	dialog._align.button_pressed = true
+	check(not dialog.get_ok_button().disabled,"rotated scaled scene preview")
+	if dialog.get_ok_button().disabled:
+		push_error(dialog._status.text)
+		dialog.free()
+		undo.free()
+		scene.transform = original_scene_pose
+		for i in nodes.size():
+			nodes[i].transform = original_poses[i]
+		return
+	var prepared: RefCounted = dialog._session
+	var baseline: Dictionary = prepared.preview.to_definition()
+	var frame: Transform3D = prepared.frame
+	var basis := frame.basis
+	var uniform := maxf(basis.x.length(),maxf(basis.y.length(),basis.z.length()))
+	var expected := basis.scaled(Vector3.ONE/uniform)
+	var mesh: MeshInstance3D = dialog._preview.get_node("Mesh")
+	var mesh_rid := mesh.mesh.get_rid()
+	var preview_id: int = dialog._preview.get_instance_id()
+	check(dialog._scene_orientation.button_pressed,"scene orientation default on")
+	check(mesh.global_basis.is_equal_approx(expected),"preview mesh uses scene rotation and relative scale")
+	check(dialog._view_bounds.get_center().is_equal_approx(Vector3.ZERO),"large scene translation rebased")
+	check(not prepared.adjustments.is_empty() and not prepared.overlap.is_empty(),"rotated fixture includes ghost and overlap")
+	var ghost: MeshInstance3D = dialog._preview.get_node("OriginalPosition_1")
+	var local: Transform3D = frame.affine_inverse()*prepared.adjustments[0].before
+	check(ghost.global_transform.is_equal_approx(dialog._presentation.transform*local),"ghost follows same scene presentation frame")
+	var overlay: MultiMeshInstance3D
+	for child in dialog._preview.get_children():
+		if child is MultiMeshInstance3D:
+			overlay = child
+	check(overlay != null and overlay.global_transform.is_equal_approx(dialog._presentation.transform),"overlap follows same scene presentation frame")
+	dialog._scene_orientation.button_pressed = false
+	check(mesh.global_basis.is_equal_approx(Basis.IDENTITY),"toggle off exposes local axes")
+	dialog._scene_orientation.button_pressed = true
+	check(mesh.global_basis.is_equal_approx(expected),"toggle on restores scene axes")
+	check(dialog._session == prepared and dialog._preview.get_instance_id() == preview_id and mesh.mesh.get_rid() == mesh_rid,"orientation does not rebuild or replan")
+	for i in 4:
+		await process_frame
+	var scroll := dialog._preview_container.get_parent().get_parent() as ScrollContainer
+	check(scroll.get_global_rect().encloses(dialog._preview_container.get_global_rect()),"preview visible without scrolling long status")
+	var initial_camera: Transform3D = dialog._camera.transform
+	var initial_size: float = dialog._camera.size
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	dialog._preview_container.gui_input.emit(press)
+	var motion := InputEventMouseMotion.new()
+	motion.relative = Vector2(32,-20)
+	dialog._preview_container.gui_input.emit(motion)
+	check(not dialog._camera.transform.is_equal_approx(initial_camera),"drag orbits camera")
+	press.pressed = false
+	dialog._preview_container.gui_input.emit(press)
+	check(not dialog._orbiting,"release ends camera orbit")
+	var wheel := InputEventMouseButton.new()
+	wheel.button_index = MOUSE_BUTTON_WHEEL_UP
+	wheel.pressed = true
+	var orbit_size: float = dialog._camera.size
+	dialog._preview_container.gui_input.emit(wheel)
+	check(dialog._camera.size < orbit_size,"wheel zooms preview")
+	dialog._reset_view()
+	check(dialog._camera.transform.is_equal_approx(initial_camera) and is_equal_approx(dialog._camera.size,initial_size),"reset restores fitted camera")
+	check(prepared.preview.to_definition() == baseline and prepared.frame == frame,"view controls do not mutate resource or commit frame")
+	check(nodes[0].transform == poses[0] and nodes[1].transform == poses[1],"view controls do not move originals")
+	if "--capture" in OS.get_cmdline_user_args():
+		await create_timer(0.4).timeout
+		dialog.get_viewport().get_texture().get_image().save_png("user://voxel_merge_scene_orientation.png")
+		dialog._scene_orientation.button_pressed = false
+		await create_timer(0.4).timeout
+		dialog.get_viewport().get_texture().get_image().save_png("user://voxel_merge_local_orientation.png")
+	dialog._scene_orientation.button_pressed = false
+	dialog.free()
+	check(prepared.commit(undo),"view-independent rotated merge commit")
+	var merged: Node3D = scene.get_child(0)
+	check(merged.get_node("Mesh").global_transform.is_equal_approx(frame),"commit preserves scene orientation with local view off")
+	var packed := PackedScene.new()
+	check(packed.pack(scene) == OK,"pack rotated merged scene")
+	var path := directory.path_join("rotated_scene.tscn")
+	check(ResourceSaver.save(packed,path) == OK,"save rotated merged scene")
+	var reopened := load(path).instantiate() as Node3D
+	root.add_child(reopened)
+	check(reopened.get_child(0).get_node("Mesh").global_transform.is_equal_approx(frame),"reopen rotated geometry frame")
+	var split_dialog := Dialog.new()
+	root.add_child(split_dialog)
+	split_dialog.source_directory = directory
+	split_dialog.prefab_directory = directory
+	split_dialog.open_merge([merged],scene,undo,true)
+	check(not split_dialog.get_ok_button().disabled and split_dialog._scene_orientation.button_pressed,"unmerge has scene view toggle")
+	check(split_dialog._preview.get_node("Mesh").global_basis.is_equal_approx(expected),"unmerge preview preserves scene orientation")
+	split_dialog.free()
+	reopened.free()
+	undo.undo()
+	check(scene.get_child_count() == 2 and nodes[0].transform == poses[0] and nodes[1].transform == poses[1],"Undo rotated merge restores original poses")
+	undo.redo()
+	check(scene.get_child_count() == 1 and scene.get_child(0).get_node("Mesh").global_transform.is_equal_approx(frame),"Redo rotated merge restores geometry frame")
+	undo.undo()
+	undo.clear_history()
+	undo.free()
+	scene.transform = original_scene_pose
+	for i in nodes.size():
+		nodes[i].transform = original_poses[i]
 
 func _alignment_test(nodes: Array, scene: Node3D, directory: String) -> void:
 	var previous: Array = nodes.map(func(node): return node.transform)

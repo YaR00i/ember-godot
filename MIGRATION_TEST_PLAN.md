@@ -2,9 +2,84 @@
 
 ## Общий Git checkpoint2026-09-13
 
+Новый checkpoint после Grab/clip/library/merge scene-axis bake:16 повторных
+targeted suites PASS — grab/bend/boundary_clip/fragment/stamp/pattern/
+selection_interaction/merge_orientation_bake/merge/object_library_updates/
+object_library_layout/object_canvas/scene_assembly/object_split/shapes/
+editor_filesystem. Логи Temp/ember-checkpoint-test_*.log. Staged16 canonical
+sources validate и15 prefabs load/instantiate PASS (ember-checkpoint-assets.log);
+авторские файлы проверялись read-only. Fragment fixture:1 ObjectDB leaked on exit;
+prefab vox_shape_block_1205809337_canvas_1838453066: mesh UID fallback на
+существующий staged .res path. Не zero-warning gate и не общий128-suite repeat.
+Checkpoint сохраняет авторские boards/merges/scene; .codex/config.toml/Mira drafts
+исключены. Открытые manual/live editor gates не объявлены закрытыми самим Git.
+
+Отдельный срез2026-09-13: opt-in exact orientation bake при склейке.
+`test_voxel_merge_orientation_bake.gd` PASS: все24 proper signed-axis rotations,
+density16→32, exact world cell centers/colors/6 channels/parts/groups/overlap
+сопоставлены с обычным merge. Primary-grid alignment report прежний при bake;
+common arbitrary/nonuniform/reflection/shear запрещены только при bake, обычная
+склейка сохраняет прежние capability. Проверены baked height limits, source
+immutability, UI error/recovery/default off, display toggle independence,
+полный visible viewport, one Undo/Redo, source hashes, save/reopen и unmerge.
+Canvas открывает canonical flat bridge clean; top ray pick и sculpt/Undo PASS.
+Related8 PASS: merge/shapes/scene_assembly/object_canvas/object_split/
+assembly_canvas/object_library_updates/layout. Logs Temp/ember-merge-bake.log
+и ember-bake-test_*.log; это не общий regression checkpoint.
+Disposable native Forward+ merge-bake-editor-verified.log: enabled/local flat/
+commit/frame/Canvas open/Canvas clean=true; captures merge-editor-baked-local.png
+и merge-editor-baked-canvas.png просмотрены. После DONE в teardown есть get_node
+outside active scene tree + scan abort; полностью зелёный editor lifecycle этим
+probe не заявляется. Рабочий editor/авторские assets probe не менял.
+Ручной gate: пересклеить пользовательский настил с «Запечь ориентацию сцены»,
+открыть Canvas, проверить ориентацию/кисти, Apply/Undo/save/reopen. Старые assets
+и авторская сцена не переписываются автоматически; unsupported угол не округлять.
+
+Отдельный UI fix2026-09-13: preview склейки/разбора в ориентации сцены.
+`test_voxel_merge.gd` PASS: rotated primary + rotated/nonuniform scaled parent,
+rebase world translation; shared frame у result/ghost/overlap; toggle off/on
+без remesh/replan/Resource/scene mutation; gui_input drag/zoom/reset;
+preview целиком виден над длинным alignment status без scrolling. Commit при
+локальном виде не меняет scene frame; Undo/Redo и save/reopen сохраняют pose;
+разбор имеет тот же default scene toggle. Existing sculpt/discard/alignment
+checks остаются. Related7 suites PASS: shapes/scene_assembly/object_canvas/
+object_split/assembly_canvas/object_library_updates/layout. Не общий прогон.
+Native Forward+ visual/input gate: сравнить горизонтальный настил в scene/local
+режимах, вращение/zoom/reset и применение/Undo в рабочем редакторе.
+Автоматические logs: Temp/ember-merge-orientation.log, ember-merge-test_*.log.
+Disposable native editor Forward+ PASS: generation-smoke/merge-orientation-
+editor-final.log (default/scene basis/local basis/orbit/reset=true). Captures
+app_userdata/Ember Generation Smoke 20260912/merge-editor-scene/local/orbit.png
+просмотрены: весь viewport виден, настил горизонтален только в scene view.
+Gui_input проверен через signal routing; настоящие mouse gestures и Apply на
+пользовательском мостике — ручной gate. Startup UID warnings и scan abort при
+завершении относятся к disposable copy, новых compilation errors нет.
+
+Отдельный targeted fix2026-09-13: актуализация открытой библиотеки объектов.
+`test_voxel_object_library_updates.gd` PASS: успешный install нового/существующего
+asset уведомляет после публикации files/cache; source read/validation/roundtrip,
+нет изменения draft; error не уведомляет. Соседние saves coalesce в один refresh;
+query/filter/selection/unrelated textures остаются; hidden shelf откладывает
+refresh до visibility; observer отключается при разрушении панели.
+Related PASS: object_library_layout, object_canvas (Undo/Redo/save/reopen),
+workshop_generator_save, editor_filesystem, shapes и object_split. Всего7 suites
+PASS; не полный повтор всех scripts.
+Native disposable editor Forward+ reproduced before fix: save=true, AUTO0,
+REOPEN0, direct refresh1; после fix AUTO1/REOPEN1 без ручного refresh или
+пересборки всех объектов. Логи generation-smoke/library-before.log,
+library-after.log; targeted Temp/ember-library-test_*.log. Дополнительный native
+library-after-final.log: asset опубликован при скрытом shelf, при реальном
+повторном показе bottom panel REOPEN1/VISIBLE=true для нового второго ID.
+Startup UID warnings в disposable copy и scan-thread-aborted при закрытии
+тестового editor не являются новыми compilation errors или ошибками публикации.
+Ручной gate: в живом редакторе с обновлённым плагином найти384406539, создать
+новую форму при открытой библиотеке, сохранить независимую Canvas-копию,
+найти её по ID без очистки текущего поиска/смены фильтра/перезапуска библиотеки.
+MCP живого редактора был недоступен; пользовательская сцена/доска не менялись.
+
 Проверены все128 `tools/test_*.gd`:125 PASS с учётом повторных проверок в
 изолированном export подготовленного Git index и native screenshot сборки.
-Остались3 незелёных gates, не скрывать их при передаче:
+На момент checkpoint оставались3 незелёных gates:
 
 - `test_voxel_split_preview.gd:12` ожидает EmberVoxelProp в
   `Map/Terrain/TimberPier/Visual`; сейчас там сборка Node3D с деталями.
@@ -14,6 +89,106 @@
   vox_ms8vsb53,vox_vil_bush,vox_vil_counter,vox_vil_mailbox,vox_vil_planter,
   vox_vil_sign. Нужна отдельная проверка/пересборка, не переписывать авторские
   assets автоматически ради Git checkpoint.
+
+Повторная проверка2026-09-13 закрыла все3 оставшихся gates:
+
+- split preview теперь использует отдельную native доску80×3×80 в `user://`:
+  четыре секции64vox, край16×3×16, без изменения исходника/pose и без записи
+  производных данных до Apply. Реальная резка/Undo покрыта object_split.
+- placement preview проверяет нынешнюю сборку Причала с валидными native
+  деталями, без жёсткого равенства12 children. Все старые rotation/pivot/snap/
+  no-mutation/layout проверки сохранены; native1280×720 и1600×900 PASS.
+- sandbox native batch PASS: все6 Resources совпадают с reviewed conversion,
+  prefab актуальны, candidate queue пустая. Пересборка и запись assets не нужны.
+
+Headless и native Forward+ split/placement PASS; captures просмотрены.
+Полный набор scripts после этих исправлений повторно не запускался: это
+закрытие трёх известных gates, не новый общий regression checkpoint.
+
+## Общая обрезка по границе (ручная приёмка открыта)
+
+`test_voxel_boundary_clip.gd` PASS: strict defaults/backward layouts, crop
+canvas/region/slice для move/copy/rotate/bend/Grab/stamp/scatter/indent/pattern;
+полностью cropped move/Grab и dialog preview пустой геометрии. Все populated
+channels, owners и group membership вне editable mask сохраняются; locked
+source/destination остаются защищёнными. Validation, один Undo/Redo и
+Resource save/reopen для clipped транзакций. Editor toggle не меняет Resource,
+переживает tool switch и roundtrip существующего view store.
+UI fragment ghost использует final selected destinations; toggle пересчитывает
+активный preview, Apply совпадает с ним. `test_voxel_grab.gd` дополнен live crop
+preview на slice, exact pointer-up, восстановлением crop через Undo/Redo,
+доступностью Grab на срезе и отменой жеста при смене общего режима.
+
+Related targeted PASS: bend, fragment, stamp, pattern, selection_interaction,
+selection_mask, workshop_layout, surface_height_slice, surface_sculpt.
+Предсуществующий fragment fixture сообщает1 ObjectDB leak; новые clip/Grab
+проверки не сообщают leaks/script errors. Не повторный полный regression run.
+Native Forward+ Grab clip1280×720 PASS, disposable generation-smoke;
+capture просмотрен, тогл читается в «Части → Вид», срез12vox, cropped preview
+помечен «Черновик». Логи Temp/ember-boundary-*.log и
+generation-smoke/native-boundary-clip-final.log.
+
+Ручной gate: уникальная доска → включить «Обрезать по границе» → тянуть через
+край холста/выбранной области → оценить crop → Undo/Redo → save/reopen/F6.
+Повторить штамп/паттерн у края, strict отказ при выключенной опции; подтвердить
+сохранность контекста снаружи и locked групп. Crop — намеренная потеря части
+объёма, восстанавливаемая Undo; автоматического расширения нет.
+
+## Grab: кисть «Тянуть · мягко» (ручная приёмка открыта)
+
+`test_voxel_grab.gd` PASS: инкрементальный pure job, центр следует захвату,
+мягкость влияет на соседей, stationary outside, все6 channels/groups/part IDs,
+validation/один Undo/Redo/stale/save/reopen. Доски толщиной1 и2vox остаются
+face-connected при многокомпонентной тяге. Bounds/region/slice/locked/water/
+authored-light отказы; canonical source не меняется до release.
+UI проверяет реальный pick/ray/plane, LMB down/motion/up, transient preview
+в существующем chunk renderer, exact preview=commit, Escape/смену инструмента,
+Save и Ctrl+S во время жеста (блокируются без discard).
+Kernel ~30ms для64×32×32 fixture/radius12, ~480ms для128×32×128/radius32;
+тяжёлые jobs кадрами, coalescing latest endpoint, affected chunks only.
+Related PASS: bend, fragment, surface_sculpt, workshop_layout,
+selection_interaction, object_canvas, object_split, selection_mask,
+workshop_generator_save и stamp. Stamp UI assertions переведены с позиции
+кнопки на tool ID, т.к. Grab теперь вторая видимая кисть после лепки.
+Native Forward+1280×720 PASS на disposable generation-smoke, Canvas capture
+просмотрен: кисть видима, radius/softness читаются, preview помечен «Черновик».
+Логи: Temp/ember-grab-test_voxel_*.log и generation-smoke/native-grab-final.log.
+Полный regression suite здесь повторно не запускался.
+
+Ручной gate: на уникальной копии доски выбрать «Тянуть · мягко»; radius12–24,
+softness75%; вытянуть угол, затем центр. Оценить мягкость, непрерывность и
+рисунок; отпускание/выход мыши за Canvas/Esc; Undo/Redo; save/reopen и F6
+collision. Большой radius32 может давать задержку preview; жест ждёт финальный
+endpoint; strict не обрезает данные, общий clip описан выше. Общая ручная
+цепочка с доской ещё открыта.
+
+## Изгиб объёма и ручная цепочка с доской (приёмка открыта)
+
+`test_voxel_bend.gd` PASS: pure preview, все6 byte channels, группы/part IDs,
+сохранение occupied count и толщины поперечного слоя, signed дуга/конец/оси,
+одна Undo/Redo, save/reopen, discard/stale, visible workshop command и
+selection/whole-object scope. Bounds/slice/region/overlap/locked/empty/limit/
+water/authored-light отказы без записи.32768/131072 cells plan ~108ms
+на текущем host; UI строит полный mesh только по явному обновлению preview.
+Related PASS: fragment, selection_interaction, object_canvas, object_split,
+placement, selection_mask, workshop_layout, split_preview, placement_preview.
+Native Forward+ bend и workshop layout PASS в disposable generation-smoke;
+preview и компактный rail просмотрены. Логи: Temp/ember-bend-test_*.log и
+Temp/ember-generation-smoke-20260912/native-*-bend.log / native-*-preview.log.
+Старый fragment fixture сообщает ObjectDB leak при выходе; bend fixture — без него.
+
+Ручная проверка (авторские доски тестами не меняются):
+
+1. Создать уникальную копию доски и открыть её Canvas.
+2. Без выделения нажать слева «Изгиб…»; длина выбирается по длинной оси.
+3. Выбрать направлениеY, дугу и2–4vox → обновить preview → Apply.
+4. Если не хватает запаса, увеличить холст; отказ не обрезает объект.
+5. Проверить рисунок/толщину, Undo/Redo, save/reopen и F6 collision.
+6. Проверить изгиб выделенного фрагмента и отмену без Apply.
+
+Остальная итоговая цепочка доска→копии→unique→merge→sculpt→split→extract→
+stamp/pattern→water→save/reopen→F6 остаётся пользовательским gate, не считается
+завершённой по результатам этих targeted tests.
 
 `test_voxel_assembly_preview.gd` требует настоящего renderer для безусловного
 screenshot, native Forward+ PASS. Старые migration_queue/prefab_rebuild tests
@@ -29,7 +204,7 @@ PASS при правильном legacy pack path, prefab_rebuild PASS посл�
 
 Пользователь2026-09-13 завершил текущую итерацию деревьев и запросил Git
 checkpoint/push. Итог принят для текущего редакторского среза; trial-режимы
-не объявляются окончательными. Старые3 gates общего checkpoint выше остаются.
+не объявляются окончательными. Старые3 gates впоследствии закрыты отдельно выше.
 Перед commit повторно прошли13 targeted suites: tree_variation, birch_shape,
 maple_shape, savanna_shape, spruce_shape, oak_crown, tree_types, bark_pattern,
 large_tree_object, generator, generator_editing, foliage_species,

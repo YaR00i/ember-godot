@@ -1113,10 +1113,10 @@ func _process(_delta: float) -> void:
 	elif transforming and _pending:
 		_pending = false
 		if _stamp == null:
-			_plan = Fragment.plan(workspace._resource,_indices,_offset,_axis.selected,_turns.selected,_copy.button_pressed,workspace._edit_region_blocks,workspace._slice_height)
+			_plan = Fragment.plan(workspace._resource,_indices,_offset,_axis.selected,_turns.selected,_copy.button_pressed,workspace._edit_region_blocks,workspace._slice_height,workspace._clip_bounds)
 		elif _is_pattern():
 			var palette_index := int(workspace._palette.get_item_metadata(workspace._palette.selected)) if workspace._palette.selected >= 0 else 1
-			_plan = Pattern.plan_many(workspace._resource,_stamp,_stamp_placements(),_stamp_normal,_turns.selected,_stamp_mirror.selected-1,mini(_stamp_anchor.selected,1),_stamp_mode.selected == 1,int(_stamp_depth.value),palette_index,workspace._actions.active_part,workspace._edit_region_blocks,workspace._slice_height)
+			_plan = Pattern.plan_many(workspace._resource,_stamp,_stamp_placements(),_stamp_normal,_turns.selected,_stamp_mirror.selected-1,mini(_stamp_anchor.selected,1),_stamp_mode.selected == 1,int(_stamp_depth.value),palette_index,workspace._actions.active_part,workspace._edit_region_blocks,workspace._slice_height,workspace._clip_bounds)
 		elif _stamp_application.selected == 3:
 			_plan = Stamp.plan_scatter(
 				workspace._resource,_stamp,_stamp_placements(),_stamp_normal,
@@ -1126,7 +1126,7 @@ func _process(_delta: float) -> void:
 				_stamp_mode.selected == 1,workspace._actions.active_part,
 				workspace._edit_region_blocks,workspace._slice_height,
 				_stamp_scatter_conform.button_pressed,int(_stamp_scatter_bend.value),
-				_stamp_mode.selected == 2,
+				_stamp_mode.selected == 2,workspace._clip_bounds,
 			)
 		else:
 			var orient_to_surface := (
@@ -1139,7 +1139,7 @@ func _process(_delta: float) -> void:
 				_stamp_mode.selected == 1,workspace._actions.active_part,
 				workspace._edit_region_blocks,workspace._slice_height,
 				PackedInt32Array(),_stamp_normal if orient_to_surface else Vector3i.ZERO,
-				false,2,_stamp_mode.selected == 2,
+				false,2,_stamp_mode.selected == 2,workspace._clip_bounds,
 			)
 		var awaiting_stamp_gesture: bool = _stamp != null and (
 			(_stamp_application.selected == 0 and not _stamp_position_picked)
@@ -1174,6 +1174,8 @@ func _process(_delta: float) -> void:
 				if _stamp_application.selected == 3
 				else "%s: %s · %d точек · %d vox" % ["Вдавливание" if _stamp_mode.selected == 2 else "Штамп",_stamp.display_name,_stamp_placements().size(),_plan.selected.size()]
 			)
+		if not _plan.has("error") and int(_plan.get("clipped_voxels",0)) > 0:
+			_hint.text += " · обрезка: %d vox · Ctrl+Z возвращает" % int(_plan.clipped_voxels)
 		_show_transform()
 	var mouse: Vector2 = workspace._viewport_container.get_local_mouse_position()
 	_hover.visible = not dragging and not _finish and not transforming and _surface_stage == 0 and Rect2(Vector2.ZERO,size).has_point(mouse)
@@ -1230,6 +1232,9 @@ func _show_transform() -> void:
 			extent = transformed.extent
 		cells.append(Vector3(cell+low+_offset))
 	_center = (Vector3(low+high)*0.5+Vector3(_offset)+Vector3.ONE*0.5)/workspace._resource.normalized_density()
+	if not _plan.has("error"):
+		_show_cells(_plan.selected,Color(0.1,1,1,0.5))
+		return
 	_show_positions(cells,Color(1,0.15,0.15,0.5) if _plan.has("error") else Color(0.1,1,1,0.5))
 
 func _show_stamp() -> void:

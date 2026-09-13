@@ -99,11 +99,12 @@ static func plan(
 	part: int,
 	region := Rect2i(),
 	height := -1,
+	clip_bounds := false,
 ) -> Dictionary:
 	var placements: Array[Vector3i] = [position]
 	return plan_many(
 		target,preset,placements,normal,turns,mirror,anchor,remove,depth,
-		palette_index,part,region,height,
+		palette_index,part,region,height,clip_bounds,
 	)
 
 
@@ -121,6 +122,7 @@ static func plan_many(
 	part: int,
 	region := Rect2i(),
 	height := -1,
+	clip_bounds := false,
 ) -> Dictionary:
 	if target == null or not target.validation_errors().is_empty():
 		return {"error":"Некорректный voxel-источник."}
@@ -185,8 +187,12 @@ static func plan_many(
 	var owners := target.voxel_part_ids.duplicate()
 	var selected := PackedInt32Array()
 	var selected_set := {}
+	var clipped := 0
 	for cell in cells:
 		if not Fragment._allowed(cell,target,region,height):
+			if clip_bounds:
+				clipped += 1
+				continue
 			return {"error":"Паттерн выходит за холст или рабочий срез.","positions":positions}
 		var index := Model.index_of(cell,target.grid_size())
 		var before := int(target.voxels[index])
@@ -222,5 +228,6 @@ static func plan_many(
 		"selected":selected,
 		"positions":positions,
 		"placements":placements.duplicate(),
+		"clipped_voxels":clipped,
 		"label":"Паттерн · %s · %d точек · глубина %d" % [preset.display_name,placements.size(),safe_depth],
 	}

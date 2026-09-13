@@ -27,8 +27,9 @@ func apply_fragment(resource: EmberVoxelModelResource, plan: Dictionary) -> bool
 	for key in plan.properties:
 		_add_do_property(resource, key, plan.properties[key])
 		_add_undo_property(resource, key, plan.before[key])
-	_add_do_method_with_args(self, &"_notify_source_changed", [resource, PackedInt32Array()])
-	_add_undo_method_with_args(self, &"_notify_source_changed", [resource, PackedInt32Array()])
+	var changed_indices: PackedInt32Array = plan.get("changed_indices", PackedInt32Array())
+	_add_do_method_with_args(self, &"_notify_source_changed", [resource, changed_indices])
+	_add_undo_method_with_args(self, &"_notify_source_changed", [resource, changed_indices])
 	_commit_action()
 	return true
 

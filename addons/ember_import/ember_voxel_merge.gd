@@ -1,12 +1,12 @@
 @tool
 extends RefCounted
-## Pure merge plan, in the primary mesh's block frame. No scene or asset writes.
+## Pure merge plan; optional exact scene-axis bake. No scene or asset writes.
 const Selection = preload("res://addons/ember_import/ember_voxel_selection.gd")
 const Fragment = preload("res://addons/ember_import/ember_voxel_fragment.gd")
 const Extract = preload("res://addons/ember_import/ember_voxel_fragment_extract.gd")
 const MAX_CELLS := 524288
 
-static func plan(inputs: Array[Dictionary], align_grid := false) -> Dictionary:
+static func plan(inputs: Array[Dictionary], align_grid := false, bake_orientation := false) -> Dictionary:
 	if inputs.size() < 2 or inputs.size() > 32:
 		return {"error":"Выберите от 2 до 32 деталей."}
 	var density := 16
@@ -21,6 +21,17 @@ static func plan(inputs: Array[Dictionary], align_grid := false) -> Dictionary:
 	var base: Transform3D = inputs[0].frame
 	if absf(base.basis.determinant()) < 0.000001:
 		return {"error":"Нулевой масштаб не поддерживается."}
+	var grid_rotation := Basis.IDENTITY
+	var output_base := base
+	if bake_orientation:
+		var scale := base.basis.x.length()
+		if not is_equal_approx(scale,base.basis.y.length()) or not is_equal_approx(scale,base.basis.z.length()):
+			return {"error":"Запекание ориентации требует одинакового масштаба XYZ. Выключите «Запечь ориентацию сцены», чтобы сохранить обычную склейку."}
+		var rotation := base.basis.scaled(Vector3.ONE/scale)
+		grid_rotation = Basis(rotation.x.round(),rotation.y.round(),rotation.z.round())
+		if not rotation.is_equal_approx(grid_rotation) or not is_equal_approx(grid_rotation.determinant(),1.0) or not grid_rotation.transposed().is_equal_approx(grid_rotation.inverse()):
+			return {"error":"Запечь можно только поворот сцены на 90° без отражения или перекоса. Угол не округляется. Выключите «Запечь ориентацию сцены», чтобы сохранить обычную склейку."}
+		output_base = Transform3D(Basis.IDENTITY.scaled(Vector3.ONE*scale),base.origin)
 	var slots: Array[Dictionary] = []
 	var adjustments: Array[Dictionary] = []
 	var low := Vector3i(2147483647,2147483647,2147483647)
@@ -43,12 +54,16 @@ static func plan(inputs: Array[Dictionary], align_grid := false) -> Dictionary:
 		if align_grid and not offset.is_equal_approx(offset.round()):
 			adjustments.append({"name":str(item.get("name",source.display_name)),"before":item.frame,"delta_vox":delta,"delta_world":base.basis*(delta/density),"source_index":slots.size()})
 		var origin := Vector3i(offset.round())
+		# Alignment remains in the primary grid. Only its exact integer frame is
+		# baked into the output; all existing channel/group/part remaps are shared.
+		origin = Vector3i(grid_rotation*Vector3(origin))
+		var grid_basis := grid_rotation*snapped
 		var ratio := density/source.normalized_density()
 		var extent := source.grid_size()*ratio
 		for x in [0,extent.x]:
 			for y in [0,extent.y]:
 				for z in [0,extent.z]:
-					var corner := Vector3i(snapped*Vector3(x,y,z))+origin
+					var corner := Vector3i(grid_basis*Vector3(x,y,z))+origin
 					low = low.min(corner)
 					high = high.max(corner)
 		var colors := PackedByteArray()
@@ -72,7 +87,7 @@ static func plan(inputs: Array[Dictionary], align_grid := false) -> Dictionary:
 			names.append_array(source.merge_parts)
 		if names.size() > 32:
 			return {"error":"В склейке получится больше 32 исходных частей. Склейте меньший участок."}
-		slots.append({"source":source,"basis":snapped,"origin":origin,"ratio":ratio,"colors":colors,"part_offset":part_offset})
+		slots.append({"source":source,"basis":grid_basis,"origin":origin,"ratio":ratio,"colors":colors,"part_offset":part_offset})
 	var size := high-low
 	size.x = ceili(float(size.x)/density)*density
 	size.z = ceili(float(size.z)/density)*density
@@ -147,7 +162,7 @@ static func plan(inputs: Array[Dictionary], align_grid := false) -> Dictionary:
 			result.collision_voxels = PackedByteArray()
 		else:
 			result.set(channel,channels[channel])
-	return {"source":result,"frame":base*Transform3D(Basis.IDENTITY,Vector3(low)/density),"overlap":PackedInt32Array(overlap.keys()),"adjustments":adjustments}
+	return {"source":result,"frame":output_base*Transform3D(Basis.IDENTITY,Vector3(low)/density),"overlap":PackedInt32Array(overlap.keys()),"adjustments":adjustments}
 
 static func separate(source: EmberVoxelModelResource) -> Dictionary:
 	if source == null or source.merge_parts.is_empty() or not source.validation_errors().is_empty():

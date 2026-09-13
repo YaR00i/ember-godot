@@ -4,6 +4,8 @@ const Split = preload("res://addons/ember_import/ember_voxel_object_split.gd")
 var _splitter: RefCounted
 var _target_ref: WeakRef
 var _section: OptionButton
+var source_directory := EmberVoxelCatalog.NATIVE_DIR
+var prefab_directory := EmberVoxelPrefab.PREFAB_DIR
 
 func open_split(prop: EmberVoxelProp, scene: Node, undo: Object) -> void:
 	_root = scene
@@ -37,6 +39,8 @@ func _prepare() -> void:
 		return
 	get_ok_button().disabled = true
 	_splitter = Split.new()
+	_splitter.source_directory = source_directory
+	_splitter.prefab_directory = prefab_directory
 	var prop := _target_ref.get_ref() as EmberVoxelProp
 	if not _splitter.prepare(prop,_root,_section.get_selected_id()):
 		_status.text = _splitter.error

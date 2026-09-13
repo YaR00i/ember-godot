@@ -50,6 +50,7 @@ static func normalize_profile(profile: Dictionary) -> Dictionary:
 		follow_surface = true
 	return {
 		"radius": clampi(int(profile.get("radius", DEFAULT_RADIUS)), 1, 32),
+		"grab_softness": clampf(float(profile.get("grab_softness", 75)), 0, 100),
 		"depth": clampi(int(profile.get("depth", DEFAULT_DEPTH)), 1, 32),
 		"coarse": bool(profile.get("coarse", false)),
 		"follow_surface": follow_surface,

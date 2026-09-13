@@ -374,11 +374,10 @@ func _ui(target: EmberVoxelModelResource, preset: Resource, undo: UndoRedo, dire
 	check(workspace._tool.get_selected_items() == PackedInt32Array([0]) and workspace._radius.visible and not workspace._stamp_tool_button.button_pressed,"Esc left conflicting primary-tool highlights")
 	check(workspace._selection_panel._mask.button_pressed and not workspace._selection_panel._mask_suspended and workspace._selection_panel.mask_brushes_enabled(),"returning to a compatible brush did not restore the saved mask")
 	interaction.begin_stamp(preset)
-	workspace._tool.select(1)
-	workspace._on_tool_selected(1)
+	workspace._activate_tool_id(Model.TOOL_PAINT)
 	for frame in 2:
 		await process_frame
-	check(not interaction.transforming and workspace._canvas_mode == Workspace.CanvasMode.BRUSH and workspace._tool.get_selected_items() == PackedInt32Array([1]),"brush switch during a stamp draft rebounded to the old mode")
+	check(not interaction.transforming and workspace._canvas_mode == Workspace.CanvasMode.BRUSH and workspace._selected_tool_id() == Model.TOOL_PAINT,"brush switch during a stamp draft rebounded to the old mode")
 	workspace._tool.select(0)
 	workspace._on_tool_selected(0)
 	interaction.begin_stamp(preset)

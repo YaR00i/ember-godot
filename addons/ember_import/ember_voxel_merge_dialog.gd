@@ -5,6 +5,16 @@ var _session: RefCounted
 var _selection: Array = []
 var _primary: OptionButton
 var _align: CheckBox
+var _bake_orientation: CheckBox
+var _scene_orientation: CheckBox
+var _presentation: Node3D
+var _preview_container: SubViewportContainer
+var _local_bounds := AABB()
+var _view_bounds := AABB()
+var _view_yaw := PI/4.0
+var _view_pitch := atan(0.85/sqrt(2.0))
+var _view_zoom := 1.0
+var _orbiting := false
 var _separating := false
 var source_directory := EmberVoxelCatalog.NATIVE_DIR
 var prefab_directory := EmberVoxelPrefab.PREFAB_DIR
@@ -45,6 +55,42 @@ func open_merge(selection: Array, scene: Node, undo: Object, separating := false
 	_align.toggled.connect(func(_enabled: bool): _prepare())
 	_status.get_parent().add_child(_align)
 	_status.get_parent().move_child(_align,1)
+	_bake_orientation = CheckBox.new()
+	_bake_orientation.text = "Запечь ориентацию сцены"
+	_bake_orientation.tooltip_text = "Переносит поворот сцены на 90° в сами воксели: Canvas и библиотека откроют модель в этой ориентации. Положение на карте сохраняется. Только одинаковый масштаб XYZ, без отражения, перекоса и округления угла. Выключено по умолчанию; исходные файлы не меняются."
+	_bake_orientation.visible = not separating
+	_bake_orientation.toggled.connect(func(_enabled: bool): _prepare())
+	_status.get_parent().add_child(_bake_orientation)
+	_status.get_parent().move_child(_bake_orientation,2)
+	_scene_orientation = CheckBox.new()
+	_scene_orientation.text = "Ориентация как в сцене"
+	_scene_orientation.button_pressed = true
+	_scene_orientation.tooltip_text = "Включено: поворот и пропорции как на карте. Выключено: локальные оси основной детали. Меняется только предпросмотр, не результат склейки."
+	_scene_orientation.toggled.connect(func(_enabled: bool): _update_orientation())
+	_status.get_parent().add_child(_scene_orientation)
+	_status.get_parent().move_child(_scene_orientation,3)
+	var view_controls := HBoxContainer.new()
+	var hint := Label.new()
+	hint.text = "ЛКМ / СКМ: вращать вид · колесо: масштаб"
+	hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	view_controls.add_child(hint)
+	var reset := Button.new()
+	reset.text = "Сбросить вид"
+	reset.pressed.connect(_reset_view)
+	view_controls.add_child(reset)
+	_status.get_parent().add_child(view_controls)
+	_status.get_parent().move_child(view_controls,4)
+	_presentation = Node3D.new()
+	_world.add_child(_presentation)
+	_preview_container = _world.get_parent().get_parent() as SubViewportContainer
+	# Keep the object visible before long alignment reports in this scroll box.
+	_status.get_parent().move_child(_preview_container,5)
+	_preview_container.mouse_filter = Control.MOUSE_FILTER_STOP
+	_preview_container.mouse_force_pass_scroll_events = false
+	_preview_container.gui_input.connect(_view_input)
+	_preview_container.resized.connect(_update_camera)
+	_preview_container.mouse_exited.connect(func(): _orbiting = false)
+	_world.get_parent().handle_input_locally = false
 	_status.custom_minimum_size.x = 460
 	_prepare()
 	popup_centered()
@@ -62,7 +108,7 @@ func _prepare() -> void:
 	_session = Session.new()
 	_session.source_directory = source_directory
 	_session.prefab_directory = prefab_directory
-	if not _session.prepare(ordered,_root,_separating,_align.button_pressed):
+	if not _session.prepare(ordered,_root,_separating,_align.button_pressed,_bake_orientation.button_pressed and not _separating):
 		_status.text = _session.error
 		return
 	var source: EmberVoxelModelResource = _session.preview
@@ -71,7 +117,7 @@ func _prepare() -> void:
 		_status.text = "Не удалось построить предпросмотр."
 		return
 	_preview = packed.instantiate()
-	_world.add_child(_preview)
+	_presentation.add_child(_preview)
 	_preview.transform = _preview.get_node("Mesh").transform.affine_inverse()
 	var bounds: AABB = _preview.get_node("Mesh").get_aabb()
 	for adjustment in _session.adjustments:
@@ -90,10 +136,7 @@ func _prepare() -> void:
 		var local_frame: Transform3D = _session.frame.affine_inverse()*adjustment.before
 		ghost.transform = _preview.transform.affine_inverse()*local_frame
 		bounds = bounds.merge(local_frame*original.get_aabb())
-	var center := bounds.get_center()
-	_camera.size = maxf(0.25,bounds.size.length()*0.85)
-	_camera.position = center+Vector3(1,0.85,1).normalized()*_camera.size*2
-	_camera.look_at(center)
+	_local_bounds = bounds
 	if not _session.overlap.is_empty():
 		var instances := MultiMesh.new()
 		instances.transform_format = MultiMesh.TRANSFORM_3D
@@ -114,7 +157,10 @@ func _prepare() -> void:
 		overlay.multimesh = instances
 		_preview.add_child(overlay)
 		overlay.transform = _preview.transform.affine_inverse()
+	_update_orientation()
 	_status.text = "%d частей · сетка %s · %d vox/block.\n" % [source.merge_parts.size(),source.grid_size(),source.normalized_density()]
+	if _session.orientation_baked:
+		_status.text += "Ориентация сцены записана в сетку модели для Canvas и библиотеки.\n"
 	if _separating:
 		var labels := PackedStringArray()
 		for item in _session.outputs:
@@ -138,6 +184,59 @@ func _prepare() -> void:
 		_status.text += "Положение и цвета сохраняются. Одна Undo-команда. "
 	_status.text += "Исходные файлы не удаляются. Большая операция может занять несколько секунд."
 	get_ok_button().disabled = false
+
+func _update_orientation() -> void:
+	if not is_instance_valid(_preview) or _session == null:
+		return
+	var basis := Basis.IDENTITY
+	if _scene_orientation.button_pressed:
+		basis = _session.frame.basis
+		# Rebase the scene frame for this isolated viewport, preserving rotation,
+		# reflection/shear and relative scale without huge world coordinates.
+		var uniform := maxf(basis.x.length(),maxf(basis.y.length(),basis.z.length()))
+		basis = basis.scaled(Vector3.ONE/uniform)
+	_presentation.transform = Transform3D(basis,-(basis*_local_bounds.get_center()))
+	_view_bounds = _presentation.transform*_local_bounds
+	_reset_view()
+
+func _reset_view() -> void:
+	_view_yaw = PI/4.0
+	_view_pitch = atan(0.85/sqrt(2.0))
+	_view_zoom = 1.0
+	_orbiting = false
+	_update_camera()
+
+func _update_camera() -> void:
+	if not is_instance_valid(_preview) or _preview_container == null:
+		return
+	var center := _view_bounds.get_center()
+	var radius := maxf(0.25,_view_bounds.size.length())
+	var direction := Vector3(sin(_view_yaw)*cos(_view_pitch),sin(_view_pitch),cos(_view_yaw)*cos(_view_pitch))
+	_camera.position = center+direction*radius*2.0
+	_camera.look_at(center,Vector3.UP)
+	_camera.near = 0.001
+	_camera.far = maxf(10.0,radius*5.0)
+	var projected: AABB = _camera.transform.affine_inverse()*_view_bounds
+	var aspect := maxf(0.01,_preview_container.size.x/maxf(1.0,_preview_container.size.y))
+	_camera.size = maxf(0.05,maxf(projected.size.y,projected.size.x/aspect)*1.15)*_view_zoom
+
+func _view_input(event: InputEvent) -> void:
+	if not is_instance_valid(_preview):
+		return
+	if event is InputEventMouseButton:
+		if event.button_index in [MOUSE_BUTTON_LEFT,MOUSE_BUTTON_MIDDLE]:
+			_orbiting = event.pressed
+		elif event.pressed and event.button_index in [MOUSE_BUTTON_WHEEL_UP,MOUSE_BUTTON_WHEEL_DOWN]:
+			_view_zoom = clampf(_view_zoom*(0.85 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0/0.85),0.2,5.0)
+			_update_camera()
+		else:
+			return
+		_preview_container.accept_event()
+	elif event is InputEventMouseMotion and _orbiting:
+		_view_yaw -= event.relative.x*0.008
+		_view_pitch = clampf(_view_pitch+event.relative.y*0.008,-PI*0.49,PI*0.49)
+		_update_camera()
+		_preview_container.accept_event()
 
 func _commit() -> void:
 	get_ok_button().disabled = true

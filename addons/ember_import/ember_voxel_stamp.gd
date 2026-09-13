@@ -158,8 +158,8 @@ static func recommended_placement(preset: Resource) -> Dictionary:
 	return Generator.placement_defaults(preset.generator_recipe)
 
 
-static func plan(target: EmberVoxelModelResource, preset: Resource, position: Vector3i, axis: int, turns: int, mirror: int, anchor: int, replace: bool, part: int, region := Rect2i(), height := -1, surface_normal := Vector3i.ZERO, indent := false) -> Dictionary:
-	return plan_many(target,preset,[position],axis,turns,mirror,anchor,replace,part,region,height,PackedInt32Array(),surface_normal,false,2,indent)
+static func plan(target: EmberVoxelModelResource, preset: Resource, position: Vector3i, axis: int, turns: int, mirror: int, anchor: int, replace: bool, part: int, region := Rect2i(), height := -1, surface_normal := Vector3i.ZERO, indent := false, clip_bounds := false) -> Dictionary:
+	return plan_many(target,preset,[position],axis,turns,mirror,anchor,replace,part,region,height,PackedInt32Array(),surface_normal,false,2,indent,clip_bounds)
 
 static func sample_line(from: Vector3i, to: Vector3i, spacing: int) -> Array[Vector3i]:
 	return Placement.sample_line(from, to, spacing)
@@ -200,6 +200,7 @@ static func plan_scatter(
 	conform_surface := false,
 	max_bend := 2,
 	indent := false,
+	clip_bounds := false,
 ) -> Dictionary:
 	var prepared := prepare_generated_variants(preset)
 	if prepared.has("error"):
@@ -223,7 +224,7 @@ static func plan_scatter(
 		target,preset,variants,scattered_variants,
 		scattered_placements,Fragment.Model.axis_index(normal),turns,
 		mirror,anchor,replace,part,region,height,scattered_turns,normal,
-		conform_surface,max_bend,indent,
+		conform_surface,max_bend,indent,clip_bounds,
 	)
 	if not result.has("error"):
 		result.label = "%s · %s · %d точек" % ["Россыпь-вдавливание" if indent else "Россыпь",preset.display_name,scattered_placements.size()]
@@ -254,6 +255,9 @@ static func _conform_offsets(
 	add_outward: bool,
 	max_bend: int,
 	indent: bool,
+	region := Rect2i(),
+	height := -1,
+	clip_bounds := false,
 ) -> Dictionary:
 	var normal := Fragment.Model.axis_normal(outward)
 	if normal == Vector3i.ZERO:
@@ -280,6 +284,10 @@ static func _conform_offsets(
 			+tangent_b*key.y
 			+normal*int(column_contacts[key])
 		)
+		# Clipped columns do not need a surface outside the editable mask.
+		if clip_bounds and not Fragment._allowed(rigid_contact,target,region,height):
+			column_shifts[key] = 0
+			continue
 		var snapped := _scatter_surface_placement(
 			target,rigid_contact,normal,add_outward,clampi(max_bend,1,8)
 		)
@@ -344,14 +352,14 @@ static func _stamp_offsets(
 	return offsets
 
 
-static func plan_many(target: EmberVoxelModelResource, preset: Resource, placements: Array[Vector3i], axis: int, turns: int, mirror: int, anchor: int, replace: bool, part: int, region := Rect2i(), height := -1, instance_turns := PackedInt32Array(), surface_normal := Vector3i.ZERO, conform_surface := false, max_bend := 2, indent := false) -> Dictionary:
+static func plan_many(target: EmberVoxelModelResource, preset: Resource, placements: Array[Vector3i], axis: int, turns: int, mirror: int, anchor: int, replace: bool, part: int, region := Rect2i(), height := -1, instance_turns := PackedInt32Array(), surface_normal := Vector3i.ZERO, conform_surface := false, max_bend := 2, indent := false, clip_bounds := false) -> Dictionary:
 	var variants: Array[EmberVoxelModelResource] = []
 	if preset is Preset and preset.geometry != null:
 		variants.append(preset.geometry)
 	return _plan_many_variants(
 		target, preset, variants, PackedInt32Array(), placements, axis, turns,
 		mirror, anchor, replace, part, region, height, instance_turns,
-		surface_normal, conform_surface, max_bend, indent,
+		surface_normal, conform_surface, max_bend, indent, clip_bounds,
 	)
 
 
@@ -374,6 +382,7 @@ static func _plan_many_variants(
 	conform_surface := false,
 	max_bend := 2,
 	indent := false,
+	clip_bounds := false,
 ) -> Dictionary:
 	if target == null or preset == null or not preset is Preset or preset.geometry == null:
 		return {"error":"Выберите штамп."}
@@ -447,7 +456,7 @@ static func _plan_many_variants(
 		var placement: Vector3i = placements[placement_index]
 		if conform_surface:
 			var conformed := _conform_offsets(
-				target,placement,offsets,surface_normal,not replace and not indent,max_bend,indent
+				target,placement,offsets,surface_normal,not replace and not indent,max_bend,indent,region,height,clip_bounds
 			)
 			if conformed.has("error"):
 				for raw_offset in offsets:
@@ -479,6 +488,7 @@ static func _plan_many_variants(
 	var selected := PackedInt32Array()
 	var selected_set := {}
 	var colors := {}
+	var clipped := 0
 	for placement_index in placements.size():
 		var variant_index := int(instance_variants[placement_index]) if not instance_variants.is_empty() else 0
 		var context: Dictionary = contexts[variant_index]
@@ -490,6 +500,9 @@ static func _plan_many_variants(
 			var offset: Vector3i = offsets[i]
 			var cell := placement+offset
 			if not Fragment._allowed(cell,target,region,height):
+				if clip_bounds:
+					clipped += 1
+					continue
 				return {"error":("Вдавливание" if indent else "Штамп")+" выходит за холст или рабочий срез. Переместите его либо расширьте холст.","positions":positions}
 			var dest := Fragment.Model.index_of(cell,target.grid_size())
 			if indent:
@@ -568,4 +581,5 @@ static func _plan_many_variants(
 		"instance_variants":instance_variants.duplicate(),
 		"label":label,
 		"removes":indent,
+		"clipped_voxels":clipped,
 	}

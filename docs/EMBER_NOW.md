@@ -1,7 +1,8 @@
 # Ember — текущая точка
 
 Обновлено: 2026-09-13
-Git: checkpoint деревьев/листвы/сохранения мастерской от 2026-09-13 (`main`).
+Git: checkpoint Grab/clip/library/merge bake и авторских объектов (`main`).
+Базовый checkpoint: `255ceee` — деревья/листва/сохранение мастерской.
 Предыдущий UI checkpoint: `48774a0`; каноническая глава: `647a882`.
 
 Этот файл — короткая стартовая точка для нового Codex-thread. Он не заменяет
@@ -10,11 +11,25 @@ GDD, продуктовый план, технический handoff или migr
 
 ## Текущий milestone
 
+Git checkpoint2026-09-13 запрошен пользователем после запекания ориентации.
+Включены Grab/мягкий Bend, общий boundary clip, актуализация библиотеки,
+merge view/orbit и exact scene-axis bake, связанные tests/docs, сохранённые
+пользователем доски/склейки/производные prefab/meshes и test_pier/surface pilot.
+Локальный .codex/config.toml и Mira drafts остаются вне Git checkpoint.
+Повторно16 targeted suites PASS (Grab/Bend/clip/fragment/stamp/pattern/selection/
+bake/merge/library updates/layout/object Canvas/scene assembly/object split/
+shapes/filesystem);16 sources +15 prefabs schema/load/instantiate PASS без записи.
+Есть диагностические warnings:1 ObjectDB instance у fragment fixture на exit,
+один prefab mesh UID fallback к существующему .res path. Не заявлять zero-warning
+или новый полный128-suite прогон; manual editor gates остаются как описаны ниже.
+
 Checkpoint2026-09-13: пользователь принял ель и запросил общий commit/push
 редактора, генераторов и сохранённых объектов. Проверены все128 scripts:
-125 прошли (assembly screenshot — native Forward+). Открыты3 старых gates:
-placement/split preview зависят от прежней структуры Причала; sandbox native
-batch требует пересборки6 prefab. Подробности в MIGRATION_TEST_PLAN.md.
+125 прошли (assembly screenshot — native Forward+). Последующие targeted
+проверки закрыли3 оставшихся gates: placement/split preview адаптированы к
+нынешнему authoring, sandbox native batch PASS без пересборки6 prefab.
+Это отдельная проверка оставшихся gates, не повторный полный запуск всех scripts.
+Подробности в MIGRATION_TEST_PLAN.md.
 Это сохранение текущей точки, не объявление всего редактора завершённым.
 Будущие настройки характера деревьев и управляемые вариации записаны в
 EMBER_PRODUCT_PLAN.md рядом с отложенными shaders/light/mesh optimization.
@@ -23,13 +38,119 @@ EMBER_PRODUCT_PLAN.md рядом с отложенными shaders/light/mesh op
 зафиксированы; дальше деревья не дорабатывать без нового запроса.
 Оптимизация mesh/шейдеры и расширенные настройки характера остаются
 отложенными в продуктовой дорожной карте. Основной редактор ещё не объявлен
-полностью завершённым; старые3 gates checkpoint ea50fdf сохраняются.
+полностью завершённым; ручная итоговая цепочка с доской остаётся открытой.
 Перед Git checkpoint повторно прошли13 targeted suites: variation, формы
 всех5 пород, tree_types, bark, large_tree_object, generator/editing,
 foliage_species и workshop_generator_save. diff --check PASS; Forward+
 проверки листвы и сохранения выполнены в предыдущих срезах на disposable copy.
 
-Последний завершённый срез — общие режимы листвы для всех5 типов деревьев.
+Текущий срез — opt-in «Запечь ориентацию сцены» при склейке. Pure Merge.plan
+переносит exact proper quarter rotation scene frame в existing slot mapping,
+сохраняя world cells, шесть каналов, palette, merge parts/groups/overlap.
+Alignment остаётся в сетке основной детали; reported world shifts прежние.
+Uniform scale остаётся в scene frame; rotation запекается в Resource, поэтому
+обычный Canvas и библиотека получают ориентацию сцены без второго view owner.
+Произвольный угол, reflection/shear/nonuniform scale и превышение новых grid
+limits отклоняются без округления/публикации. Тогл default off, только склейка;
+отдельный display toggle не меняет данные. Старые склейки не мигрируют.
+Новый test_voxel_merge_orientation_bake PASS:24 rotations, density16/32,
+aligned secondary, colors/channels/groups/parts/overlap, rejection/recovery,
+single Undo/Redo, save/reopen, Canvas open/pick/sculpt/Undo и unmerge.
+Также8 related suites PASS: merge/shapes/scene_assembly/object_canvas/
+object_split/assembly_canvas/object_library_updates/layout. Disposable native
+Forward+ цепочка bake→commit→Canvas подтверждена: preview локально горизонтален,
+world frame совпадает, Canvas flat/clean; captures просмотрены. В probe после
+DONE зарегистрирован get_node outside active tree при teardown (и scan abort);
+это не объявлено полностью зелёным editor lifecycle gate. Живой пользовательский
+gate (повторная склейка/кисти/save/reopen) открыт. Авторские модели и мост не
+менялись, Git не запрошен.
+
+Предыдущий срез — ориентация предпросмотра склейки/разбора. Тогл «Ориентация как
+в сцене» включён по умолчанию: preview учитывает scene frame основной детали,
+выключение показывает локальные оси. Translation/common uniform scale
+перебазированы только для изолированного viewport; rotation/relative scale
+сохраняются. Ghosts прежних позиций и overlap используют ту же presentation.
+ЛКМ/СКМ вращают камеру, колесо приближает, «Сбросить вид» возвращает fit.
+Переключение не пересчитывает merge и не меняет Resource/commit frame.
+Preview поднят над длинным status, виден без прокрутки. Merge targeted и7
+related suites PASS: shapes/scene_assembly/object_canvas/object_split/
+assembly_canvas/object_library_updates/layout. Disposable native editor
+Forward+ PASS: горизонтальный настил scene view / вертикальный local view,
+orbit/reset, captures просмотрены; viewport целиком виден. Ручной gate в
+живом редакторе (mouse/zoom/apply на пользовательском мостике) остаётся открыт;
+пользовательский мост/сцена/источники не меняются.
+Commit/push не запрошен.
+
+Предыдущий срез — исправление обнаружения новых сохранённых объектов в библиотеке.
+Пользовательская доска сохранена в native .tres, но открытый shelf держал старый
+список; обычная нижняя вкладка «Объекты» не вызывала open_for/refresh.
+Причина воспроизведена в disposable native editor: после успешного install
+AUTO0/REOPEN0, прямой refresh1. Теперь ModelStore уведомляет observers только
+после успешной публикации окончательных files/cache identities; shelf coalesces
+refresh и подписан на visibility / EditorFileSystem.filesystem_changed.
+Query, owner filter, selection и unrelated cached thumbnails сохраняются.
+Нет нового catalog/schema или переименования; canonical owner прежний.
+Targeted library_updates/layout/object_canvas/generator_save/editor_filesystem/shapes/object_split
+PASS. Native editor Forward+ повтор показывает AUTO1/REOPEN1 без remesh/import
+библиотеки. Живой редактор пользователя через MCP недоступен; ручная проверка
+в нём открыта. После загрузки обновлённого плагина искать384406539; имя модели
+остаётся «Новая форма», имя экземпляра «опорная доска» — отдельное поле.
+Авторские assets/scenes не менялись нами; commit/push не запрошен.
+
+Предыдущий срез — общая опция «Обрезать по границе» в «Части → Вид →
+Рабочая область». По умолчанию strict; clip сохраняется в editor view store
+глобально для мастерской, не в объекте и не отдельно для каждой кисти.
+Подключены Grab, перенос/копия/поворот/изгиб фрагмента, штамп/россыпь,
+вдавливание и паттерны. Результат ограничен canvas/region/slice; при move/
+deform исходная часть снаружи результата удаляется, при copy исходник остаётся.
+Существующая геометрия вне editable mask не участвует в удалении. Locked и
+проверка занятых destinations сохраняются. Preview показывает обрезанный
+результат, количество crop отображается; один Undo возвращает отсечённое.
+Смена тогла пересчитывает fragment/stamp preview и отменяет незавершённый Grab.
+Grab теперь доступен при height slice; hidden vox остаются защищённым контекстом.
+Boundary clip + Grab +9 related targeted suites PASS; native Forward+ Grab
+clip Canvas1280×720 PASS на disposable copy, capture просмотрен.
+Ручной gate: включить обрезку, потянуть доску через край области/холста;
+проверить отсечение и Undo, затем штамп/паттерн на краю и save/reopen.
+Авторские assets/сцена не изменялись нами; commit/push не запрошен.
+
+Предыдущий согласованный срез — кисть «Тянуть · мягко» прямо в Canvas.
+Пользователь уточнил: точная команда изгиба неудобна вместо Grab. Теперь
+ЛКМ захватывает форму, тяга идёт в плоскости экрана, соседний объём следует
+с мягким краем; radius1–32vox и softness0–100% в существующих tool profiles.
+Preview — отдельный transient draft в том же chunk renderer, исходник не
+меняется до отпускания. Pointer-up применяет точный последний результат
+одним SculptActions Undo; Esc/смена инструмента отменяют, Save/Ctrl+S во время
+жеста блокируются без потери черновика. Общая Fragment remap-транзакция
+переносит все6 byte channels, groups/part IDs; обратное sampling и forward
+seeds заполняют вытягиваемый объём, количество vox может изменяться.
+Работа jobs/coalescing порциями ~4ms, без full remesh на mouse event.
+Первый срез: canvas≤524288 cells, influence≤32768 occupied vox, bounded
+candidates/drag; без water fill/authored lights/hidden or isolated groups,
+locked не затрагиваются; strict отказывает на region/slice, опциональный clip
+описан выше. Grab +10 related suites PASS;
+native Forward+ Canvas capture1280×720 просмотрен. Kernel ~30ms на доске
+и ~480ms при radius32 на524288 cells, большие jobs обновляются с задержкой.
+Ручная приёмка открыта: уникальная доска → «Тянуть · мягко», radius12–24,
+softness75%, потянуть угол/центр → отпускание/Esc → Undo/Redo → save/reopen/F6.
+Авторские доски и сцена пользователя не менялись; commit/push не запрошен.
+
+Предыдущий срез — точная деформация «Изгиб…» в левом rail мастерской.
+Гнёт выделение или весь объект без выделения: ось длины, направление, дуга
+с закреплёнными концами / загнутый конец, signed сила в vox. Общая fragment
+remap-математика и SculptActions Undo; цвета/material channels/collision/groups/
+part IDs перемещаются вместе. Preview явно обновляется, одна Apply/Undo.
+Ограничение32768 occupied vox, без перекрытия/locked; для canvas/slice/region
+действует общий strict/clip режим выше;
+заливка воды и отдельные authored lights отклоняются. Авторасширения нет.
+Bend targeted +9 related suites PASS; sandbox native batch PASS отдельно.
+Native Forward+ bend/workshop layout/split/placement preview PASS, captures
+просмотрены. Ручной gate: уникальная копия доски → изгиб2–4vox → Undo/Redo →
+save/reopen → F6; исходная доска и её пользовательские копии не менялись.
+Команда остаётся дополнительным точным инструментом, не заменой Grab.
+Пользовательская приёмка всей ручной цепочки остаётся открытой.
+
+Последний принятый генераторный срез — общие режимы листвы для всех5 типов деревьев.
 Pixel-art1 и clouds3 доступны саванне/дубу/берёзе/клёну/ели в creation,
 candidate editing и contextual Generator; те же FoliagePattern и volumes.
 Каркас/physical и прежняя листва0 не менялись; параметры pattern/clouds

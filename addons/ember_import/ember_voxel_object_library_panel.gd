@@ -20,6 +20,7 @@ const VoxelVisuals = preload("res://scripts/ember_voxel_visuals.gd")
 const VoxelPreviewRenderer = preload("res://addons/ember_import/ember_voxel_preview_renderer.gd")
 const WorkshopTheme = preload("res://addons/ember_import/ember_voxel_workshop_theme.gd")
 const GenerativeObjects = preload("res://addons/ember_import/ember_voxel_tree_object_creation.gd")
+const ModelStore = preload("res://addons/ember_import/ember_voxel_model_store.gd")
 
 var _all_entries: Array[Dictionary] = []
 var _owner_filter := "all"
@@ -43,12 +44,56 @@ var _preview_renderer: EmberVoxelPreviewRenderer
 var recipe_directory := "res://content/editor/voxel_generators"
 var _variations: OptionButton
 var _preferred_variation := ""
+var _refresh_pending := false
+var _filesystem: Object
 
 
 func _ready() -> void:
 	if get_child_count() == 0:
 		_build()
+	if not ModelStore.asset_events.assets_published.is_connected(_on_assets_published):
+		ModelStore.asset_events.assets_published.connect(_on_assets_published)
+	if not visibility_changed.is_connected(_on_library_visibility_changed):
+		visibility_changed.connect(_on_library_visibility_changed)
+	if Engine.is_editor_hint():
+		_filesystem = EditorInterface.get_resource_filesystem()
+		if not _filesystem.filesystem_changed.is_connected(_queue_catalog_refresh):
+			_filesystem.filesystem_changed.connect(_queue_catalog_refresh)
 	refresh()
+
+
+func _exit_tree() -> void:
+	if ModelStore.asset_events.assets_published.is_connected(_on_assets_published):
+		ModelStore.asset_events.assets_published.disconnect(_on_assets_published)
+	if is_instance_valid(_filesystem) and _filesystem.filesystem_changed.is_connected(_queue_catalog_refresh):
+		_filesystem.filesystem_changed.disconnect(_queue_catalog_refresh)
+	_refresh_pending = false
+
+
+func _on_assets_published(paths: PackedStringArray) -> void:
+	for path in paths:
+		_textures.erase(path.get_file().get_basename())
+		if is_instance_valid(_preview_renderer):
+			_preview_renderer.clear_cache(path)
+	_queue_catalog_refresh()
+
+
+func _on_library_visibility_changed() -> void:
+	if is_visible_in_tree():
+		_queue_catalog_refresh()
+
+
+func _queue_catalog_refresh() -> void:
+	if _refresh_pending or not is_inside_tree():
+		return
+	_refresh_pending = true
+	_refresh_after_publication.call_deferred()
+
+
+func _refresh_after_publication() -> void:
+	_refresh_pending = false
+	if is_inside_tree() and is_visible_in_tree():
+		refresh() # Existing projection retains query, owner filter and selection.
 
 
 func open_for(anchor: Node3D, can_place: bool, placement_text: String) -> void:

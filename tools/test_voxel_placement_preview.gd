@@ -20,7 +20,13 @@ func _run() -> void:
 	scene.get_node("Map").set_script(null)
 	root.add_child(scene)
 	var group := scene.get_node("Map/Terrain/TimberPier/Visual") as Node3D
-	assert(group != null and group.get_child_count() == 12)
+	assert(group != null and not group is EmberVoxelProp,"Pier must be an assembly")
+	var props := 0
+	for child in group.get_children():
+		if child is EmberVoxelProp:
+			props += 1
+			assert(not child.model_id.is_empty() and child.get_node("Mesh").mesh != null,"assembly has invalid voxel part")
+	assert(props >= 12,"Pier lost reviewed deck parts")
 	var initial := group.global_transform
 	var placement := Placement.new()
 	assert(placement.open(group,scene,null),placement.error)
@@ -66,6 +72,8 @@ func _capture(dialog: Window,viewport_size: Vector2i,suffix: String) -> void:
 	assert(preview != null and preview.is_visible_in_tree() and preview.size.x >= 300 and preview.size.y >= 410,"preview clipped "+suffix)
 	var scroll := dialog.find_child("PlacementScroll",true,false) as ScrollContainer
 	assert(scroll != null and scroll.is_visible_in_tree() and scroll.size.x >= 320,"controls clipped "+suffix)
+	if DisplayServer.get_name() == "headless":
+		return
 	RenderingServer.force_draw(false)
 	var path := "user://voxel-placement-preview-%s-%d.png" % [suffix,OS.get_process_id()]
 	var image := root.get_texture().get_image()

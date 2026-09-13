@@ -26,11 +26,11 @@
 [ext_resource type="PackedScene" uid="uid://cedb224b6vw7h" path="res://prefabs/voxels/vox_merge_60959363_1.tscn" id="23_ga0ds"]
 [ext_resource type="PackedScene" uid="uid://yix2he7uekm0" path="res://prefabs/voxels/vox_fragment_1508100958.tscn" id="24_yb5pd"]
 [ext_resource type="PackedScene" uid="uid://dnq8ifgjr1ujg" path="res://prefabs/voxels/vox_shape_sphere_253874193_canvas_374568229.tscn" id="25_yjp2r"]
-[ext_resource type="PackedScene" uid="uid://yh3xnawmwfa2" path="res://prefabs/voxels/vox_tree_1511837690_canvas_1665774388.tscn" id="26_ga0ds"]
 [ext_resource type="PackedScene" uid="uid://rsdmtiysth2a" path="res://prefabs/voxels/vox_tree_190013632.tscn" id="27_yb5pd"]
 [ext_resource type="PackedScene" uid="uid://dby3a1tfdko4s" path="res://prefabs/voxels/vox_tree_120664056.tscn" id="28_1txye"]
 [ext_resource type="PackedScene" uid="uid://d4noldkinh100" path="res://prefabs/voxels/vox_tree_246540068.tscn" id="29_2lfjq"]
 [ext_resource type="PackedScene" path="res://prefabs/voxels/vox_tree_352459298.tscn" id="30_a55yo"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_merge_705909671_0.tscn" id="31_a55yo"]
 [ext_resource type="PackedScene" path="res://prefabs/voxels/vox_tree_522448705.tscn" id="31_hlj1e"]
 
 [sub_resource type="Environment" id="env"]
@@ -948,21 +948,16 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0, 164)
 placement_id = "placed_shape_sphere_253874193"
 metadata/ember_canvas_unique_source = "vox_shape_sphere_253874193_canvas_374568229"
 
-[node name="placed_tree_1511837690" parent="Map/Props" unique_id=1287706502 instance=ExtResource("26_ga0ds")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 298.9474, 0, 307.49658)
-placement_id = "placed_tree_1511837690"
-metadata/ember_canvas_unique_source = "vox_tree_1511837690_canvas_1665774388"
-
 [node name="placed_tree_190013632" parent="Map/Props" unique_id=2053885899 instance=ExtResource("27_yb5pd")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0, 164)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 285.43576, 0, 307.52777)
 placement_id = "placed_tree_190013632"
 
 [node name="placed_tree_120664056" parent="Map/Props" unique_id=838188635 instance=ExtResource("28_1txye")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 112, 0, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 112, 0, 126.74686)
 placement_id = "placed_tree_120664056"
 
 [node name="placed_tree_246540068" parent="Map/Props" unique_id=283226052 instance=ExtResource("29_2lfjq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 112, 0, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 112, 0, 51.414032)
 placement_id = "placed_tree_246540068"
 
 [node name="placed_tree_352459298" parent="Map/Props" unique_id=2039884460 instance=ExtResource("30_a55yo")]
@@ -970,8 +965,12 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 112, 0, 0)
 placement_id = "placed_tree_352459298"
 
 [node name="placed_tree_522448705" parent="Map/Props" unique_id=1586572773 instance=ExtResource("31_hlj1e")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0, 164)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 88.20891, 0, 299.81964)
 placement_id = "placed_tree_522448705"
+
+[node name="VoxelMerged" parent="Map/Props" unique_id=40888254 instance=ExtResource("31_a55yo")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 221.20648, 2.5394535, 206.60379)
+placement_id = "placed_merge_705909671_0"
 
 [node name="Regions" type="Node3D" parent="Map" unique_id=1328498943]
 

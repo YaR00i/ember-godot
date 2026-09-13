@@ -10,6 +10,12 @@ const Parity = preload("res://addons/ember_import/ember_voxel_migration_parity.g
 static var _canvas_cache: Dictionary = {}
 static var derived_rename_override: Callable # Test-only transient sharing violation.
 
+# Publication notifications only; canonical assets remain the files on disk.
+class AssetEvents extends RefCounted:
+	signal assets_published(paths: PackedStringArray)
+
+static var asset_events := AssetEvents.new()
+
 
 static func install_derived_prefab(packed: PackedScene, path: String, signature: String) -> Dictionary:
 	# Rebuild never reserializes the canonical source. Like Canvas Save, serialize
@@ -77,6 +83,7 @@ static func restore_derived_prefab(bytes: PackedByteArray, path: String) -> Dict
 	cached.take_over_path(path)
 	_canvas_cache[path] = cached
 	EmberVoxelPrefab.begin_import()
+	asset_events.assets_published.emit(PackedStringArray([path]))
 	return {"ok": true, "packed": cached}
 
 
@@ -179,6 +186,7 @@ static func install_prepared_asset(
 					var cache_instance := (saved_resource as PackedScene).instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE)
 					cache_instance.free()
 		packed = _canvas_cache.get(prefab_path, packed) as PackedScene
+		asset_events.assets_published.emit(PackedStringArray(paths))
 	return {"ok": result == OK, "error": error_string(result), "packed": packed, "signature": signature}
 
 

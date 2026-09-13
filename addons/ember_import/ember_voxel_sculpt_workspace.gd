@@ -101,6 +101,9 @@ var _precision_line_preview: MultiMeshInstance3D
 var _region_overlay: MeshInstance3D
 var _tool: ItemList
 var _radius: OptionButton
+var _grab_softness: SpinBox
+var _grab_interaction: RefCounted
+var _grab_preview_resource: EmberVoxelModelResource
 var _depth: SpinBox
 var _follow_surface: CheckButton
 var _application_mode: OptionButton
@@ -117,6 +120,8 @@ var _relief_variant_button: Button
 var _relief_seed_value := 0
 var _region_select_button: Button
 var _region_label: Label
+var _clip_bounds := false
+var _clip_bounds_control: CheckBox
 var _height_limit: OptionButton
 var _buildup_rate: OptionButton
 var _smooth_strength: OptionButton
@@ -267,6 +272,8 @@ func _on_workspace_visibility_changed() -> void:
 
 
 func _process(delta: float) -> void:
+	if _grab_interaction != null:
+		_grab_interaction.tick()
 	_sync_object_name_input()
 	if is_instance_valid(_scene_context) and _scene_context.visible:
 		_context_poll += delta
@@ -299,6 +306,22 @@ func _process(delta: float) -> void:
 func _input(event: InputEvent) -> void:
 	if not is_visible_in_tree():
 		return
+	if _grab_interaction != null and _grab_interaction.active:
+		if event is InputEventMouseMotion:
+			var local_motion := event.duplicate() as InputEventMouseMotion
+			local_motion.position = _viewport_container.get_local_mouse_position()
+			_grab_interaction.handle(local_motion)
+			get_viewport().set_input_as_handled()
+			return
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+			var local_event := event.duplicate() as InputEventMouseButton
+			local_event.position = _viewport_container.get_local_mouse_position()
+			_grab_interaction.handle(local_event)
+			get_viewport().set_input_as_handled()
+			return
+		if event is InputEventKey and _grab_interaction.handle(event):
+			get_viewport().set_input_as_handled()
+			return
 	if _generator_active() and event is InputEventKey and event.pressed and not event.echo:
 		if event.is_command_or_control_pressed() and event.keycode in [KEY_Z, KEY_Y]:
 			if event.keycode == KEY_Y or event.shift_pressed:
@@ -935,6 +958,17 @@ func _build() -> void:
 	_radius.select(2)
 	_radius.item_selected.connect(func(_index: int) -> void: _on_brush_setting_changed())
 	tool_settings.add_child(_radius)
+	_grab_softness = SpinBox.new()
+	_grab_softness.name = "VoxelGrabSoftness"
+	_grab_softness.custom_minimum_size.x = 190
+	_grab_softness.prefix = "Мягкость "
+	_grab_softness.suffix = "%"
+	_grab_softness.max_value = 100
+	_grab_softness.value = 75
+	_grab_softness.tooltip_text = "Высокое значение: плавное влияние от точки захвата к краю радиуса. Низкое: более жёсткий центр."
+	_grab_softness.value_changed.connect(_on_brush_setting_changed.unbind(1))
+	_grab_softness.hide()
+	tool_settings.add_child(_grab_softness)
 	_depth = SpinBox.new()
 	_depth.name = "VoxelSculptDepth"
 	_depth.prefix = "Глубина "
@@ -1317,6 +1351,13 @@ func _build() -> void:
 	_stamp_tool_button.theme_type_variation = &"WorkshopToolButton"
 	_stamp_tool_button.pressed.connect(_open_stamp_library)
 	_tool_rail.add_child(_stamp_tool_button)
+	var bend_button := Button.new()
+	bend_button.name = "VoxelWorkshopBend"
+	bend_button.text = "⌒ Изгиб…"
+	bend_button.tooltip_text = "Гнуть выделение или весь объект, если выделения нет. Цвета и толщина сохраняются."
+	bend_button.theme_type_variation = &"WorkshopToolButton"
+	bend_button.pressed.connect(_bend_voxel_volume)
+	_tool_rail.add_child(bend_button)
 	var brushes_heading := Label.new()
 	brushes_heading.text = "КИСТИ И ФОРМА"
 	brushes_heading.modulate = Color(0.54, 0.64, 0.74)
@@ -1330,6 +1371,7 @@ func _build() -> void:
 	_tool.custom_minimum_size = Vector2(168.0, 170.0)
 	for entry in [
 		["▧ Лепка · объём", Model.TOOL_ADD],
+		["↝ Тянуть · мягко", Model.TOOL_GRAB],
 		["▣ Покраска", Model.TOOL_PAINT],
 		["◐ Материал / вода", Model.TOOL_MATERIAL],
 		["▰ Заливка уровня", Model.TOOL_SURFACE_FILL],
@@ -1421,6 +1463,8 @@ func _build() -> void:
 	_selection_interaction = preload("res://addons/ember_import/ember_voxel_selection_interaction.gd").new()
 	_viewport_container.add_child(_selection_interaction)
 	_selection_interaction.setup(self)
+	_grab_interaction = preload("res://addons/ember_import/ember_voxel_grab_interaction.gd").new()
+	_grab_interaction.setup(self)
 
 	var stamp_tab := VBoxContainer.new()
 	stamp_tab.name = "Библиотека"
@@ -1504,6 +1548,13 @@ func _build() -> void:
 	_region_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_region_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	view_tab.add_child(_region_label)
+	_clip_bounds_control = CheckBox.new()
+	_clip_bounds_control.name = "VoxelSculptClipBounds"
+	_clip_bounds_control.text = "Обрезать по границе"
+	_clip_bounds_control.button_pressed = _clip_bounds
+	_clip_bounds_control.tooltip_text = "Общее для инструментов: применять только внутри холста, области и среза. При переносе и деформации вышедшие части удаляются; Ctrl+Z возвращает их. Защита групп сохраняется."
+	_clip_bounds_control.toggled.connect(_on_clip_bounds_toggled)
+	view_tab.add_child(_clip_bounds_control)
 	_region_select_button = Button.new()
 	_region_select_button.name = "VoxelSculptRegionSelect"
 	_region_select_button.text = "Выделить участок"
@@ -1602,7 +1653,7 @@ func _show_stamp_operation(display_name: String, pattern := false) -> void:
 
 func _set_non_brush_tool_context(active: bool, keep_palette := false) -> void:
 	var controls: Array[Control] = [
-		_radius, _depth, _application_mode, _brush_shape, _follow_surface,
+		_radius, _grab_softness, _depth, _application_mode, _brush_shape, _follow_surface,
 		_volume_operation, _relief_direction, _relief_geometry, _height_limit,
 		_buildup_rate, _smooth_strength, _smooth_mode, _smooth_fill_pits,
 		_coarse, _palette, _material_preset,
@@ -1631,6 +1682,8 @@ func _switch_canvas_mode(next_mode: int, announce := false) -> void:
 	if _switching_canvas_mode:
 		return
 	_switching_canvas_mode = true
+	if _grab_interaction != null:
+		_grab_interaction.cancel()
 	if is_instance_valid(_selection_interaction) and _selection_interaction.transforming:
 		_selection_interaction.cancel_gesture(false)
 	_flush_pending_stroke_position()
@@ -1756,7 +1809,7 @@ func _on_workshop_part_selected(index: int) -> void:
 
 func _update_workshop_shell() -> void:
 	if is_instance_valid(_dirty_label):
-		_dirty_label.text = "Не сохранено" if _resource != null and has_unsaved_changes() else "Сохранено"
+		_dirty_label.text = "Черновик" if _grab_interaction != null and _grab_interaction.active else ("Не сохранено" if _resource != null and has_unsaved_changes() else "Сохранено")
 		_dirty_label.modulate = (
 			Color(1.0, 0.72, 0.30)
 			if _resource != null and has_unsaved_changes()
@@ -2106,6 +2159,27 @@ func _transform_voxel_selection() -> void:
 		return
 	_selection_interaction.begin_transform()
 
+func _bend_voxel_volume() -> void:
+	_finish_palette_gesture()
+	_finish_stroke()
+	if _resource == null or _selection_panel.busy():
+		return
+	if _selection_interaction.transforming or _selection_interaction.dragging:
+		_set_status("Сначала примените или отмените текущий жест (Enter / Esc)", true)
+		return
+	if _canvas_mode in [CanvasMode.GENERATOR, CanvasMode.STAMP_DRAFT]:
+		_set_status("Сначала сохраните или отмените результат генератора / штампа и вернитесь к лепке.", true)
+		return
+	_switch_canvas_mode(CanvasMode.BRUSH)
+	var dialog := preload("res://addons/ember_import/ember_voxel_fragment_dialog.gd").new()
+	add_child(dialog)
+	dialog.applied.connect(func(_indices: PackedInt32Array) -> void:
+		_set_status("Изгиб применён. Ctrl+Z отменяет; сохраните Canvas, чтобы записать форму."))
+	dialog.visibility_changed.connect(func() -> void:
+		if not dialog.visible:
+			dialog.queue_free())
+	dialog.open_bend(_resource, _selection_panel.selection_indices(), _actions, _edit_region_blocks, _slice_height, _clip_bounds)
+
 func _extract_voxel_selection(cut: bool) -> void:
 	_finish_palette_gesture()
 	_finish_stroke()
@@ -2364,7 +2438,7 @@ func _drain_preview_chunk() -> void:
 
 
 func _rebuild_chunk(chunk: Vector2i, draft_relief := false) -> void:
-	var preview_resource := _isolation_resource if _isolation_resource != null else _resource
+	var preview_resource := _grab_preview_resource if _grab_preview_resource != null else (_isolation_resource if _isolation_resource != null else _resource)
 	var size := preview_resource.grid_size()
 	var region_min := Vector3i(chunk.x * PREVIEW_CHUNK_SIZE, 0, chunk.y * PREVIEW_CHUNK_SIZE)
 	if region_min.x >= size.x or region_min.z >= size.z:
@@ -2496,6 +2570,7 @@ func _on_height_slice_changed(enabled: bool, height: int) -> void:
 func _slice_allows_tool(tool_id: int) -> bool:
 	return _slice_height < 0 or tool_id in [
 		Model.TOOL_ADD, Model.TOOL_REMOVE, Model.TOOL_PAINT, Model.TOOL_MATERIAL,
+		Model.TOOL_GRAB,
 	]
 
 
@@ -2679,6 +2754,9 @@ func _top_height(x: int, z: int) -> float:
 
 
 func _on_viewport_input(event: InputEvent) -> void:
+	if _grab_interaction != null and _grab_interaction.handle(event):
+		accept_event()
+		return
 	# Navigation owns RMB/MMB/wheel before a stamp or selection can consume hover
 	# motion. Tool drafts stay armed while the author changes the view.
 	if _handle_camera_input(event):
@@ -3053,7 +3131,7 @@ func _on_tool_selected(index: int) -> void:
 	_follow_surface.visible = (
 		_depth.visible and _application_kind() == BrushProfiles.APPLICATION_STROKE
 	)
-	_palette.visible = not material_tool and not surface_fill_tool
+	_palette.visible = not material_tool and not surface_fill_tool and tool_id != Model.TOOL_GRAB
 	_palette.disabled = tool_id == Model.TOOL_LOWER
 	_material_preset.visible = material_tool
 	_material_scope.visible = material_tool
@@ -3124,10 +3202,27 @@ func _on_brush_profile_changed(_index: int) -> void:
 
 
 func _load_tool_profiles() -> void:
+	if _view_store != null and _view_store.has_method("recall_clip_bounds"):
+		_clip_bounds = bool(_view_store.call("recall_clip_bounds"))
+	if is_instance_valid(_clip_bounds_control):
+		_clip_bounds_control.set_pressed_no_signal(_clip_bounds)
 	var saved := {}
 	if _view_store != null and _view_store.has_method("recall_brush_profiles"):
 		saved = _view_store.call("recall_brush_profiles") as Dictionary
 	_tool_profiles = BrushProfiles.normalize_profiles(saved)
+
+
+func _on_clip_bounds_toggled(enabled: bool) -> void:
+	if _grab_interaction != null:
+		_grab_interaction.cancel("Режим границы изменён; незавершённая тяга отменена")
+	_finish_palette_gesture()
+	_clip_bounds = enabled
+	if _view_store != null and _view_store.has_method("remember_clip_bounds"):
+		_view_store.call("remember_clip_bounds", enabled)
+	if _selection_interaction != null and _selection_interaction.transforming:
+		_selection_interaction._pending = true
+	_update_tool_help(_selected_tool_id())
+	_set_status("Обрезка включена: часть результата снаружи отсекается · Ctrl+Z возвращает её" if enabled else "Строгая граница: выход за область отменяет операцию")
 
 
 func _store_active_tool_profile() -> void:
@@ -3152,6 +3247,7 @@ func _store_active_tool_profile() -> void:
 	var radius := int(_radius.get_item_metadata(_radius.selected)) if _radius.selected >= 0 else 4
 	_tool_profiles[_active_profile_tool] = BrushProfiles.normalize_profile({
 		"radius": radius,
+		"grab_softness": _grab_softness.value,
 		"depth": int(_depth.value),
 		"coarse": _coarse.button_pressed,
 		"follow_surface": _follow_surface.button_pressed,
@@ -3180,6 +3276,7 @@ func _restore_tool_profile(base_tool: int) -> void:
 	)
 	_select_option_metadata(_radius, int(profile.radius))
 	_depth.set_value_no_signal(float(profile.depth))
+	_grab_softness.set_value_no_signal(float(profile.grab_softness))
 	_coarse.set_pressed_no_signal(bool(profile.coarse))
 	_follow_surface.set_pressed_no_signal(bool(profile.follow_surface))
 	_select_option_metadata(_application_mode, str(profile.application))
@@ -3205,6 +3302,8 @@ func _restore_tool_profile(base_tool: int) -> void:
 func _on_brush_setting_changed() -> void:
 	if _restoring_tool_profile:
 		return
+	if _grab_interaction != null:
+		_grab_interaction.cancel()
 	_flush_pending_stroke_position()
 	_finish_stroke()
 	_cancel_precision_line(false)
@@ -3355,6 +3454,8 @@ func _select_option_metadata(option: OptionButton, value: Variant) -> void:
 func _update_tool_help(tool_id: int) -> void:
 	if not is_instance_valid(_info):
 		return
+	if _grab_interaction != null and _grab_interaction.active:
+		return # Keep the live gesture / crop warning, not the idle brush help.
 	if is_instance_valid(_selection_interaction) and _selection_interaction._stamp != null:
 		var placement: int = _selection_interaction._stamp_application.selected
 		if _selection_interaction._is_pattern():
@@ -3402,6 +3503,9 @@ func _update_tool_help(tool_id: int) -> void:
 		) % [detail_text, direction_text]
 		return
 	match tool_id:
+		Model.TOOL_GRAB:
+			title = "Тянуть · мягкая деформация"
+			help = "Схватите форму ЛКМ и тяните в плоскости экрана. Отпускание применяет одним Undo; Esc отменяет. " + ("Обрезка включена: часть за границей удаляется; Ctrl+Z возвращает." if _clip_bounds else "Нужен запас в холсте; обрезку можно включить в «Части → Вид».")
 		Model.TOOL_REMOVE:
 			title = "Объём · убрать"
 			help = "Снимает фиксированную глубину внутрь видимой грани. Esc отменяет текущий жест."
@@ -3468,6 +3572,7 @@ func _update_tool_help(tool_id: int) -> void:
 	if is_instance_valid(_active_tool_label):
 		_active_tool_label.text = title
 	_info.text = help
+	_info.tooltip_text = help
 
 
 func _is_relief_tool(tool_id: int) -> bool:
@@ -3559,8 +3664,10 @@ func _update_material_scope_controls() -> void:
 	) == "connected"
 	_material_tolerance.visible = connected
 	var point_fill := tool_id == Model.TOOL_SURFACE_FILL
+	var grab := tool_id == Model.TOOL_GRAB
+	_grab_softness.visible = grab
 	_radius.visible = not connected and not point_fill
-	_coarse.visible = not connected and not point_fill
+	_coarse.visible = not connected and not point_fill and not grab
 	_depth.visible = _is_oriented_brush_tool(tool_id) and not connected
 	_application_mode.visible = _depth.visible
 	_brush_shape.visible = _depth.visible
@@ -4810,6 +4917,27 @@ func _dictionary_indices(values: Dictionary) -> PackedInt32Array:
 
 
 func _update_cursor(position: Vector2) -> void:
+	if _grab_interaction != null and _grab_interaction.active:
+		_cursor.hide()
+		return
+	if _resource != null and _selected_tool_id() == Model.TOOL_GRAB and _canvas_mode == CanvasMode.BRUSH:
+		var grab_pick := _pick_at(position)
+		if not grab_pick.has("hit"):
+			_cursor.hide()
+			return
+		var sphere := _cursor.mesh as SphereMesh
+		if sphere == null:
+			sphere = SphereMesh.new()
+			sphere.radial_segments = 16
+			sphere.rings = 8
+			_cursor.mesh = sphere
+		var brush_radius := float(_radius.get_selected_metadata()) / _resource.normalized_density()
+		sphere.radius = brush_radius
+		sphere.height = brush_radius * 2
+		_cursor.position = (Vector3(grab_pick.hit) + Vector3.ONE * 0.5) / _resource.normalized_density()
+		_cursor.scale = Vector3.ONE
+		_cursor.show()
+		return
 	if is_instance_valid(_selection_panel) and _selection_panel.active:
 		_cursor.hide()
 		_show_precision_line_preview(PackedInt32Array())
@@ -5144,6 +5272,9 @@ func _reset_pilot() -> void:
 
 
 func _save() -> bool:
+	if _grab_interaction != null and _grab_interaction.active:
+		_set_status("Сначала отпустите ЛКМ, чтобы применить деформацию, или отмените её Esc.",true)
+		return false
 	# Generator preview is not the sculpt Resource. Route every workshop Save
 	# entry point through the same explicit recipe publication transaction.
 	if _generator_active():
@@ -5291,6 +5422,8 @@ func _play_owner_scene() -> void:
 
 
 func _on_source_changed(indices: PackedInt32Array) -> void:
+	if _grab_interaction != null and not _grab_interaction.committing:
+		_grab_interaction.cancel("Модель изменилась; перетаскивание отменено.")
 	_cancel_precision_line(false)
 	_surface_normal_cache_key.clear()
 	_surface_normal_cache_value = Vector3.ZERO

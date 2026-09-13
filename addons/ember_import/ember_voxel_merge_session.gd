@@ -11,6 +11,7 @@ var preview: EmberVoxelModelResource
 var frame := Transform3D.IDENTITY
 var overlap := PackedInt32Array()
 var adjustments: Array[Dictionary] = []
+var orientation_baked := false
 var outputs: Array[Dictionary] = []
 var _scene: Node
 var _parent: Node3D
@@ -24,11 +25,14 @@ func _fail(message: String) -> bool:
 	error = message
 	return false
 
-func prepare(selection: Array, scene: Node, separating := false, align_grid := false) -> bool:
+func prepare(selection: Array, scene: Node, separating := false, align_grid := false, bake_orientation := false) -> bool:
 	error = ""
 	_inputs.clear()
 	outputs.clear()
 	adjustments.clear()
+	orientation_baked = false
+	if separating and bake_orientation:
+		return _fail("Запекание ориентации выполняется при склейке, не при разборе.")
 	_separating = separating
 	_scene = scene
 	var guard := Assembly.new()
@@ -72,13 +76,14 @@ func prepare(selection: Array, scene: Node, separating := false, align_grid := f
 		for item in result.pieces:
 			outputs.append({"source":item.source,"frame":frame*Transform3D(Basis.IDENTITY,Vector3(item.origin)/preview.normalized_density())})
 	else:
-		var result := Merge.plan(inputs,align_grid)
+		var result := Merge.plan(inputs,align_grid,bake_orientation)
 		if result.has("error"):
 			return _fail(result.error)
 		preview = result.source
 		frame = result.frame
 		overlap = result.overlap
 		adjustments.assign(result.adjustments)
+		orientation_baked = bake_orientation
 		outputs.append({"source":preview,"frame":frame})
 	return true
 
@@ -106,6 +111,8 @@ func _compatible(edit: RefCounted, prop: EmberVoxelProp) -> bool:
 	return true if compatible else _fail("У детали нестандартная геометрия, материал или коллизия. Операция не будет терять эти настройки.")
 
 func commit(undo: Object) -> bool:
+	if not error.is_empty():
+		return false # A rejected prepare must never publish or remove its inputs.
 	var guard := Assembly.new()
 	guard.source_directory = source_directory
 	if _consumed or undo == null or not guard._scene_valid(_scene) or not is_instance_valid(_parent) or _parent.global_transform != _parent_pose:

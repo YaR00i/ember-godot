@@ -22,6 +22,7 @@ const DEFAULT_STATE := {
 var _states: Dictionary = {}
 var _recent_keys: Array[String] = []
 var _brush_profiles: Dictionary = {}
+var _clip_bounds := false
 
 
 static func resource_key(resource: Resource, hinted_path: String) -> String:
@@ -101,6 +102,7 @@ func export_data() -> Dictionary:
 		"states": _states.duplicate(true),
 		"recent_keys": _recent_keys.duplicate(),
 		"brush_profiles": _brush_profiles.duplicate(true),
+		"clip_bounds": _clip_bounds,
 	}
 
 
@@ -112,12 +114,22 @@ func recall_brush_profiles() -> Dictionary:
 	return _brush_profiles.duplicate(true)
 
 
+func remember_clip_bounds(enabled: bool) -> void:
+	_clip_bounds = enabled
+
+
+func recall_clip_bounds() -> bool:
+	return _clip_bounds
+
+
 func import_data(data: Dictionary) -> void:
 	_states.clear()
 	_recent_keys.clear()
 	_brush_profiles.clear()
+	_clip_bounds = false
 	if int(data.get("version", 0)) != VERSION:
 		return
+	_clip_bounds = bool(data.get("clip_bounds", false))
 	var incoming_profiles: Variant = data.get("brush_profiles", {})
 	if incoming_profiles is Dictionary:
 		_brush_profiles = (incoming_profiles as Dictionary).duplicate(true)
