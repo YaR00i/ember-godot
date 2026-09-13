@@ -1,0 +1,45 @@
+[gd_resource type="Resource" format=3 uid="uid://gue6p68c4ucd"]
+
+[ext_resource type="Script" uid="uid://bndlx7f0sdeg3" path="res://addons/ember_import/ember_voxel_generator_recipe.gd" id="1_p2jsj"]
+
+[resource]
+resource_name = "лед 2"
+script = ExtResource("1_p2jsj")
+generator_id = "rock"
+seed = 5655366
+parameters = {
+"chips": 10,
+"crystal_base_size": 30,
+"crystal_count": 3,
+"crystal_lean": 20,
+"crystal_tip": 0,
+"crystal_variation": 40,
+"crystal_width": 20,
+"density": 16,
+"dimensions": Vector3i(64, 64, 32),
+"generation_version": 2,
+"mineral_angle": 25,
+"mineral_branching": 55,
+"mineral_color": Color(0.54509807, 0.5058824, 0.4392157, 1),
+"mineral_direction": 2,
+"mineral_irregularity": 65,
+"mineral_pattern": 0,
+"mineral_spacing": 12,
+"mineral_strength": 70,
+"mineral_vein_style": 0,
+"mineral_width": 2,
+"moss_color": Color(0.22352941, 0.29411766, 0.13725491, 1),
+"moss_coverage": 0,
+"moss_drape": 35,
+"moss_highlight_color": Color(0.31670588, 0.37882352, 0.24078432, 1),
+"moss_highlight_strength": 100,
+"moss_patch_size": 14,
+"rock_type": 3,
+"roughness": 100,
+"size_variation": 0,
+"stone_color": Color(0.09411765, 0.2, 0.30980393, 1),
+"surface_patch_size": 24,
+"surface_seed": 37,
+"surface_strength": 5,
+"variant_count": 1
+}

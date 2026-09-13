@@ -193,6 +193,8 @@ func prepare_recipe(next_recipe: Resource, title: String, update_model_id := "",
 		error = str(report.error)
 		return false
 	source = report.geometry
+	# Shared studio layout needs the exact grid for every object provider.
+	report["grid"] = source.grid_size()
 	if recipe.family_id.is_empty():
 		recipe.family_id = source.model_id
 		recipe.family_title = title
@@ -200,16 +202,16 @@ func prepare_recipe(next_recipe: Resource, title: String, update_model_id := "",
 		recipe.structure = report.structure.duplicate(true)
 	packed = EmberVoxelPrefab.prepare_resource(source)
 	report["elapsed_usec"] = Time.get_ticks_usec() - started
-	error = "" if packed != null else "Не удалось собрать точный prefab-предпросмотр дерева."
+	error = "" if packed != null else "Не удалось собрать точный prefab-предпросмотр объекта."
 	return packed != null
 
 
 func commit(root: Node, parent: Node3D, undo: Object, position: Vector3) -> EmberVoxelProp:
 	if Engine.is_editor_hint() and EditorInterface.get_edited_scene_root() != root:
-		error = "Активная сцена изменилась. Откройте создание дерева заново."
+		error = "Активная сцена изменилась. Откройте создание объекта заново."
 		return null
 	if source == null or packed == null or recipe == null or not is_instance_valid(root) or not is_instance_valid(parent):
-		error = "Сцена или подготовленное дерево больше недоступны."
+		error = "Сцена или подготовленный объект больше недоступны."
 		return null
 	var source_path := source_directory.path_join(source.model_id + ".tres")
 	var prefab_path := prefab_directory.path_join(source.model_id + ".tscn")

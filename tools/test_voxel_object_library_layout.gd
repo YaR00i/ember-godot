@@ -87,6 +87,11 @@ func _run() -> void:
 	check(panel._picker._entries.size() == panel._all_entries.size(), "all-objects filter does not restore the catalog")
 
 	panel.place_requested.connect(func(model_id: String, _anchor: Node3D) -> void: placed_id = model_id)
+	var brush_id := {"value": ""}
+	panel.brush_requested.connect(func(model_id: String) -> void: brush_id.value = model_id)
+	check(not panel._brush_button.disabled, "brush activation disabled in valid scene context")
+	panel._brush_button.pressed.emit()
+	check(brush_id.value == panel.selected_model_id(), "brush action does not retain canonical model/variation ID")
 	panel.edit_requested.connect(func(model_id: String) -> void: edited_id = model_id)
 	panel._place_button.pressed.emit()
 	check(placed_id == panel._picker.selected_id(), "primary action does not emit the selected canonical model ID")

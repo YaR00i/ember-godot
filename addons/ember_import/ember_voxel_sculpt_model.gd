@@ -1809,6 +1809,7 @@ static func generative_relief_segment_changes(
 	baseline_top_cache: Dictionary = {},
 	applied_column_cache: Dictionary = {},
 	baseline_heightfield := PackedInt32Array(),
+	facet_settings: Dictionary = {},
 ) -> Dictionary:
 	## Paints a deterministic height field anchored in model coordinates. The
 	## cache stores the strongest falloff and its resulting signed offset, so
@@ -1828,6 +1829,8 @@ static func generative_relief_segment_changes(
 	var step := 2 if coarse else 1
 	var palette_value := clampi(palette_index, 1, resource.palette.size() - 1)
 	var has_heightfield := baseline_heightfield.size() == size.x * size.z
+	var facets := style == "facets"
+	var facet_sites := {}
 	var noise := FastNoiseLite.new()
 	noise.seed = maxi(0, seed)
 	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
@@ -1835,7 +1838,7 @@ static func generative_relief_segment_changes(
 	noise.fractal_type = (
 		FastNoiseLite.FRACTAL_RIDGED if style == "ridges" else FastNoiseLite.FRACTAL_FBM
 	)
-	var light_detail := detail_octaves <= 0
+	var light_detail := detail_octaves <= 0 and not facets
 	var effective_amplitude := mini(safe_amplitude, 2) if light_detail else safe_amplitude
 	noise.fractal_octaves = clampi(detail_octaves, 1, 5)
 	noise.fractal_gain = 0.5
@@ -1859,6 +1862,9 @@ static func generative_relief_segment_changes(
 				continue
 			var normalized := clampf(sqrt(distance_squared) / float(radius), 0.0, 1.0)
 			var falloff := 1.0 - smoothstep(0.0, 1.0, normalized)
+			# Flat strength across facet interiors; blend only at the brush rim.
+			# A dome-shaped falloff would bend every polygon's plane into a hill.
+			if facets: falloff = 1.0 - smoothstep(0.8, 1.0, normalized)
 			var influence := clampi(roundi(falloff * 4096.0), 1, 4096)
 			for oz in step:
 				for ox in step:
@@ -1873,7 +1879,23 @@ static func generative_relief_segment_changes(
 					if influence <= previous_state.x:
 						continue
 					var sample := clampf(noise.get_noise_2d(float(x), float(z)), -1.0, 1.0)
-					if light_detail:
+					if facets:
+						var facet := _relief_facet_sample(Vector2(x, z), feature_scale, seed, facet_sites)
+						var anchor: Vector2i = Vector2i(facet.anchor).clamp(Vector2i.ZERO, Vector2i(size.x - 1, size.z - 1))
+						var baseline_top := int(baseline_heightfield[column_index]) if has_heightfield else _cached_column_top(baseline_values, size, x, z, column_index, baseline_top_cache)
+						var anchor_index := anchor.x + anchor.y * size.x
+						var anchor_top := int(baseline_heightfield[anchor_index]) if has_heightfield else _cached_column_top(baseline_values, size, anchor.x, anchor.y, anchor_index, baseline_top_cache)
+						if anchor_top < 0: anchor_top = baseline_top
+						var tilt := clampf(float(facet_settings.get("tilt", 60)), 0, 100) / 100.0
+						sample = (float(anchor_top - baseline_top) / safe_amplitude) + float(facet.height) + float(facet.slope) * tilt
+						var joint_width := clampf(float(facet_settings.get("joint_width", 1)), 0, 4)
+						var joint_depth := clampf(float(facet_settings.get("joint_depth", 3)), 0, 16)
+						if joint_width > 0 and float(facet.boundary) < joint_width * 0.5:
+							sample -= joint_depth / safe_amplitude
+						sample = clampf(sample, -1, 1)
+						if direction > 0: sample = maxf(0, sample)
+						elif direction < 0: sample = minf(0, sample)
+					elif light_detail:
 						# A quiet texture is deliberately sparse rather than merely
 						# single-octave: suppress the broad middle of the noise and keep
 						# only low-amplitude crests. Directed variants keep only the
@@ -1927,6 +1949,39 @@ static func generative_relief_segment_changes(
 							if before != 0:
 								changes[index] = {"before": before, "after": 0}
 	return changes
+
+
+static func _relief_facet_sample(point: Vector2, feature_scale: int, seed: int, sites: Dictionary) -> Dictionary:
+	# Jittered Voronoi cells with one stable plane per polygon. Local site cache
+	# bounds work to the brush footprint; no whole-map tessellation or new source.
+	var scale := float(clampi(feature_scale, 4, 64))
+	var cell := Vector2i((point / scale).floor())
+	var neighbours: Array[Dictionary] = []
+	var nearest: Dictionary = {}
+	var minimum := INF
+	for dz in range(-2, 3):
+		for dx in range(-2, 3):
+			var key := cell + Vector2i(dx, dz)
+			if not sites.has(key):
+				var random := RandomNumberGenerator.new()
+				random.seed = absi((maxi(0, seed) + key.x * 73856093 + key.y * 19349663) % 2147483647)
+				var position := (Vector2(key) + Vector2(random.randf_range(0.15, 0.85), random.randf_range(0.15, 0.85))) * scale
+				var angle := random.randf_range(0, TAU)
+				sites[key] = {"anchor": position, "height": random.randf_range(-0.45, 0.45), "gradient": Vector2(cos(angle), sin(angle)) * random.randf_range(0.5, 1.0)}
+			var site: Dictionary = sites[key]
+			neighbours.append(site)
+			var distance := point.distance_squared_to(site.anchor)
+			if distance < minimum:
+				minimum = distance
+				nearest = site
+	var boundary := INF
+	for site in neighbours:
+		var separation := (site.anchor as Vector2).distance_to(nearest.anchor)
+		if separation < 0.001: continue
+		boundary = minf(boundary, (point.distance_squared_to(site.anchor) - minimum) / (2.0 * separation))
+	return {"anchor": nearest.anchor, "height": nearest.height,
+		"slope": (point - (nearest.anchor as Vector2)).dot(nearest.gradient) / scale,
+		"boundary": maxf(0, boundary)}
 
 
 static func shell_relief_segment_changes(

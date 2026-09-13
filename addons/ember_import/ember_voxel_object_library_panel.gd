@@ -5,6 +5,7 @@ extends VBoxContainer
 ## previews and placement remain owned by the existing Ember systems.
 
 signal place_requested(model_id: String, anchor: Node3D)
+signal brush_requested(model_id: String)
 signal edit_requested(model_id: String)
 signal open_resource_requested(model_id: String)
 signal migrate_requested(model_id: String)
@@ -36,6 +37,7 @@ var _id_label: Label
 var _metadata_label: Label
 var _owner_label: Label
 var _place_button: Button
+var _brush_button: Button
 var _edit_button: Button
 var _more_button: MenuButton
 var _filter_buttons: Dictionary = {}
@@ -265,6 +267,16 @@ func _build() -> void:
 	_edit_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_edit_button.pressed.connect(_edit_selected)
 	details.add_child(_edit_button)
+	var brush_button := Button.new()
+	_brush_button = brush_button
+	brush_button.name = "BrushVoxelObject"
+	brush_button.text = "Расставлять кистью…"
+	brush_button.tooltip_text = "Выбрать объект один раз: клик ставит экземпляр, ведение ЛКМ — мазок. Esc выключает кисть."
+	brush_button.pressed.connect(func() -> void:
+		if _can_place and not selected_model_id().is_empty():
+			brush_requested.emit(selected_model_id())
+	)
+	details.add_child(brush_button)
 	var actions := HBoxContainer.new()
 	actions.add_theme_constant_override("separation", 6)
 	details.add_child(actions)
@@ -382,6 +394,8 @@ func _refresh_variant_details() -> void:
 	)
 	_owner_label.modulate = Color(0.50, 0.86, 0.62) if owner == "godot" else Color(0.94, 0.70, 0.38)
 	_place_button.disabled = model_id.is_empty() or not _can_place
+	if is_instance_valid(_brush_button): # Preserve old shelf instances during editor script hot-reload.
+		_brush_button.disabled = _place_button.disabled
 	_edit_button.disabled = model_id.is_empty()
 	_edit_button.text = "Перенести и редактировать" if owner == "legacy_import" else "Редактировать шаблон"
 	_edit_button.tooltip_text = (

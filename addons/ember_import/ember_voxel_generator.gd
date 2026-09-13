@@ -4,6 +4,19 @@ extends RefCounted
 ## Creation UI descriptors share the provider's normalized parameters. Adding an
 ## object provider does not require another panel, preset format or batch owner.
 static func creation_fields(generator_id: String) -> Array[Dictionary]:
+	if generator_id == ROCK:
+		var rock_fields: Array[Dictionary] = [
+			{"key": "rock_type", "title": "Форма объекта", "options": ["Валун", "Угловатый камень", "Плоская плита", "Сросток кристаллов", "Ледяные глыбы"], "identity": true},
+			{"key": "dimensions", "title": "Размеры · vox", "type": "vector3i", "min": 3, "max": Rock.OBJECT_MAX_DIMENSION},
+			{"key": "roughness", "title": "Неровность · %", "min": 0, "max": 100},
+			{"key": "chips", "title": "Сколы · %", "min": 0, "max": 100},
+			{"key": "stone_color", "title": "Цвет камня", "type": "color"},
+			{"key": "generation_version", "title": "Алгоритм · совместимость", "options": ["Прежний штамп", "Объёмные формы"], "offset": 1, "advanced": true},
+			{"key": "density", "title": "Плотность сетки", "options": ["16 vox / блок", "32 vox / блок"], "values": [16,32], "advanced": true},
+		]
+		rock_fields.append_array(Rock.cluster_fields())
+		rock_fields.append_array(Rock.Surface.fields())
+		return rock_fields
 	if generator_id != LARGE_TREE:
 		return []
 	var fields: Array[Dictionary] = [
@@ -57,6 +70,26 @@ static func creation_description(recipe: Resource) -> String:
 
 static func creation_presets(generator_id: String) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
+	if generator_id == ROCK:
+		for item in [
+			{"name": "Камни · Валун", "type": 0, "dimensions": Vector3i(24,18,21), "roughness": 35, "chips": 15},
+			{"name": "Камни · Угловатый", "type": 1, "dimensions": Vector3i(24,23,20), "roughness": 15, "chips": 40},
+			{"name": "Камни · Плоская плита", "type": 2, "dimensions": Vector3i(36,7,28), "roughness": 20, "chips": 20},
+			{"name": "Оформление · Замшелый валун", "type": 0, "dimensions": Vector3i(24,18,21), "roughness": 25, "chips": 15, "surface": {"surface_strength": 65, "moss_coverage": 65, "moss_drape": 55, "moss_highlight_color": Color("586738"), "moss_highlight_strength": 25}},
+			{"name": "Оформление · Камень с жилой", "type": 1, "dimensions": Vector3i(24,23,20), "roughness": 15, "chips": 40, "surface": {"surface_strength": 45, "mineral_pattern": 2, "mineral_vein_style": 1, "mineral_width": 2, "mineral_color": Color("8b8170")}},
+			{"name": "Оформление · Слоистая плита", "type": 2, "dimensions": Vector3i(36,9,28), "roughness": 15, "chips": 20, "surface": {"stone_color": Color("63503c"), "surface_strength": 35, "mineral_pattern": 1, "mineral_direction": 0, "mineral_spacing": 5, "mineral_width": 2, "mineral_color": Color("a1845c")}},
+			{"name": "Кристаллы · Острые сростки", "type": 3, "dimensions": Vector3i(36,40,30), "roughness": 0, "chips": 10, "surface": {"stone_color": Color("18334f"), "crystal_count": 5, "crystal_width": 9, "crystal_variation": 80, "crystal_lean": 55, "crystal_tip": 1, "crystal_base_size": 30, "surface_strength": 25, "surface_patch_size": 24}},
+			{"name": "Кристаллы · Обломанные столбы", "type": 3, "dimensions": Vector3i(32,38,28), "roughness": 0, "chips": 30, "surface": {"stone_color": Color("20415a"), "crystal_count": 4, "crystal_width": 9, "crystal_variation": 75, "crystal_lean": 65, "crystal_tip": 0, "crystal_base_size": 35, "surface_strength": 20, "surface_patch_size": 24}},
+			{"name": "Лёд · Крупные глыбы", "type": 4, "dimensions": Vector3i(40,30,34), "roughness": 0, "chips": 25, "surface": {"stone_color": Color("284e60"), "crystal_count": 3, "crystal_width": 16, "crystal_variation": 65, "crystal_lean": 35, "crystal_tip": 0, "crystal_base_size": 25, "surface_strength": 20, "surface_patch_size": 24, "mineral_pattern": 1, "mineral_direction": 0, "mineral_color": Color("527581"), "mineral_width": 2, "mineral_spacing": 9, "mineral_strength": 40}},
+		]:
+			var recipe := default_recipe(ROCK)
+			recipe.parameters.merge({"generation_version": 2, "rock_type": item.type, "dimensions": item.dimensions, "roughness": item.roughness, "chips": item.chips}, true)
+			recipe.parameters.merge(item.get("surface", {}), true)
+			if int(item.type) >= 3: recipe.parameters.crystal_base_enabled = false
+			recipe.parameters = normalized_parameters(ROCK, recipe.parameters)
+			recipe.resource_name = item.name
+			result.append({"name": item.name, "recipe": recipe})
+		return result
 	if generator_id != LARGE_TREE: return result
 	for item in [
 		{"name": "Тип · Саванна", "parameters": {"tree_type": 0, "generation_version": 14, "crown_shape": 0, "trunk_width": 8, "crown_spread": 80, "branch_thickness": 60, "branch_taper": 80, "branch_curve": 80, "cluster_size": 115, "cluster_flatten": 65, "branch_start": 38, "foliage_along": 85, "root_flare": 25}},
@@ -80,6 +113,10 @@ static func candidate_limit(recipe: Resource) -> int:
 	# Exact meshes, not lower-detail previews. Bound simultaneous CPU/GPU memory.
 	if recipe.generator_id == LARGE_TREE:
 		return 2 if int(recipe.parameters.get("height", 96)) > 128 else 4
+	if recipe.generator_id == ROCK:
+		var dimensions: Vector3i = normalized_parameters(ROCK, recipe.parameters).dimensions
+		if maxi(dimensions.x, maxi(dimensions.y, dimensions.z)) > 64: return 1
+		return 2 if maxi(dimensions.x, maxi(dimensions.y, dimensions.z)) > 48 else 4
 	return 4
 ## Registry for modular editor-only voxel content providers.
 
@@ -181,6 +218,16 @@ static func build(
 
 ## Provider capabilities and UI descriptors. The panel contains no tree math.
 static func editing_fields(recipe: Resource) -> Array:
+	if validation_errors(recipe).is_empty() and recipe.generator_id == ROCK and int(recipe.parameters.get("generation_version", 1)) == 2:
+		var fields: Array = []
+		for descriptor in creation_fields(ROCK):
+			if descriptor.get("advanced", false): continue
+			if str(descriptor.key).begins_with("crystal_") and int(recipe.parameters.get("rock_type", 0)) < 3: continue
+			var field := descriptor.duplicate(true)
+			field["label"] = field.title
+			field["group"] = field.get("section", "Форма камня")
+			fields.append(field)
+		return fields
 	if not validation_errors(recipe).is_empty() or recipe.generator_id != LARGE_TREE or int(recipe.parameters.get("generation_version", 1)) < 2:
 		return []
 	var fields: Array = [
@@ -221,6 +268,9 @@ static func freeze_structure(recipe: Resource) -> Dictionary:
 	var errors := validation_errors(recipe)
 	if not errors.is_empty():
 		return {"error": errors[0]}
+	if recipe.generator_id == ROCK and not editing_fields(recipe).is_empty():
+		# Rocks have no branching frame to freeze: seed + planes are deterministic.
+		return {"recipe": recipe.duplicate(true)}
 	if not recipe.structure.is_empty():
 		return {"recipe": recipe.duplicate(true)}
 	if editing_fields(recipe).is_empty():

@@ -5,6 +5,7 @@ extends VBoxContainer
 
 const Generator = preload("res://addons/ember_import/ember_voxel_generator.gd")
 const Creation = preload("res://addons/ember_import/ember_voxel_tree_object_creation.gd")
+const VectorField = preload("res://addons/ember_import/ember_voxel_vector_field.gd")
 
 signal preview_changed(packed: PackedScene, source: EmberVoxelModelResource)
 signal variant_created(prop: EmberVoxelProp)
@@ -100,7 +101,7 @@ func open_source(source: EmberVoxelModelResource, next_context := {}) -> bool:
 	_save_mode.select(0)
 	_variation_name.text = "Новая вариация"
 	_save_button.text = "Сохранить вариацию и поставить"
-	_info.text = "Структура закреплена. Настройки меняют её оформление.\nПредпросмотр — только рецепт; ручная лепка не переносится. Исходник не изменится."
+	_info.text = ("Seed сохранён. Настройки меняют форму и цвет камня." if recipe.generator_id == Generator.ROCK else "Структура закреплена. Настройки меняют её оформление.") + "\nПредпросмотр — только рецепт; ручная лепка не переносится. Исходник не изменится."
 	_rebuild_fields()
 	_preview_button.disabled = false
 	return true
@@ -124,7 +125,14 @@ func _rebuild_fields() -> void:
 		var label := Label.new()
 		label.text = field.label
 		_fields.add_child(label)
-		if str(field.get("type", "number")) == "bool":
+		if str(field.get("type", "number")) == "vector3i":
+			var vector := VectorField.new()
+			vector.setup(int(field.min), int(field.max))
+			vector.set_vector_value(recipe.parameters[field.key])
+			vector.value_changed.connect(func(value: Vector3i): set_parameter(field.key, value))
+			_fields.add_child(vector)
+			controls[field.key] = vector
+		elif str(field.get("type", "number")) == "bool":
 			var toggle := CheckButton.new()
 			toggle.button_pressed = bool(recipe.parameters[field.key])
 			toggle.toggled.connect(func(value: bool): set_parameter(field.key, value))
@@ -154,17 +162,38 @@ func _rebuild_fields() -> void:
 			value.value_changed.connect(func(number: float): set_parameter(field.key, int(number)))
 			_fields.add_child(value)
 			controls[field.key] = value
+	_sync_rock_fields()
 	_syncing = false
+
+
+func _sync_rock_fields() -> void:
+	if recipe.generator_id != Generator.ROCK: return
+	if controls.has("dimensions"):
+		controls.dimensions.set_axis_maximum(Generator.Rock.dimension_limits(recipe.parameters))
+		controls.dimensions.set_vector_value(recipe.parameters.dimensions)
+		controls.dimensions.tooltip_text = "Максимум сетки — 524 288 ячеек, включая округление X/Z до блока."
+	if controls.has("crystal_base_size"):
+		controls.crystal_base_size.editable = bool(recipe.parameters.crystal_base_enabled)
+	for field in Generator.Rock.Surface.fields():
+		if not controls.has(field.key): continue
+		var control: Control = controls[field.key]
+		var enabled := Generator.Rock.Surface.field_enabled(str(field.key), recipe.parameters)
+		if control is SpinBox: control.editable = enabled
+		elif control is BaseButton: control.disabled = not enabled
+		control.tooltip_text = str(field.title)
 
 
 func set_parameter(key: String, value: Variant) -> void:
 	if _syncing or recipe == null or not controls.has(key):
 		return
-	if recipe.parameters[key] == value and not (key == "foliage_style" and Generator.LargeTreeProvider.FoliagePattern.needs_style_upgrade(recipe.parameters, int(value))): return
+	if recipe.parameters[key] == value and not (recipe.generator_id == Generator.ROCK and Generator.Rock.Surface.needs_vein_upgrade(recipe.parameters, key, value)) and not (key == "foliage_style" and Generator.LargeTreeProvider.FoliagePattern.needs_style_upgrade(recipe.parameters, int(value))): return
 	var before: Variant = recipe.parameters[key]
 	history.create_action("Параметр генератора: " + key)
 	history.add_do_method(_assign.bind(key, value))
 	history.add_undo_method(_assign.bind(key, before))
+	if recipe.generator_id == Generator.ROCK and key == "mineral_pattern" and int(value) == 2:
+		history.add_do_method(_assign.bind("mineral_vein_style", 1))
+		history.add_undo_method(_assign.bind("mineral_vein_style", recipe.parameters.get("mineral_vein_style", 0)))
 	if key == "foliage_style" and int(value) == 3:
 		history.add_do_method(_assign.bind("foliage_cloud_version", 2))
 		history.add_undo_method(_assign.bind("foliage_cloud_version", recipe.parameters.get("foliage_cloud_version", 1)))
@@ -197,7 +226,9 @@ func _sync_controls() -> void:
 	if changed: _rebuild_fields()
 	_syncing = true
 	for key in controls:
-		if controls[key] is ColorPickerButton:
+		if controls[key] is VectorField:
+			controls[key].set_vector_value(recipe.parameters[key])
+		elif controls[key] is ColorPickerButton:
 			controls[key].color = recipe.parameters[key]
 		elif controls[key] is CheckButton:
 			controls[key].button_pressed = bool(recipe.parameters[key])
@@ -205,6 +236,7 @@ func _sync_controls() -> void:
 			controls[key].select(int(recipe.parameters[key]))
 		else:
 			controls[key].value = recipe.parameters[key]
+	_sync_rock_fields()
 	_syncing = false
 
 

@@ -2159,3 +2159,208 @@ save/reopen и возврат лидера. Для безопасных captures
 точная причина, что уже доказано и какое ручное действие осталось. Ошибка в
 неизменённой подсистеме не скрывается, но отделяется от regressions текущего
 среза доказательством baseline.
+## Гранёный рельеф — 13 сентября2026 (user visual accepted; runtime walk open)
+
+User accepted2026-09-13: «неплохо, мне нравится», reported all checks done.
+Editor visual acceptance recorded; actual player walk over facets was not
+explicitly confirmed, so physics/manual runtime gate is not silently closed.
+Git checkpoint repeat:15 current generation/sculpt/brush suites +test_test_pier,
+test_voxel_prefab_rebuild,test_scene_edit_roundtrip PASS (18 total). Logs retained
+as Temp/*-generation-checkpoint.log; fan_town UID fallback warnings remain.
+
+test_voxel_faceted_relief PASS: deterministic seeded Voronoi planes, tilt/width/
+depth controls, width0 disables grooves, directional and amplitude limits,
+linear planes +constant flat heights inside brush plateau, edge clipping,
+coarse/exact segment density equivalence and no revisit accumulation.
+Workspace actual initial surface picking → existing generative segment route →
+commit, one Undo/Redo, canonical save/reopen, cancel/discard, region clipping;
+editor-only profile normalize/clamp/export/import/tool rail restoration without
+dirtying source. Fixtures user://, no authored maps/models rewritten.
+Five related suites PASS: voxel_surface_sculpt, surface_canvas_workflow,
+voxel_workshop_layout, voxel_tools_backend, surface_height_slice.
+An initial suite list named nonexistent test_voxel_brush_profiles; runner
+stopped there, corrected final list includes the actual6 suites. No test invented.
+
+Native --script tools/test_voxel_faceted_relief.gd --rendering-method forward_plus
+only in disposable ember-generation-smoke-*; facet-native-ui.log EXIT0/PASS,
+Vulkan Forward+ RTX5070. user://faceted_relief_native.png personally viewed;
+labels unclipped at1440×900, plateau planes/voxel stairs/grooves visible.
+First art capture used compatibility _activate_tool_id (forces buildup);
+fixture now restores the actual tool rail profile and checks generator mode.
+First prefix controls clipped text; explicit minimum widths fixed before final capture.
+Radius32 math~80–90ms; density32 4×4 with baseline heightfield~190–207ms.
+These are not complete runtime input/remesh/physics performance acceptance.
+
+Manual: ordinary Canvas → Рельеф → Генератор → Характер · грани; selected colour,
+scale16/32, height8/12, tilt0/60, width0/1/2, depth0/3/6 and variant button.
+Draw actual continuous/repeated/adjacent strokes on a disposable map, check
+recognisable broad planes, boundaries/masks, Undo/Redo, save/reopen/discard and
+runtime physical support. No cosmic colour/glass/glow/low-poly shader implemented.
+
+## Кристаллы и лёд — 13 сентября2026 (manual art acceptance open)
+
+No-platform/large-size follow-up: extended crystal suite PASS. New presets have
+crystal_base_enabled=false; missing=true reproduces old voxels. Toggle changes
+footprint; disabled size is inert; disjoint8 prisms retain >2x central volume.
+All rock types build at32×128×32; crystal64×128×64,256×32×64,32×256×32 validate.
+Density-aware limits, >64 preview limit1, over-budget256³ rejected pre-allocation;
+over-budget candidate Apply leaves source unchanged and reports524288 limit.
+Studio bool+size gating/Undo, candidate large draft+Apply/neighbour reload,
+source/recipe/preset save/reopen80-voxel height and saved Canvas toggle/Undo/discard.
+Crystal measured extended forms about0.13–0.33с before remesh (not a general upper bound).
+8 related regressions PASS; native follow-up crystal-footing-verify.log PASS;
+fixture exercises footing Apply/Undo/Redo and saved large128-height
+preparation/remesh/discard. No-platform capture personally viewed.
+
+tools/test_voxel_crystal_objects.gd PASS: all morphology controls affect occupancy
+for pointed/broken/ice presets; surface seed does not change form; source remains
+opaque/no glow; extreme3³/count8/width20/lean100/base0/chips100 at density16/32;
+normalization,64³/8 prisms build~948ms before remesh +bounded working set2.
+Common studio type selector shows/hides cluster settings +Undo; count input
+Undo/Redo; batch, candidate draft/discard/isolated Apply +exact geometry Undo/Redo;
+library publication exact palette/voxels and all recipe params reopen;
+custom preset, canonical saved reload; saved Canvas controls/preview/draft
+Undo/Redo/discard with source SHA unchanged. Fixtures only user://.
+Expanded rock suite:9 presets each8/8 diverse/repeatable/connected/grounded/schema;
+old voxel_generator/generation_session/generator_editing/workshop_generator_save/
+object_library_layout/object_brush/stamp PASS (9 total suites including crystals).
+
+Existing native editor_test_voxel_generation.gd -- --rocks-only --crystals
+only in disposable ember-generation-smoke-*; initial PASS: actual three presets,
+batch distinct seeds, dimensions/chips +cluster count discard/lean Apply/Undo/Redo,
+publication/full recipe reopen, saved Canvas cluster controls/discard/comparison.
+Capture user://generation_crystals_native.png personally viewed (initial and final forms).
+Art tune increases lean and lowers ice footing; first retest ended at stage=ready
+without completion/error in crystals-native-accept.log; not counted as PASS.
+Initial successful log crystals-native.log; final retest crystals-native-verify.log
+completed editor_test_voxel_rock_objects: PASS after art tune.
+Existing isolated UID duplicate/fallback/scan-aborted warnings remain.
+Initial development parse/type errors were fixed before targeted PASS; no author
+assets/scenes edited and no headless --editor in main checkout.
+
+Manual next: Генерация → Камни → three crystal/ice presets; different seeds,
+count/width/variation/lean/tips/base, ensure recognisable groups not identical
+spikes; publish → scene → Canvas/recipe/save/reopen/Undo/discard. Shader/glass/glow
+not implemented; faceted landscape has its separate agreed slice above.
+
+## Оформление камней — 13 сентября2026 (ручная визуальная приёмка открыта)
+
+Refinement gates: old moss missing fields reproduces12% highlight; strength0
+produces no index6 and palette5==6; explicit accent colour at100 exact,25 lerp;
+new style1 repeat determinism, irregularity/branching/style visible effect with
+exact occupancy; vein controls do not change accepted layer indices. Max64³
+branched dressing separately measured (ROCK_64_VEIN_BUILD_MS). Studio/candidate/
+saved Canvas new fields +disabled accent colour at0, explicit same-mode vein
+upgrade, style Undo/Redo/discard, saved accent exact preview and recipe reopen.
+Related suites are the same seven below. Native --rocks-only --rock-surfaces
+adds actual moss accent colour/zero/Undo/Redo and vein irregularity Apply/Undo;
+logs rocks-refine-native.log /rocks-refine-final.log /rocks-refine-accept.log
+in isolated Temp project.8 suites PASS; final rock log
+Temp/test_voxel_rock_objects-refinement-accept.log: plain796ms, layers+moss1180ms,
+new vein+moss1399ms before remesh. Branch count leaves main phase/pockets fixed.
+New screenshot remains generation_rock_surfaces_native.png; warnings same cache.
+Manual next: compare new presets, set moss accent0 then arbitrary accent colour,
+adjust vein width/irregularity/branches +surface_seed, save/reopen. User accepted
+layers/ice-like slabs, new moss/vein acceptance pending. No shader change.
+
+Expanded tools/test_voxel_rock_objects.gd PASS: шесть presets (три plain, три
+оформленных),8/8 distinct на каждый preset; bare-vs-dressed occupancy exact,
+channels unchanged, deterministic independent surface_seed; patches/layers/vein/
+moss/combinations, every surface parameter effect, moss excludes bottom,
+normalization/tiny extreme3³ density16/32, legacy body preserved. Max64³ build
+около0.8с plain /1.2с dressing (не полный mesh/publish benchmark).
+Общий studio: disabled inert layer controls, isolated surface draft/Apply/
+Undo/Redo without shape/other candidate change; chosen publication +full recipe
+and exact palette/voxel save/reopen; custom preset, canonical saved reload;
+saved Canvas surface fields/draft Undo/Redo/discard/preview; derived mesh colours
+match canonical palette within byte quantization<=1/255,>=3 visible tints.
+Fixture initial exact-float mesh assertion failed because ArrayMesh quantizes
+vertex colors; fixed tolerance without changing renderer or palette. Final probe
+prints max palette error. Fixtures only user://, author maps unchanged.
+
+Related PASS: voxel_generator, generation_session, generator_editing,
+workshop_generator_save, object_library_layout, object_brush, voxel_stamp.
+Native existing editor_test_voxel_generation.gd -- --rocks-only --rock-surfaces
+in Temp/ember-generation-smoke-20260912 PASS: actual studio/provider/presets,
+three dressed families, distinct shape seeds, independent surface Apply +exact
+occupancy, Undo/Redo, publication/reopen, saved contextual discard, comparison,
+return to trees retains six records. Personally viewed Forward+ capture:
+user://generation_rock_surfaces_native.png (moss/vein/layered plate).
+Logs rocks-surfaces-native.log and rocks-surfaces-final.log in isolated project.
+Existing UID duplicate/fallback +scan-aborted-on-exit warnings; not clean lifecycle.
+
+Manual: библиотека → Генерация → Камни → presets «Оформление»; оценить рисунок
+на разных размерах/сидах и в свете карты. Настроить каждый слой отдельно и вместе;
+менять только surface_seed, силуэт должен остаться; Apply/Undo/Redo/discard;
+сохранить выбранный → библиотека/сцена → Canvas/рецепт → переоткрыть. Ручные
+sculpt edits не должны быть перезаписаны recipe preview. Пользователь подтвердил
+первый rock workflow «работает», не новую визуальную приёмку покрытия.
+
+## Камни в мастерской генерации — 13 сентября2026 (первый workflow подтверждён)
+
+`tools/test_voxel_rock_objects.gd` первоначальный PASS: три presets, old/new normalization bounds,
+8/8 unique geometries на каждую форму, repeat determinism, connectivity,
+ground contact, schema/palette и mesh vertex colors, measured max64³ build,
+bounded candidate working set. Общий panel: provider/field rebuild, XYZ vector
+input+Undo/Redo, batch, индивидуальный draft/discard/Apply+geometry Undo/Redo,
+published color/dimensions/type/seed recipe reopen, custom preset без family/
+structure, canonical saved reload, saved Canvas recipe exact preview без source
+write (SHA), archive/favorites retain, provider-switch Undo/Redo, отказ в
+cross-provider revision, legacy load без upgrade и explicit same-type opt-in v2.
+Все fixtures в user://; авторские сцены/исходники не перезаписываются.
+Related PASS: voxel_generator, generation_session, generator_editing,
+workshop_generator_save, object_library_layout, object_brush, voxel_stamp.
+
+Opt-in native editor fixture: `tools/editor_test_voxel_generation.gd`
+с user arg `--rocks-only`, только в disposable ember-generation-smoke-*.
+Vulkan Forward+ RTX5070 PASS: реальная library Generation button/главный plugin,
+provider selector/presets, партии всех3 форм, distinct seeds, VectorField draft/
+discard, individual Apply/Undo/Redo, publish+recipe reopen, comparison3 форм,
+return to trees с сохранением6 archive records. Captures:
+user://generation_rocks_native.png и generation_rocks_ui_native.png просмотрены.
+Logs Temp/ember-generation-smoke-20260912/rocks-native*.log; есть старые UID
+duplicate/fallback warnings и scan-aborted на exit. Не заявлять clean lifecycle.
+64³ build около0.8с; >48 max2 candidates, otherwise4; cancel между candidates.
+
+Manual gate: библиотека → «Генерация…» → «Камни» → каждый из3 presets;
+сгенерировать несколько seeds и оценить узнаваемость форм/разнообразие.
+Изменить XYZ, сколы, неровность, цвет → настройки партии и выбранного камня
+независимы. Apply/Undo/Redo/discard; сохранить лучший в библиотеку, открыть Canvas,
+вернуться к деревьям, найти тот же камень и расставить scene object brush.
+Save/reopen карты — экземпляры/ориентация остаются; рецепт/пользовательский preset
+сохраняет тип, XYZ, цвет, seed и параметры. Старый stamp recipe не мигрируется
+при загрузке, явный выбор формы включает v2. Шейдеры/рисунок/кусты ещё вне среза.
+
+## Scene object placement brush — 13 сентября2026 (ручная приёмка открыта)
+
+Пользователь2026-09-13 проверил кисть в редакторе: «ок, работает».
+Базовый workflow подтверждён; это не отдельное подтверждение каждого пункта
+ниже. Save/reopen и полный набор переключений остаются ручными gates.
+
+Headless `tools/test_voxel_object_brush.gd`: canonical fixture в user://,
+фактический bottom pivot/scale/yaw/bury, transformed parent, preview ≠ scene edit,
+preview excluded from PackedScene, unique batch IDs/scene owner, pointer-up batch,
+sticky template, один Undo и Redo после смены контекста, save/reopen transforms,
+source SHA unchanged, cancel/Esc/256 cap, event-independent spacing carry,
+real elevated StaticBody ray и no-hit без y=0 fallback — PASS.
+Related PASS: voxel_placement, placement_preview, object_library_layout,
+object_library_updates, scene_assembly, object_split, object_canvas.
+Library layout также проверяет отдельный brush signal с выбранным model ID.
+
+Native editor probe в отдельном Temp/ember-generation-smoke-20260912:
+Vulkan Forward+ RTX5070, plugin input route + native settings/SpinBox bindings,
+hover/drag ghosts (до release ноль instances), pointer-up три instances на y=8,
+sticky brush, настоящий EditorUndoRedoManager undo/redo, camera pass и Esc PASS.
+Лог brush-native.log; user://object-brush-native-preview.png / commit.png
+просмотрены. Это автоматический editor input/render fixture, не ручной мазок
+на пользовательской карте. Disposable cache выдаёт UID duplicate/fallback
+warnings и scan-aborted при выходе; zero-warning lifecycle не заявляется.
+
+Ручной gate: библиотека → выбрать доску/камень/дерево → «Расставлять кистью…»;
+изменить шаг/Y/масштаб/заглубление → клик и мазок на земле, затем на настиле.
+Объект больше не требуется выбирать повторно, preview соответствует result.
+Ctrl+Z/Redo — весь мазок, Save/reopen — реальные экземпляры и их ориентация.
+ПКМ/СКМ/Alt не расставляют объекты; Esc выключает. Начать мазок и уйти за
+поверхность/окно — незавершённые ghosts исчезают без scene edits.
+После выключения возвращается обычное выделение. Проверить выбор другого
+шаблона, переключение Surface/Battlefield/Walk Surface tools и открытие Canvas.

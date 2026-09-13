@@ -17,6 +17,7 @@ var error := ""
 var _remaining := 0
 var _family_id := ""
 var _family_title := ""
+var _family_provider := ""
 var _serial := 0
 var _candidate_serial := 0
 var batch_number := 0
@@ -79,9 +80,10 @@ func step() -> Dictionary:
 		error = creation.error
 		running = false
 		return {}
-	if _family_id.is_empty() or _family_title != _batch_title:
+	if _family_id.is_empty() or _family_title != _batch_title or _family_provider != recipe.generator_id:
 		_family_id = creation.source.model_id
 		_family_title = _batch_title
+		_family_provider = recipe.generator_id
 		_serial = 0
 	creation.recipe.family_id = _family_id
 	creation.recipe.family_title = _family_title
@@ -107,6 +109,7 @@ func clear() -> void:
 	candidates.clear()
 	_family_id = ""
 	_family_title = ""
+	_family_provider = ""
 	_serial = 0
 	_candidate_serial = 0
 	batch_number = 0
@@ -180,6 +183,9 @@ func prepare_revision(candidate: Dictionary, next_recipe: Resource) -> RefCounte
 	error = ""
 	if running or candidate.is_empty() or candidate.saved or bool(candidate.get("publication_locked", false)):
 		error = "Настройка доступна для несохранённого варианта после окончания генерации."
+		return null
+	if next_recipe.generator_id != candidate.creation.recipe.generator_id:
+		error = "Другой тип объекта создаётся новой партией; выбранный вариант не заменён."
 		return null
 	var creation := Creation.new()
 	creation.source_directory = source_directory

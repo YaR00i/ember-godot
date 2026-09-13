@@ -4,6 +4,11 @@ extends VBoxContainer
 const Generator = preload("res://addons/ember_import/ember_voxel_generator.gd")
 const Session = preload("res://addons/ember_import/ember_voxel_generation_session.gd")
 const Presets = preload("res://addons/ember_import/ember_voxel_generator_presets.gd")
+const VectorField = preload("res://addons/ember_import/ember_voxel_vector_field.gd")
+const PROVIDERS := [Generator.LARGE_TREE, Generator.ROCK]
+var _provider: OptionButton
+var _creation_fields: VBoxContainer
+var _fields_provider := ""
 signal assets_changed(model_id: String)
 signal edit_requested(model_id: String)
 signal close_requested
@@ -59,7 +64,7 @@ func _ready() -> void:
 	var head := HBoxContainer.new()
 	add_child(head)
 	var label := Label.new()
-	label.text = "Мастерская генерации · Дерево"
+	label.text = "Мастерская генерации · Объекты"
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(label)
 	_button(head, "Открыть вкладку 3D", func(): studio_requested.emit())
@@ -79,6 +84,12 @@ func _ready() -> void:
 	var batch_label := Label.new()
 	batch_label.text = "СОЗДАНИЕ · НАСТРОЙКИ НОВОЙ ПАРТИИ"
 	_fields.add_child(batch_label)
+	_provider = OptionButton.new()
+	_provider.name = "GenerationObjectType"
+	_provider.add_item("Деревья")
+	_provider.add_item("Камни")
+	_provider.item_selected.connect(_select_provider)
+	_fields.add_child(_provider)
 	_preset = OptionButton.new()
 	_preset.item_selected.connect(_use_preset)
 	_fields.add_child(_preset)
@@ -95,13 +106,15 @@ func _ready() -> void:
 	preset_save.hide()
 	preset_toggle.toggled.connect(func(value: bool): preset_save.visible = value)
 	_title = LineEdit.new()
-	_title.text = "Большое лиственное дерево"
+	_title.text = "Дерево"
 	_title.max_length = 160
 	_title.tooltip_text = "Название семейства. Другое название начинает новое семейство; отмеченные прежние варианты остаются."
 	_fields.add_child(_title)
 	recipe = Generator.default_recipe(Generator.LARGE_TREE)
+	_creation_fields = VBoxContainer.new()
+	_fields.add_child(_creation_fields)
 	for field in Generator.creation_fields(recipe.generator_id):
-		if not field.get("advanced", false): _make_field(_fields, field)
+		if not field.get("advanced", false): _make_field(_creation_fields, field)
 	var advanced_toggle := CheckButton.new()
 	advanced_toggle.text = "Дополнительные настройки"
 	_fields.add_child(advanced_toggle)
@@ -111,6 +124,7 @@ func _ready() -> void:
 	advanced_toggle.toggled.connect(func(value: bool): _advanced.visible = value)
 	for field in Generator.creation_fields(recipe.generator_id):
 		if field.get("advanced", false): _make_field(_advanced, field)
+	_fields_provider = recipe.generator_id
 	_seed = _number(_fields, "Начальный seed", 0, 2147483647, 1)
 	_seed.value_changed.connect(func(value: float):
 		if _syncing or recipe.seed == int(value): return
@@ -191,8 +205,8 @@ func _ready() -> void:
 	edit_box.add_child(edit_history)
 	_button(edit_history, "↶ Изменения", undo_local)
 	_button(edit_history, "↷", redo_local)
-	_button(edit_box, "Настройки дерева → новая партия", _candidate_to_batch)
-	_button(edit_box, "Новый каркас из настроек партии", regenerate_candidate)
+	_button(edit_box, "Настройки объекта → новая партия", _candidate_to_batch)
+	_button(edit_box, "Пересобрать из настроек партии", regenerate_candidate)
 	_sync_candidate_controls()
 	_sync_controls()
 	_reload_presets()
@@ -226,6 +240,19 @@ func _number(parent: Node, title: String, low: float, high: float, value: float)
 
 func _make_field(parent: Node, field: Dictionary, candidate_field := false) -> void:
 	var key := str(field.key)
+	var cluster_wrapper: VBoxContainer
+	if key.begins_with("crystal_"):
+		cluster_wrapper = VBoxContainer.new()
+		parent.add_child(cluster_wrapper)
+		parent = cluster_wrapper
+	if field.get("heading", false):
+		var heading := Label.new()
+		heading.text = str(field.section).to_upper()
+		parent.add_child(heading)
+	if field.has("section") and field.has("options"):
+		var label := Label.new()
+		label.text = str(field.title)
+		parent.add_child(label)
 	var control: Control
 	if field.has("options"):
 		var option := OptionButton.new()
@@ -240,6 +267,12 @@ func _make_field(parent: Node, field: Dictionary, candidate_field := false) -> v
 		parent.add_child(toggle)
 		toggle.toggled.connect(func(value: bool): _field_changed(key, value, candidate_field))
 		control = toggle
+	elif str(field.get("type", "")) == "vector3i":
+		var vector := VectorField.new()
+		vector.setup(int(field.min), int(field.max))
+		parent.add_child(vector)
+		vector.value_changed.connect(func(value: Vector3i): _field_changed(key, value, candidate_field))
+		control = vector
 	elif str(field.get("type", "")) == "color":
 		var color := ColorPickerButton.new()
 		color.text = str(field.title)
@@ -251,6 +284,7 @@ func _make_field(parent: Node, field: Dictionary, candidate_field := false) -> v
 		var spin := _number(parent, str(field.title), field.min, field.max, 0)
 		spin.value_changed.connect(func(value: float): _field_changed(key, int(value), candidate_field))
 		control = spin
+	if cluster_wrapper != null: control.set_meta("rock_cluster_wrapper", cluster_wrapper)
 	if candidate_field: candidate_controls[key] = control
 	else: controls[key] = control
 
@@ -263,11 +297,13 @@ func _field_changed(key: String, value: Variant, candidate_field: bool) -> void:
 func _change_parameter(key: String, value: Variant) -> void:
 	if _syncing: return
 	# Explicit type choice uses today's profile; opening saved recipes does not.
-	if recipe.parameters.get(key) == value and not (key == "tree_type" and int(recipe.parameters.generation_version) != int(Generator.LargeTreeProvider.LATEST_VERSIONS[int(value)])) and not (key == "foliage_style" and Generator.LargeTreeProvider.FoliagePattern.needs_style_upgrade(recipe.parameters, int(value))): return
+	if recipe.parameters.get(key) == value and not (recipe.generator_id == Generator.ROCK and Generator.Rock.Surface.needs_vein_upgrade(recipe.parameters, key, value)) and not (key == "rock_type" and int(recipe.parameters.generation_version) != 2) and not (key == "tree_type" and int(recipe.parameters.generation_version) != int(Generator.LargeTreeProvider.LATEST_VERSIONS[int(value)])) and not (key == "foliage_style" and Generator.LargeTreeProvider.FoliagePattern.needs_style_upgrade(recipe.parameters, int(value))): return
 	var next := recipe.duplicate(true)
 	next.parameters[key] = value
+	if next.generator_id == Generator.ROCK and key == "mineral_pattern" and int(value) == 2: next.parameters.mineral_vein_style = 1
 	# A new type choice opts into its latest form; loading old recipes does not.
 	if key == "tree_type": next.parameters.generation_version = Generator.LargeTreeProvider.LATEST_VERSIONS[int(value)]
+	if key == "rock_type": next.parameters.generation_version = 2
 	if key == "tree_type" and int(next.parameters.foliage_style) == 2 and not Generator.LargeTreeProvider.FoliagePattern.supports_style(next.parameters, 2):
 		next.parameters.foliage_style = 0
 	if key == "foliage_style" and int(value) == 1 and int(recipe.parameters.get("foliage_style", 0)) == 1 and int(recipe.parameters.get("foliage_pattern_version", 1)) < 2:
@@ -288,6 +324,8 @@ func _change_recipe(next: Resource) -> void:
 
 func _apply_recipe(next: Resource) -> void:
 	recipe = next.duplicate(true)
+	if _fields_provider != recipe.generator_id and _title.text in ["Дерево", "Камень"]:
+		_title.text = "Камень" if recipe.generator_id == Generator.ROCK else "Дерево"
 	_sync_controls()
 	_status.text = "Настройки для следующего прохода. Уже собранные варианты не меняются."
 
@@ -295,14 +333,35 @@ func _apply_recipe(next: Resource) -> void:
 func _sync_controls() -> void:
 	if recipe == null: return
 	_syncing = true
+	if _fields_provider != recipe.generator_id:
+		for container in [_creation_fields, _advanced]:
+			for child in container.get_children():
+				container.remove_child(child)
+				child.queue_free()
+		controls.clear()
+		for descriptor in Generator.creation_fields(recipe.generator_id):
+			_make_field(_advanced if descriptor.get("advanced", false) else _creation_fields, descriptor)
+		_fields_provider = recipe.generator_id
+		_reload_presets()
+	_provider.select(PROVIDERS.find(recipe.generator_id))
 	for field in Generator.creation_fields(recipe.generator_id):
 		var control: Control = controls[field.key]
 		var value: Variant = recipe.parameters.get(field.key)
 		control.set_block_signals(true)
-		if control is SpinBox: control.value = value
+		if control is VectorField:
+			if recipe.generator_id == Generator.ROCK:
+				control.set_axis_maximum(Generator.Rock.dimension_limits(recipe.parameters))
+				control.tooltip_text = "Максимум сетки — 524 288 ячеек, включая округление X/Z до блока. Высота зависит от плотности."
+			control.set_vector_value(value)
+		elif control is SpinBox: control.value = value
 		elif control is ColorPickerButton: control.color = value
 		elif control is CheckButton: control.button_pressed = bool(value)
 		elif control is OptionButton: control.select(field.values.find(value) if field.has("values") else int(value) - int(field.get("offset", 0)))
+		if field.key == "stone_color":
+			control.disabled = int(recipe.parameters.generation_version) == 1
+			control.tooltip_text = "Цвет прежнего штампа задавался кистью. Выберите форму камня для нового алгоритма." if control.disabled else "Цвет камня сохраняется вместе с рецептом."
+		if recipe.generator_id == Generator.ROCK and field.has("section"):
+			_sync_rock_field(control, str(field.key), recipe.parameters)
 		if field.key == "tree_type" and control is OptionButton:
 			for index in field.options.size(): control.set_item_text(index, field.options[index])
 			if int(recipe.parameters.generation_version) != int(Generator.LargeTreeProvider.LATEST_VERSIONS[int(value)]):
@@ -331,15 +390,43 @@ func _sync_controls() -> void:
 	_syncing = false
 
 
+func _select_provider(index: int) -> void:
+	if _syncing: return
+	if _busy() or not _draft_resolved():
+		_provider.select(PROVIDERS.find(recipe.generator_id))
+		return
+	var id: String = PROVIDERS[index]
+	if recipe.generator_id == id: return
+	var next: Resource = Generator.creation_presets(id)[0].recipe.duplicate(true)
+	_change_recipe(next)
+	_title.text = "Камень" if id == Generator.ROCK else "Дерево"
+	_status.text = "Новая партия: %s. Готовые варианты и избранное не изменены." % _provider.get_item_text(index)
+
+
+func _sync_rock_field(control: Control, key: String, parameters: Dictionary) -> void:
+	if key.begins_with("crystal_"):
+		if key == "crystal_base_size" and control is SpinBox:
+			control.editable = bool(parameters.crystal_base_enabled)
+		control.tooltip_text = "Элементы ограничены размерами XYZ; широкие призмы могут сливаться в общий объём."
+		if control.has_meta("rock_cluster_wrapper"):
+			(control.get_meta("rock_cluster_wrapper") as Control).visible = int(parameters.rock_type) >= 3 and int(parameters.generation_version) == 2
+		return
+	var enabled := Generator.Rock.Surface.field_enabled(key, parameters)
+	if control is SpinBox: control.editable = enabled
+	elif control is BaseButton: control.disabled = not enabled
+	control.tooltip_text = "Настройка активна для включённого слоя оформления и выбранного направления."
+	if int(parameters.generation_version) == 1: control.tooltip_text = "Выберите форму камня для нового алгоритма."
+
+
 func open_for(next_context: Dictionary, base_recipe: Resource = null) -> void:
 	close_session()
 	context = next_context
 	suspended = false
 	recipe = Session.preset_recipe(base_recipe) if base_recipe != null else Generator.creation_presets(Generator.LARGE_TREE)[0].recipe.duplicate(true)
-	_title.text = str(base_recipe.family_title) if base_recipe != null and not str(base_recipe.family_title).is_empty() else "Дерево"
+	_title.text = str(base_recipe.family_title) if base_recipe != null and not str(base_recipe.family_title).is_empty() else ("Камень" if recipe.generator_id == Generator.ROCK else "Дерево")
 	_sync_controls()
 	_reload_presets()
-	_status.text = "Мастерская 3D: номера над деревьями совпадают со списком. Настройки партии — слева, выбранного дерева — справа."
+	_status.text = "Мастерская 3D: номера над объектами совпадают со списком. Настройки партии — слева, выбранного объекта — справа."
 
 
 func _reload_presets() -> void:
@@ -499,7 +586,7 @@ func _build_next() -> void:
 	recipe.seed = session.next_seed
 	_sync_controls()
 	_rebuild_candidates()
-	_status.text = session.error if not session.error.is_empty() else "%s %d/%d · всего %d в 3D. Отметьте лучшие; новые настройки не меняют готовые деревья." % [
+	_status.text = session.error if not session.error.is_empty() else "%s %d/%d · всего %d в 3D. Отметьте лучшие; новые настройки не меняют готовые объекты." % [
 		"Собрано" if session.running else "Готово", session.requested - session._remaining, session.requested, session.preview_ids.size()]
 	_generate.disabled = session.running
 	_cancel.disabled = not session.running
@@ -633,7 +720,7 @@ func _select_preview(candidate: Dictionary) -> void:
 	EditorInterface.get_selection().clear()
 	EditorInterface.get_selection().add_node(candidate.node)
 	_selecting_preview = false
-	_status.text = "Выбрано дерево № %d. Справа — только его параметры. F в 3D — центрировать, колесо — масштаб." % candidate.number
+	_status.text = "Выбран объект № %d. Справа — только его параметры. F в 3D — центрировать, колесо — масштаб." % candidate.number
 
 
 func _select_all_previews() -> void:
@@ -723,7 +810,7 @@ func _draft_dirty() -> bool:
 
 func _draft_resolved() -> bool:
 	if not _draft_dirty(): return true
-	_status.text = "У выбранного дерева есть черновик. Примените или сбросьте правки перед другой операцией."
+	_status.text = "У выбранного объекта есть черновик. Примените или сбросьте правки перед другой операцией."
 	return false
 
 
@@ -748,20 +835,27 @@ func _sync_candidate_controls() -> void:
 	var candidate := session.find_candidate(active_id)
 	var editable: bool = not candidate.is_empty() and not candidate.saved and not bool(candidate.get("publication_locked", false)) and not suspended and not _busy()
 	editable = editable and candidate_recipe != null and not Generator.editing_fields(candidate_recipe).is_empty()
-	_candidate_title.text = "НАСТРОЙКА · ВЫБЕРИТЕ ВАРИАНТ" if candidate.is_empty() else "НАСТРОЙКА · ДЕРЕВО № %d%s" % [candidate.number, " · сохранено" if candidate.saved else ""]
+	_candidate_title.text = "НАСТРОЙКА · ВЫБЕРИТЕ ВАРИАНТ" if candidate.is_empty() else "НАСТРОЙКА · ОБЪЕКТ № %d%s" % [candidate.number, " · сохранено" if candidate.saved else ""]
 	if not candidate.is_empty() and not candidate.saved and bool(candidate.get("publication_locked", false)):
-		_candidate_title.text = "ДЕРЕВО № %d · СОХРАНЕНИЕ ОТМЕНЕНО" % candidate.number
+		_candidate_title.text = "ОБЪЕКТ № %d · СОХРАНЕНИЕ ОТМЕНЕНО" % candidate.number
 	_candidate_fields.visible = editable
 	for key in candidate_controls:
 		var control: Control = candidate_controls[key]
 		if candidate_recipe == null: continue
 		control.set_block_signals(true)
 		var value: Variant = candidate_recipe.parameters.get(key)
-		if control is SpinBox: control.value = value
+		if control is VectorField: control.set_vector_value(value)
+		elif control is SpinBox: control.value = value
 		elif control is ColorPickerButton: control.color = value
 		elif control is CheckButton: control.button_pressed = bool(value)
 		elif control is OptionButton: control.select(int(value))
 		if key == "foliage_style": control.set_item_disabled(2, not Generator.LargeTreeProvider.FoliagePattern.supports_style(candidate_recipe.parameters, 2))
+		if candidate_recipe.generator_id == Generator.ROCK and key == "dimensions":
+			control.set_axis_maximum(Generator.Rock.dimension_limits(candidate_recipe.parameters))
+			control.set_vector_value(candidate_recipe.parameters.dimensions)
+			control.tooltip_text = "Максимум сетки — 524 288 ячеек, включая округление X/Z до блока."
+		if candidate_recipe.generator_id == Generator.ROCK and (key.begins_with("crystal_") or Generator.Rock.Surface.normalized({}).has(key)):
+			_sync_rock_field(control, key, candidate_recipe.parameters)
 		control.set_block_signals(false)
 	_apply.disabled = not editable or not _draft_dirty()
 	_discard.disabled = not _draft_dirty() or suspended
@@ -770,16 +864,17 @@ func _sync_candidate_controls() -> void:
 func _change_candidate_parameter(key: String, value: Variant) -> void:
 	var candidate := session.find_candidate(active_id)
 	if candidate.is_empty() or candidate.saved or bool(candidate.get("publication_locked", false)) or suspended or _busy() or candidate_recipe == null: return
-	if candidate_recipe.parameters.get(key) == value and not (key == "foliage_style" and Generator.LargeTreeProvider.FoliagePattern.needs_style_upgrade(candidate_recipe.parameters, int(value))): return
+	if candidate_recipe.parameters.get(key) == value and not (candidate_recipe.generator_id == Generator.ROCK and Generator.Rock.Surface.needs_vein_upgrade(candidate_recipe.parameters, key, value)) and not (key == "foliage_style" and Generator.LargeTreeProvider.FoliagePattern.needs_style_upgrade(candidate_recipe.parameters, int(value))): return
 	var next := candidate_recipe.duplicate(true)
 	next.parameters[key] = value
+	if next.generator_id == Generator.ROCK and key == "mineral_pattern" and int(value) == 2: next.parameters.mineral_vein_style = 1
 	if key == "foliage_style" and int(value) == 1 and int(candidate_recipe.parameters.get("foliage_style", 0)) == 1 and int(candidate_recipe.parameters.get("foliage_pattern_version", 1)) < 2:
 		next.parameters.foliage_geometry_detail = candidate_recipe.parameters.foliage_detail
 	if key == "bark_pattern" and bool(value): next.parameters.bark_pattern_version = 2
 	if key == "foliage_style" and int(value) == 1: next.parameters.foliage_pattern_version = 2
 	if key == "foliage_style" and int(value) == 3: next.parameters.foliage_cloud_version = 2
 	next.parameters = Generator.normalized_parameters(next.generator_id, next.parameters)
-	history.create_action("Черновик дерева № %d" % candidate.number)
+	history.create_action("Черновик объекта № %d" % candidate.number)
 	history.add_do_method(_apply_candidate_draft.bind(active_id, next))
 	history.add_undo_method(_apply_candidate_draft.bind(active_id, candidate_recipe))
 	history.commit_action()
@@ -795,14 +890,14 @@ func _apply_candidate_draft(id: String, next: Resource) -> void:
 	if not session.preview_ids.has(id): solo = false
 	_sync_candidate_controls()
 	_refresh_visibility()
-	_status.text = "Черновик дерева № %d · примените, чтобы обновить только его геометрию." % candidate.number
+	_status.text = "Черновик объекта № %d · примените, чтобы обновить только его геометрию." % candidate.number
 
 
 func discard_candidate() -> void:
 	var candidate := session.find_candidate(active_id)
 	if candidate.is_empty() or candidate_recipe == null or suspended: return
 	var next: Resource = candidate.creation.recipe.duplicate(true)
-	history.create_action("Сбросить черновик дерева")
+	history.create_action("Сбросить черновик объекта")
 	history.add_do_method(_apply_candidate_draft.bind(active_id, next))
 	history.add_undo_method(_apply_candidate_draft.bind(active_id, candidate_recipe))
 	history.commit_action()
@@ -835,11 +930,11 @@ func _commit_revision(next: Resource) -> void:
 	var previous: Resource = candidate.creation.recipe.duplicate(true)
 	var applied: Resource = prepared.recipe.duplicate(true)
 	_replace_candidate(candidate, prepared)
-	history.create_action("Применить настройку дерева № %d" % candidate.number)
+	history.create_action("Применить настройку объекта № %d" % candidate.number)
 	history.add_do_method(_rebuild_candidate.bind(active_id, applied))
 	history.add_undo_method(_rebuild_candidate.bind(active_id, previous))
 	history.commit_action(false)
-	_status.text = "Обновлено только дерево № %d. Остальные варианты не изменены." % candidate.number
+	_status.text = "Обновлён только объект № %d. Остальные варианты не изменены." % candidate.number
 
 
 func _rebuild_candidate(id: String, next: Resource) -> void:
@@ -870,7 +965,7 @@ func _replace_candidate(candidate: Dictionary, prepared: RefCounted) -> void:
 func _candidate_to_batch() -> void:
 	if candidate_recipe == null or not _draft_resolved(): return
 	_change_recipe(Session.preset_recipe(candidate_recipe))
-	_status.text = "Параметры выбранного дерева перенесены в новую партию. Теперь их можно сохранить как пресет."
+	_status.text = "Параметры выбранного объекта перенесены в новую партию. Теперь их можно сохранить как пресет."
 
 
 func _show_solo() -> void:
@@ -954,7 +1049,7 @@ func scene_context_changed(root: Node, undo: Object) -> void:
 		_arrange_previews(1.0)
 	_generate.disabled = false
 	_rebuild_candidates()
-	_status.text = "Мастерская активна. Выберите дерево по номеру; справа — его индивидуальные настройки."
+	_status.text = "Мастерская активна. Выберите объект по номеру; справа — его индивидуальные настройки."
 
 
 func _exit_tree() -> void:

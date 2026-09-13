@@ -1,0 +1,34 @@
+[gd_resource type="Resource" format=3 uid="uid://bvwp5yrigrwuf"]
+
+[ext_resource type="Script" uid="uid://bndlx7f0sdeg3" path="res://addons/ember_import/ember_voxel_generator_recipe.gd" id="1_j4hr8"]
+
+[resource]
+resource_name = "лед 1"
+script = ExtResource("1_j4hr8")
+generator_id = "rock"
+seed = 2094580
+parameters = {
+"chips": 20,
+"density": 16,
+"dimensions": Vector3i(36, 9, 28),
+"generation_version": 2,
+"mineral_angle": 25,
+"mineral_color": Color(0.6313726, 0.5176471, 0.36078432, 1),
+"mineral_direction": 0,
+"mineral_pattern": 1,
+"mineral_spacing": 5,
+"mineral_strength": 30,
+"mineral_width": 2,
+"moss_color": Color(0.22352941, 0.29411766, 0.13725491, 1),
+"moss_coverage": 0,
+"moss_drape": 35,
+"moss_patch_size": 14,
+"rock_type": 2,
+"roughness": 15,
+"size_variation": 0,
+"stone_color": Color(0.23007812, 0.3875, 0.37140003, 1),
+"surface_patch_size": 12,
+"surface_seed": 37,
+"surface_strength": 35,
+"variant_count": 1
+}

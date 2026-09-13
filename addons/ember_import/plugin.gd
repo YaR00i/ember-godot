@@ -3,6 +3,10 @@ extends EditorPlugin
 
 const EmberToolsDock = preload("res://addons/ember_import/ember_tools_dock.gd")
 const EmberVoxelObjectLibrary = preload("res://addons/ember_import/ember_voxel_object_library_panel.gd")
+const ObjectBrush = preload("res://addons/ember_import/ember_voxel_object_brush.gd")
+var _object_brush: Node
+var _object_brush_button: Button
+var _object_brush_settings: AcceptDialog
 const EmberVoxelPropGizmo = preload("res://addons/ember_import/ember_voxel_prop_gizmo.gd")
 const EmberStandaloneTriggerGizmo = preload("res://addons/ember_import/ember_standalone_trigger_gizmo.gd")
 const EmberObjectInspector = preload("res://addons/ember_import/ember_object_inspector_plugin.gd")
@@ -135,6 +139,20 @@ func _enter_tree() -> void:
 	)
 	_voxel_object_toolbar.add_child(more)
 	add_control_to_container(EditorPlugin.CONTAINER_SPATIAL_EDITOR_MENU, _voxel_object_toolbar)
+	_object_brush = ObjectBrush.new()
+	add_child(_object_brush)
+	_object_brush_button = Button.new()
+	_object_brush_button.text = "Кисть объектов…"
+	_object_brush_button.pressed.connect(_open_object_brush_settings)
+	_voxel_object_toolbar.add_child(_object_brush_button)
+	_object_brush.changed.connect(func() -> void:
+		_object_brush_button.text = "Кисть: %s…" % _object_brush.model_id.trim_prefix("vox_").left(18) if _object_brush.active else "Кисть объектов…"
+		_object_brush_button.tooltip_text = "Активна: %s · ЛКМ/мазок · Esc выключает" % _object_brush.model_id if _object_brush.active else "Выберите объект в библиотеке → Расставлять кистью"
+	)
+	_object_brush.stroke_committed.connect(func(count: int) -> void:
+		if is_instance_valid(_object_library):
+			_object_library.show_status("Кисть: добавлено %d · Ctrl+Z отменяет весь мазок · максимум 256 за мазок." % count)
+	)
 	_configure_fullscreen_playtest()
 	add_tool_menu_item("Ember: Reimport map from pack…", _ask_reimport)
 	add_tool_menu_item("Ember: Open Combat Lab", _open_combat_lab)
@@ -173,6 +191,7 @@ func _enter_tree() -> void:
 		_dock.rebuild_library_voxels()
 	)
 	_object_library.place_requested.connect(_create_voxel_prop)
+	_object_library.brush_requested.connect(_activate_object_brush)
 	_object_library.edit_requested.connect(_edit_voxel_library_template)
 	_object_library.open_resource_requested.connect(_open_voxel_library_resource)
 	_object_library.migrate_requested.connect(_migrate_voxel_from_library)
@@ -284,6 +303,11 @@ func _configure_fullscreen_playtest() -> void:
 
 
 func _exit_tree() -> void:
+	if is_instance_valid(_object_brush):
+		_object_brush.free()
+		_object_brush = null
+	if is_instance_valid(_object_brush_settings):
+		_object_brush_settings.free()
 	if is_instance_valid(_walk_surface_panel):
 		remove_control_from_bottom_panel(_walk_surface_panel)
 		_walk_surface_panel.free()
@@ -488,6 +512,7 @@ func _open_surface_from_inspector(surface: EmberVoxelModelResource) -> void:
 
 
 func _voxel_canvas_action(prop: EmberVoxelProp, action: String) -> void:
+	_stop_scene_object_brush()
 	if not is_instance_valid(prop):
 		return
 	if action == "linked":
@@ -792,6 +817,7 @@ func _forward_3d_gui_input(viewport_camera: Camera3D, event: InputEvent) -> int:
 	if is_instance_valid(_walk_surface_panel):
 		var support_result: int = _walk_surface_panel.forward_3d_gui_input(viewport_camera,event)
 		if support_result == EditorPlugin.AFTER_GUI_INPUT_STOP:
+			_stop_scene_object_brush()
 			return support_result
 	var world_result: int = (
 		_world_surface_selector.forward_3d_gui_input(viewport_camera, event)
@@ -799,7 +825,14 @@ func _forward_3d_gui_input(viewport_camera: Camera3D, event: InputEvent) -> int:
 		else EditorPlugin.AFTER_GUI_INPUT_PASS
 	)
 	if world_result == EditorPlugin.AFTER_GUI_INPUT_STOP:
+		_stop_scene_object_brush()
 		return world_result
+	# Existing explicitly enabled editing tools take precedence over object placement.
+	if _battlefield_painter != null and _battlefield_painter.get("_enabled").button_pressed:
+		_stop_scene_object_brush()
+	var brush_result: int = _object_brush.forward_input(viewport_camera, event) if is_instance_valid(_object_brush) else EditorPlugin.AFTER_GUI_INPUT_PASS
+	if brush_result == EditorPlugin.AFTER_GUI_INPUT_STOP:
+		return brush_result
 	return (
 		_battlefield_painter.forward_3d_gui_input(viewport_camera, event)
 		if _battlefield_painter != null
@@ -1062,6 +1095,7 @@ func _on_voxel_model_changed(model_id: String) -> void:
 
 
 func _new_voxel_shape() -> void:
+	_stop_scene_object_brush()
 	var root := EditorInterface.get_edited_scene_root() as Node3D
 	if root == null:
 		push_warning("Откройте 3D-сцену для создания voxel-формы.")
@@ -1291,7 +1325,91 @@ func _convert_voxel_form() -> void:
 		dialog.queue_free()
 
 
+func _stop_scene_object_brush() -> void:
+	if is_instance_valid(_object_brush):
+		_object_brush.deactivate()
+
+
+func _activate_object_brush(model_id: String) -> void:
+	var root := EditorInterface.get_edited_scene_root() as Node3D
+	var map := root.find_child("Map", true, false) as EmberMapLoader if root != null else null
+	var props := map.get_node_or_null("Props") as Node3D if map != null else null
+	if props == null:
+		_object_library.show_status("Не найден контейнер Map/Props.", true)
+		return
+	var tile_size := map.imported_tile_size if map.imported_tile_size > 0 else 16.0
+	var path := EmberVoxelPrefab.prefab_path(model_id)
+	var packed := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_REPLACE) as PackedScene if ResourceLoader.exists(path) else null
+	if packed == null or not EmberVoxelPrefab.validate_packed(model_id, packed).get("ok", false):
+		EmberVoxelPrefab.begin_import()
+		packed = EmberVoxelPrefab.ensure_saved(model_id, tile_size, {})
+	if packed == null or not EmberVoxelPrefab.validate_packed(model_id, packed).get("ok", false):
+		_object_library.show_status("Шаблон не собран или не прошёл проверку.", true)
+		return
+	if _world_surface_selector != null:
+		_world_surface_selector.get("_select_button").button_pressed = false
+	if _battlefield_painter != null:
+		_battlefield_painter.get("_enabled").button_pressed = false
+	if is_instance_valid(_walk_surface_panel) and _walk_surface_panel.get("_brush") != null:
+		_walk_surface_panel.get("_brush").select(0) # Preserve the support draft; stop its input only.
+	if not _object_brush.activate(root, props, packed, model_id, get_undo_redo(), tile_size):
+		_object_library.show_status("Не удалось подготовить превью объекта.", true)
+		return
+	_open_object_brush_settings()
+
+
+func _open_object_brush_settings() -> void:
+	if not _object_brush.active:
+		_open_voxel_object_library()
+		return
+	_object_brush.cancel_stroke()
+	if is_instance_valid(_object_brush_settings):
+		_object_brush_settings.free()
+	_object_brush_settings = AcceptDialog.new()
+	_object_brush_settings.title = "Кисть расстановки объектов"
+	_object_brush_settings.ok_button_text = "Продолжить расстановку"
+	var box := VBoxContainer.new()
+	box.custom_minimum_size = Vector2(390, 0)
+	_object_brush_settings.add_child(box)
+	var title := Label.new()
+	title.text = _object_brush.model_id
+	box.add_child(title)
+	for spec in [
+		["Шаг · блоки", "spacing_blocks", 0.05, 64.0, 0.05],
+		["Поворот Y · °", "yaw_degrees", -180.0, 180.0, 1.0],
+		["Масштаб", "scale_factor", 0.05, 10.0, 0.05],
+		["Заглубление · vox", "bury_vox", -64.0, 64.0, 0.5],
+	]:
+		var row := HBoxContainer.new()
+		box.add_child(row)
+		var label := Label.new()
+		label.text = spec[0]
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(label)
+		var spin := SpinBox.new()
+		spin.min_value = spec[2]
+		spin.max_value = spec[3]
+		spin.step = spec[4]
+		spin.value = _object_brush.get(spec[1])
+		spin.custom_minimum_size.x = 140
+		spin.value_changed.connect(func(value: float) -> void: _object_brush.set(spec[1], value))
+		row.add_child(spin)
+	var help := Label.new()
+	help.text = "ЛКМ — объект · протянуть ЛКМ — мазок\nCtrl+Z — весь мазок · Esc — выключить\nПКМ / СКМ / Alt — обычная камера\nДо 256 объектов за мазок, только на физической поверхности."
+	box.add_child(help)
+	var stop := Button.new()
+	stop.text = "Выключить кисть"
+	stop.pressed.connect(func() -> void:
+		_object_brush.deactivate()
+		_object_brush_settings.hide()
+	)
+	box.add_child(stop)
+	EditorInterface.get_base_control().add_child(_object_brush_settings)
+	_object_brush_settings.popup_centered()
+
+
 func _create_voxel_prop(model_id: String, anchor: Node3D) -> void:
+	_stop_scene_object_brush()
 	var root := EditorInterface.get_edited_scene_root()
 	if root == null:
 		return
@@ -1386,6 +1504,10 @@ func _remove_authored_voxel(parent: Node, prop: EmberVoxelProp) -> void:
 
 
 func _on_scene_changed(root: Node) -> void:
+	if is_instance_valid(_object_brush):
+		_object_brush.deactivate()
+	if is_instance_valid(_object_brush_settings):
+		_object_brush_settings.hide()
 	if is_instance_valid(_walk_surface_panel):
 		_walk_surface_panel.scene_context_changed(root)
 	if is_instance_valid(_generation_panel):

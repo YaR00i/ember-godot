@@ -58,6 +58,14 @@ func _run() -> void:
 	var panel := EditorInterface.get_base_control().find_child("EmberGenerationWorkspace", true, false)
 	check(panel != null, "real native generation panel")
 	if panel == null: get_tree().quit(1); return
+	if OS.get_cmdline_user_args().has("--rocks-only"):
+		await _check_rocks(panel)
+		await frames(15)
+		await settle()
+		for message in errors: push_error(message)
+		print("editor_test_voxel_rock_objects: ", "PASS" if errors.is_empty() else "FAIL")
+		get_tree().quit(0 if errors.is_empty() else 1)
+		return
 	if OS.get_cmdline_user_args().has("--foliage-clouds-only") or OS.get_cmdline_user_args().has("--tree-variation-only") or OS.get_cmdline_user_args().has("--leaf-shoots-only") or OS.get_cmdline_user_args().has("--foliage-surface-only") or OS.get_cmdline_user_args().has("--oak-foliage-only") or OS.get_cmdline_user_args().has("--oak-crown-only") or OS.get_cmdline_user_args().has("--birch-shape-only") or OS.get_cmdline_user_args().has("--bark-pattern-only") or OS.get_cmdline_user_args().has("--maple-shape-only") or OS.get_cmdline_user_args().has("--savanna-shape-only") or OS.get_cmdline_user_args().has("--spruce-shape-only"):
 		var birch := OS.get_cmdline_user_args().has("--birch-shape-only")
 		var bark := OS.get_cmdline_user_args().has("--bark-pattern-only")
@@ -792,6 +800,152 @@ func _check_oak_shapes(panel: Node, birch := false, bark := false, maple := fals
 		check(contextual.recipe.parameters.foliage_style == 1 and contextual.controls.has("foliage_detail"), "native contextual draft Undo/Redo/Discard")
 		contextual.queue_free()
 	panel.close_session()
+
+func _check_rocks(panel: Node) -> void:
+	var registry := preload("res://addons/ember_import/ember_voxel_generator.gd")
+	var surfaces := OS.get_cmdline_user_args().has("--rock-surfaces")
+	var crystals := OS.get_cmdline_user_args().has("--crystals")
+	panel._provider.item_selected.emit(1)
+	check(panel.recipe.generator_id == registry.ROCK and panel._provider.selected == 1, "native provider selector")
+	var exemplars: Array[Dictionary] = []
+	for kind in 3:
+		panel._preset.item_selected.emit(kind + (7 if crystals else (4 if surfaces else 1)))
+		check(panel.recipe.parameters.rock_type == ([3,3,4][kind] if crystals else kind), "native rock preset")
+		panel._title.text = "Native rock %d" % kind
+		panel._count.value = 2
+		panel._seed.value = 37
+		panel._generate.pressed.emit()
+		await work(panel)
+		var candidate: Dictionary = panel.session.candidates[-2]
+		var other: Dictionary = panel.session.candidates[-1]
+		check(candidate.creation.source.voxels != other.creation.source.voxels, "native distinct seeds")
+		exemplars.append(candidate)
+		panel._select_preview(candidate)
+		var previous: PackedByteArray = candidate.creation.source.voxels.duplicate()
+		var width: int = candidate.creation.recipe.parameters.dimensions.x
+		panel.candidate_controls.dimensions._spins[0].value = width + 2
+		check(panel._draft_dirty() and candidate.creation.source.voxels == previous, "native vector draft")
+		panel._discard.pressed.emit()
+		check(not panel._draft_dirty(), "native vector discard")
+		panel.candidate_controls.chips.value = 70
+		panel._apply.pressed.emit()
+		check(candidate.creation.recipe.parameters.chips == 70, "native individual Apply")
+		panel.undo_local()
+		check(candidate.creation.source.voxels == previous, "native revision Undo")
+		panel.redo_local()
+		check(candidate.creation.recipe.parameters.chips == 70, "native revision Redo")
+		panel.undo_local() # Publish/capture the actual preset shape after exercising Redo.
+		if crystals:
+			var crystal_before: PackedByteArray = candidate.creation.source.voxels.duplicate()
+			check(not candidate.creation.recipe.parameters.crystal_base_enabled and not panel.candidate_controls.crystal_base_size.editable, "native default no footing")
+			panel.candidate_controls.crystal_base_enabled.button_pressed = true
+			panel._apply.pressed.emit()
+			check(candidate.creation.source.voxels != crystal_before and panel.candidate_controls.crystal_base_size.editable, "native footing Apply")
+			panel.undo_local()
+			check(candidate.creation.source.voxels == crystal_before, "native footing Undo")
+			panel.redo_local()
+			check(candidate.creation.recipe.parameters.crystal_base_enabled, "native footing Redo")
+			panel.undo_local()
+			var count: int = candidate.creation.recipe.parameters.crystal_count
+			panel.candidate_controls.crystal_count.value = count + 1
+			check(candidate.creation.source.voxels == crystal_before, "native cluster draft changed source")
+			panel._discard.pressed.emit()
+			check(panel.candidate_recipe.parameters.crystal_count == count, "native cluster discard")
+			panel.candidate_controls.crystal_lean.value = 0
+			panel._apply.pressed.emit()
+			check(candidate.creation.source.voxels != crystal_before, "native cluster lean control")
+			panel.undo_local()
+			check(candidate.creation.source.voxels == crystal_before, "native cluster Undo exact")
+			panel.redo_local()
+			check(candidate.creation.recipe.parameters.crystal_lean == 0, "native cluster Redo")
+			panel.undo_local()
+		if surfaces:
+			var before: PackedByteArray = candidate.creation.source.voxels.duplicate()
+			if kind == 0:
+				panel.candidate_controls.moss_highlight_strength.value = 100
+				panel.candidate_controls.moss_highlight_color.color_changed.emit(Color("24552e"))
+				panel._apply.pressed.emit()
+				check(candidate.creation.source.palette[6] == Color("24552e"), "native explicit moss highlight colour")
+				panel.undo_local()
+				panel.candidate_controls.moss_highlight_strength.value = 0
+				panel._apply.pressed.emit()
+				check(candidate.creation.source.voxels.count(6) == 0, "native moss no highlight")
+				panel.undo_local()
+				panel.redo_local()
+				check(candidate.creation.source.voxels.count(6) == 0, "native moss no highlight Redo")
+				panel.undo_local()
+			if kind == 1:
+				check(candidate.creation.recipe.parameters.mineral_vein_style == 1 and panel.candidate_controls.mineral_irregularity.editable, "native new vein enabled")
+				panel.candidate_controls.mineral_irregularity.value = 0
+				panel._apply.pressed.emit()
+				check(candidate.creation.source.voxels != before, "native vein irregularity control")
+				panel.undo_local()
+			check(candidate.creation.source.voxels == before, "native dressing test Undo exact")
+			panel.candidate_controls.surface_seed.value = 591
+			panel._apply.pressed.emit()
+			check(candidate.creation.source.voxels != before, "native surface seed changes pattern")
+			for index in before.size():
+				check((before[index] == 0) == (candidate.creation.source.voxels[index] == 0), "native surface changed shape")
+			panel.undo_local()
+			check(candidate.creation.source.voxels == before, "native surface Undo restores exact colours")
+			panel.redo_local()
+			check(candidate.creation.recipe.parameters.surface_seed == 591, "native surface Redo")
+			panel.undo_local()
+		panel._choose(candidate, true)
+		panel._save.pressed.emit()
+		await work(panel)
+		check(candidate.saved, "native publish rock")
+		var id: String = candidate.creation.source.model_id
+		var reopened := preload("res://addons/ember_import/ember_voxel_tree_object_creation.gd").load_recipe(id)
+		check(reopened != null and reopened.parameters == candidate.creation.recipe.parameters, "native recipe reopen")
+		if surfaces or crystals:
+			var contextual := preload("res://addons/ember_import/ember_voxel_generator_panel.gd").new()
+			add_child(contextual)
+			check(contextual.open_source(candidate.creation.source), "native saved surface recipe opens")
+			contextual.controls.moss_coverage.value = 90
+			contextual.discard()
+			check(contextual.recipe.parameters == reopened.parameters, "native saved surface discard")
+			if crystals:
+				check(contextual.controls.has("crystal_base_enabled") and contextual.controls.dimensions._spins[0].max_value == 256 and contextual.controls.dimensions._spins[1].max_value == 128, "native saved cluster fields / limits")
+				contextual.set_parameter("dimensions", Vector3i(32,128,32))
+				contextual.prepare()
+				check(contextual.creation != null and contextual.creation.source.height_voxels == 128 and contextual.creation.source.validation_errors().is_empty(), "native tall crystal prepare / remesh")
+				contextual.discard()
+				check(contextual.recipe.parameters == reopened.parameters, "native tall discard")
+			contextual.queue_free()
+	panel.session.clear_previews()
+	for candidate in exemplars:
+		panel._compare_candidate(candidate, true)
+		await work(panel)
+	panel._select_all_previews()
+	var view := SubViewport.new()
+	view.size = Vector2i(1100,700)
+	view.world_3d = EditorInterface.get_edited_scene_root().get_world_3d()
+	view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(view)
+	var camera := Camera3D.new()
+	view.add_child(camera)
+	var positions: Array[Vector3] = []
+	for index in exemplars.size():
+		var node: Node3D = exemplars[index].node
+		positions.append(node.position)
+		node.position = Vector3(index * 2.2, 0, 0)
+	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+	camera.size = 5.2 if crystals else 4.4
+	camera.position = Vector3(2.2,3.5,7)
+	camera.look_at(Vector3(2.2,1.0 if crystals else 0.55,0))
+	camera.current = true
+	await frames(20)
+	RenderingServer.force_draw(false)
+	var path := "user://generation_crystals_native.png" if crystals else ("user://generation_rock_surfaces_native.png" if surfaces else "user://generation_rocks_native.png")
+	view.get_texture().get_image().save_png(path)
+	print("GENERATION_ROCKS_CAPTURE ", ProjectSettings.globalize_path(path))
+	EditorInterface.get_base_control().get_viewport().get_texture().get_image().save_png("user://generation_rocks_ui_native.png")
+	for index in exemplars.size(): exemplars[index].node.position = positions[index]
+	view.free()
+	panel._provider.item_selected.emit(0)
+	check(panel.recipe.generator_id == registry.LARGE_TREE and panel.session.candidates.size() == 6, "native return to trees retains rocks")
+
 
 func _capture_old_foliage(panel: Node, container: Control, viewport: SubViewport, candidate_index := 0) -> void:
 	var surface := OS.get_cmdline_user_args().has("--foliage-surface-only")

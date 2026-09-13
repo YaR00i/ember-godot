@@ -7,6 +7,18 @@ static func safe_steps(value: Vector3) -> Vector3:
 	return Vector3(maxf(value.x,0.000001),maxf(value.y,0.000001),maxf(value.z,0.000001))
 
 
+static func stroke_samples(first: Vector3, last: Vector3, spacing: float, remaining: float) -> Dictionary:
+	# Carry distance across input events; results do not depend on mouse frequency.
+	var length := first.distance_to(last)
+	var step := maxf(spacing, 0.001)
+	var distance := maxf(remaining, 0.001)
+	var points: Array[Vector3] = []
+	while distance <= length and points.size() < 256:
+		points.append(first.lerp(last, distance / length))
+		distance += step
+	return {"points": points, "remaining": maxf(0.001, distance - length)}
+
+
 static func world_to_vox(point: Vector3,steps: Vector3) -> Vector3:
 	var value := safe_steps(steps)
 	return Vector3(point.x/value.x,point.y/value.y,point.z/value.z)

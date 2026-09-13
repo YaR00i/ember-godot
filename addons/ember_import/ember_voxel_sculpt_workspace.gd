@@ -116,6 +116,9 @@ var _relief_generator_style: OptionButton
 var _relief_generator_direction: OptionButton
 var _relief_generator_scale: OptionButton
 var _relief_generator_detail: OptionButton
+var _relief_facet_tilt: SpinBox
+var _relief_joint_width: SpinBox
+var _relief_joint_depth: SpinBox
 var _relief_variant_button: Button
 var _relief_seed_value := 0
 var _region_select_button: Button
@@ -1065,12 +1068,14 @@ func _build() -> void:
 	_relief_generator_style.name = "VoxelSculptReliefGeneratorStyle"
 	_relief_generator_style.tooltip_text = (
 		"Почва даёт мягкие естественные перепады; гребни создают более резкие "
-		+ "складки, берега и каменистые формы."
+		+ "складки, берега и каменистые формы; грани — крупные наклонные многоугольники."
 	)
 	_relief_generator_style.add_item("Характер · почва")
 	_relief_generator_style.set_item_metadata(0, BrushProfiles.RELIEF_SOIL)
 	_relief_generator_style.add_item("Характер · гребни")
 	_relief_generator_style.set_item_metadata(1, BrushProfiles.RELIEF_RIDGES)
+	_relief_generator_style.add_item("Характер · грани")
+	_relief_generator_style.set_item_metadata(2, BrushProfiles.RELIEF_FACETS)
 	_relief_generator_style.item_selected.connect(func(_index: int) -> void: _on_brush_setting_changed())
 	_relief_generator_style.visible = false
 	tool_settings.add_child(_relief_generator_style)
@@ -1120,6 +1125,21 @@ func _build() -> void:
 	_relief_generator_detail.item_selected.connect(func(_index: int) -> void: _on_brush_setting_changed())
 	_relief_generator_detail.visible = false
 	tool_settings.add_child(_relief_generator_detail)
+	_relief_facet_tilt = SpinBox.new()
+	_relief_joint_width = SpinBox.new()
+	_relief_joint_depth = SpinBox.new()
+	for entry in [[_relief_facet_tilt, "Наклон граней · %", 100, 60], [_relief_joint_width, "Ширина стыков · vox", 4, 1], [_relief_joint_depth, "Глубина стыков · vox", 16, 3]]:
+		var spin: SpinBox = entry[0]
+		spin.prefix = entry[1]
+		spin.custom_minimum_size.x = 250
+		spin.min_value = 0
+		spin.max_value = entry[2]
+		spin.value = entry[3]
+		spin.step = 1
+		spin.tooltip_text = "Крупные наклонные участки без мелкого шума. Ширина 0 отключает углублённые стыки; высота ограничивает весь перепад."
+		spin.value_changed.connect(func(_value: float): _on_brush_setting_changed())
+		spin.visible = false
+		tool_settings.add_child(spin)
 	_relief_variant_button = Button.new()
 	_relief_variant_button.name = "VoxelSculptReliefVariant"
 	_relief_variant_button.text = "Другой вариант"
@@ -3264,6 +3284,9 @@ func _store_active_tool_profile() -> void:
 		"relief_scale": _relief_generator_scale.get_selected_metadata(),
 		"relief_detail": _relief_generator_detail.get_selected_metadata(),
 		"relief_seed": _relief_seed_value,
+		"relief_facet_tilt": int(_relief_facet_tilt.value),
+		"relief_joint_width": int(_relief_joint_width.value),
+		"relief_joint_depth": int(_relief_joint_depth.value),
 	})
 
 
@@ -3292,6 +3315,9 @@ func _restore_tool_profile(base_tool: int) -> void:
 	)
 	_select_option_metadata(_relief_generator_scale, int(profile.relief_scale))
 	_select_option_metadata(_relief_generator_detail, int(profile.relief_detail))
+	_relief_facet_tilt.set_value_no_signal(profile.relief_facet_tilt)
+	_relief_joint_width.set_value_no_signal(profile.relief_joint_width)
+	_relief_joint_depth.set_value_no_signal(profile.relief_joint_depth)
 	_relief_seed_value = int(profile.relief_seed)
 	_active_profile_tool = base_tool
 	_sync_coarse_depth()
@@ -3346,7 +3372,11 @@ func _update_relief_controls() -> void:
 	_relief_generator_style.visible = generator
 	_relief_generator_direction.visible = generator
 	_relief_generator_scale.visible = generator
-	_relief_generator_detail.visible = generator
+	var facets := generator and str(_relief_generator_style.get_selected_metadata()) == BrushProfiles.RELIEF_FACETS
+	_relief_generator_detail.visible = generator and not facets
+	_relief_facet_tilt.visible = facets
+	_relief_joint_width.visible = facets
+	_relief_joint_depth.visible = facets
 	_relief_variant_button.visible = generator
 	for item in _height_limit.item_count:
 		var value := int(_height_limit.get_item_metadata(item))
@@ -3487,6 +3517,7 @@ func _update_tool_help(tool_id: int) -> void:
 			if str(_relief_generator_style.get_selected_metadata()) == BrushProfiles.RELIEF_RIDGES
 			else "почва"
 		)
+		if str(_relief_generator_style.get_selected_metadata()) == BrushProfiles.RELIEF_FACETS: style = "грани"
 		var direction := int(_relief_generator_direction.get_selected_metadata())
 		var direction_text := "бугры и ямки"
 		if direction > 0:
@@ -3496,6 +3527,7 @@ func _update_tool_help(tool_id: int) -> void:
 		var detail_text := "плотная фактура"
 		if int(_relief_generator_detail.get_selected_metadata()) == 0:
 			detail_text = "редкие мягкие перепады в 1–2 вокселя"
+		if style == "грани": detail_text = "крупные наклонные участки и регулируемые стыки"
 		_active_tool_label.text = "Рельеф · генератор · %s" % style
 		_info.text = (
 			"Ведите LMB: %s; рисунок закреплён в координатах модели (%s). "
@@ -4489,6 +4521,7 @@ func _apply_generative_relief_segment(from: Vector3i, to: Vector3i) -> bool:
 		_stroke_top_cache,
 		_stroke_generator_column_cache,
 		_stroke_heightfield,
+		{"tilt": int(_relief_facet_tilt.value), "joint_width": int(_relief_joint_width.value), "joint_depth": int(_relief_joint_depth.value)},
 	)
 	var dirty := {}
 	_merge_live_changes(changes, dirty)
@@ -4757,7 +4790,7 @@ func _finish_live_changes(dirty: Dictionary, tool_id: int, relief_height: int) -
 				else "почва"
 			)
 			message = "Генератор · %s · высота %d vox · %d изменений · Esc отменяет" % [
-				style, height_limit, _stroke_changes.size(),
+				"грани" if str(_relief_generator_style.get_selected_metadata()) == BrushProfiles.RELIEF_FACETS else style, height_limit, _stroke_changes.size(),
 			]
 		else:
 			var mode := (

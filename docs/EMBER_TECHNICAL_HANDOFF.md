@@ -10,6 +10,148 @@
 
 ## Источники правды
 
+### Faceted relief2026-09-13
+
+Existing Model.generative_relief_segment_changes accepts appended optional
+facet_settings; soil/ridges unchanged. Facets use local cached seeded jittered
+Voronoi sites (5×5 search), exact nearest-cell bisector distance, one linear
+plane per cell. Anchor baseline heightfield supplies the reference level;
+height/depth offsets are bounded by amplitude and signed direction. Plateau
+falloff inside80% brush radius, smooth outer rim; coarse grid step reused.
+Existing strongest-influence/offset cache preserves event-density equivalence
+and no accumulation within a gesture. New gestures start from their current
+baseline; tessellation stays model-locked, not a stored global generation recipe.
+
+Workspace adds third style +tilt/joint width/depth controls; existing
+BrushProfiles normalization +ViewStore own editor-only persistence. No source
+schema, alternate renderer, physics surface or second editing owner. Selected
+palette only; existing region/selection and stroke Actions save/Undo reused.
+test_voxel_faceted_relief +5 related PASS; native isolated Forward+ workspace
+fixture PASS and capture viewed. Radius32 segment math~80–90ms; density32
+4×4 fixture including baseline heightfield~190–207ms, not full remesh benchmark.
+User accepted visuals and reported editor checks2026-09-13; explicit runtime
+walk/physics acceptance remains unconfirmed. No new shader/colour generator.
+
+### Crystal/ice morphology in Rock provider2026-09-13
+
+Follow-up: crystal_base_enabled (missing=true for old recipes; new presets=false)
+gates footing rasterization and largest-component cleanup. Disabled base keeps
+separate prisms as intentional components; base size remains stored but inert.
+Rock.dimension_limits owns v1 XYZ32 /v2 XZ256 and Y8*density; variant clamps reuse
+it. Shared VectorField per-axis bounds synced in studio/candidate/saved panel;
+base-size UI disabled when toggle=false. Shapes MAX_CELLS524288 unchanged,
+over-budget Apply returns error without source mutation. >64 working set1.
+Extended crystals targeted +8 related suites PASS; native Forward+ follow-up PASS
+(footing Apply/Undo/Redo, saved128-height prepare/remesh/discard, no-platform capture viewed).
+
+Rock rock_type appended3=crystal cluster /4=ice; v2 dispatches _build_cluster,
+old types0–2 and v1 body unchanged. Existing Shapes creates canonical bounded
+grid; pure per-prism oriented axis/u/v +convex side planes, pointed taper or
+oblique broken tip, one broad chip plane and low-frequency width roughness.
+Seeded height/width ranks, lean and distribution; common ellipsoid footing
+connects roots; largest-component cleanup, then existing colour-only Surface.
+No extra renderer/schema/source owner. Geometry bounds3–64, count1–8, width2–20
+limited to footprint; max64³/8 prisms build около0.95с before remesh, set limit2.
+New crystal_* keys only Recipe.parameters, grid palette/channels remain canonical.
+Missing keys preserve old morphology; material channels do not enable glow/glass.
+
+Registry creation/edit fields and three new presets; generation panel hides
+cluster wrappers for plain forms, candidate/saved descriptors depend on type.
+Type changes draft-only until Apply; existing publication/Canvas/recipe/preset/
+Undo guards reused. No fake tree branch structure, freeze_structure returns recipe.
+test_voxel_crystal_objects +8 related PASS; initial native --rocks-only --crystals
+comparison and final art tune retest PASS; final capture personally viewed.
+Manual new art acceptance pending.
+Faceted terrain is the separate follow-up above; shader/transparency/glow remain out of scope.
+
+### Rock surface dressing2026-09-13
+
+Refinement after visual feedback: moss_highlight_color и strength0–100;
+palette6=lerp(base moss, explicit accent, strength), strength0 uses only index5.
+Missing fields derive the old12% tint at100, preserving old recipes on reopen.
+mineral_vein_style0 is unchanged plane; style1 uses a seeded normal/u/v frame,
+low-frequency sinusoidal sheet, three broad local width pockets and<=2 short
+tapered branch sheets attached to the main crack. Irregularity/branching separate;
+branch strength controls count and length. Layer code/RNG path unchanged.
+Explicit mode2 choice (including same selection) opts-in style1 in all three
+UI paths; loading does not upgrade; Undo/Redo restores style as well as mode.
+All additions remain Recipe.parameters, existing descriptors/save guards.
+Preset moss now low accent25%; vein preset style1. No shader/occupancy changes.
+Phase/pockets drawn before branch loop: branch count cannot shift main crack.
+8 suites PASS; refined native probe PASS.64³ branched colour build около1.4с
+(not total mesh/publish), candidate bound2 unchanged. Manual new look pending.
+
+Existing Rock provider вызывает pure ember_voxel_rock_surface.gd только после
+occupancy/component generation v2. Leaf владеет normalization/descriptors и
+colour-only math: single-octave low-frequency patches, continuous 3D mineral
+plane/periodic bands, moss islands constrained to column tops/upper exposed cells.
+Geometry RNG/recipe.seed не трогаются; independent surface_seed controls dressing.
+Palette: base/dark/light/mineral/moss/moss accent; occupancy, six channels и physics
+прежние. No renderer/schema/texture owner. Missing strengths default0 и mineral
+mode0; legacy v1 body не применяет оформление. Surface field capability predicate
+общий для studio/candidate/saved Canvas; UI only routes commands and disables
+inert controls. Registry добавляет три сочетания к прежним трём shape presets.
+Recipes/presets/publication/saved reload остаются в общих owners.
+
+Expanded test_voxel_rock_objects +7 related PASS; native disposable
+--rocks-only --rock-surfaces PASS (actual selectors, surface Apply/Undo/Redo,
+publication/reopen, saved recipe discard, comparison). Capture лично просмотрен.
+Max64³ geometry около0.8с, colour-dressed build около1.2с; это не total remesh time.
+Mesh vertex colours byte-quantized, source palette float: тест сравнивает с
+погрешностью<=1/255; canonical save сохраняет точные palette/voxel indices.
+Пользователь принял первый rock workflow, новая визуальная приёмка открыта.
+Кристаллы, glow и общий shader не входят. UID/scan warnings из isolated cache
+прежние; не заявлять clean editor lifecycle.
+
+### Rock provider в общей generation studio2026-09-13
+
+ember_voxel_rock_generator.gd расширен version2: rounded density field или
+convex facet planes (angular/slab), seeded proportions/lean, noise/chips,
+connected grounded canonical source. Version1 body прежний, bounds32;
+version2 bounds64 и stone_color в editor Recipe.parameters. Registry supplies
+creation/edit descriptors, presets и bounded candidate limits. Общий panel
+имеет explicit provider selector и перестраивает только parameter containers;
+новый VectorField UI показывает один канонический Vector3i, не дублирует XYZ
+в параметрах. Session сохраняет archives/favorites, provider входит в family
+identity; cross-provider revision отвергается. Creation нормализует exact
+source grid в общем report для layout и использует прежние publication guards.
+Source .tres/prefab .tscn/recipe assets/runtime mesh/physics owners не менялись.
+Shared saved Canvas recipe panel использует те же descriptors/VectorField;
+freeze_structure для rocks возвращает seed recipe без фиктивного branch frame.
+Все edits explicit preview/apply, source не меняется на spin input.
+
+test_voxel_rock_objects и7 related PASS; real editor probe
+tools/editor_test_voxel_generation.gd -- --rocks-only в disposable copy PASS.
+64³ около0.8с на build, >48 working set2 candidates, иначе4;
+cancel между полными candidates. Первый workflow пользователь подтвердил;
+новое оформление описано выше. Shader/vegetation/scatter sets не менялись. Gates/captures ниже по маршруту
+MIGRATION_TEST_PLAN; UID/scan warnings disposable cache не считаются clean exit.
+
+### Кисть объектов сцены2026-09-13
+
+EditorPlugin маршрутизирует библиотеку/компактные настройки/3D input в
+ember_voxel_object_brush.gd. Этот controller держит только editor-only активный
+шаблон, distance carry и preview poses; общей математикой остаётся
+ember_voxel_placement_math.gd, создание/owner/placement IDs остаются в
+EmberSceneAuthoring. Для detached batch передаётся reservation dictionary,
+чтобы ещё не прикреплённые экземпляры не получили одинаковые IDs.
+Undo-команды фиксируют конкретные scene/parent, а не изменяемый активный
+контекст кисти: Redo работает после смены выбранного шаблона или сцены.
+Prefab валидируется/при необходимости строится только при выборе кисти,
+не на hover и не на каждом экземпляре. Источник не переписывается мазком.
+Shared Mesh используется для прозрачных preview MeshInstance3D без physics;
+preview parent internal и без owner, поэтому не попадает в PackedScene/save.
+Никакого full remesh/catalog reload на движение мыши. До256 экземпляров за
+pointer-up, один Undo; world poses переводятся в текущий parent local frame.
+Surface ray использует collision layer1; нижний центр фактического Mesh AABB
+задаёт anchor, учитываются Y rotation/uniform scale/bury. Sloped alignment,
+random sets и object erase не входят в срез. Другие явно включённые editor
+кисти имеют приоритет; открытие Canvas и смена scene прекращают расстановку.
+
+test_voxel_object_brush и related gates PASS, native Forward+ probe PASS;
+пользователь2026-09-13 подтвердил работу кисти в редакторе. Отдельное ручное
+подтверждение save/reopen и всех переключений ещё открыто. См. migration gates.
+
 ### Публикация файлов редактору
 
 `addons/ember_import/ember_editor_filesystem.gd` — общий editor-only адаптер

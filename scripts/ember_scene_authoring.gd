@@ -60,14 +60,14 @@ static func next_duplicate_id(root: Node, source: EmberVoxelProp) -> String:
 	return candidate
 
 
-static func next_model_placement_id(root: Node, model_id: String) -> String:
+static func next_model_placement_id(root: Node, model_id: String, reserved: Dictionary = {}) -> String:
 	var used := placement_ids(root)
 	var stem := "placed_" + _safe_id(model_id.trim_prefix("vox_"))
 	if stem == "placed_":
 		stem = "placed_voxel_prop"
 	var candidate := stem
 	var suffix := 2
-	while used.has(candidate):
+	while used.has(candidate) or reserved.has(candidate):
 		candidate = "%s_%d" % [stem, suffix]
 		suffix += 1
 	return candidate
@@ -78,13 +78,14 @@ static func make_model_instance(
 	packed: PackedScene,
 	model_id: String,
 	local_position: Vector3,
+	reserved: Dictionary = {},
 ) -> EmberVoxelProp:
 	if root == null or packed == null or model_id.strip_edges().is_empty():
 		return null
 	var prop := packed.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE) as EmberVoxelProp
 	if prop == null:
 		return null
-	var placement_id := next_model_placement_id(root, model_id)
+	var placement_id := next_model_placement_id(root, model_id, reserved)
 	prop.name = placement_id
 	prop.model_id = model_id
 	prop.placement_id = placement_id

@@ -20,6 +20,7 @@ const RELIEF_BUILDUP := "buildup"
 const RELIEF_GENERATOR := "generator"
 const RELIEF_SOIL := "soil"
 const RELIEF_RIDGES := "ridges"
+const RELIEF_FACETS := "facets"
 
 const DEFAULT_RADIUS := 4
 const DEFAULT_DEPTH := 1
@@ -40,7 +41,7 @@ static func normalize_profile(profile: Dictionary) -> Dictionary:
 	if relief_mode not in [RELIEF_BUILDUP, RELIEF_GENERATOR]:
 		relief_mode = RELIEF_BUILDUP
 	var relief_style := str(profile.get("relief_style", RELIEF_SOIL))
-	if relief_style not in [RELIEF_SOIL, RELIEF_RIDGES]:
+	if relief_style not in [RELIEF_SOIL, RELIEF_RIDGES, RELIEF_FACETS]:
 		relief_style = RELIEF_SOIL
 	var follow_surface := bool(profile.get("follow_surface", true))
 	# Profiles saved before the corner-safe behavior used the old first-face
@@ -71,6 +72,9 @@ static func normalize_profile(profile: Dictionary) -> Dictionary:
 		"relief_scale": clampi(int(profile.get("relief_scale", 16)), 4, 64),
 		"relief_detail": clampi(int(profile.get("relief_detail", 3)), 0, 5),
 		"relief_seed": maxi(0, int(profile.get("relief_seed", 0))),
+		"relief_facet_tilt": clampi(int(profile.get("relief_facet_tilt", 60)), 0, 100),
+		"relief_joint_width": clampi(int(profile.get("relief_joint_width", 1)), 0, 4),
+		"relief_joint_depth": clampi(int(profile.get("relief_joint_depth", 3)), 0, 16),
 	}
 
 
