@@ -2629,33 +2629,21 @@ func _rebuild_chunk(chunk: Vector2i, draft_relief := false) -> void:
 	var transparent := SurfaceMaterials.water_material()
 	var foam := SurfaceMaterials.foam_material()
 	var include_water := _shows_water_overlay() and _isolation_resource == null
-	var preview_transparency := (
-		preview_resource.transparency if include_water else PackedByteArray()
-	)
-	var has_water := (
-		include_water
-		and SurfaceMesher.region_has_water_overlay(
-			preview_resource, region_min, region_size
-		)
-	)
 	# The stock draft is cheaper while LMB is held. Voxel Tools produces the
 	# exact greedy mesh after pointer-up, without blocking every buildup tick.
 	var projection: Dictionary = (
-		_native_preview.build_region(
-			preview_resource.voxels,
-			size,
-			preview_resource.palette,
-			preview_transparency,
+		_native_preview.build_surface_region(
+			preview_resource,
 			region_min,
 			region_size,
 			voxel_size,
 			opaque,
 			transparent,
+			include_water,
 			_slice_height,
 		)
 		if (
 			not draft_relief
-			and not has_water
 			and _native_preview != null
 			and NativePreview.available()
 		)

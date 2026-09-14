@@ -20,6 +20,7 @@ var _undo: Object
 var _source: EmberVoxelModelResource
 var _baseline: EmberVoxelModelResource
 var _projection_cache: RefCounted
+var _last_saved_asset: Dictionary = {}
 var _source_path := ""
 var _source_hash := ""
 var _legacy_signature := ""
@@ -35,6 +36,7 @@ func open(prop: EmberVoxelProp, scene_root: Node, undo_redo: Object, edit_shared
 	error = ""
 	_refresh_compatibility = refresh_compatibility
 	_refresh_adapters.clear()
+	_last_saved_asset = {}
 	_unique_id = ""
 	_legacy_signature = ""
 	if not is_instance_valid(prop) or not is_instance_valid(scene_root):
@@ -111,7 +113,7 @@ func rename_target(requested_name: String) -> Dictionary:
 	for sibling in parent.get_children():
 		if sibling != prop and str(sibling.name) == clean_name:
 			return _result_error("Объект с именем «%s» уже существует рядом." % clean_name)
-	var target_ref := weakref(prop)
+	var target_ref: WeakRef = weakref(prop)
 	if _undo is EditorUndoRedoManager:
 		_undo.create_action("Переименовать voxel-объект", UndoRedo.MERGE_DISABLE, scene_root)
 		_undo.add_do_method(self, "_set_target_name", target_ref, clean_name)
@@ -137,6 +139,7 @@ func _set_target_name(target_ref: WeakRef, next_name: String) -> void:
 func release_projection_cache() -> void:
 	# Undo retains this session, but does not need its acceleration data.
 	_projection_cache = null
+	_last_saved_asset = {}
 
 
 func refresh_before_open() -> bool:
@@ -238,13 +241,24 @@ func save(resource: EmberVoxelModelResource, prepare_only := false, fresh_asset 
 	var prefab_path := prefab_directory.path_join(id + ".tscn")
 	if prepare_only:
 		return {"ok":true,"next":next,"packed":packed,"new_states":new_states,"old_states":old_states,"path":destination,"prefab":prefab_path}
-	var published := Store.install_prepared_asset(next, packed, destination, prefab_path)
+	# Reuse only exact bytes from our previous publication. The independently
+	# rebuilt baseline above still catches external live geometry mutations.
+	var previous_asset := {}
+	if (
+		_last_saved_asset.get("path", "") == destination
+		and _last_saved_asset.get("prefab", "") == prefab_path
+		and _last_saved_asset.snapshot.source.hash == _source_hash
+		and _last_saved_asset.snapshot.prefab.hash == FileAccess.get_sha256(prefab_path)
+	):
+		previous_asset = _last_saved_asset
+	var published := Store.install_prepared_asset(next, packed, destination, prefab_path, true)
 	if not bool(published.get("ok", false)):
 		return _result_error("Сохранение не завершено: %s" % published.get("error", ""))
 	var old_asset: Dictionary = {}
 	if id == _expected_id and _source_path.begins_with(source_directory):
-		old_asset = {"source": _baseline.duplicate(true), "packed": baseline_packed, "path": destination, "prefab": prefab_path}
-	var new_asset := {"source": next, "packed": packed, "path": destination, "prefab": prefab_path}
+		old_asset = previous_asset if not previous_asset.is_empty() else {"source": _baseline.duplicate(true), "packed": baseline_packed, "path": destination, "prefab": prefab_path}
+	var new_asset := {"snapshot": published.snapshot, "path": destination, "prefab": prefab_path}
+	_last_saved_asset = new_asset
 	for state in new_states:
 		state.signature = published.signature
 	# First application is already prepared/published; commit_action(false) avoids
@@ -327,7 +341,11 @@ func prepare_geometry_refresh(targets: Array) -> Dictionary:
 
 func _apply(states: Array[Dictionary], asset: Dictionary) -> void:
 	if not asset.is_empty():
-		var result := Store.install_prepared_asset(asset.source, asset.packed, asset.path, asset.prefab)
+		var result: Dictionary = (
+			Store.restore_prepared_snapshot(asset.snapshot, asset.path, asset.prefab)
+			if asset.has("snapshot")
+			else Store.install_prepared_asset(asset.source, asset.packed, asset.path, asset.prefab)
+		)
 		if not bool(result.get("ok", false)):
 			push_warning("Canvas Undo/Redo: %s" % result.get("error", "save failed"))
 			return

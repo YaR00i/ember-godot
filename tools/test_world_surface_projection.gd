@@ -241,7 +241,7 @@ func _test_offset_water_chunk(errors: Array[String]) -> void:
 	if not EmberVoxelSurfaceMesher.region_has_water_overlay(
 		surface, Vector3i(16, 0, 0), Vector3i(16, size.y, 16)
 	):
-		errors.append("offset water chunk was not routed to the exact Surface mesher")
+		errors.append("canonical water query missed the offset water column")
 
 	var host := Node3D.new()
 	root.add_child(host)

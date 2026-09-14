@@ -48,6 +48,8 @@ var _variations: OptionButton
 var _preferred_variation := ""
 var _refresh_pending := false
 var _filesystem: Object
+var defer_initial_refresh := false
+var _catalog_dirty := true
 
 
 func _ready() -> void:
@@ -61,7 +63,8 @@ func _ready() -> void:
 		_filesystem = EditorInterface.get_resource_filesystem()
 		if not _filesystem.filesystem_changed.is_connected(_queue_catalog_refresh):
 			_filesystem.filesystem_changed.connect(_queue_catalog_refresh)
-	refresh()
+	if not defer_initial_refresh:
+		refresh()
 
 
 func _exit_tree() -> void:
@@ -81,11 +84,12 @@ func _on_assets_published(paths: PackedStringArray) -> void:
 
 
 func _on_library_visibility_changed() -> void:
-	if is_visible_in_tree():
+	if is_visible_in_tree() and _catalog_dirty:
 		_queue_catalog_refresh()
 
 
 func _queue_catalog_refresh() -> void:
+	_catalog_dirty = true
 	if _refresh_pending or not is_inside_tree():
 		return
 	_refresh_pending = true
@@ -104,20 +108,46 @@ func open_for(anchor: Node3D, can_place: bool, placement_text: String) -> void:
 	_anchor = weakref(anchor) if is_instance_valid(anchor) else null
 	_can_place = can_place
 	_context_label.text = placement_text
-	refresh()
+	if _catalog_dirty:
+		refresh()
+	else:
+		_refresh_details()
 
 
 func refresh(preferred_id := "") -> void:
-	if _picker == null:
+	if _picker == null or defer_initial_refresh:
 		return
 	var selected_id := preferred_id if not preferred_id.is_empty() else selected_model_id()
 	_all_entries = GenerativeObjects.grouped_entries(VoxelVisuals.entries(), recipe_directory)
+	_catalog_dirty = false
 	_preferred_variation = selected_id
 	_apply_filter(selected_id)
 	if DisplayServer.get_name() != "headless":
 		for entry in _all_entries:
 			for member in entry.get("variations", [entry]):
 				_preview_renderer.queue_preview(str(member.id), str(member.get("previewPath", "")))
+
+
+func prepare_for_startup() -> void:
+	defer_initial_refresh = false
+	refresh()
+
+
+func preparation_pending_count() -> int:
+	return _preview_renderer.pending_count() if is_instance_valid(_preview_renderer) else 0
+
+
+func preparation_failure_count() -> int:
+	return _preview_renderer.failure_count() if is_instance_valid(_preview_renderer) else 0
+
+
+func preparation_loading_fraction() -> float:
+	return _preview_renderer.loading_fraction() if is_instance_valid(_preview_renderer) else 0.0
+
+
+func cancel_preparation() -> void:
+	if is_instance_valid(_preview_renderer):
+		_preview_renderer.cancel_pending()
 
 
 func refresh_context(anchor: Node3D, can_place: bool, placement_text: String) -> void:

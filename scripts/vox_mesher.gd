@@ -522,8 +522,13 @@ static func _build_culled(
 		)
 	for y in range(start.y, end.y):
 		for z in range(start.z, end.z):
+			var row := (y * sz + z) * sx
+			# Empty space dominates large generated objects. Native packed-array
+			# scanning skips it without changing y/z/x face order or neighbours.
+			if filled.slice(row + start.x, row + end.x).count(0) == end.x - start.x:
+				continue
 			for x in range(start.x, end.x):
-				var i := cell_index(x, y, z, sx, sz)
+				var i := row + x
 				if filled[i] == 0:
 					continue
 				var pi := clampi(index_at[i], 0, colors.size() - 1)

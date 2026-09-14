@@ -43,5 +43,16 @@ func _run() -> void:
 	compare(source,cache)
 	source.voxels.fill(0)
 	compare(source,cache)
+	# Sparse occupied rows at grid edges and across slab boundaries must retain
+	# their face order, neighbour culling and transparency when empty rows skip.
+	var sparse_size := source.grid_size()
+	for cell in [Vector3i.ZERO, sparse_size-Vector3i.ONE, Vector3i(15,7,15), Vector3i(15,8,15), Vector3i(16,8,15)]:
+		source.voxels[VoxMesher.cell_index(cell.x,cell.y,cell.z,sparse_size.x,sparse_size.z)] = 1
+	compare(source,cache)
+	compare(source,cache)
+	assert(cache.rebuilt == 0)
+	source.transparency.resize(source.voxels.size())
+	source.transparency[VoxMesher.cell_index(15,8,15,sparse_size.x,sparse_size.z)] = 255
+	compare(source,cache)
 	print("test_voxel_projection_cache: ","PASS" if errors.is_empty() else "FAIL", " ",errors)
 	quit(0 if errors.is_empty() else 1)

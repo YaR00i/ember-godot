@@ -255,22 +255,16 @@ func drain_next_chunk() -> bool:
 	var opaque := SurfaceMaterials.opaque_material()
 	var transparent := SurfaceMaterials.water_material()
 	var foam := SurfaceMaterials.foam_material()
-	var has_water := SurfaceMesher.region_has_water_overlay(
-		_surface, region_min, region_size
-	)
 	var native_projection: Dictionary = (
-		_native_mesher.build_region(
-			_surface.voxels,
-			size,
-			_surface.palette,
-			PackedByteArray(),
+		_native_mesher.build_surface_region(
+			_surface,
 			region_min,
 			region_size,
 			voxel_size,
 			opaque,
 			transparent,
 		)
-		if _native_mesher != null and NativeMesher.available() and not has_water
+		if _native_mesher != null and NativeMesher.available()
 		else {}
 	)
 	var mesh := native_projection.get("mesh") as Mesh

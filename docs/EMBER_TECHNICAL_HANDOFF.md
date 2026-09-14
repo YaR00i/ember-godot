@@ -1,5 +1,300 @@
 # Ember Godot — технический handoff
 
+## Native Ctrl+S after startup Window — 2026-09-14
+
+User reported Ctrl+S crashing Godot after placing2 identical water objects
+(`ember_surface_pilot`) on test_pier. Preserved available original logs/layout
+before experiments; original godot.log contained prior headless tests, not the
+editor failure, and Windows Application events supplied no new Godot backtrace.
+All reproduction and scene writes used a separate disposable Forward+ project.
+
+Original preparation Window queue_free reproduced C++ signal11 on native Ctrl+S
+of the restored test_pier even before new placements. Direct PackedScene.pack/
+ResourceSaver.save succeeded. Disabling preparation entirely allowed3 native
+scene saves. Preview CACHE_MODE_IGNORE/IGNORE_DEEP, releasing idle preview stage,
+removing explicit editor theme and clearing exclusive/transient before deleting
+the Window did not fix the crash. Keeping the completed Window alive did.
+
+Existing EmberEditorPreparation now hides after completion, stops processing,
+clears exclusive/transient and shelf/filesystem references, and retains exactly
+one inactive controller until the existing importer plugin._exit_tree frees it.
+Completed continuation is idempotent. No loader/prefetch/viewport/model/recipe,
+source format, collision, scene serialization or object Save/Undo changes.
+This is a bounded native-window lifetime workaround verified on current Godot;
+the precise C++ cause lacks symbols and is not established.
+
+PASS headless test_voxel_editor_preparation (including retained hidden inactive
+window, released modal state/references, repeat continuation and explicit final
+cleanup) and test_voxel_object_library_updates. Native original vs corrected
+script-injected Ctrl+S used the same restored8 tabs/current preview pipeline:
+original crashed on first key Save; corrected completed3 saves, placed2 water
+pilot objects through importer._create_voxel_prop, placement Undo/Redo, fourth
+key Save and reopen with both water objects retained; closed without crash.
+Timer-resumed direct Save probes produced List::erase diagnostics; deferred Save
+suppressed progress dialogs with explicit engine errors and is NOT clean evidence.
+The final key-event check had neither those diagnostics nor progress errors.
+Inherited get_node outside active tree / scan-aborted diagnostics remained on
+shutdown. Matching first backtrace address with the earlier generator teardown
+failure is insufficient to establish a shared cause or a general shutdown fix.
+
+Evidence: Temp/ember-scene-save-crash-20260914-060850/RESULTS.md and named logs;
+ctrl-s-{original,candidate}-{stdout,stderr}.log are the final key-event comparison.
+Manual acceptance CLOSED 2026-09-14: user confirmed the reported Ctrl+S crash fix
+with «отлично». Original authoring files/cache/drafts not replaced.
+
+## Generated-object exact preview / sparse culled rows — 2026-09-14
+
+After startup acceptance (user: «ок, работает») the user approved the next
+generator slice. Measured128vox latest5 tree types/cloud foliage/seed371:
+source generation113–666ms, exact prefab748–1488ms; prefab passes dominate most
+cases. Optimization belongs to existing shared VoxMesher._build_culled, not a
+second provider/renderer. Empty X-row packed-array slices count zeros in native
+code, and populated rows reuse their y/z base index. Original y/z/x iteration,
+six-face order, neighbour occlusion, palette/alpha and mesh packing retained.
+No provider, generation version, recipe, source format, collision ownership,
+Creation/GenerationSession lifetime, UI or persistent cache changes.
+
+Matched one-process alternating before/after order,2 repeats per latest type,
+128vox,seed371,cloud foliage. Exact prepared-prefab mean CPU wall times (ms):
+Savanna801.655→445.675; oak1157.816→734.799; birch748.108→430.901;
+maple1487.199→1059.750; spruce915.874→558.007.29–44% less prefab wait, mean over
+five cases1022.130→645.826ms (36.8%). All10 before/after visual surface arrays/
+names and ConcavePolygonShape3D faces exactly equal. Empty-row mechanism checked
+on widths1/4/8/16/64; even width1 improved in that isolated empty-grid test.
+These are headless fixtures and exact-prefab build times, not source-generation,
+whole-batch, native editor frame latency or FPS guarantees.
+
+PASS headless: large_tree_object (64/128/256/classic/current/canonical collision/
+creation serialization), generation_session, generator_editing, workshop_generator
+save, projection_cache (including newly sparse edge/slab-boundary/transparent-cell
+case), object_canvas, shapes, cartoon_water and world_surface_projection. Test
+fixtures use user://, authored assets not rewritten. Native Forward+ disposable
+editor full existing editor_test_voxel_generation workflow PASS twice with current
+code:4 exact candidates, selected draft/apply, two batches/favorites/unloaded archive
+recovery/comparison, preset save/reopen, asset-only Undo/Redo, studio scene save/
+reopen/discard, generate-similar and type controls. Native screenshot inspected.
+
+First native current-code run printed PASS then crashed with C++ signal11 during
+teardown. Baseline (original VoxMesher) same workflow PASS and closed without
+crash; diagnostic current-code repeat PASS and closed without crash, preview
+pending0/loading empty/prefetch empty before quit. Intermittent crash cause remains
+unproved; do not call it an established pre-existing bug or a fixed lifecycle.
+Inherited UID fallback/scan-aborted diagnostics and failure backtrace retained.
+No agent stop/restart of original editor, no commit/push. Evidence:
+Temp/ember-addon-audit-20260914/GENERATOR_RESULTS.md, matched/profile logs and
+Temp/ember-editor-startup-audit-20260914/generator-editor-{native,baseline,repeat}*.
+
+Manual generator acceptance CLOSED2026-09-14: user «окей работает» confirmed
+ordinary generator operation after the requested workshop workflow check.
+This acceptance does not establish the cause or a fix for the test-editor teardown
+crash described above. Silhouette/material/physical trunk preserved. Source
+generation and whole-candidate synchronous frame work remain possible hotspots;
+no speculative follow-on refactor without another measured slice.
+
+## Catalog metadata / bounded preview prefetch — 2026-09-14
+
+User accepted startup-wait optimization after water and Save. Existing native-first
+Catalog, Visuals, object shelf, PreviewRenderer and preparation Window remain
+owners. `Catalog.definitions(metadata_only := false)` keeps default full definitions;
+Visuals requests true. Native projection reads ID/title/tags, normalized density and
+size directly from the same loaded Resource, never converts dense voxel/material/
+group channels to Array. Legacy parsing/precedence and full generator/editor calls
+remain unchanged. Source files still require native Resource parsing; no hand-written
+source parser, persistent catalog/thumbnail schema, new loader or renderer added.
+
+PreviewRenderer overlaps resource loading with ordered main-thread rendering using
+at most2 outstanding active/prefetched ResourceLoader tokens. Only finished tokens
+are retrieved; prefab instantiate/draw/readback use the same stage and camera. A
+same-path replacement revision waits until the older token is consumed, so it cannot
+join the obsolete task. Cache/revision/epoch checks still discard stale requests.
+Cancel/exit transfer all prefetched tokens to existing static disposal watcher;
+no instance or thumbnail publication occurs while draining cancelled jobs.
+
+Matched disposable native Forward+ editor, same project/cache/portable preferences,
+8 restored scene tabs and247 previews (245 original +2 copy-only Save fixtures):
+baseline cap0/full metadata gate28.379s and29.039s; cap2/metadata projection24.301s
+and22.729s. Mean28.709→23.515s (18.1% less preparation wait); clean repeated pair
+29.039→22.729s. Probe elapsed32.565→26.129s for that pair; this is not process start.
+Last shelf opening0.421ms,cache247,pending0,prefetch0,failures0. Repeat samples show
+preparation Window focused in both modes. Final static memory≈850.5/850.8MiB; no
+memory reduction claim. Godot scanning/restoration remains substantial (8 tabs and
+scan complete around12s after probe entry). Warm OS/editor caches, offscreen desktop
+measurements on one machine; no cold OS-cache/full-startup/FPS guarantee.
+
+Exploratory cap4 improved standalone previews18.428→8.139s but slowed one full
+editor pass to38.871s, so it was discarded. Cause of that variation is unproven;
+do not attribute it to thread contention or focus without evidence. Current cap2
+was chosen from actual editor results, not that standalone timing.
+
+PASS: full vs metadata IDs/title/tags/scale/owner and native channel exclusion,
+legacy definition equality, visual-library scene save/reopen, publication refresh/
+cache/failed publish, library layout, preparation readiness/timeout/exit. Native
+preview verifies real prefab/source-only pixels, bounded prefetch, cancel/requeue,
+pending revision invalidation, no same-path revision joins, renderer exit draining
+all prefetched tokens and shared-path survivor pixels. Malformed user:// resource
+errors intentional; inherited UID fallback and copy-editor teardown diagnostics
+preserved, no clean-shutdown claim. Author maps/sources/dirty art/config untouched;
+no commit/push. Evidence: Temp/ember-editor-startup-audit-20260914/SPEED_RESULTS.md.
+
+Startup accepted2026-09-14: user «ок, работает» after ordinary project opening.
+Detailed shelf publication/filter/lifecycle regressions PASS automatically. Generator
+optimization is recorded above; generator/water/Save manual gates remain separate.
+
+## Save/Undo snapshots и streaming UID — 2026-09-14
+
+После water optimization пользователь согласовал тяжёлый Save и удержание памяти.
+Existing ObjectSession/ModelStore остаются owners; canonical .tres/.tscn, geometry/
+prefab formats, scene save и Undo depth не меняются.
+
+ModelStore.install_prepared_asset optional keep_snapshot возвращает ZSTD bytes
+обоих сериализованных файлов с size/SHA256. Это приватные in-memory Undo данные,
+без нового persistence format или history-cache файлов. Session new asset хранит
+snapshot вместо prepared PackedScene. Old asset повторного Save переиспользует
+предыдущий publication snapshot только при совпадении paths/source hash/prefab
+hash; unknown/reopened baseline сохраняет existing prepared fallback. Независимый
+baseline rebuild и сравнение live mesh/shape выполняются каждый Save, не используют
+published/live геометрию как эталон. Node snapshots сохраняют точные resource
+references, overrides/pose/descendants. Open/release заменяют session dictionary,
+не clear общего history asset.
+
+restore_prepared_snapshot проверяет size/hash обоих payloads до записи staging.
+Использует ту же _install_editor_asset publication/rollback, UID installation,
+cache identities и native SceneState priming. Replay не пересобирает/сериализует
+готовую геометрию. Existing editor staging lifetime сохранён из-за asynchronous
+preview/folding readers; cleanup subsystem не добавлен. _set_staged_uid меняет
+generated header, body копируется verbatim порциями1MiB через temporary/rename;
+ResourceSaver.set_uid ранее требовал≈1.25s для30MiB сцены. Published prefab всё ещё
+читается заново ради проверенного editor SceneState/instancing пути.
+
+Matched one-process94ec785/current,192×10×256 dense block,3Save per mode, без
+concurrent tests: warm mean4.999→3.967s (20.6% less waiting), cold6.508→5.489s;
+Undo3.674→2.030s, Redo3.679→2.074s. Repeated-save history growth166.65→85.01MiB
+(49% less), snapshot≈1.28MiB. Absolute after-mode memory включает caches первого
+mode: сравнивается delta, не абсолютный уровень. Standalone retention probes:
+после3Save646.7→485.5MiB; clear history возвращает313.4/315.4MiB. Геометрия реальных
+прошлых versions нужна node Undo references и продолжает занимать память; это не
+устранение всех history costs или замер OS/GPU memory. Первая shared/reopened
+baseline может сохранять дополнительный prepared fallback.
+
+test_voxel_save_snapshots PASS: exact source/prefab bytes + UID/SceneState paths,
+corrupt snapshot rejected, second-rename rollback prepared/replay, no failure event/
+snapshot, refresh/cache-release не портят Undo, physical geometry, external live
+mutation rejected,2MiB+UTF8 UID body unchanged/two rewrites/one UID. Related object
+Canvas/library updates/shapes/scene refresh/canvas growth/assembly/context PASS.
+Disposable native Forward+ editor probe PASS errors0: canonical copy source dirs,
+shared saves, EditorUndoRedoManager, editable authored child/pose, scene save/reopen
+collision/SceneState path, failure rollback. Initial probes outside catalog dirs /
+missing scene folder were fixture errors, preserved then corrected; final inherited
+UID/teardown warnings retained, no clean-shutdown claim. Evidence:
+Temp/ember-addon-audit-20260914/SAVE_RESULTS.md and logs/helpers.
+Manual ordinary-editor acceptance OPEN:2–3Save, selected/shared models, Undo/Redo,
+authored socket/pose, scene save/reopen/discard, F6 collision. No author edits,
+commit/branch/push. Startup/water manual gates remain separate/open.
+
+## Native terrain для мокрых Surface chunks — 2026-09-14
+
+После измеренного water/dry разрыва пользователь согласовал первый performance
+срез. Existing `EmberVoxelNativeMesher.build_surface_region` обслуживает Canvas
+и общий world/battle projection. Surface terrain opaque: transparency передаётся
+только прежнему water-overlay owner. Generic `build_region` сохраняет семантику.
+
+Адаптер строит native terrain и отдельно вызывает прежний
+`EmberVoxelSurfaceMesher.append_water_overlay`. Без water surfaces возвращается
+native local mesh/transform. При воде готовые greedy terrain vertices переводятся
+в complete-Surface block coordinates; остальные attributes/materials сохранены,
+water/foam arrays копируются без изменений. Chunk visual transform identity
+сохраняет MODEL_MATRIX scale воды и local VERTEX пены. Перевод только воды в
+chunk-local coordinates изменил бы рисунок. Shader, Resource/schema, collision,
+height/navigation и prefab publication не менялись. Draft, bottom-only, slice
+и unavailable-native fallback продолжают существующий путь.
+
+Matched Forward+ RTX5070: один64×32×64 slab, dry/wet16×32×16 chunks, старый Canvas
+из94ec785, один процесс/чередование порядка,8repeats (первый исключён).
+Wet median16.975→6.173ms (2.75×); dry4.704→4.382ms. Evidence/helpers:
+Temp/ember-addon-audit-20260914/WATER_RESULTS.md. Это CPU build данного чанка,
+не whole-map frame latency/FPS. No authored Resource/scene writes.
+
+`test_native_surface_water.gd` PASS headless и Forward+: shallow tint + level fill,
+rock above water, cavity across chunk boundary, equal auxiliary arrays, exposed
+terrain area per voxel plane/normal/color independent of greedy triangulation,
+Canvas/runtime identity shader space, bottom-only/slice, stock fallback и source
+unchanged. Cube normals compared with GPU compression tolerance. Frozen water/foam
+under translated/rotated/scaled parent:0different pixels,8171visible vs empty.
+SubViewport UPDATE_ALWAYS + force_draw + empty control exclude unrendered captures.
+Related Canvas workflow, height slice, world projection (also Forward+), sculpt,
+contact boundaries, cartoon water/prefab save/reopen, projection cache, Voxel Tools
+backend и GPU water seams PASS. Water/Canvas/slice captures inspected.
+Ручная приёмка обычной карты OPEN: берег/foam через чанки, draft→exact commit,
+bottom-only/slice, Undo/Redo, save/reopen/discard, F6 movement/contact.
+Save/retained-memory реализован отдельным срезом выше; commit/push не запрошены.
+
+## Подготовка редактора до начала работы2026-09-14
+
+Согласован отдельный startup-срез после аудита: пользователь наблюдает лаг при
+открытии проекта в Godot и предпочитает дождаться полной подготовки Ember.
+Production owners: `ember_import/plugin.gd` composes private
+`ember_editor_preparation.gd` Window, existing object-library panel owns catalog,
+`EmberVoxelPreviewRenderer` owns one SubViewport and in-memory texture cache.
+Это editor-only lifecycle, без нового renderer, persistence format, Resource
+schema, gameplay loading screen или изменений авторских карт/моделей.
+
+Plugin creates a native exclusive/transient loading Window and defers the shelf's
+initial catalog projection. Gate starts after composition, waits for filesystem
+scan/import and500ms quiet scene-list interval, then asks the shelf to prepare
+catalog/previews. Completion waits for renderer pending_count0 and pending visual/
+physics Surface projections. A failed preview or120s timeout offers explicit
+continuation with partial cache; shelf remains usable, unfinished jobs cancel.
+Plugin exit frees the Window and cancels the shelf queue before removing panels.
+Initial Godot scan/scene restoration remains engine-owned and can stall its main
+thread; catalog projection and scene instantiation also remain main-thread work
+inside the gate. No claim that the entire startup/loading indicator never pauses.
+
+Renderer uses load_threaded_request/get_status, retrieves only finished jobs,
+drains failed tasks for repaired-file retry, and instantiates/renders on the main
+thread. Queue advances through LOAD/DRAW/CLEANUP in _process and a one-shot
+frame_post_draw callback; no coroutine awaits a global signal on a destructible
+Node. A native exit probe reproduced resumed-deleted-instance errors and orphaned
+finished loader tokens with the first coroutine implementation; corrected queue
+plus disposal-only static frame watcher leaves no loader task after exit. Cancel
+also transfers the active token, so a timed-out job cannot keep the render slot
+occupied. Shared-path concurrent renderer survives disposal of the other request.
+Signal publication happens last so receivers can safely close their renderer.
+Queued identities remain deduplicated while in flight. Cancellation epoch
+and explicit cache/path/source revisions suppress obsolete completion/failure
+signals during cancel/requeue and publication invalidation, including source-only
+previews. Invalid non-Node3D/empty instances fail safely. Canonical publication
+events and filesystem changes mark the shelf catalog dirty; clean reopening uses
+prepared entries and textures rather than reading all full voxel definitions.
+
+Audit evidence in Temp/ember-editor-startup-audit-20260914/RESULTS.md and native
+logs/snapshot: warmed old startup queues245 hidden previews,14.135s summed
+synchronous load+instantiate,max1.891s. First post-change instrumented native run:
+245 previews, request dispatch max0.117ms, instantiate max253.033ms; gate ready
+28.073s after begin. Final-code second native run: gate ready27.844s,0 failures,
+actual plugin command opens the shelf in4.625ms,pending0, cache245. Third run with
+Objects restored selected:27.952s,pending0, opening3.248ms; final frame-queue full
+startup run:27.975s,pending0, opening3.531ms,cache245. Second probe end incorrectly
+waited for a stale scanning-progress fraction even after ready; diagnostic fixed
+to actual is_scanning/is_importing, third/fourth probes DONE SETTLED. No total
+startup or memory speedup claimed from one machine/two runs; post-change static
+memory≈848–849MiB, comparable to old≈850MiB. Offscreen probe intervals are not FPS.
+Inherited UID fallback warnings and audit teardown errors retained in logs; no
+clean-shutdown lifecycle acceptance claimed. Agent did not stop/restart the original editor.
+
+Automatic checks PASS: test_voxel_editor_preparation, voxel_object_library_updates,
+voxel_object_library_layout, voxel_visual_library. Native Forward+ renderer test
+PASS includes real pixels, source preview without prefab writes, duplicate/cancel/
+requeue, in-flight invalidation, invalid root, failed-file repair and source cache
+invalidation. Native user://8MiB loading fixture also verifies in-flight renderer
+exit/token disposal and shared-path survivor pixels. Expected broken user://
+fixture parse errors are part of that test. Native error-window layout/pixel
+snapshot PASS: continuation button fits a compact window; error height fitted
+explicitly after wrapping, without Window.wrap_controls/full-rect size feedback.
+Original-editor manual acceptance OPEN: save scenes/Canvas first, close/reopen the
+project, wait for the gate, immediately open Objects/search/filter/select/place;
+check startup feels ready after dismissal and normal asset publication still
+updates the shelf. Commit/push not requested; water/Save remain separate slices.
+
 ## Checkpoint / следующий аудит аддона2026-09-14
 
 Пользователь принял последнюю воду («окей работает») и запросил commit/push:
@@ -1989,8 +2284,9 @@ heightfield, editor-only cache и native chunk backend ускорили hot path
 `agent_sandbox` и `fan_town` используют одну physical Surface для visual,
 collision и route heights. `fan_town` 32×32 хранит около 12 MiB voxel bytes;
 load 1.0–1.3 с и save 0.14–0.17 с не обосновывают новую schema. Native mesher
-обслуживает сухие чанки; water-bearing chunks сохраняют точную full-map
-координатную проекцию шейдера без швов. Новая физика заменяет legacy collision
+обслуживает сухие и мокрые чанки через общий Surface adapter; water-bearing
+chunks сохраняют full-map координаты воды/пены и identity visual transform.
+Новая физика заменяет legacy collision
 атомарно после полного rebuild.
 
 Surface Canvas, Ember Graph, Object Inspector и bounded migration dashboard

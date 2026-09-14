@@ -16,6 +16,25 @@ func _run() -> int:
 	var errors: Array[String] = []
 	var definitions := Catalog.definitions()
 	var entries := Visuals.entries()
+	var metadata := Catalog.definitions(true)
+	if metadata.size() != definitions.size():
+		errors.append("metadata catalog does not cover full canonical catalog")
+	for entry in entries:
+		var definition: Dictionary = definitions.get(str(entry.id), {})
+		var model: Dictionary = definition.get("model", {})
+		var title := str(definition.get("nameRu", model.get("nameRu", entry.id))).strip_edges()
+		if title.is_empty(): title = str(entry.id)
+		var blocks: Dictionary = model.get("sizeBlocks", {})
+		var expected_scale := "%d vox/block · %d×%d×%d blocks" % [VoxMesher.voxels_per_block(model), maxi(1,int(blocks.get("x",1))), maxi(1,int(blocks.get("y",1))), maxi(1,int(blocks.get("z",1)))]
+		if entry.title != title or entry.scale != expected_scale or entry.tags != Visuals._string_values(definition.get("tags",model.get("tags",[]))) or entry.owner != definition.get("_owner",""):
+			errors.append("metadata projection differs from full definition: " + str(entry.id))
+		var projected: Dictionary = metadata.get(str(entry.id), {})
+		if entry.owner == "godot":
+			for channel in ["voxels", "collisionVoxels", "voxelGroups", "voxelPartIds", "palette", "surfaceFillLevels"]:
+				if projected.get("model",{}).has(channel):
+					errors.append("shelf expands native geometry channel: " + channel)
+		elif projected != definition:
+			errors.append("legacy import definition changed in metadata projection")
 	if definitions.is_empty() or entries.size() != definitions.size():
 		errors.append("visual projection does not cover the resolved model catalog")
 	var native_entry := _entry_by_id(entries, "vox_fan_anvil")

@@ -7,7 +7,7 @@ extends RefCounted
 const NATIVE_DIR := "res://content/voxel_models"
 
 
-static func definitions() -> Dictionary:
+static func definitions(metadata_only := false) -> Dictionary:
 	var result := {}
 	if DirAccess.dir_exists_absolute(NATIVE_DIR):
 		for filename in DirAccess.get_files_at(NATIVE_DIR):
@@ -16,7 +16,16 @@ static func definitions() -> Dictionary:
 			var resource := ResourceLoader.load(NATIVE_DIR.path_join(filename)) as EmberVoxelModelResource
 			if resource == null or resource.model_id.strip_edges().is_empty():
 				continue
-			var definition := resource.to_definition()
+			# Shelf metadata must not expand dense geometry/channel arrays.
+			var definition := {
+				"id": resource.model_id,
+				"nameRu": resource.display_name,
+				"tags": Array(resource.tags),
+				"model": {
+					"voxelsPerBlock": resource.normalized_density(),
+					"sizeBlocks": {"x": resource.size_blocks.x, "y": resource.size_blocks.y, "z": resource.size_blocks.z},
+				},
+			} if metadata_only else resource.to_definition()
 			definition["_owner"] = "godot"
 			result[resource.model_id] = definition
 	var directory := EmberPack.pack_root().path_join("voxels").path_join("models")

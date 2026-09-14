@@ -6,6 +6,7 @@ extends RefCounted
 
 const CHANNEL_COLOR := 2
 const COLOR_MESHER_PALETTE := 1
+const SurfaceMesher = preload("res://scripts/ember_voxel_surface_mesher.gd")
 
 var _mesher: Object
 var _palette: Object
@@ -115,6 +116,55 @@ func build_region(
 		"position": Vector3(start) * voxel_size,
 		"scale": Vector3.ONE * voxel_size,
 	}
+
+
+func build_surface_region(
+	resource: EmberVoxelModelResource,
+	region_min: Vector3i,
+	region_size: Vector3i,
+	voxel_size: float,
+	opaque_material: Material,
+	water_material: Material,
+	include_water := true,
+	visible_height := -1,
+) -> Dictionary:
+	if resource == null:
+		return {}
+	# Surface transparency describes water above opaque ground, not transparent
+	# terrain voxels. Generic props retain build_region's per-cell fallback.
+	var projection := build_region(
+		resource.voxels, resource.grid_size(), resource.palette, PackedByteArray(),
+		region_min, region_size, voxel_size, opaque_material, water_material,
+		visible_height,
+	)
+	var terrain := projection.get("mesh") as Mesh
+	if terrain == null or not include_water or visible_height >= 0:
+		return projection
+	var overlay := ArrayMesh.new()
+	SurfaceMesher.append_water_overlay(
+		resource, overlay, region_min, region_size, voxel_size
+	)
+	if overlay.get_surface_count() == 0:
+		return projection
+	# Water derives its pattern scale from MODEL_MATRIX; foam uses local VERTEX.
+	# Keep both exactly in the stock complete-Surface block coordinate space.
+	# Bake only the already-greedy terrain vertices, never rescan terrain in GD.
+	var combined := ArrayMesh.new()
+	var at: Vector3 = projection["position"]
+	var scale: Vector3 = projection["scale"]
+	for source in [terrain, overlay]:
+		for surface in source.get_surface_count():
+			var arrays: Array = source.surface_get_arrays(surface)
+			if source == terrain:
+				var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+				for index in vertices.size():
+					vertices[index] = at + vertices[index] * scale
+				arrays[Mesh.ARRAY_VERTEX] = vertices
+			combined.add_surface_from_arrays(source.surface_get_primitive_type(surface), arrays)
+			var target := combined.get_surface_count() - 1
+			combined.surface_set_name(target, source.surface_get_name(surface))
+			combined.surface_set_material(target, source.surface_get_material(surface))
+	return {"mesh": combined, "position": Vector3.ZERO, "scale": Vector3.ONE}
 
 
 func _sync_palette(source: PackedColorArray) -> void:

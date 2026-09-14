@@ -3,6 +3,8 @@ extends EditorPlugin
 
 const EmberToolsDock = preload("res://addons/ember_import/ember_tools_dock.gd")
 const EmberVoxelObjectLibrary = preload("res://addons/ember_import/ember_voxel_object_library_panel.gd")
+const EditorPreparation = preload("res://addons/ember_import/ember_editor_preparation.gd")
+var _editor_preparation
 const ObjectBrush = preload("res://addons/ember_import/ember_voxel_object_brush.gd")
 var _object_brush: Node
 var _object_brush_button: Button
@@ -60,6 +62,10 @@ var _last_selected_trigger: EmberInteract
 
 
 func _enter_tree() -> void:
+	if DisplayServer.get_name() != "headless":
+		_editor_preparation = EditorPreparation.new()
+		_editor_preparation.theme = EditorInterface.get_editor_theme()
+		EditorInterface.get_base_control().add_child(_editor_preparation)
 	add_tool_menu_item("Ember: Новая voxel-форма…", _new_voxel_shape)
 	add_tool_menu_item("Ember: Точная voxel-расстановка…", _place_voxel_selection)
 	name = "EmberImportPlugin"
@@ -186,6 +192,7 @@ func _enter_tree() -> void:
 	_dock.close_requested.connect(_close_migration_panel)
 	add_control_to_bottom_panel(_dock, "Ember Migration")
 	_object_library = EmberVoxelObjectLibrary.new()
+	_object_library.defer_initial_refresh = is_instance_valid(_editor_preparation)
 	_object_library.rebuild_library_requested.connect(func():
 		make_bottom_panel_item_visible(_dock)
 		_dock.rebuild_library_voxels()
@@ -289,6 +296,11 @@ func _enter_tree() -> void:
 	if selection and not selection.selection_changed.is_connected(_refresh_voxel_gizmos):
 		selection.selection_changed.connect(_refresh_voxel_gizmos)
 	_refresh_voxel_gizmos()
+	if is_instance_valid(_editor_preparation):
+		_editor_preparation.finished.connect(func(success: bool, elapsed_ms: int, failures: int):
+			print("[Ember] Editor preparation: %s · %d ms · %d preview failures" % ["ready" if success else "continued", elapsed_ms, failures])
+		)
+		_editor_preparation.begin.call_deferred(_object_library, EditorInterface.get_resource_filesystem())
 
 
 func _configure_fullscreen_playtest() -> void:
@@ -303,6 +315,9 @@ func _configure_fullscreen_playtest() -> void:
 
 
 func _exit_tree() -> void:
+	if is_instance_valid(_editor_preparation):
+		_editor_preparation.free()
+	_editor_preparation = null
 	if is_instance_valid(_object_brush):
 		_object_brush.free()
 		_object_brush = null

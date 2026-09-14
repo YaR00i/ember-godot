@@ -9,6 +9,7 @@ const Importer = preload("res://scripts/ember_voxel_legacy_importer.gd")
 const Parity = preload("res://addons/ember_import/ember_voxel_migration_parity.gd")
 static var _canvas_cache: Dictionary = {}
 static var derived_rename_override: Callable # Test-only transient sharing violation.
+static var asset_rename_override: Callable # Test-only two-file transaction failure.
 
 # Publication notifications only; canonical assets remain the files on disk.
 class AssetEvents extends RefCounted:
@@ -90,6 +91,21 @@ static func restore_derived_prefab(bytes: PackedByteArray, path: String) -> Dict
 static func install_prepared_asset(
 	source: EmberVoxelModelResource, packed: PackedScene,
 	source_path: String, prefab_path: String,
+	keep_snapshot := false,
+) -> Dictionary:
+	return _install_editor_asset(source, packed, source_path, prefab_path, keep_snapshot, {})
+
+
+static func restore_prepared_snapshot(snapshot: Dictionary, source_path: String, prefab_path: String) -> Dictionary:
+	if snapshot.is_empty():
+		return {"ok": false, "error": "Пустой снимок сохранения."}
+	return _install_editor_asset(null, null, source_path, prefab_path, false, snapshot)
+
+
+static func _install_editor_asset(
+	source: EmberVoxelModelResource, packed: PackedScene,
+	source_path: String, prefab_path: String,
+	keep_snapshot: bool, replay: Dictionary,
 ) -> Dictionary:
 	## Editor save transaction. Stage both files before publishing either one.
 	## Live scene nodes/resources are applied only by the caller after success.
@@ -118,23 +134,64 @@ static func install_prepared_asset(
 	# ResourceSaver notifies the editor asynchronously even for hidden res://
 	# files. Serialize outside its index, then copy beside the final destination
 	# for same-filesystem atomic publication (user:// may be on another drive).
-	var result := ResourceSaver.save(source, serialized[0])
-	if result == OK:
-		result = ResourceSaver.set_uid(serialized[0], uids[0])
-	if result == OK:
-		var node := packed.instantiate()
-		# Replays may receive a PackedScene previously serialized to a staging
-		# path. Never repack it into itself or retain that path as inheritance.
-		node.scene_file_path = ""
-		packed = PackedScene.new()
-		signature = (EmberVoxelPrefab.BUILD_CONTRACT + ":" + FileAccess.get_sha256(serialized[0]) + ":json-only").sha256_text()
-		node.set_meta(EmberVoxelPrefab.SOURCE_SIGNATURE_META, signature)
-		result = packed.pack(node)
-		node.free()
-	if result == OK:
-		result = ResourceSaver.save(packed, serialized[1])
-	if result == OK:
-		result = ResourceSaver.set_uid(serialized[1], uids[1])
+	var result := OK
+	var snapshot := {}
+	if not replay.is_empty():
+		# Immutable published bytes, not live scene resources. Validate both
+		# records before writing either staging file or publishing a destination.
+		var payloads: Array[PackedByteArray] = []
+		for name in ["source", "prefab"]:
+			var record: Dictionary = replay.get(name, {})
+			var expected_size := int(record.get("size", -1))
+			if expected_size <= 0:
+				result = ERR_FILE_CORRUPT
+				break
+			var compressed: PackedByteArray = record.get("bytes", PackedByteArray())
+			var bytes := compressed.decompress(expected_size, FileAccess.COMPRESSION_ZSTD)
+			if bytes.size() != expected_size or _bytes_hash(bytes) != record.get("hash", ""):
+				result = ERR_FILE_CORRUPT
+				break
+			payloads.append(bytes)
+		if result == OK:
+			for index in serialized.size():
+				var file := FileAccess.open(serialized[index], FileAccess.WRITE)
+				if file == null:
+					result = FileAccess.get_open_error()
+					break
+				file.store_buffer(payloads[index])
+				result = file.get_error()
+				file.close()
+				if result != OK:
+					break
+				uids[index] = EmberVoxelPrefab.resource_uid_from_header(serialized[index])
+				if uids[index] == ResourceUID.INVALID_ID:
+					result = ERR_FILE_CORRUPT
+					break
+		if result == OK:
+			signature = (EmberVoxelPrefab.BUILD_CONTRACT + ":" + str(replay.source.hash) + ":json-only").sha256_text()
+	else:
+		result = ResourceSaver.save(source, serialized[0])
+		if result == OK:
+			result = _set_staged_uid(serialized[0], uids[0])
+		if result == OK:
+			var node := packed.instantiate()
+			# Never retain a previous staging path as scene inheritance.
+			node.scene_file_path = ""
+			packed = PackedScene.new()
+			signature = (EmberVoxelPrefab.BUILD_CONTRACT + ":" + FileAccess.get_sha256(serialized[0]) + ":json-only").sha256_text()
+			node.set_meta(EmberVoxelPrefab.SOURCE_SIGNATURE_META, signature)
+			result = packed.pack(node)
+			node.free()
+		if result == OK:
+			result = ResourceSaver.save(packed, serialized[1])
+		if result == OK:
+			result = _set_staged_uid(serialized[1], uids[1])
+		if result == OK and keep_snapshot:
+			snapshot = {"source": _snapshot_file(serialized[0]), "prefab": _snapshot_file(serialized[1])}
+			for name in ["source", "prefab"]:
+				if snapshot[name].size <= 0 or snapshot[name].bytes.is_empty():
+					result = ERR_FILE_CANT_READ
+					break
 	if result == OK:
 		for index in paths.size():
 			result = DirAccess.copy_absolute(ProjectSettings.globalize_path(serialized[index]), ProjectSettings.globalize_path(staged[index]))
@@ -142,7 +199,7 @@ static func install_prepared_asset(
 				break
 	if result == OK:
 		for index in paths.size():
-			result = DirAccess.rename_absolute(ProjectSettings.globalize_path(staged[index]), ProjectSettings.globalize_path(paths[index]))
+			result = asset_rename_override.call(staged[index], paths[index]) if asset_rename_override.is_valid() else DirAccess.rename_absolute(ProjectSettings.globalize_path(staged[index]), ProjectSettings.globalize_path(paths[index]))
 			if result != OK:
 				break
 			published.append(paths[index])
@@ -187,7 +244,58 @@ static func install_prepared_asset(
 					cache_instance.free()
 		packed = _canvas_cache.get(prefab_path, packed) as PackedScene
 		asset_events.assets_published.emit(PackedStringArray(paths))
-	return {"ok": result == OK, "error": error_string(result), "packed": packed, "signature": signature}
+	return {"ok": result == OK, "error": error_string(result), "packed": packed, "signature": signature, "snapshot": snapshot if result == OK else {}}
+
+
+static func _bytes_hash(bytes: PackedByteArray) -> String:
+	var context := HashingContext.new()
+	context.start(HashingContext.HASH_SHA256)
+	context.update(bytes)
+	return context.finish().hex_encode()
+
+
+static func _snapshot_file(path: String) -> Dictionary:
+	var bytes := FileAccess.get_file_as_bytes(path)
+	return {"bytes": bytes.compress(FileAccess.COMPRESSION_ZSTD), "size": bytes.size(), "hash": _bytes_hash(bytes)}
+
+
+static func _set_staged_uid(path: String, uid: int) -> Error:
+	# ResourceSaver.set_uid reparses the complete text resource. Only its header
+	# changes here; stream the body verbatim instead of rebuilding a large scene.
+	var source := FileAccess.open(path, FileAccess.READ)
+	if source == null:
+		return FileAccess.get_open_error()
+	var header := source.get_line().strip_edges()
+	if not (header.begins_with("[gd_scene ") or header.begins_with("[gd_resource ")) or not header.ends_with("]"):
+		return ERR_FILE_CORRUPT
+	var start := header.find(" uid=\"")
+	if start >= 0:
+		var end := header.find("\"", start + 6)
+		if end < 0:
+			return ERR_FILE_CORRUPT
+		header = header.left(start) + header.substr(end + 1)
+	header = header.trim_suffix("]") + " uid=\"" + ResourceUID.id_to_text(uid) + "\"]"
+	var temporary := path + ".uid-header.tmp"
+	var target := FileAccess.open(temporary, FileAccess.WRITE)
+	if target == null:
+		return FileAccess.get_open_error()
+	target.store_line(header)
+	var result := OK
+	while source.get_position() < source.get_length():
+		var bytes := source.get_buffer(mini(1048576, source.get_length() - source.get_position()))
+		if bytes.is_empty():
+			result = ERR_FILE_CANT_READ
+			break
+		target.store_buffer(bytes)
+	if result == OK:
+		result = target.get_error()
+	source.close()
+	target.close()
+	if result == OK:
+		result = DirAccess.rename_absolute(ProjectSettings.globalize_path(temporary), ProjectSettings.globalize_path(path))
+	if result != OK:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(temporary))
+	return result
 
 
 static func _cleanup_serialization(paths: Array[String], directory: String) -> void:

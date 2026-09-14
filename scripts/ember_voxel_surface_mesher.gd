@@ -241,11 +241,9 @@ static func region_has_water_overlay(
 	region_min: Vector3i,
 	region_size: Vector3i,
 ) -> bool:
-	## The native terrain adapter returns chunk-local voxel geometry, while this
-	## mesher's water/foam vertices intentionally keep complete-Surface
-	## coordinates for seamless shader patterns. Until the adapter exposes a
-	## matching auxiliary-surface transform, water-bearing chunks must use the
-	## exact stock Surface mesher as one coordinate-space owner.
+	## Query the canonical water columns without constructing visual geometry.
+	## Native Surface composition uses append_water_overlay directly and keeps
+	## its complete-Surface coordinates by baking the greedy terrain transform.
 	if resource == null:
 		return false
 	if resource.transparency.is_empty() and resource.surface_fill_materials.is_empty():

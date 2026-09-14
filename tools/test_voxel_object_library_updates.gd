@@ -12,6 +12,7 @@ class FixtureShelf extends Shelf:
 		if _picker == null: return
 		var selected := preferred_id if not preferred_id.is_empty() else selected_model_id()
 		_all_entries = fixture_entries.duplicate(true)
+		_catalog_dirty = false
 		_apply_filter(selected)
 
 func entry(id: String) -> Dictionary:
@@ -61,6 +62,12 @@ func run() -> void:
 	check(panel._picker._search.text == "board" and panel._owner_filter == "godot","refresh retains query and owner filter")
 	check(panel.selected_model_id() == "stable" and panel._picker._items.item_count == 2,"refresh discovers object without losing selection")
 	check(panel._picker.selected_entry().get("texture") == preview,"unrelated in-memory preview retained")
+	var clean_refreshes := panel.refresh_count
+	panel.hide()
+	panel.show()
+	panel.open_for(null, false, "Cached opening")
+	for frame in 3: await process_frame
+	check(panel.refresh_count == clean_refreshes,"clean library reopening reuses prepared catalog")
 	refreshed = panel.refresh_count
 	var blocked := directory.path_join("blocked")
 	var file := FileAccess.open(blocked,FileAccess.WRITE)

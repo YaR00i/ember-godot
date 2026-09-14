@@ -2544,3 +2544,190 @@ RTX5070 PASS; generation_bush_profiles_native.png — три пресета ря
 несколько seed, оба режима, основание/ветки/пышность/край/цвета, вид со всех
 сторон и игровой камеры; save/reopen/Undo/Redo и посадка кистью на карте.
 Old recipes v1–v5 не мигрируют, ягоды/цветы/renderer work вне scope.
+## Editor startup preparation gate — 2026-09-14
+
+Accepted startup optimization contract: editor project opening, not F5/F6.
+Native exclusive preparation Window waits for scan/import, stable restored
+scenes, existing object catalog/preview queue and pending Surface projection.
+No authored scene/model writes; existing SubViewport, Resources and cache owners.
+
+PASS `--headless --path . --script res://tools/test_voxel_editor_preparation.gd`:
+scan/import block catalog, catalog begins once after settling, previews block
+release, error/timeout explicit continuation, shelf usable after early timeout,
+window/plugin exit cancellation. Does not replace native input/visual acceptance.
+
+PASS related `test_voxel_object_library_updates.gd` (publication, coalescing,
+failed publication, dirty hidden reopening, clean cache reuse, source unchanged),
+`test_voxel_object_library_layout.gd`, `test_voxel_visual_library.gd` (245 models,
+selection/serialization fixture). PASS native Forward+ WITHOUT `--headless`:
+`test_voxel_preview_renderer.gd` verifies real128px model pixels, prefab and source
+branch without new/overwritten prefab, duplicate/cancel/requeue, in-flight cache
+invalidation, invalid root, load failure followed by same-path repair and source
+publication invalidation. A user://8MiB loading fixture checks renderer exit while
+the resource is still loading, token disposal and another renderer's shared-path
+pixels. Native preparation fixture checks compact error-window/continuation
+button layout. The malformed user:// fixture intentionally logs parse
+errors; final test PASS0. Fixtures removed, canonical files untouched.
+
+Four disposable normal-editor runs with copied cache/eight restored tabs prepared
+245 previews with0 failures. Final frame-queue run:27.975s from gate begin to ready;
+actual plugin library-opening command3.531ms,queue0, cache245. Third run also
+restores Objects selected. Second diagnostic completion incorrectly waited for
+stale scan-progress fraction; third/fourth use actual scan/import APIs and DONE
+SETTLED. This was a probe defect, not a stuck startup gate. Native Window snapshot
+inspected. Old warmed main-thread load+instantiate max1.891s; first post-change
+instrumented run request max0.117ms/instantiate max253.033ms. Full startup remains
+long and main-thread engine restoration still blocks before ready. No general
+FPS/memory/total startup guarantee. Original editor was not restarted, live MCP
+unavailable, audit teardown warnings retained. Never headless editor in live tree.
+
+Manual gate OPEN: save current scenes/Canvas; close Godot; reopen project normally;
+observe preparation Window, wait, immediately open Objects and use search/filter/
+selection/placement. Check no former after-load thumbnail queue stutters and
+normal source publication updates entries/textures. Do not call the contract
+fully closed before this acceptance. Water chunk implementation is recorded below;
+Save remains a separate audit.
+
+## Wet Surface native terrain — 2026-09-14
+
+Accepted first performance slice: existing native adapter composes opaque terrain
+with unchanged Surface water/foam. Wet greedy terrain baked to complete-Surface
+block coordinates, identity chunk visual; dry/slice native local transforms,
+draft and stock fallback retained. Canvas and world/battle share the adapter.
+No authored map/model writes, schema/shader/physics/prefab changes.
+
+PASS `--headless --path . --script res://tools/test_native_surface_water.gd`:
+offset shallow tint/level fill, exposed rock and cross-chunk cavity; water/foam
+arrays equal stock, terrain face area per plane/axis/color equal despite greedy
+triangulation/normal compression, Canvas/runtime shader space, bottom-only/slice,
+missing-native caller fallback, source unchanged.
+PASS native Forward+ same script without `--headless`, offscreen: frozen water/foam
+under translated/rotated/scaled parent compare0different pixels,8171visible vs
+empty control. UPDATE_ALWAYS + force_draw prevent false blank render acceptance.
+
+Related PASS: surface_canvas_workflow, surface_height_slice, world_surface_projection
+(also native Forward+), voxel_surface_sculpt, water_contact_boundaries,
+voxel_cartoon_water (prefab collision/source/save/reopen), voxel_projection_cache,
+voxel_tools_backend. Native Canvas water/slice captures inspected. Native
+water_pattern_seams PASS: split0pixels, noise tears0, reflection jump0.00392.
+
+Matched Forward+ old94ec785/new Canvas in same process, alternating order,
+64×32×64 slab/dry and wet16×32×16 chunks,8repeats/7warm: wet median
+16.975→6.173ms (2.75×), dry4.704→4.382ms. CPU work, not gameplay FPS.
+Evidence: Temp/ember-addon-audit-20260914/WATER_RESULTS.md and comparison logs.
+
+Manual acceptance OPEN, using the ordinary Forward+ editor/map:
+1. Shore editing across chunk boundaries: water plane/foam/color/pattern unchanged.
+2. Held sculpt draft→pointer-up exact mesh, bottom-only and height slice, no jump
+   in terrain/water position when changing views or adding/removing water.
+3. Undo/Redo, save/reopen and discard on a user-owned test copy.
+4. F6: bank movement/physical surface and water contact/wake unchanged.
+The live editor was not restarted. Startup gate manual acceptance remains separate;
+Save/retained-memory implementation is recorded below.
+
+## Object Save/Undo memory — 2026-09-14
+
+Accepted slice: existing ObjectSession/ModelStore, immutable in-memory compressed
+published source/prefab bytes for Undo assets. Repeated same-session old publication
+reused only after path/source/prefab hash match; unknown baseline prepared fallback.
+Independent geometry validation retained; node resource references, UIDs, scene/
+prefab formats, history depth and staging lifetime unchanged. Shared transaction
+handles generation and replay; UID header stream preserves body.
+
+PASS headless test_voxel_save_snapshots: exact byte/hash/UID roundtrip, fresh cache/
+SceneState path, prepared/replay second-rename rollback, corrupt payload rejected,
+no failed event/snapshot, Undo after reopen/cache release, collider restore,
+external live mutation guard,2MiB UTF8 body/two UID rewrites. Related object_canvas,
+object_library_updates, shapes, scene_refresh, canvas_growth, scene_assembly and
+canvas_context PASS. All fixture files outside authored assets.
+PASS native Forward+ editor disposable copy: EditorUndoRedoManager shared save/
+Undo/Redo, editable authored child/pose, scene save/reopen physical geometry,
+fresh SceneState path and failure rollback. Copy-only canonical fixture dirs avoid
+legacy/catalog lookup noise; inherited UID/teardown warnings retained.
+
+One-process94ec785/current192×10×256 fixture,3Save per mode: warm mean4.999→3.967s,
+cold6.508→5.489s, Undo3.674→2.030s, Redo3.679→2.074s; history delta166.65→85.01MiB
+per repeated Save, snapshot≈1.28MiB. CPU/static memory, not FPS or OS/GPU memory.
+History still retains real mesh/shape versions; no depth limit or format change.
+Evidence: Temp/ember-addon-audit-20260914/SAVE_RESULTS.md.
+
+Manual gate OPEN: ordinary Forward+ editor, representative object/test scene,
+2–3Save then Undo/Redo; selected edit preserves sibling/shared ID semantics; shared
+edit updates linked instances; authored pose/socket/materials unchanged; scene
+save/reopen/discard and F6 collision. Save scenes/Canvas before any manual restart.
+Agent did not stop/restart the original editor; startup/water acceptance remain separate.
+
+## Startup wait / catalog metadata / bounded prefetch — 2026-09-14
+
+Accepted next startup slice preserves Catalog/Visuals/PreviewRenderer/preparation
+owners and canonical Resources. Native shelf metadata excludes dense geometry
+conversion; default full definitions and legacy resolution unchanged. At most2
+active/prefetched threaded tokens; same-path revisions must not join old tasks.
+Existing single SubViewport, camera, ordering and revision/cache checks retained.
+
+PASS targeted: test_voxel_visual_library (full-metadata parity, native channel
+exclusion, legacy equality and scene roundtrip), object_library_updates, layout,
+editor_preparation. Native test_voxel_preview_renderer: real prefab/source pixels,
+bounded ahead window, cancellation drains every ahead token, requeue, pending
+prefetch invalidation, no duplicate same-path revision load, renderer exit/task
+disposal and shared-path survivor. Fixtures user://, no authored model writes.
+
+Disposable native editor8 restored tabs/247 thumbnails: cap0/full projection
+28.379/29.039s gate; chosen cap2/metadata24.301/22.729s. Mean18.1% less wait; repeat
+29.039→22.729s, shelf0.421ms,pending0,failures0. Cap4 exploratory full-editor38.871s
+discarded; its standalone timing does not describe current cap2. Warm desktop
+copy measurements, not cold-cache/whole-startup/FPS or memory guarantees. Existing
+UID/teardown diagnostics retained. Evidence SPEED_RESULTS.md in startup audit Temp.
+
+Startup accepted2026-09-14: user «ок, работает» after normal project opening.
+Publication/search/filter/lifecycle regression checks PASS automatically. Original
+project not launched as an editor or restarted by the agent. Other gates separate.
+
+## Generated-object exact preview / sparse rows — 2026-09-14
+
+Accepted continuation after startup acceptance. Existing shared VoxMesher culling
+skips entirely empty X-rows and hoists row index; original face order/occlusion/
+palette/alpha/collider semantics preserved. No provider/recipe/Resource schema,
+renderer/Creation/session/UI lifetime or persistent cache changes.
+
+One-process alternating-order2 repeats ×5 latest types,128vox/cloud foliage/seed371:
+exact prefab748–1487→431–1060ms by case means (29–44% less wait);10/10 exact
+surface arrays/names and collider faces equal. Headless CPU fixture, not full
+batch, source build, interactive native editor latency or FPS claim.
+
+PASS: large_tree_object64/128/256, generation_session, generator_editing,
+workshop_generator_save, projection_cache with sparse edges/slab crossings/alpha,
+object_canvas, shapes, cartoon_water, world_surface_projection. user:// fixtures.
+Native disposable editor full generation test PASS twice current +once baseline:
+draft/apply/archive reload/comparison, publication/asset Undo/Redo, preset roundtrip,
+scene save/reopen/discard, generate-similar and types. First current run crashed
+after PASS on teardown; baseline and current repeat did not. Repeat previews
+pending0 at quit. Cause unproven, failure trace retained; no general shutdown claim.
+Evidence Temp/ember-addon-audit-20260914/GENERATOR_RESULTS.md.
+
+Manual ACCEPTED2026-09-14: user «окей работает» after the requested workshop
+check. Ordinary generator-operation gate closed; test-editor teardown crash
+cause remains unproven as described above.
+Shape/colours/collision and existing generation limits/versions remain unchanged.
+
+### Native scene Ctrl+S after editor preparation — 2026-09-14
+
+Regression: completed native preparation Window queue_free caused signal11 on
+Ctrl+S in restored test_pier; direct pack/save succeeded. Keep one completed
+controller hidden/inactive until owning plugin exit, release modal flags and
+shelf/filesystem references, and ignore repeated continuation. No scene/model
+data or serialization changes. Exact C++ internals remain unproved.
+
+PASS test_voxel_editor_preparation (retention/inactivity/modal/ref cleanup,
+idempotence, readiness/errors/timeout/exit) and object_library_updates.
+Disposable Forward+ same8 tabs/current previews: original native Ctrl+S crashed;
+corrected3 saves +place2 ember_surface_pilot water objects +placement Undo/Redo
++fourth Ctrl+S +reopen retains2 water objects PASS; closed without crash.
+Final key-event probe had no List::erase/progress errors. Earlier timer direct
+Save/deferred Save probes are diagnostic only; the latter explicitly suppresses
+progress and is not valid clean acceptance. Known outside-tree/scan-aborted
+shutdown diagnostics retained. Evidence Temp/ember-scene-save-crash-20260914-060850.
+
+Manual acceptance CLOSED 2026-09-14: user confirmed the reported Ctrl+S crash fix
+with «отлично». No original map writes by automated editor checks; no attribution
+of earlier teardown failure without further evidence.

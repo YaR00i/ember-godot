@@ -1,7 +1,115 @@
 # Ember — текущая точка
 
 Обновлено: 2026-09-14
-Git: `09ce624` — checkpoint объектов/гранёного рельефа, опубликован в origin/main.
+Git: checkpoint оптимизации и исправления Ctrl+S запрошен пользователем 2026-09-14.
+Commit: `perf(editor): optimize startup, voxel workflows and fix scene save crash`.
+Базовый checkpoint — `94ec785`; авторский Причал с двумя проверочными объектами,
+художественные черновики и локальные настройки Codex остаются вне этого коммита.
+
+Ctrl+S crash2026-09-14: пользователь сообщил вылет после размещения двух
+`ember_surface_pilot` с водой в Причале. В disposable Forward+ копии вылет
+воспроизведён обычным native Ctrl+S даже до размещения новых объектов. Причинный
+переключатель в проверенном сценарии — удаление завершённого окна подготовки:
+оно теперь скрывается, снимает exclusive/transient, освобождает shelf/filesystem
+references и остаётся одним неактивным controller до plugin._exit_tree.
+Загрузка/миниатюры, scene/model owners, данные и Save/Undo pipeline прежние.
+Readiness/error/timeout/exit + inactive-window/repeated-finish guard и library
+updates PASS. Native Ctrl+S:3 saves Причала → place2 water prefabs → Undo/Redo →
+4th save → reopen retains2 water objects PASS, editor closed without crash.
+Inherited get_node outside-tree/scan-aborted teardown diagnostics retained;
+точная C++ причина и связь с прежним generator teardown crash не доказаны.
+Ручная приёмка исправления вылета при Ctrl+S закрыта 2026-09-14: пользователь
+подтвердил результат ответом «отлично».
+
+Генераторы/точный prefab-предпросмотр2026-09-14: следующий срез согласован
+(«ок, работает. давай далее») и реализован. Existing VoxMesher._build_culled
+пропускает целиком пустые X-строки через packed-array scan и hoists row index;
+y/z/x face order, соседняя окклюзия, palette/alpha, collision и shader-space прежние.
+Provider/recipe/Resource/Creation/GenerationSession/UI не менялись; no greedy
+replacement, second renderer, async lifecycle или persistent cache added.
+Matched one-process/alternating order/2 repeats ×5 latest tree types,128 vox,seed371,
+cloud foliage: exact prefab means0.748–1.487→0.431–1.060s;29–44% less wait,
+all10 visual arrays/names and collider faces exactly equal. Source generation
+0.113–0.666s measured separately; not a whole batch/FPS/general-tree guarantee.
+Large-tree64/128/256, generation session/editing/workshop save, projection cache
+(sparse edges/slab boundaries/alpha), object Canvas, shapes, cartoon water/world
+projection PASS. Native editor full generation workflow PASS twice with current
+code; first run crashed after PASS during teardown, baseline and repeat closed
+without crash (repeat preview pending0). Cause unproven, logs retained; no blanket
+clean-shutdown claim. Генераторный срез принят пользователем2026-09-14:
+«окей работает». Ручная приёмка обычной работы генераторов закрыта;
+причина отдельного сбоя тестового редактора при завершении остаётся неизвестной.
+
+Ускорение подготовки2026-09-14 согласовано («давай») и реализовано. Existing
+Catalog/Visuals берут native identity/grid metadata без to_definition/разворачивания
+dense geometry; default full definitions и legacy import остаются прежними.
+Existing PreviewRenderer заранее грузит максимум2 PackedScene tokens, рисует
+по одному в прежнем SubViewport. Cancel/exit освобождают все prefetched tokens;
+replacement revision ждёт потребления старого same-path token. В копии Forward+
+редактора с8 restored tabs/247 previews gate28.379/29.039→24.301/22.729s;
+mean28.709→23.515s (≈18%); последний matched repeat29.039→22.729s. Shelf open
+0.421ms,pending0,0 failures. Candidate4 был хуже в полном редакторе и не принят;
+его standalone8.139s не является замером текущего cap2. Metadata/full-catalog
+parity, library publication/layout/readiness и native preview pixels/cancel/
+requeue/pending invalidation/exit/shared-path disposal PASS. Восстановление сцен
+Godot и source-file parsing остаются затратными; no cold OS-cache/total-startup/
+memory/FPS guarantee. Startup принят пользователем2026-09-14: «ок, работает».
+Подтверждена работа после обычного открытия проекта; regression gates PASS.
+Генераторный срез реализован и принят пользователем; подробности выше.
+
+Save/Undo memory optimization2026-09-14 согласован и реализован. Existing
+ObjectSession/ModelStore сохраняют source/prefab и node snapshots; независимый
+baseline rebuild/проверка внешней геометрии сохранены. Undo assets используют
+ZSTD-снимки точных опубликованных .tres/.tscn bytes в памяти; повторный Save той
+же сессии переиспользует проверенный предыдущий снимок. Unknown/reopened baseline
+сохраняет старый prepared fallback. UID staging обновляется streaming header,
+body verbatim; atomic publication/rollback/UID/cache/SceneState сохранены.
+Matched192×10×256 object, один headless process/3Save per mode: warm4.999→3.967s,
+cold6.508→5.489s; Undo3.674→2.030s, Redo3.679→2.074s. History growth166.65→85.01MiB
+за повторный Save; snapshot≈1.28MiB. Это CPU/static memory fixture, не FPS.
+Snapshot integrity/exact bytes/UID/cache/rollback/2MiB UID body, object Canvas,
+library updates, shapes, scene refresh, growth, assembly/context PASS. Disposable
+native editor shared Save/Undo/Redo/editable descendants/save/reopen/rollback PASS.
+Manual acceptance OPEN: обычный объект,2–3Save, Undo/Redo, linked/selected identity,
+save/reopen/discard и F6 collision. Versions needed for Undo still retain geometry;
+no history depth limit added. Catalog/startup и generator ускорены выше.
+
+Water chunk optimization2026-09-14 согласован пользователем и реализован.
+Shared `EmberVoxelNativeMesher.build_surface_region` обслуживает Canvas и
+world/battle: native opaque terrain + прежние Surface water/foam. Для мокрого
+чанка greedy terrain vertices переводятся в full-map block coordinates;
+identity visual transform сохраняет MODEL_MATRIX scale воды и local VERTEX пены.
+Dry/slice, draft и stock fallback сохранены; schema/shaders/physics/авторские
+scenes и Resources не менялись. Matched Forward+ Canvas before/after из94ec785,
+один процесс/чередование порядка/7warm repeats: wet median16.975→6.173ms (2.75×),
+dry4.704→4.382ms; это CPU build данного чанка, не обещание FPS всей карты.
+Native Surface water geometry/face-area/colors/offsets/shader-space/fallback PASS;
+Forward+ frozen water/foam:0different pixels,8171visible pixels vs empty control.
+Canvas workflow, height slice, world projection, sculpt, contact boundaries,
+cartoon water, projection cache, native backend и GPU water seams PASS.
+Ручная приёмка OPEN: берег/вода через чанки, draft→pointer-up, bottom-only/slice,
+Undo/Redo, save/reopen/discard и F6 movement/contact. Save/retained-memory
+срез реализован выше. Подробности/gates в handoff и MIGRATION_TEST_PLAN.
+
+Оптимизация запуска2026-09-14: пользователь уточнил лаг при открытии проекта
+в Godot и согласовал подготовку до начала работы. Implemented native
+«Подготовка Ember…»: ждёт filesystem scan/import и восстановления сцен,
+затем catalog +245 preview textures и pending Surface projection; editor input
+закрыт modal Window до готовности. Existing shelf/renderer/SubViewport/Resources
+сохранены. PackedScene files грузятся threaded, instantiate/render остаются main
+thread; cancel/requeue и invalidation не публикуют устаревшие картинки. Чистое
+открытие полки переиспользует catalog; publication/filesystem events помечают dirty.
+Timeout120s/ошибка дают явное «Продолжить без готовых миниатюр».
+Readiness/timeout/exit, publication updates/cache, layout и visual library PASS;
+Forward+ preview pixels/cancel/requeue/invalidation/failed-file repair, renderer
+exit during load/shared-path survivor и native error-window layout PASS. Queue
+покадровая, без Node-bound await; abandoned loader tokens освобождаются без preview.
+Четыре disposable editor-start прохода:245 thumbnails,0 failures, gate≈28s после
+начала; последний frame-queue run:27.975s, открытие полки3.531ms,pending0. Это не обещание
+общего speedup запуска: Godot restoration и большие instantiate всё ещё могут
+паузы до ready. Агент не перезапускал рабочий editor; startup принят пользователем
+2026-09-14 («ок, работает») после следующего ускорения, описанного выше. Water chunk
+реализован выше; Save optimization также реализован отдельным срезом выше.
 
 Новый checkpoint2026-09-14 запрошен пользователем: кусты, берег/дно/песок,
 открытая заливка и мультяшная вода, включая сохранённый pilot source и derived
@@ -10,7 +118,7 @@ prefab/mesh. Commit title: `feat(editor): checkpoint bushes, coast and cartoon w
 Далее отдельный чат для аудита/оптимизации выросшего ember_import; текущий чат
 сохраняется для следующего редактора карты. Новый чат сначала исследует owners,
 замеряет горячие пути и согласует короткий контракт, без реализации во время
-ориентации, без subagents/commit/push. Способ запуска ещё не выбран. Арт-черновики
+ориентации, без subagents/commit/push. Startup-срез выше реализован после согласования. Арт-черновики
 Mira, PIXEL_ART_WORKFLOW/references и .codex/config.toml не входят в checkpoint.
 
 Текущая проба2026-09-14: мультяшная вода по рефам4–5 — крупные движущиеся

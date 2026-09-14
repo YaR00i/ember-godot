@@ -9,7 +9,7 @@ const Catalog = preload("res://scripts/ember_voxel_catalog.gd")
 
 static func entries() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	var definitions := Catalog.definitions()
+	var definitions := Catalog.definitions(true)
 	var model_ids: Array[String] = []
 	for raw_id in definitions:
 		model_ids.append(str(raw_id))
