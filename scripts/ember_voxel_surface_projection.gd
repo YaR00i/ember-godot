@@ -33,6 +33,7 @@ var _solid_height_cache := PackedInt32Array()
 var _building_solid_heights := PackedInt32Array()
 var _navigation_grid_cache: Dictionary = {}
 var _water_height_cache: Dictionary = {}
+var _water_shore_field: Dictionary = {}
 var _water_revision := 0
 var _native_mesher: RefCounted
 var _heightfield_task_id := -1
@@ -263,6 +264,9 @@ func drain_next_chunk() -> bool:
 			voxel_size,
 			opaque,
 			transparent,
+			true,
+			-1,
+			_water_shore_field,
 		)
 		if _native_mesher != null and NativeMesher.available()
 		else {}
@@ -270,7 +274,8 @@ func drain_next_chunk() -> bool:
 	var mesh := native_projection.get("mesh") as Mesh
 	if mesh == null:
 		mesh = SurfaceMesher.build_region(
-			_surface, region_min, region_size, voxel_size
+			_surface, region_min, region_size, voxel_size,
+			false, true, -1, _water_shore_field
 		)
 		native_projection = {"position": Vector3.ZERO, "scale": Vector3.ONE}
 	var visual := _chunks.get(chunk) as MeshInstance3D
@@ -381,6 +386,7 @@ func clear_projection() -> void:
 	_heightfield_generation += 1
 	_heightfield_restart_requested = false
 	_water_height_cache.clear()
+	_water_shore_field.clear()
 	_water_revision += 1
 	_pending.clear()
 	_physics_pending.clear()
@@ -458,6 +464,9 @@ func _begin_rebuild(preserve_existing := false) -> void:
 		_set_fallback_collision_active(true)
 		return
 	visible = true
+	# Build once per canonical Resource revision. Every 16x16 visual chunk slices
+	# the same field, so wave direction and distance remain continuous at seams.
+	_water_shore_field = SurfaceMesher.build_water_shore_field(_surface)
 	var size := _surface.grid_size()
 	var count_x := ceili(float(size.x) / float(chunk_size))
 	var count_z := ceili(float(size.z) / float(chunk_size))

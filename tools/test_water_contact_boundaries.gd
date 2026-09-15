@@ -30,6 +30,7 @@ func _run() -> void:
 	contact.refresh_now()
 	_check(contact.is_contact_visible(), "late-added local water was not discovered")
 	_check(contact.get("_projection") == nearby, "contact selected distant water by tree order")
+	_test_collision_waterlines(host)
 	actor.position.x = 88
 	contact.refresh_now()
 	_check(contact.get("_projection") == distant, "contact did not switch to a second pool")
@@ -85,11 +86,57 @@ func _run() -> void:
 	host.free()
 	other_view.free()
 	if errors.is_empty():
-		print("PASS water contact boundaries: viewport isolation, multiple pools, re-entry, bank clipping, deletion")
+		print("PASS water contact boundaries: collision waterlines, viewport isolation, multiple pools, re-entry, bank clipping, deletion")
 	else:
 		for error in errors:
 			printerr(error)
 	quit(0 if errors.is_empty() else 1)
+
+
+func _test_collision_waterlines(host: Node3D) -> void:
+	var bridge := Node3D.new()
+	bridge.name = "CollisionBridge"
+	host.add_child(bridge)
+	var wet_body := StaticBody3D.new()
+	wet_body.name = "WetSupport"
+	bridge.add_child(wet_body)
+	var wet_shape := CollisionShape3D.new()
+	wet_shape.name = "WetSupportShape"
+	var wet_box := BoxShape3D.new()
+	wet_box.size = Vector3(0.4, 2.0, 0.5)
+	wet_shape.shape = wet_box
+	wet_shape.position = Vector3(8.0, 4.0, 8.0)
+	wet_body.add_child(wet_shape)
+	var dry_body := StaticBody3D.new()
+	dry_body.name = "DrySupport"
+	bridge.add_child(dry_body)
+	var dry_shape := CollisionShape3D.new()
+	dry_shape.name = "DrySupportShape"
+	var dry_box := BoxShape3D.new()
+	dry_box.size = Vector3(0.4, 2.0, 0.5)
+	dry_shape.shape = dry_box
+	dry_shape.position = Vector3(30.0, 4.0, 8.0)
+	dry_body.add_child(dry_shape)
+	var collision_contact := Contact.new()
+	collision_contact.name = "CollisionWaterContact"
+	collision_contact.footprint_mode = Contact.FootprintMode.COLLISION_SHAPES
+	bridge.add_child(collision_contact)
+	collision_contact.set_process(false)
+	collision_contact.refresh_now()
+	_check(collision_contact.is_contact_visible(), "collision waterline mode found no wet bridge support")
+	_check(collision_contact.collision_contact_count() == 1, "dry bridge support produced a water response")
+	var wet_anchor := collision_contact.get_node_or_null("CollisionWaterline_WetSupportShape") as Node3D
+	var dry_anchor := collision_contact.get_node_or_null("CollisionWaterline_DrySupportShape") as Node3D
+	_check(wet_anchor != null and wet_anchor.visible, "wet collision shape has no derived waterline visual")
+	_check(dry_anchor != null and not dry_anchor.visible, "dry collision helper was not suppressed")
+	if wet_anchor != null:
+		var ripple := wet_anchor.get_node_or_null("ContactRipple") as MeshInstance3D
+		var quad := ripple.mesh as QuadMesh if ripple != null else null
+		_check(quad != null and quad.size.x > wet_box.size.z, "derived response quad clips to the collision footprint")
+		if quad != null:
+			var material := quad.material as ShaderMaterial
+			_check(material != null and material.get_shader_parameter("flow_reaction_enabled") == true, "collision waterline does not use the shared wave response")
+	bridge.queue_free()
 
 
 func _projection(parent: Node, at: Vector3) -> Node3D:

@@ -107,7 +107,10 @@ func _run() -> void:
 		material.set_shader_parameter("reflection_strength",0.4)
 		material.set_shader_parameter("sky_reflection_color",Color.WHITE)
 		material.set_shader_parameter("ripple_alpha",0.0)
+		material.set_shader_parameter("flow_network_strength",0.0)
 		material.set_shader_parameter("glint_strength",0.0)
+		material.set_shader_parameter("wave_strength",0.0)
+		material.set_shader_parameter("highlight_strength",0.0)
 		camera.projection = Camera3D.PROJECTION_PERSPECTIVE
 		camera.position = Vector3(0,55,100)
 		camera.look_at(Vector3.ZERO)
@@ -144,6 +147,8 @@ func _run() -> void:
 		var diagnostic_code := harbour_material.shader.code.replace("return floor(clamp(broad, 0.0, 0.999) * 3.0) / 2.0;","return broad;")
 		diagnostic_code = diagnostic_code.substr(0,diagnostic_code.find("void fragment()"))
 		diagnostic_code = diagnostic_code.replace("diffuse_toon, specular_disabled","unshaded")
+		diagnostic_code = diagnostic_code.replace("diffuse_toon, specular_schlick_ggx","unshaded")
+		diagnostic_code = diagnostic_code.replace("specular_schlick_ggx, specular_occlusion_disabled","unshaded")
 		diagnostic_shader.code = diagnostic_code + "void fragment() { float tone = stepped_tone_drift(floor(surface_coordinate * 16.0),0.0); ALBEDO = vec3(tone); }"
 		harbour_material.shader = diagnostic_shader
 		await capture("water_pattern_harbour_continuous")

@@ -1,0 +1,15 @@
+{
+  "shaders/ember_voxel_surface_water.gdshader": "aa3bb85a3123257f260cb3de2b971c6df2d0682516b28351e0f989b4eec63b44",
+  "materials/ember_voxel_surface_water.tres": "23c8a13e0c034d070d330b2ee77d17ebfcceb77707f01fc509bd7e30263d8ef8",
+  "tools/test_water_material.gd": "1727b225d7ed73e1416055153d5d2cc0f56bf317caeb292a1a5f6764c731192c",
+  "tools/render_water_lightplay.gd": "fb2ab4193091611c12550c39eba2e3974e3668965462bdac0252976385a41e01",
+  "tools/render_water_lightplay.gd.uid": "6ce5da4454a0ba52454c41b2ff4887f6b2e8ceb50839efae56a95891160769f9",
+  "tools/test_water_lightplay.gd": "b9ff493cc616d3bd2d477b9fe6c3efd2d19b96005944135727ffa76fa7a5c058",
+  "tools/test_water_lightplay.gd.uid": "bcbc59d1c95c6c7a879c6dc5534ab21b4e1b3a32c00eb349ef4c40674f9dc101",
+  "tools/package_water_lightplay.py": "c102c748d853e7becc3b01f066a6d6271394b1ebb043840601ac8a8602585473",
+  "scenes/water_lab.tscn": "bd5788d7efe90fe18cb09e86d227d0b7e5357946471d8d8d4fedf2385e19fc89",
+  "tools/water_lab.gd": "6f9e0f4364bcf979ab6f922f9d25f2b5e3730dbdda11c4c0b0933127f90b6164",
+  "tools/test_water_lab.gd": "9aaea581752a2c376fa1c7ffb38a4a3509bf15ecd1311b77717b57a5901b3108",
+  "tools/run_water_lab.ps1": "54e1d283149f0b6b3536bd8818c9a4db64da75f287dbf8040e39493c43f8379f",
+  "water_lab.bat": "e20aa41be75bb88868e4270381fef9d0eaf28f6e01d0eb84a13764bf7a670fc5"
+}

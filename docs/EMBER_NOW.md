@@ -1,5 +1,293 @@
 # Ember — текущая точка
 
+<!-- BEGIN water-w04-d97c-20260915; transfer this section only -->
+## Вода W04 — резкие блики, тени и свет под поверхностью, art OPEN
+
+2026-09-15: после первой W04-проверки пользователь отклонил шумные блики, мягкие
+тени и отсутствие тени причала. Review2 убрал random breakup: direct GGX теперь
+заменяется цельными двухуровневыми world-cell бликами. Для тени WATER LIGHT_VERTEX
+привязывается к центру мировой ячейки, ATTENUATION квантуется, а native probe
+отключает stochastic soft filter; поднятый disposable причал явно отбрасывает тень
+досок и опор в воду. Optional screen/depth branch по-прежнему показывает пиксельно
+преломлённое видимое дно и движущийся свет. Все три mix по умолчанию0, W03 сохранён.
+Review2 GIF и измерения вart/water/lightplay/HANDOFF.md. Глобальный hard-shadow
+режим пока только probe: style-wide runtime решение OPEN. Source/editor/physics/
+swimming прежние; art/main/input integration OPEN; commit/push нет.
+
+Там же review3 cohesion probe после уточнения пользователя: соседние world cells и
+близкие фазы поддерживают цельный движущийся блик и закрывают одноклеточные разрывы.
+Параметр по умолчанию0, поэтому review2/W03 не изменены; art confirmation OPEN.
+
+Пользователь отклонил review3: isotropic neighbour hold позволял краевым клеткам
+двигаться в сторону от общей формы. Review4 переносит одно frozen light field по
+единому direction/speed; клетка появляется только на leading edge и исчезает на
+trailing edge. Review2 при cohesion0 pixel-exact; review4 art confirmation OPEN.
+
+Review4 сохранил направление, но не дал нужный тип формы. Пользователь уточнил:
+сам блик должен напоминать broad curved connected силуэт тени причала. Review5
+порогует целиком advected smooth field в крупные световые пятна и пикселизирует
+только их край. Shape0 остаётся review2 pixel-exact; art acceptance OPEN.
+
+Пользователь отклонил review5 как просто движущиеся пятна и вернул ориентир к
+чистым крупным бликам review2. Review6 сохраняет их оптический wave-normal рисунок,
+но переводит выборку с центров клеток на непрерывную world coordinate; две слабые
+встречные волны плавно изгибают только край. Поэтому форма шатается и меняется без
+покадровых скачков квадратов. Smooth motion/edge wobble по умолчанию0, review2
+остаётся pixel-exact; review6 art acceptance OPEN.
+
+Пользователь оценил review6 как ближе к цели, но слишком мягким и заметно уходящим
+к морю, и запросил живой подбор. Review7 разделяет перенос формы и дрожание края:
+новые travel/wobble speed имеют независимые параметры, а стартовый вариант ставит
+travel0.02, threshold0.991 и более яркое ядро. `scenes/water_lab.tscn` с one-click
+`water_lab.bat` запускается в генерируемом isolated Forward+ runtime, редактирует
+только duplicate существующего water material, даёт tabs Блики/Движение/Вода/
+Свет и тень, Review2/reset и portable JSON copy/export. Main material/map не пишет;
+native control/export/reset test PASS. Пользовательский подбор и art acceptance OPEN.
+
+После поворота Water Lab на90° пользователь обнаружил, что рисунок блика резко
+перестраивался. Причины подтверждены: preview ошибочно переориентировал солнце при
+каждом orbit, а direct mask целиком использовал view-dependent half-vector. Солнце
+теперь фиксировано в world space; `pixel_highlight_view_dependence` default1 сохраняет
+Review2, а Water Lab стартует с0.15 и позволяет0 для полностью художественно
+закреплённого рисунка. Два frozen Forward+ ракурса и native fixed-sun assertion PASS.
+
+Water Lab расширен до22×15 и теперь разводит по разным участкам ступенчатый берег,
+жёсткую стенку и причал; под водой есть отдельные shallow/mid/deep уровни дна.
+Реакция у камня больше не является широким кольцом: shader вычисляет точный
+прямоугольный/округлённый footprint, рисует стабильную однопиксельную грань касания
+и отдельно — тонкую направленную волну. Existing `EmberWaterContact3D` остаётся
+единственным runtime owner: игрок уже создаёт этот component, его существующий
+`motion_strength` и world-history wake управляют движущимися колебаниями; для
+неподвижного объекта остаётся грань и слабая реакция общей воды. Production contact
+default также получил отдельную тонкую грань без нового schema/renderer. Forward+
+кадр/анимация: `art/water/shore_lab/qa/object-contact-v4`; Water Lab, boundary,
+world projection и material tests PASS. Ручная оценка толщины и реальный кадр
+игрока в воде OPEN; commit/push нет.
+
+Береговой цикл перенесён из фиксированных зон Water Lab в существующий derived
+`water_foam` каждой Surface-карты. `EmberVoxelSurfaceMesher` находит все реальные
+wet/dry-рёбра, записывает расстояние до кромки, направление в воду и тип соседнего
+рельефа. Низкий ступенчатый берег получает связанный подход, короткий накат по
+реальным верхним граням, мокрый след и отступление; высокая колонна получает тонкий
+контакт, удар и затухающий обратный гребень. Линия непрерывна под причалом, потому
+что строится по границе воды и земли, а настил лишь перекрывает её глубиной. Старый
+рисунок Water Lab по `shore_boundary_x/shore_split_z` отключён в стенде, production
+foam включён с `systemic_shore_strength=0.82`; `shore_effect_strength=0` всё ещё не
+перекрашивает тело authored-воды. После проверки движения исправлено скрытое
+расхождение: прежняя береговая линия повторяла направление/длину/скорость, но
+строила отдельный цикл. Теперь вода и production foam подключают один
+`ember_water_wave.gdshaderinc`; прибой вырезается из того же `water_wave_state` со
+всеми параметрами состава, групп, разброса, мелкой ряби и остроты. Накат продолжает
+этот гребень через wet/dry-границу, а стена зеркалит то же поле. Это визуальная
+реакция без fluid solver и изменения gameplay плоскости. Forward+ QA:
+`art/water/shore_lab/qa/unified-shore-wave-v1`; Water Lab,
+`test_water_shore_response.gd`, material, pattern-seams, projection и contact tests
+PASS. Художественная оценка формы/силы гребня на реальной карте OPEN.
+
+Сравнение полного 12-секундного цикла подтвердило, что сохранённый подбор сам
+смешивает два направленных рисунка: `wave_natural_mix=0.49`, spread34 и variation1
+разбивают береговой гребень, хотя foam следует ему точно. В Water Lab добавлен
+обратимый профиль «Прибой»: он сохраняет выбранные цвет/блики/глубину и меняет
+только волновой блок на natural1, direction180, length3.2, speed0.42, variation0.4,
+grouping0.62, spread9 и sharpness0.65. Сохранённый JSON не перезаписан. Сравнение
+saved/coast/sea/lake/river/candidate: `art/water/shore_lab/qa/preset-comparison-v1`.
+Текущий пользовательский подбор дополнительно сохранён побайтно в
+`art/water/presets/water-lab-user-saved-review2-mix-2026-09-15.json` (SHA-256
+`EB5890D677DA1192D53D540A6DAFD492CD014DCCCAB3E26B6B030B72CEE909B5`). Обратная
+волна у высокой стенки остаётся узкой линией: shader выделяет хребет общей волны
+по положительной высоте и нулевому направленному наклону, а прозрачность плавно
+теряет только перед краем четырёхблочной derived response-геометрии. Forward+
+12-second evidence: `art/water/shore_lab/qa/reflection-line-v2`; shore и Water Lab
+tests PASS.
+
+После визуальной проверки исправлена ложная глубина Water Lab: обычный PlaneMesh
+передавал горизонтальный `UV.x`, а shader принимал его за четыре authored depth
+band, поэтому поверхность выглядела заранее покрашенными полосами. Новый opt-in
+`scene_depth_mix` измеряет реальное расстояние до opaque-дна через depth texture;
+три уровня дна используют один цвет, shallow/deep opacity снижены до0.48/0.68.
+Старые сохранённые подборы сохраняют волны/блики/цвета и получают исправленный
+depth preview. Production default0 сохраняет authored UV depth без изменений.
+Forward+ evidence: `art/water/shore_lab/qa/real-depth-v1`; пользователь подтвердил
+«ок, работает» 2026-09-15.
+
+Следующий lab-кандидат включает настоящую визуальную высоту0.04 из того же
+`water_wave_state`, которое управляет нормалями/бликами; возле границы берега она
+плавно затухает. Коллизия и gameplay water plane не меняются, production default0.
+Подводный свет теперь полностью берётся из кривизны общей волны, привязан к
+world-position видимого дна и затухает по вертикальной глубине. Он добавляет только
+сфокусированные жёлто-зелёные ленты и больше не примешивает весь screen sample в
+ALBEDO воды. Water Lab показывает controls видимости/яркости/ширины/цвета/связи,
+высоты и shore fade; старый saved JSON мигрирует только новые candidate defaults.
+Forward+ A/B, два ракурса и motion: `art/water/shore_lab/qa/volume-light-v3`;
+targeted tests PASS, художественная приёмка объёма/подводного света OPEN.
+
+Уточнена граница global waves после проверки причала: общими являются wave state,
+world clock, направление и длина. Existing `EmberWaterContact3D` теперь имеет
+collision-waterline mode: один компонент читает дочерние `CollisionShape3D`,
+отсекает формы выше воды и сухие части берега, а для каждого мокрого пересечения
+сам вычисляет ориентированный footprint. Helper quad получает размер footprint +
+дальность ответа + safety padding, поэтому гребень больше не обрезается ручной
+подложкой. Точная тонкая грань остаётся постоянной, detached front/side response
+усиливается приходящим общим гребнем; движение общего parent продолжает создавать
+wake history. Box/sphere/capsule/cylinder поддержаны явно, сложные collision shapes
+получают консервативную границу. Water Lab больше не ставит contact quads вручную:
+настил выше воды и сухие landward-опоры автоматически скрыты, две offshore-опоры,
+камень и движущийся тестовый корпус используют один runtime owner. QA:
+`art/water/shore_lab/qa/collision-waterline-v1`; targeted tests PASS.
+Добавление компонента к объектам через map editor остаётся отдельным authoring
+срезом; точный polygonal waterline для сложных hull вместо conservative bounds и
+текущая художественная приёмка остаются OPEN.
+
+Начат новый depth-driven кандидат поведения волн вместо дальнейших береговых
+масок. `ember_water_wave.gdshaderinc` теперь умеет преобразовать одно offshore
+поле по signed distance + inward direction + типу границы: на пологом берегу
+гребень постепенно поворачивается к нормали берега, длина сокращается, склон
+растёт, а пересекающиеся системы собираются вокруг одного carrier-гребня. У
+вертикальной стены offshore-поле не преломляется и остаётся источником отражения.
+Water Lab передаёт тот же metadata contract самой поверхности и включает кандидат;
+шесть новых береговых параметров доступны живьём. Production material держит
+`shore_wave_transform=0` до художественной приёмки, сохранённый JSON побайтно не
+изменён. Forward+ A/B, два ракурса и 48-frame motion:
+`art/water/shore_lab/qa/depth-driven-v1`; Water Lab, shore, material,
+pattern-seams и world-projection tests PASS. Интеграция metadata в Surface mesher
+отложена до подтверждения визуального принципа.
+
+Следующий lab-срез добавляет к этому преобразованию реальную глубину стенда и
+разрушение гребня. Четырёхблочная отмель теперь состоит из четырёх видимых
+понижающихся voxel-ступеней; тот же depth factor записан в water/foam mesh, поэтому
+поворот, сжатие, рост и условие `H/depth` используют одну геометрию. Пена появляется
+только на положительном узком хребте волны после превышения порога. Для наката
+shader вычисляет возраст того же dominant-гребня после пересечения кромки и ведёт
+один фронт по суше с мировой скоростью и шириной вместо отдельной анимации.
+Доступны depth/break threshold/softness/runup speed controls; старый distance
+оставлен максимальной зоной вычисления, а не местом рождения волны. Production
+по-прежнему держит `shore_wave_transform=0`, пользовательский saved JSON не
+перезаписан. Forward+ 48-frame cycle:
+`art/water/shore_lab/qa/depth-break-runup-v9`; targeted tests PASS, художественная
+оценка цикла условно принята пользователем 2026-09-16 (⭐): стенд работает,
+повторная оценка нужна после подключения к реальной игровой сцене.
+
+2026-09-16 depth-driven цикл подключён к настоящей Surface-воде. Mesher один раз
+строит поле по всему `EmberVoxelModelResource`, выводит реальную глубину полости,
+расстояние до wet/dry-границы, направление в воду и beach/wall-класс, после чего
+все visual chunks только берут свой участок. Одинаковые вершины по обе стороны
+chunk seam получают одинаковые UV/UV2; открытый край Resource больше не считается
+ложным берегом. Пена использует те же непересекающиеся water patches, поэтому
+ступенчатая/кривая кромка не складывает десятки ярких полос; отдельная геометрия
+остаётся только для короткого наката по суше. Production water/foam включают
+`shore_wave_transform=1`; принятые break/width/softness/runup параметры перенесены,
+visual height и gameplay collision остаются плоскими. На реальном
+`agent_sandbox_surface.tres` поле 384×384 с 2932 водными колонками строится примерно
+за 139 мс при полном rebuild. Forward+ кадры с пользовательским сохранённым видом:
+`art/water/qa/shore-real-agent-v2-agent-water-near.png` и
+`art/water/qa/shore-prod-t6_5-corner-near.png`; GPU frame proxy этих компактных QA
+сцен 0.40/0.56 мс и не является общим FPS замером. Shore/material/pattern seam/
+world projection tests PASS; относящиеся к воде проверки surface-sculpt также
+PASS, но полный suite всё ещё падает в отдельном старом native selector probe из-за
+Nil scene data в этом worktree. Saved JSON и его backup остались побайтно равны,
+SHA-256 `EB5890D677DA1192D53D540A6DAFD492CD014DCCCAB3E26B6B030B72CEE909B5`.
+Ручная оценка движения в настоящей gameplay-сцене OPEN.
+<!-- END water-w04-d97c-20260915 -->
+
+<!-- BEGIN water-w03-d97c-20260915; transfer this section only -->
+## Вода W03 — живая светлая сеть и бирюзовый цвет, art OPEN
+
+2026-09-15: пользователь уточнил, что характер воды создают меняющиеся белые
+сетки, показывающие грани колебаний, и попросил больше бирюзы. Existing water
+shader/.tres получил стилизованную surface light network: continuous wave-time,
+world-anchored moving cells с pixel edges/gaps, shallow→deep attenuation и
+distance fade. Цвет насыщеннее, shallow alpha0.50, roughness0.22; W02 pixel
+reflections сохранены. Это видимый рисунок в материале, не настоящая проекция
+caustics на дно. Source/editor/physics/foam/wake/swimming прежние. Native close/
+game/wide animation и flow/storage/Sky/alpha/seam/regressions evidence:
+art/water/flow/HANDOFF.md. Art/input/main integration OPEN; commit/push нет.
+<!-- END water-w03-d97c-20260915 -->
+
+<!-- BEGIN water-w02-d97c-20260915; transfer this section only -->
+## Вода W02 — пиксельные отражения, художественная приёмка OPEN
+
+2026-09-15: после понравившегося движения W01 пользователь разрешил native A/B
+пиксельных отражений/бликов и бирюзового цвета. Existing water shader/.tres:
+world-cell optical normals, размер1/2voxel, сила0..1, continuous time/body-facing/
+VIEW и screen-footprint fade. Source/editor/mesher/physics/foam/wakes прежние.
+Native close/game/wide GIF и perspective/camera evidence, storage/alpha/Sky/
+split/negative-coordinate/related regressions PASS:art/water/pixel/HANDOFF.md.
+На широкой воде при прямом солнце рисунок плотный; спокойствие для долгого
+плавания ещё выбрать. Пользователь хочет иногда плавать между островами,
+механика здесь не определена/не реализована. Art/input/main integration OPEN;
+рефракция дна, production environment и плавание — отдельные срезы. Старые
+W01/M01/M02/lighting evidence сохранены; commit/push не выполнялись.
+<!-- END water-w02-d97c-20260915 -->
+
+<!-- BEGIN water-w01-d97c-20260915; transfer this section only -->
+## Вода W01 — optical ripples/reflections/highlights, manual OPEN
+
+2026-09-15: пользователь согласовал спокойную стилизованную воду. Existing
+Surface shader/material получили smooth world/block normal ripples без vertex
+displacement, dielectric GGX/Fresnel highlights и Sky/probe indirect reflections;
+diffuse styling остаётся прежним owner. Shallow opacity0.42, deep0.78; broad
+islands приглушены patch_strength0.35, decorative glints и emission по умолчанию
+выключены. Source/schema/editor/mesher/physics/foam/contacts/authored scenes
+не менялись. Native motion/alpha/reflection/save-reopen и regressions PASS
+в disposable Forward+ project; итоговые evidence/art limits:art/water/HANDOFF.md.
+Configured QA Sky/probe/specular отдельно от authored WorldCanvas/Pier. Main
+integration/art/input OPEN; production lights/environment — отдельный шаг.
+Known one-probe shutdown7TextureRIDs сохраняется, engine fix не входит.
+Pre-W01/lighting/M01/M02 evidence сохранены; commit/push не выполнялись.
+<!-- END water-w01-d97c-20260915 -->
+
+<!-- BEGIN materials-refinement-d97c-20260915; transfer this section only -->
+## Материалы M02 — слабая фактура/блики/отражения, manual OPEN
+
+2026-09-15: пользователь согласовал refinement библиотеки. Existing9presets
+получили GGX direct highlights, independent tint/angular crystal colour и weak
+wood/stone/sand factures (albedo/roughness/normal, screen-footprint filter).
+ReflectionProbe только disposable stand, library не создаёт probes. Material/
+storage/compatibility gates PASS; native probe cleanup имеет известный engine
+warning7TextureRIDs/minimal scene, matching Godot#122498, не clean lifecycle PASS.
+M01 snapshot/QA и lighting evidence отдельно сохранены.429old Source hashes и
+6old lighting/water PNG прежние. Передача:art/materials/refinement/HANDOFF.md.
+Main integration/art/input и editor assignment OPEN. Engine fix/build/prod
+probes не входят. Воду обсудить после библиотеки, здесь не менять.
+<!-- END materials-refinement-d97c-20260915 -->
+
+<!-- BEGIN materials-library-d97c-20260915; transfer this section only -->
+## Библиотека материалов — первый срез, manual OPEN
+
+2026-09-15: в graphics worktree d97c реализованы9ShaderMaterial presets и
+native comparison stand:matte/wood/stone/sand/leaf/metal/glass/crystal/emissive.
+Независимые экземпляры, цвет/блеск/прозрачность/просвечивание/свечение, day/night.
+Автоматические native/storage/compatibility gates PASS, art/input и main
+integration OPEN. Source/schema/editor/mesher не менялись. Предыдущий lighting
+handoff сохранён отдельно;6старых viewport PNG совпали побайтно,429Source files
+прежние, добавлена только сцена стенда. Передача:art/materials/HANDOFF.md.
+Назначение объектам/вокселям и editor Save/Undo — следующий контракт owner
+редактора. По просьбе пользователя после библиотеки обсудить остальные материалы
+и воду:отражения/блики/движение/глубину; здесь воду не менять.
+<!-- END materials-library-d97c-20260915 -->
+
+<!-- BEGIN graphics-d97c-20260915; transfer this section only -->
+## Свет диорамы — graphics worktree, приёмка OPEN
+
+15 сентября: согласованный отдельный художественный срез реализован вd97c,
+без переноса в исходный checkout. Один кандидат: сливочно-тёплый directional
+response, прохладная цветная тень, мягче переходы toon/shadow mask, согласованная
+вода. Existing shaders/materials/EmberLights; один shared shader include.
+Авторские Sun/Environment storage fields и Source palette/geometry неизменны;
+effective ambient черезRenderingServer RID, loader требует только одной строки.
+Runtime pixel idempotence/clear/auto disable-enable/pack-reopen и lifecycle
+storage gates PASS. Near/overview Forward+ уголка, холста, Причала, ночной
+FanTown8/12 иCombatLab просмотрены. Точные логи/оставшиеся gates:
+`art/lighting/README.md`, `art/lighting/qa`.
+
+Это не замена current world editor состояния: его актуальные документы и dirty
+работа остаются вC:/Users/novos/Projects/ember-godot. Здесь большие docs старше;
+возвращать только явно помеченные graphics sections, не заменять файл целиком.
+Новые canopy patterns/PCF penumbra/геометрия не добавлены. Regular beach stair
+faces остаются ограничением чернового рельефа. Ручная художественная/input
+приёмка пользователя и основная интеграция OPEN; commit/push не выполнялись.
+<!-- END graphics-d97c-20260915 -->
+
 Обновлено: 2026-09-14
 Git: checkpoint оптимизации и исправления Ctrl+S запрошен пользователем 2026-09-14.
 Commit: `perf(editor): optimize startup, voxel workflows and fix scene save crash`.

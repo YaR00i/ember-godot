@@ -1,0 +1,10 @@
+{
+  "shaders/ember_voxel_surface_water.gdshader": "b01c75ddb56d14863ed22b9b3b65210b2e00e4f3a73f22b01c4c7560b9f70c4a",
+  "materials/ember_voxel_surface_water.tres": "1480cfcdcb7497648b818e80d88eda0cb17bfc48242fc42149b8ea9c493b9f00",
+  "tools/test_water_material.gd": "25ab484f6f62fa6ba75c177855fe64795abe385310cf28c9cc5e3bf38efe35de",
+  "tools/render_water_pixel.gd": "be479e6663836c2dd3140d552c2e5408ab82d53fdff214ea7f5ec2df455b502e",
+  "tools/test_water_pixel.gd": "d95165ed3c983ec2f3563e552149af28e5c3a0f5bedc1c2681e9636ddf68529a",
+  "tools/package_water_pixel.py": "783253f07861914f09369ef330f55e314eb9ab4471a877237c2900c2081acdc7",
+  "tools/render_water_pixel.gd.uid": "d99fab13d4f3d912fd873f6d2652e2e9cd5409ef64c09391cd2cab9daef248a3",
+  "tools/test_water_pixel.gd.uid": "1f53943b8f20b2aeb5a4f3967b97a77b09ff20ebca9f71fb0bf4ec67f143c4ab"
+}

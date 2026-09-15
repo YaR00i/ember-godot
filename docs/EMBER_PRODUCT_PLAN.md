@@ -1,5 +1,88 @@
 # Ember — продуктовый план
 
+<!-- BEGIN water-w04-d97c-20260915; transfer this section only -->
+Water W04 native art probe2026-09-15, review2 after user rejection: remove random
+highlight breakup and use larger intact white/cyan light cells; quantize water's
+shadow sample spatially and tonally; use hard directional filtering so the visible
+pier boards/posts cast a clean block shadow. Full shallow-water candidate retains
+depth/luminance-masked screen-space bottom refraction/caustics. Each material feature
+is adjustable and defaults off. Hard filter is currently QA-only because making it
+runtime-wide is a separate art/performance choice. No new material owner, authored
+scene, editor schema, physics or swimming change. Art/main/input acceptance OPEN.
+Evidence:art/water/lightplay/HANDOFF.md.
+
+2026-09-16: provisionally accepted depth/break/runup behaviour is integrated into
+canonical Surface water through the existing mesher, shared wave include and
+water/foam materials. It derives depth, shore direction and beach/wall response
+from authored terrain once per complete Resource, remains continuous across visual
+chunks and ignores open Resource bounds. Production visual transform is enabled;
+collision and gameplay water height remain unchanged. Real-Resource and generated
+coast Forward+ candidates exist; moving gameplay art acceptance remains OPEN.
+<!-- END water-w04-d97c-20260915 -->
+
+<!-- BEGIN water-w03-d97c-20260915; transfer this section only -->
+Water W03 approved for native visual probe2026-09-15: keep W01 movement and W02
+pixel reflections, add a changing white light-cell network and stronger turquoise
+body colour. Existing water material only; network is stronger over shallows,
+weaker at depth and filtered at distance. It visually expresses water facets but
+does not project physically refracted caustics onto bottom geometry. Source/
+editor/physics/foam/wakes/swimming unchanged. Native close/game/wide animation
+available; art/main/input acceptance OPEN. Evidence:art/water/flow/HANDOFF.md.
+<!-- END water-w03-d97c-20260915 -->
+
+<!-- BEGIN water-w02-d97c-20260915; transfer this section only -->
+Water W02 approved for native comparison2026-09-15: retain W01 motion, pixel-shape
+reflections/highlights through world-cell optical normals, turquoise palette,
+adjustable size/strength and distant detail fade. Same Surface water owner;
+Source/editor/physics/foam/wakes unchanged. One-/two-voxel animations on close/
+game/wide fixtures supplied; artistic choice/main integration/input OPEN.
+Future occasional swimming between islands is a user direction, not implemented
+travel mechanics. Calm wide-water glint density, actual bottom refraction and
+character swimming/interaction require later decisions. Evidence/limits and
+incremental transfer:art/water/pixel/HANDOFF.md. No engine change or commit/push.
+<!-- END water-w02-d97c-20260915 -->
+
+<!-- BEGIN water-w01-d97c-20260915; transfer this section only -->
+Water W01 approved2026-09-15: calm stylized water with real reflection sources,
+light/view-driven highlights, smooth optical ripples, clearer shallows and quieter
+colour islands. Existing water owner, no physical wave displacement/Source or
+editor schema changes. Native demonstration and authored-map evidence are
+separate; scene Sky/probe/specular integration and manual art/input acceptance
+OPEN. Material assignment/editor tools remain the main editor-owner contract.
+Exact evidence and limits:art/water/HANDOFF.md. No engine upgrade/fix added.
+<!-- END water-w01-d97c-20260915 -->
+
+<!-- BEGIN materials-refinement-d97c-20260915; transfer this section only -->
+## Materials M02 — 2026-09-15
+
+Approved library refinement improves highlights/crystal colour and weak tactile
+texture; reflection comparison only on native stand. Manual art/input/main
+integration pending. Known Godot probe shutdown cleanup warning separated from
+material PASS; production reflection policy/engine fix not silently added.
+No editor/water/order changes. Discuss water and remaining materials afterwards.
+Details:art/materials/refinement/HANDOFF.md.
+<!-- END materials-refinement-d97c-20260915 -->
+
+<!-- BEGIN materials-library-d97c-20260915; transfer this section only -->
+## Graphics library first slice — 2026-09-15, manual OPEN
+
+User-approved bounded library/stand implemented in d97c;9presets, independent
+parameters, day/night native comparison. No change to product ordering or editor
+scope. Art/input acceptance and main integration pending. Object/per-voxel
+assignment tools are a subsequent editor-owner contract. Existing water left
+unchanged; discuss reflection/life/depth and other materials after library review.
+Details:art/materials/HANDOFF.md.
+<!-- END materials-library-d97c-20260915 -->
+
+<!-- BEGIN graphics-d97c-20260915; transfer this section only -->
+15 сентября: отдельный согласованный graphics кандидат вworktree d97c:
+тёплый свет/прохладная тень/согласованная вода на existing owners. Художественная
+приёмка и интеграцияOPEN. Это параллельный ограниченный art срез; порядок
+основного редактора, ландшафтных зон и дизайн-сессии не меняется. Source palette,
+деревья/карты и геометрия не подгонялись под 2D референсы. Технические доказательства
+и ограничения находятся в `art/lighting/README.md` и егоQA logs.
+<!-- END graphics-d97c-20260915 -->
+
 Принято14 сентября после исправления разрывов: последний рисунок воды работает.
 Пользователь запросил checkpoint/push кустов, берега/дна и воды. Перед большим
 редактором карты — отдельный аудит и оптимизация выросшего аддона: сначала

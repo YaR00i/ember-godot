@@ -198,6 +198,7 @@ func _tune_look_environment() -> void:
 	e.ssil_enabled = false
 	e.sdfgi_enabled = false
 	e.volumetric_fog_enabled = false
+	EmberLights.apply_diorama_environment(e, _content_node("Look/Sun") as DirectionalLight3D)
 
 
 func apply_quality() -> void:

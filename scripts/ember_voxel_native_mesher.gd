@@ -127,6 +127,7 @@ func build_surface_region(
 	water_material: Material,
 	include_water := true,
 	visible_height := -1,
+	water_shore_field: Dictionary = {},
 ) -> Dictionary:
 	if resource == null:
 		return {}
@@ -142,7 +143,7 @@ func build_surface_region(
 		return projection
 	var overlay := ArrayMesh.new()
 	SurfaceMesher.append_water_overlay(
-		resource, overlay, region_min, region_size, voxel_size
+		resource, overlay, region_min, region_size, voxel_size, water_shore_field
 	)
 	if overlay.get_surface_count() == 0:
 		return projection

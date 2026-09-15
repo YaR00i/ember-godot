@@ -139,9 +139,10 @@ func _test_shared_projection(errors: Array[String]) -> void:
 		errors.append("water contact did not use the shared pixel-ring material")
 	elif (
 		"instance uniform float motion_strength" not in contact_material.shader.code
+		or "contact_seam" not in contact_material.shader.code
 		or "bow_arc" not in contact_material.shader.code
 	):
-		errors.append("water contact lost its movement-directed wake")
+		errors.append("water contact lost its stable foot seam or movement-directed wake")
 	target.position += Vector3(1.0, 0.0, 0.0)
 	contact.call("sample_motion", 0.1)
 	contact.call("refresh_now")

@@ -1,0 +1,13 @@
+{
+  "shaders/ember_voxel_surface_water.gdshader": "08e7499bc4537a74037fb9e5c2ebdcd02d994b4a381d450368dbd77732a4478b",
+  "materials/ember_voxel_surface_water.tres": "63a37bb2072ed759a9075419c377f2e5c41fcbd4c51c1e5962880dfb4dcd8c47",
+  "tools/test_water_pattern_seams.gd": "a96e4c91553b68b76bccbcfaaf57e58aca84d0fef48676b3cd6252353a5378c0",
+  "tools/test_water_material.gd": "b2aa08a4f1277093cc8934070571095ebf95a207e54a9dd3795739a2b2adf159",
+  "tools/render_water_refinement.gd": "b9e6a57b0b40de5e2cd38f1153510f82cd2bf307f2840c9d4461db4e2b90c1ae",
+  "tools/render_water_stand.gd": "3d36420957d5aa809ded74a370cafd412de5ed1fed14dc1fad8e7e3691187d0a",
+  "tools/encode_water_motion.py": "1126cddbcaa7e88201c20aed0e27ab169568d402fb696d9f2eba384901bdbace",
+  "tools/check_water_sources.py": "041811efb3db0138c84be1f631efb2e644c052544b4910395584cdba41eee19e",
+  "tools/test_water_material.gd.uid": "01ce50921dcd9d5bf29486ad613aefedc60c3e28c24ddb09a5555f009d8163c4",
+  "tools/render_water_refinement.gd.uid": "894f25a1c63823f785947b29c95d61bc03696a4dcf4cca6ace9e3e81ea63f852",
+  "tools/render_water_stand.gd.uid": "f2647f79ddbbdad2e911eabdd753286947ec132c0e67ff20bd27d7c8cd6d3d8a"
+}

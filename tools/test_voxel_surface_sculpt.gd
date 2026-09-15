@@ -268,25 +268,49 @@ func _test_surface_level_fill(errors: Array[String]) -> void:
 	var water_indices := 0
 	var foam_indices := 0
 	var water_has_depth_band := false
+	var water_has_shore_distance := false
+	var water_has_boundary_direction := false
+	var foam_has_response_distance := false
+	var foam_has_boundary_direction := false
 	for surface_index in mesh.get_surface_count():
 		var arrays := mesh.surface_get_arrays(surface_index)
 		var mesh_indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
 		if mesh.surface_get_name(surface_index) == "water":
 			water_indices += mesh_indices.size()
 			var water_uvs: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV]
+			var water_uv2s: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV2]
 			for uv in water_uvs:
 				if uv.x > 0.0:
 					water_has_depth_band = true
+				if absf(uv.y) > 0.0:
+					water_has_shore_distance = true
+			for direction in water_uv2s:
+				if direction.length() > 0.5:
+					water_has_boundary_direction = true
 					break
 		elif mesh.surface_get_name(surface_index) == "water_foam":
 			foam_indices += mesh_indices.size()
-	if water_indices != 6 or foam_indices <= 0 or foam_indices >= 96:
+			var foam_uvs: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV]
+			var foam_uv2s: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV2]
+			for uv in foam_uvs:
+				if uv.x > 0.0:
+					foam_has_response_distance = true
+					break
+			for direction in foam_uv2s:
+				if is_equal_approx(direction.length(), 1.0):
+					foam_has_boundary_direction = true
+					break
+	if water_indices < 6 or water_indices % 6 != 0 or foam_indices < 96:
 		errors.append(
-			"level fill did not build one water plane and sparse basin shoreline: %d/%d"
+			"level fill did not build tiled water and continuous response shoreline: %d/%d"
 			% [water_indices, foam_indices]
 		)
 	if not water_has_depth_band:
 		errors.append("level fill water mesh lost its derived depth UV band")
+	if not water_has_shore_distance or not water_has_boundary_direction:
+		errors.append("water surface lost canonical shore distance or direction metadata")
+	if not foam_has_response_distance or not foam_has_boundary_direction:
+		errors.append("shoreline mesh lost signed distance or waterward direction metadata")
 	var connected := Model.connected_surface_fill_columns(resource, Vector2i(7, 7))
 	var connected_columns := connected.get("columns", PackedInt32Array()) as PackedInt32Array
 	if connected_columns.size() != columns.size():
@@ -398,9 +422,9 @@ func _test_material_brush(errors: Array[String]) -> void:
 			water_indices += index_array.size()
 		elif overlay_mesh.surface_get_name(surface_index) == "water_foam":
 			foam_indices += index_array.size()
-	if opaque_indices != 36 or water_indices != 6 or foam_indices != 24:
+	if opaque_indices != 36 or water_indices != 6 or foam_indices != 6:
 		errors.append(
-			"single water mask did not produce an opaque cube, overlay and four foam edges"
+			"single water mask did not produce an opaque cube and matching response patch"
 		)
 	var floor_only_mesh := SurfaceMesher.build_region(
 		overlay_fixture,
@@ -442,7 +466,7 @@ func _test_material_brush(errors: Array[String]) -> void:
 		var arrays := seam_mesh.surface_get_arrays(surface_index)
 		var index_array: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
 		seam_foam_indices += index_array.size()
-	if seam_foam_indices != 18:
+	if seam_foam_indices != 6:
 		errors.append("water foam treated a neighboring preview chunk as shoreline")
 	undo.undo()
 	if resource.transparency != before:
@@ -451,6 +475,7 @@ func _test_material_brush(errors: Array[String]) -> void:
 	if resource.transparency != after:
 		errors.append("material Redo did not restore the painted channel")
 	undo.free()
+
 
 	var connected := EmberVoxelModelResource.new()
 	connected.model_id = "connected_material_fixture"

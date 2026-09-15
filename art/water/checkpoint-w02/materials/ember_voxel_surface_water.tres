@@ -1,0 +1,47 @@
+[gd_resource type="ShaderMaterial" format=3 uid="uid://bimr0cp47se7v"]
+
+[ext_resource type="Shader" uid="uid://bgpgtrp6cxaeu" path="res://shaders/ember_voxel_surface_water.gdshader" id="1_water"]
+
+[resource]
+render_priority = 1
+shader = ExtResource("1_water")
+shader_parameter/coordinate_scale = 0.0
+shader_parameter/background_water = false
+shader_parameter/patch_cell_size = 40.0
+shader_parameter/palette_strength = 0.12
+shader_parameter/shallow_opacity = 0.42
+shader_parameter/deep_opacity = 0.78
+shader_parameter/preview_time = -1.0
+shader_parameter/water_tint = Color(0.12, 0.78, 0.8, 1)
+shader_parameter/water_light_tone = Color(0.2, 0.78, 0.76, 1)
+shader_parameter/water_deep_tone = Color(0.035, 0.4, 0.52, 1)
+shader_parameter/ripple_color = Color(0.88, 1, 0.94, 1)
+shader_parameter/sky_reflection_color = Color(0.58, 0.9, 0.93, 1)
+shader_parameter/glint_color = Color(0.65, 0.94, 0.86, 1)
+shader_parameter/tint_strength = 0.18
+shader_parameter/tone_strength = 0.4
+shader_parameter/tone_alpha = 0.035
+shader_parameter/depth_alpha = 0.08
+shader_parameter/ripple_alpha = 0.01
+shader_parameter/reflection_strength = 0.0
+shader_parameter/reflection_alpha = 0.035
+shader_parameter/glint_strength = 0.0
+shader_parameter/glint_alpha = 0.0
+shader_parameter/glint_cell_size = 32.0
+shader_parameter/glint_density = 0.045
+shader_parameter/glint_length = 5.0
+shader_parameter/glint_thickness = 0.8
+shader_parameter/pixel_density = 16.0
+shader_parameter/network_cell_size = 24.0
+shader_parameter/network_width = 0.04
+shader_parameter/animation_fps = 8.0
+shader_parameter/wave_length = 1.6
+shader_parameter/wave_speed = 0.35
+shader_parameter/wave_strength = 0.10
+shader_parameter/surface_roughness = 0.28
+shader_parameter/highlight_strength = 0.36
+shader_parameter/body_emission = 0.0
+shader_parameter/decorative_glints = false
+shader_parameter/patch_strength = 0.35
+shader_parameter/reflection_pixel_size = 0.0625
+shader_parameter/reflection_pixel_strength = 1.0

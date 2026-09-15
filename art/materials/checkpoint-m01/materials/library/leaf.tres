@@ -1,0 +1,24 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+
+[ext_resource type="Shader" path="res://shaders/ember_material_opaque.gdshader" id="1"]
+
+[resource]
+resource_name = "Ember leaf"
+shader = ExtResource("1")
+shader_parameter/base_color = Color(0.443137, 0.592157, 0.301961, 1)
+shader_parameter/use_vertex_color = true
+shader_parameter/surface_roughness = 0.7
+shader_parameter/surface_metallic = 0.0
+shader_parameter/highlight_strength = 0.16
+shader_parameter/opacity = 1.0
+shader_parameter/transmission_strength = 0.55
+shader_parameter/transmission_color = Color(0.79, 1, 0.45, 1)
+shader_parameter/emission_energy = 0.0
+shader_parameter/emission_color = Color(1, 0.65, 0.2, 1)
+shader_parameter/emission_follow_base = true
+shader_parameter/toon_steps = 4
+shader_parameter/band_floor = 0.19
+shader_parameter/local_light_softness = 1.0
+shader_parameter/shadow_tint_strength = 0.42
+shader_parameter/shadow_tint = Color(0.48, 0.76, 0.82, 1)
+shader_parameter/band_softness = 0.065

@@ -1,0 +1,12 @@
+{
+  "shaders/ember_voxel_surface_water.gdshader": "f330500b271bacd38ced563289c15122a7f689b870ddb7bf2c6e1d89a45d7a8e",
+  "materials/ember_voxel_surface_water.tres": "f118da04d054883b5e553b884605f5214e4eaeee36628cad12602ba617293fb7",
+  "tools/test_water_material.gd": "2bd581a6b3476e68f4242c48efde3a1a67de17c5e53331f1c0f1ca1b8643fcee",
+  "tools/test_water_pattern_seams.gd": "828dfcbf0eabaa43fd670d5c0543e161d607b46a0fd0401c63e78c134b4da309",
+  "tools/test_diorama_materials.gd": "bc4834381a447863eeb0ec195982ccec3e3f908013823b1d587e58c83b909c82",
+  "tools/render_water_flow.gd": "c972ec996def2b7a50ca0cf3ed43e179421d39fc41927ca430afbf4887348262",
+  "tools/render_water_flow.gd.uid": "4b5493b106d9c12958124d2ecf31c22be535a275fa63b55fb8c284dc61ba55c6",
+  "tools/test_water_flow.gd": "d31adf86f9db9f3baed88be0fdae080324dc5446393cfa618be0aeb3e27973b1",
+  "tools/test_water_flow.gd.uid": "891270b4711fb4af1b64cec2e0cd85bbe464a06dda37488430ee5fbcb3d8b05f",
+  "tools/package_water_flow.py": "7d5e68bc500f87af30daaf08babd919973c377c2c0745d8044e61aff668e2495"
+}

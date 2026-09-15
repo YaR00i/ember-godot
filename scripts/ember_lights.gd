@@ -16,6 +16,101 @@ const SHADOW_LAYER_WORLD := 1
 const SHADOW_LAYER_LAMP_HOST := 2
 ## Explicit stress ceiling. Production remains 8 until populated-scene retesting.
 const MAX_OMNI_SHADOWS := 16
+## Weak, renderer-only overrides. No Node/Resource fields or saved scene state.
+static var _diorama_environments: Dictionary = {}
+static var _diorama_reentry: Dictionary = {}
+
+
+static func apply_diorama_environment(environment: Environment, sun: DirectionalLight3D) -> void:
+	if environment == null:
+		return
+	var key := environment.get_instance_id()
+	_cancel_diorama_reentry(key)
+	if sun == null or not sun.is_inside_tree():
+		_write_diorama_ambient(environment,false)
+		_diorama_environments.erase(key)
+		_refresh_diorama_environments()
+		return
+	_diorama_environments[key] = {
+		"environment": weakref(environment),
+		"sun": weakref(sun) if sun != null else null,
+		"signature": [],
+	}
+	_refresh_diorama_environments()
+	# Inspector edits, visibility/energy changes and target removal restore the
+	# authored ambient automatically. Detached targets use one-shot reentry;
+	# no Save hooks, scene state or new nodes.
+	if not _diorama_environments.is_empty() and not RenderingServer.frame_pre_draw.is_connected(_refresh_diorama_environments):
+		RenderingServer.frame_pre_draw.connect(_refresh_diorama_environments)
+
+
+static func _refresh_diorama_environments() -> void:
+	for key in _diorama_reentry.keys():
+		var pending: Dictionary = _diorama_reentry[key]
+		if pending.environment.get_ref() == null or pending.sun.get_ref() == null:
+			_cancel_diorama_reentry(key)
+	for key in _diorama_environments.keys():
+		var state: Dictionary = _diorama_environments[key]
+		var environment := (state.environment as WeakRef).get_ref() as Environment
+		var sun := (state.sun as WeakRef).get_ref() as DirectionalLight3D
+		if environment == null:
+			_diorama_environments.erase(key)
+			continue
+		if sun == null or not sun.is_inside_tree():
+			_write_diorama_ambient(environment,false)
+			if sun != null and not sun.is_queued_for_deletion():
+				var callback := _resume_diorama_environment.bind(key)
+				_diorama_reentry[key] = {"environment":weakref(environment),"sun":weakref(sun),"callback":callback}
+				sun.tree_entered.connect(callback,CONNECT_ONE_SHOT)
+			_diorama_environments.erase(key)
+			continue
+		var moon := sun.get_parent().get_node_or_null("Moon") as DirectionalLight3D
+		var moon_active := moon != null and moon.is_visible_in_tree() and moon.light_energy > 0.0
+		var active := sun.is_visible_in_tree() and not moon_active
+		if active:
+			active = (sun.light_energy > 0.0 and not sun.light_negative
+				and sun.light_color.r > sun.light_color.b + 0.035
+				and (-sun.global_basis.z).y < -0.15
+				and environment.ambient_light_energy >= 0.08)
+		var signature := [active,environment.ambient_light_color,environment.ambient_light_energy,
+			environment.ambient_light_source,environment.ambient_light_sky_contribution,
+			environment.reflected_light_source]
+		if signature == state.signature:
+			continue
+		state.signature = signature
+		_write_diorama_ambient(environment,active)
+	if _diorama_environments.is_empty() and RenderingServer.frame_pre_draw.is_connected(_refresh_diorama_environments):
+		RenderingServer.frame_pre_draw.disconnect(_refresh_diorama_environments)
+
+
+static func _cancel_diorama_reentry(key: int) -> void:
+	if not _diorama_reentry.has(key): return
+	var pending: Dictionary = _diorama_reentry[key]
+	var sun := (pending.sun as WeakRef).get_ref() as DirectionalLight3D
+	if sun != null and sun.tree_entered.is_connected(pending.callback):
+		sun.tree_entered.disconnect(pending.callback)
+	_diorama_reentry.erase(key)
+
+
+static func _resume_diorama_environment(key: int) -> void:
+	if not _diorama_reentry.has(key): return
+	var pending: Dictionary = _diorama_reentry[key]
+	_diorama_reentry.erase(key)
+	var environment := (pending.environment as WeakRef).get_ref() as Environment
+	var sun := (pending.sun as WeakRef).get_ref() as DirectionalLight3D
+	if environment != null and sun != null: apply_diorama_environment(environment,sun)
+
+
+static func _write_diorama_ambient(environment: Environment, active: bool) -> void:
+	var color := environment.ambient_light_color
+	var energy := environment.ambient_light_energy
+	if active:
+		color = Color(color.r * 0.50,color.g * 0.85,color.b * 1.02,color.a)
+		energy *= 0.8
+	RenderingServer.environment_set_ambient_light(environment.get_rid(),color,
+		environment.ambient_light_source as RenderingServer.EnvironmentAmbientSource,
+		energy,environment.ambient_light_sky_contribution,
+		environment.reflected_light_source as RenderingServer.EnvironmentReflectionSource)
 
 
 static func fog_density(fog: float, haze := 0.0) -> float:
@@ -90,6 +185,9 @@ static func voxel_material() -> ShaderMaterial:
 	mat.set_shader_parameter("toon_steps", 4)
 	mat.set_shader_parameter("band_floor", 0.19)
 	mat.set_shader_parameter("local_light_softness", 1.0)
+	mat.set_shader_parameter("shadow_tint_strength", 0.42)
+	mat.set_shader_parameter("shadow_tint", Color(0.48, 0.76, 0.82))
+	mat.set_shader_parameter("band_softness", 0.065)
 	return mat
 
 
@@ -100,6 +198,9 @@ static func voxel_transparent_material() -> ShaderMaterial:
 	mat.set_shader_parameter("toon_steps", 4)
 	mat.set_shader_parameter("band_floor", 0.19)
 	mat.set_shader_parameter("local_light_softness", 1.0)
+	mat.set_shader_parameter("shadow_tint_strength", 0.30)
+	mat.set_shader_parameter("shadow_tint", Color(0.48, 0.76, 0.82))
+	mat.set_shader_parameter("band_softness", 0.065)
 	return mat
 
 

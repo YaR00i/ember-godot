@@ -1,5 +1,282 @@
 # Ember — актуальные проверки и migration gates
 
+<!-- BEGIN water-w04-d97c-20260915; transfer this section only -->
+W04 native light-play review2 evidence2026-09-15: unchanged close-current plus
+review2 close sharp/shadow/caustics and game caustics each48real Forward+ frames at
+12fps. Rejected highlight random mask was removed; disposable pier was raised enough
+to project its boards/posts beyond the deck. Production native diagnostic: clean
+cell highlight changed36423pixels over24levels and reduced >240 bright pixels
+19181→2245; snapped/quantized shadow changed20446pixels over8levels; isolated bottom
+light changed23996pixels and its3.25→4.25 motion changed14395. 7native and13headless
+related gates PASS. Custom controls clone/save/
+reopen exactly and W03 defaults remain disabled. Manual art/main/input and global
+hard-shadow choice OPEN. Screen-space bottom light is not physical volumetric
+caustics, bottom projection, swimming or gameplay-camera acceptance.
+
+Review3 cohesion probe: `review3-close-connected` has48native Forward+ frames and
+12fps GIF. Cohesion1 changes34601pixels over8levels versus sharp; cohesion0 rerender
+matches saved review2 exactly. Targeted native shader/response plus headless defaults
+and material clone/save/reopen PASS. User motion/shape acceptance OPEN.
+
+Review4 directional-flow probe after user rejected lateral review3 cell drift:
+`review4-close-flowing` has48 Forward+ frames and12fps GIF. Native flowing response
+changes96867pixels over8levels versus sharp; headless defaults and custom flow
+direction/speed save/reopen PASS. Cohesion0 current render remains pixel-exact to
+saved review2 (same pixel SHA-256). User direction/shape acceptance OPEN.
+
+Review5 connected-patch probe: `review5-close-patches` contains48 Forward+ frames
+and12fps GIF. Native patch response changes345612pixels over8levels versus sharp;
+headless defaults and shape scale/threshold save/reopen PASS. Shape0 current render
+remains pixel-exact to saved review2. User art acceptance OPEN.
+
+Review6 smooth-edge probe: `review6-close-wobble` contains48 Forward+ frames and
+12fps GIF. Continuous sampling plus weak edge wobble changes31791pixels with average
+0.9425 versus review2 sharp; native shader response and headless defaults/custom
+save/reopen PASS. Smooth motion0 rerender remains pixel-exact to saved review2. User
+art acceptance OPEN.
+
+Review7 stationary-edge probe: `review7-close-standing` contains48 Forward+ frames
+and12fps GIF. Highlight translation is independently reduced to0.02 while edge wobble
+continues at1.15; threshold0.991/core0.998 sharpen the visible areas. Native and
+headless water tests plus custom parameter save/reopen PASS; disabled motion controls
+remain pixel-exact to saved review2. Isolated `Water Lab` Forward+ capture PASS and
+`test_water_lab.gd` confirms >=25 live controls, presets, reset, portable JSON and no
+canonical material mutation. User tuning/art acceptance OPEN.
+
+Water Lab orbit regression: compare frozen `water-lab-fixed-sun-a.png` and
+`water-lab-fixed-sun-b.png` after a90° orbit. Sun Basis must remain exact while the
+world-anchored highlight orientation rotates only with the rendered plane. Native
+test asserts unchanged sun Basis and standing view-dependence0.15. The new material
+control defaults1; exact Review2 render SHA remains unchanged. PASS.
+
+Shore/object contact continuation: Water Lab must keep its22x15 field, separated
+beach/wall/pier zones and descending shallow/mid/deep floor. Around the rock, verify
+two distinct readings: a continuous one-pixel line exactly at the water/footprint
+intersection and a thinner detached response on the incoming side; it must not read
+as one broad white ring. For runtime actors, standing in valid water keeps the foot
+seam, horizontal motion strengthens the directed bow and world-history wake, leaving
+water removes both, and the bank mask prevents drawing over dry cells. Evidence:
+`art/water/shore_lab/qa/object-contact-v4`; `test_water_lab.gd`,
+`test_water_contact_boundaries.gd`, `test_world_surface_projection.gd` and
+`test_water_material.gd` PASS. Real-player visual gate OPEN.
+
+Systemic shore-cycle gate: on a canonical Surface Resource, every wet/dry edge must
+emit signed-distance and waterward-direction metadata without treating a wet cell in
+the neighbouring chunk as shore. A low stepped neighbour must receive landward runup
+geometry on its real top faces; a column over one voxel above water must be marked as
+a reflecting wall. In motion, one connected crest approaches the boundary, crosses
+under the pier until the real ground edge, impacts, then either runs up the low bank
+or returns as a decaying reflected crest. The broad response mesh must remain
+transparent outside active foam/wet trace and must not become a white plane. The
+shore shader must not own a second phase function: water and foam include the same
+leaf wave module and synchronize natural mix, direction spread, scale variation,
+grouping, wind ripple and crest sharpness as well as direction/length/speed/time.
+The bright approach cap must remain on the same broad crest visible in the water
+when time advances or the camera rotates. Evidence:
+`art/water/shore_lab/qa/unified-shore-wave-v1`; `test_water_shore_response.gd`,
+`test_water_lab.gd`, `test_water_material.gd`, `test_water_pattern_seams.gd`,
+`test_world_surface_projection.gd` and `test_water_contact_boundaries.gd` PASS.
+Canonical water-body shore paint remains0; derived production foam response is0.82.
+Manual real-map art acceptance is OPEN; no fluid solver or buoyancy is claimed.
+
+Preset legibility gate: compare saved/coast/sea/lake/river and `Прибой` over the same
+12-second interval, camera and shore crop. `Прибой` must retain the saved colour,
+highlight and depth values while replacing only wave-composition parameters; applying
+it must not overwrite the saved Water Lab JSON. Evidence:
+`art/water/shore_lab/qa/preset-comparison-v1`; `test_water_lab.gd` PASS.
+
+Reflected-wave edge gate: a wall reflection must remain a narrow connected ridge,
+not a filled soft crest cap. It may remain strong near contact but must fade to
+transparent before the finite 4-block response strip ends; no straight cut may
+reveal the generated mesh boundary. Evidence:
+`art/water/shore_lab/qa/reflection-line-v2`; 48-frame Forward+ motion,
+`test_water_shore_response.gd` and `test_water_lab.gd` PASS.
+
+Water Lab real-depth regression: a plain PlaneMesh must use `scene_depth_mix=1`,
+not its ordinary UV.x as authored depth. Rotate the camera and verify that no four
+surface-colour stripes follow the plane; shallow/mid/deep differences must align with
+the actual floor terraces visible through the transparent water. All terrace materials
+must use the same base colour so the water column creates the value change. Preview
+opacity starts at0.48/0.68; canonical material keeps `scene_depth_mix=0`. A legacy
+saved Water Lab selection must retain its wave/highlight values while adopting the
+new depth source. Evidence: `art/water/shore_lab/qa/real-depth-v1`; accepted by user
+2026-09-15.
+
+Volume/bottom-light manual gate: compare exact-time flat and volume captures, then
+the low-angle motion. At height0.04 the water silhouette must move without exposing
+or cutting through the shore because displacement fades to zero at its boundary.
+Objects and gameplay collision remain unchanged in this lab slice. Compare bottom
+light on/off: only connected yellow-green focused bands may change; the entire water
+body must not receive a blanket tint. Rotate the camera90deg: depth attenuation and
+bottom pattern remain anchored to floor world coordinates. Check shallow/mid/deep
+fade and controls for visibility, strength, width, colour, wave link, height and
+shore fade. Evidence: `art/water/shore_lab/qa/volume-light-v3`. Production defaults
+keep displacement/light/depth override disabled; artistic acceptance remains OPEN.
+
+Collision-waterline/global-wave gate: attach one `EmberWaterContact3D` in collision
+mode to the pier collision root. It must derive all deck/support footprints without
+authored contact coordinates, then show exactly the two offshore supports: the dry
+landward pair and the raised deck remain hidden. Each generated quad must be larger
+than its collision footprint by the configured reaction distance and safety padding,
+so no front/side branch ends on a helper edge. Verify a thin stable water/wood seam;
+across a cycle detached branches swell with the same incoming crest and share live
+direction/length/speed with water, rock, shore and wall. The moving hull uses the
+same component, keeps its oriented seam while it moves, and leaves valid water-side
+wake history. Bank masks must not paint dry ground. Automated boundary test also
+checks wet/dry collider filtering and anti-clipping size. Evidence:
+`art/water/shore_lab/qa/collision-waterline-v1`. Exact polygonal slicing of complex
+hulls and map-editor component authoring remain separate gates.
+
+Depth-driven shore-wave candidate gate: the same offshore state must remain
+unchanged in deep water, then use per-surface signed shore distance and inward
+direction to turn, shorten and steepen continuously on a beach. The foam shader
+must threshold this transformed state rather than own an independent phase. A
+hard wall must bypass beach refraction and preserve the source field for mirrored
+reflection. Water Lab water mesh must carry both beach and wall metadata and export
+all six candidate controls. Compare transform0/1 at the same time and camera, then
+inspect a 48-frame shore crop and a 90-degree camera view. Canonical material keeps
+`shore_wave_transform=0` until manual acceptance. Evidence:
+`art/water/shore_lab/qa/depth-driven-v1`; `test_water_lab.gd`,
+`test_water_shore_response.gd`, `test_water_material.gd`, pattern-seams and
+world-projection PASS.
+
+Depth/break/runup continuation gate: Water Lab must represent its four-block shoal
+with four descending voxel terraces and store matching depth bands on both water
+and response geometry. At a fixed wave preset the crest must remain unchanged in
+deep water, refract/shorten/steepen across those bands, and emit foam only where
+the positive ridge exceeds the stylized `H/depth` threshold. The visible breaker
+must travel as one connected line toward shore. On the low bank, the wrapped phase
+age of that same boundary crest must drive one narrow world-space runup front and
+subtle water sheet; it must not become several separately timed white step bands.
+The hard-wall branch retains mirrored reflection. Verify threshold, softness,
+shallow/deep and runup-speed controls, unchanged saved-selection hash, production
+`shore_wave_transform=0`, and a complete Forward+ cycle. Evidence:
+`art/water/shore_lab/qa/depth-break-runup-v9`; Water Lab, shore, material and
+pattern-seams PASS. Water Lab art gate provisionally accepted by the user on
+2026-09-16 (⭐); final real-map/gameplay-scene art gate remains OPEN after
+Surface-mesher metadata integration.
+
+Real Surface integration gate: build shore metadata once for the complete canonical
+Resource and pass that exact field to every native/fallback visual chunk. Split the
+same wet area at a technical chunk boundary and require exact matching depth,
+signed distance and waterward direction on shared vertices. A Resource edge with
+no authored neighbour must stay open water. Curved or stair-stepped coast foam must
+reuse non-overlapping water patches; only low-bank runup may add land geometry.
+Canonical water and foam must enable `shore_wave_transform=1`, retain flat visual/
+collision height, and keep the accepted break3.20, width0.08, softness0.07 and
+runup-speed0.38 values. `test_water_shore_response.gd`, `test_water_material.gd`,
+`test_water_pattern_seams.gd` and `test_world_surface_projection.gd` PASS. The
+water-specific assertions in `test_voxel_surface_sculpt.gd` pass; the full suite has
+an unrelated pre-existing native selector failure on Nil scene data. A focused real
+`agent_sandbox_surface.tres` probe reports384×384,2932 wet columns,138.803ms.
+Inspect `art/water/qa/shore-real-agent-v2-agent-water-near.png` and
+`art/water/qa/shore-prod-t6_5-corner-near.png`; final moving gameplay acceptance is
+OPEN. Saved-selection hash must remain
+`EB5890D677DA1192D53D540A6DAFD492CD014DCCCAB3E26B6B030B72CEE909B5`.
+<!-- END water-w04-d97c-20260915 -->
+
+<!-- BEGIN water-w03-d97c-20260915; transfer this section only -->
+W03 native light-network evidence2026-09-15: close-before/no-network/flow and
+game/wide flow each48real Forward+ frames. Diagnostic executes production fragment
+and exposes flow mask: split at non-cell edge and negative/positive coordinates
+5significant pixels/average0.0000153; continuous-time movement31406pixels/
+average0.0922; shallow0.1238 vs deep0.0737; disabled and distant-subpixel masks
+vanish. Independent custom material save/reopen, Sky/alpha, W02 pixel, Surface/
+object/seam and related headless gates PASS; Source guard/editor import documented
+inart/water/flow/HANDOFF.md. Two diagnostic fixture failures (wrong emission output,
+then weak distance threshold) retained separately and corrected. Manual art/input/
+main integration OPEN; no bottom-caustic projection, refraction or swimming gate.
+<!-- END water-w03-d97c-20260915 -->
+
+<!-- BEGIN water-w02-d97c-20260915; transfer this section only -->
+W02 native water pixel evidence2026-09-15: art/water/pixel/qa, one-/two-voxel/
+W01same-camera GIF, new-colour smooth control; close/game/wide/perspective and
+frozen-water camera translation. Native optical within-cell max0, negative/
+positive world cells, split not aligned to cell edges0difference; strength0
+continuous475/576cells, size/time response, subpixel exact convergence PASS.
+Material custom save/reopen, real Sky and alpha, existing seam/noise diagnostics,
+stock/native Surface0different/8171visible and object motion6741pixels PASS.
+11headless regressions,429canonical Source guard and isolated editor import PASS.
+Initial512image/logical1280camera mismatch archived separately; active final
+logs noERROR/SCRIPTERROR/FAIL, UID/fragmentObjectDB and probe7TextureRID diagnostics
+retained as warnings, no clean engine-lifecycle claim. Manual choose pixel size/
+glint calmness near/game/wide/day/night and verify contacts/input in Forward+.
+Art/input/main integration OPEN; no gameplay swimming or bottom refraction.
+<!-- END water-w02-d97c-20260915 -->
+
+<!-- BEGIN water-w01-d97c-20260915; transfer this section only -->
+Water W01 native/storage/compatibility evidence2026-09-15 inart/water/qa.
+Actual normals/time/light_specular A/B,48real rendered motion frames, exact
+custom ShaderMaterial save/reopen; shallow/deep red backing transmission and
+red/green actual Sky reflection with no direct light/ambient. Native independent
+water halves/pattern-cell continuity plus Surface/object water/contact/world
+projection/palette/prefab/fragment/diorama regressions. Authored WorldCanvas/Pier
+before-after separately from QA-configured Sky/probe/specular demonstration.
+Canonical429Source bytes unchanged; previous checkpoints/QA retained. Known
+one-probe shutdown7TextureRIDs distinguished from assertions PASS; inherited
+UID warnings and separate fragment ObjectDB warning retained in logs. Manual art/input/main integration
+OPEN; inspect brightness/colour/depth/motion near/far/day/night and contacts.
+No physics displacement, producer/schema/editor owner replacement or engine fix.
+<!-- END water-w01-d97c-20260915 -->
+
+<!-- BEGIN materials-refinement-d97c-20260915; transfer this section only -->
+## Material M02 gates — 2026-09-15, manual OPEN
+
+PASS customized9preset save/reopen/validation/independent instances/new sidebar
+controls. Native material assertions PASS:GGX, colour/angular glints, environment
+reflection outside direct view, weak texture and independent relief, alpha/depth,
+emission/no-light/reopen, transmission. Related4gates PASS. Isolated import
+completed without errors.429oldSource bytes and6previous lighting/water PNG equal.
+Probe GPU cleanup NOT cleanPASS: minimal no-probe clean,1probe7TextureRIDs shutdown
+warning on4.7.2 matchingGodot#122498; combinednativeQA14. No live VRAM claims.
+Failed cleanup attempts separate/removed. M01 evidence retained. Manual authored
+forms/view-angle/shimmer and real native input/main integration OPEN.
+Evidence:art/materials/refinement/qa; exact protocol/HANDOFF alongside.
+<!-- END materials-refinement-d97c-20260915 -->
+
+<!-- BEGIN materials-library-d97c-20260915; transfer this section only -->
+## Material library gate — 2026-09-15, manual OPEN
+
+PASS test_material_library:9stable presets, parameter validation, immutable
+originals, independent instances, custom resource save/reopen for all9, stand
+UI signals/reset/day/night. Native render_material_library PASS:1600x900 day/
+night/backlight, emission with no lights, customized emission save/reopen exact
+pixels, opaque-front/behind-glass depth, actual specular/transmission response.
+Related diorama materials/palette/prefab/native water gates PASS.
+Isolated editor --import completed without ERROR/SCRIPT ERROR, inherited UID
+fallback warnings recorded.429old Source/scene/prefab byte hashes unchanged;
+only owned stand.tscn added. Six old day/night corner and Pier native viewport
+PNG byte-identical. Evidence separated in art/materials/qa; prior lighting QA
+not overwritten. Manual art, real mouse/camera/picker/slider use and main
+integration OPEN. Per-voxel assignment and editor Undo/Save/reopen require the
+next agreed editor contract; this gate does not claim them.
+<!-- END materials-library-d97c-20260915 -->
+
+<!-- BEGIN graphics-d97c-20260915; transfer this section only -->
+## Diorama graphics — 2026-09-15; manual OPEN
+
+Owned disposable current-main Temp fixture only. Never headless-editor inmain.
+`test_diorama_materials.gd`: constructors/material owner parity, authored storage,
+repeated apply, hidden/zero/cool/missing/freed/detachedSun, same-node reattach,
+reparent toactiveMoon andback, stale target cancellation,20open-close with held
+Environment, pack/save/reopen inuser://, legacyMoon without watcher.
+`--visual` inForward+ checks actual pixel bytes: idempotence, exactclear,
+automatic disable-enable, pack-reopen effect. No input/manual camera claim.
+Watcher CPU:10kunchanged-signature polls with1live warm entry, separate fromGPU.
+
+`render_diorama.gd` / `run_diorama_qa.ps1`: fixednear/overview, exposure/viewport,
+water3.25s; baseline/candidatecorner,fullcurrentCanvas,Pier,FanTown8/12,
+cool/warmMoon night+local lamp,CombatLab; physics locked only inrenderfixture.
+DiagnosticCanvas shadowsON/OFF/unlit separates stair faces fromshadow/palette
+andwaterseams; water8.25s verifies motion. GPU/CPU120-frame median timers,
+drawcalls/VRAM are available viewport proxies; no wholeFPS guarantee.
+`check_graphics_sources.py`: before/after429content scene/source/prefab hashes.
+Relatedwater/Surface/Canvas/prefab regressions and exactlatestlogs:
+`art/lighting/qa`. FailedexperimentalQA is excluded fromPASS proof.
+Manual art/nightreadability/camera/input/working-game view and mainintegration
+remainOPEN. Transfer only thissection into newer source documents.
+<!-- END graphics-d97c-20260915 -->
+
 ## Мультяшная вода / поставленный prefab2026-09-14 — последний рисунок принят
 
 Пользователь подтвердил последнюю коррекцию разрыва пятен («окей работает»).
