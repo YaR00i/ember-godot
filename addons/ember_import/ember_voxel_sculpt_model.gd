@@ -229,6 +229,112 @@ static func make_world_surface(
 	resource.voxels = values
 	return resource
 
+static func make_native_world_surface(map_id: String, footprint: Vector2i, height := 128) -> EmberVoxelModelResource:
+	if footprint.x < 1 or footprint.y < 1 or footprint.x > 128 or footprint.y > 128:
+		return null
+	# Native creation does not pass through the small-object Shapes allocator.
+	# Reject excessive dense allocations before resizing any channel.
+	if footprint.x * footprint.y * 256 * height > 33554432:
+		return null
+	var resource := EmberVoxelModelResource.new()
+	resource.model_id = "%s_surface" % map_id.validate_filename().to_lower()
+	resource.display_name = "Земля · " + map_id
+	resource.voxels_per_block = 16
+	resource.size_blocks = Vector3i(footprint.x, ceili(float(height) / 16), footprint.y)
+	resource.height_voxels = height
+	resource.physical = true
+	resource.tags = PackedStringArray(["surface", "world", "godot-native"])
+	resource.material = {"preset": "world_surface", "semanticOwner": map_id}
+	resource.palette = PackedColorArray([Color(0,0,0,0), Color("#705447"), Color("#6b995e"), Color("#d1a55f"), Color("#537d91"), Color("#518c99")])
+	var size := resource.grid_size()
+	resource.voxels.resize(size.x * size.y * size.z)
+	resource.voxels.fill(0)
+	return resource
+
+static func evaluation_bounds(size: Vector3i, from: Vector3i, to: Vector3i, radius: int, region := Rect2i()) -> Rect2i:
+	var minimum := Vector2i(mini(from.x, to.x) - radius + 1, mini(from.z, to.z) - radius + 1)
+	var maximum := Vector2i(maxi(from.x, to.x) + radius, maxi(from.z, to.z) + radius)
+	var bounds := Rect2i(minimum, maximum - minimum).intersection(Rect2i(Vector2i.ZERO, Vector2i(size.x, size.z)))
+	return bounds.intersection(region) if region.has_area() else bounds
+
+## Incremental evaluation only: every tile retains the full brush center/radius
+## and immutable pointer-down source. UI and projection own no competing math.
+class StrokeJob extends RefCounted:
+	var source: EmberVoxelModelResource
+	var from: Vector3i
+	var to: Vector3i
+	var normal := Vector3i.UP
+	var mode := "raise"
+	var radius := 16
+	var depth := 4
+	var palette := 1
+	var options := {}
+	var region := Rect2i()
+	var tiles: Array[Rect2i] = []
+	var top_cache := {}
+	var amount_cache := {}
+	var done := false
+	var result := {}
+	var locked := {}
+	var locked_columns := {}
+
+	func initialize() -> void:
+		for group in source.voxel_groups:
+			if bool(group.get("locked", false)):
+				for index in group.get("indices", PackedInt32Array()):
+					locked[index] = true
+					locked_columns[index % (source.grid_size().x*source.grid_size().z)] = true
+		var oriented := mode in ["add", "remove", "paint"]
+		var bounds := Rect2i(Vector2i(-radius+1, -radius+1), Vector2i(2*radius-1, 2*radius-1)) if oriented else EmberVoxelSculptModel.evaluation_bounds(source.grid_size(), from, to, radius, region)
+		if mode == "foundation": bounds = region
+		for z in range(bounds.position.y, bounds.end.y, 4):
+			for x in range(bounds.position.x, bounds.end.x, 4):
+				tiles.append(Rect2i(Vector2i(x,z), Vector2i(mini(4,bounds.end.x-x),mini(4,bounds.end.y-z))))
+		done = tiles.is_empty()
+
+	func step(budget_usec := 4000) -> Dictionary:
+		var changes := {}
+		var start := Time.get_ticks_usec()
+		while not tiles.is_empty() and Time.get_ticks_usec()-start < budget_usec:
+			var tile: Rect2i = tiles.pop_front()
+			var next := {}
+			match mode:
+				"add", "remove", "paint":
+					next = EmberVoxelSculptModel.oriented_stroke_changes(source, source.voxels, to, normal, TOOL_ADD if mode == "add" else TOOL_REMOVE if mode == "remove" else TOOL_PAINT, palette, radius, depth, false, "circle", tile)
+				"raise", "lower":
+					next = EmberVoxelSculptModel.relief_segment_changes(source,source.voxels,from,to,TOOL_RAISE if mode == "raise" else TOOL_LOWER,palette,radius,depth,false,top_cache,0,amount_cache,tile,int(options.get("empty_floor",-1)))
+				"smooth":
+					next = EmberVoxelSculptModel.smooth_segment_changes(source,source.voxels,from,to,palette,radius,depth,false,top_cache,amount_cache,PackedInt32Array(),false,true,tile)
+				"level":
+					next = EmberVoxelSculptModel.level_segment_changes(source,from,to,int(options.get("level",to.y)),palette,radius,false,tile)
+				"shore", "generator":
+					next = EmberVoxelSculptModel.generative_relief_segment_changes(source,source.voxels,from,to,palette,radius,depth,int(options.get("scale",32)),1,int(options.get("seed",371)),0,"shore" if mode == "shore" else "soil",false,top_cache,amount_cache,PackedInt32Array(),{},options.get("shore",{}),tile)
+				"sand":
+					next = EmberVoxelSculptModel.surface_pattern_segment_changes(source,from,to,palette,int(options.get("secondary",palette)),radius,24,35,int(options.get("seed",371)),false,PackedInt32Array(),tile)
+				"foundation":
+					var size := source.grid_size()
+					for z in range(tile.position.y,tile.end.y):
+						for x in range(tile.position.x,tile.end.x):
+							if EmberVoxelSculptModel._top_filled_y(source.voxels,size,x,z) >= 0: continue
+							for y in range(0,clampi(int(options.get("level",32)),1,size.y)):
+								var index := EmberVoxelSculptModel.index_of(Vector3i(x,y,z),size)
+								next[index] = {"before":int(source.voxels[index]),"after":palette}
+				"water", "dry":
+					var size := source.grid_size()
+					var level := clampi(int(options.get("level",32)),1,size.y)
+					for z in range(tile.position.y,tile.end.y):
+						for x in range(tile.position.x,tile.end.x):
+							if EmberVoxelSculptModel._distance_squared_to_segment_2d(x,z,from.x,from.z,to.x,to.z) > pow(float(radius)-0.25,2): continue
+							var top := EmberVoxelSculptModel._top_filled_y(source.voxels,size,x,z)
+							if mode == "dry" or top < level-1:
+								next[x+z*size.x] = {"before":0,"after":0 if mode == "dry" else level}
+			if mode not in ["water", "dry", "foundation"]:
+				next = EmberVoxelSculptModel.changes_in_block_region(next,source.grid_size(),source.normalized_density(),Rect2i(region.position / source.normalized_density(),region.size / source.normalized_density())) if region.has_area() else next
+			for index in next:
+				if not (locked_columns if mode in ["water","dry"] else locked).has(index): changes[index] = next[index]
+		done = tiles.is_empty()
+		return changes
+
 
 static func make_battlefield_surface(
 	field_id: String,
@@ -634,6 +740,7 @@ static func surface_pattern_segment_changes(
 	base_palette: int, patch_palette: int, brush_radius := 8,
 	feature_scale := 24, coverage := 35, seed := 0, coarse := false,
 	heightfield := PackedInt32Array(),
+	evaluation_region := Rect2i(),
 ) -> Dictionary:
 	# One world-locked, single-scale pattern; no per-voxel speckles or new colors.
 	var changes := {}
@@ -642,8 +749,8 @@ static func surface_pattern_segment_changes(
 	var size := resource.grid_size()
 	if not contains(from, size) or not contains(to, size):
 		return changes
-	var heights := heightfield if heightfield.size() == size.x * size.z else column_heights(resource.voxels, size)
-	var radius := clampi(brush_radius, 1, 32)
+	var heights := heightfield
+	var radius := clampi(brush_radius, 1, 256)
 	var extent := radius - 1
 	var noise := FastNoiseLite.new()
 	noise.seed = maxi(0, seed)
@@ -655,16 +762,17 @@ static func surface_pattern_segment_changes(
 	var secondary := clampi(patch_palette, 1, resource.palette.size()-1)
 	var pixel_step := 2 if coarse else 1
 	var limit_squared := pow(float(radius)-0.25, 2)
-	for z in range(maxi(0,mini(from.z,to.z)-extent),mini(size.z-1,maxi(from.z,to.z)+extent)+1):
-		for x in range(maxi(0,mini(from.x,to.x)-extent),mini(size.x-1,maxi(from.x,to.x)+extent)+1):
+	var bounds := evaluation_bounds(size, from, to, radius, evaluation_region)
+	for z in range(bounds.position.y, bounds.end.y):
+		for x in range(bounds.position.x, bounds.end.x):
 			if _distance_squared_to_segment_2d(x,z,from.x,from.z,to.x,to.z) > limit_squared:
 				continue
-			var top := int(heights[x+z*size.x])
+			var top := int(heights[x+z*size.x]) if heights.size() == size.x * size.z else _top_filled_y(resource.voxels,size,x,z)
 			if top < 0: continue
 			var lowest_neighbor := top
 			for offset in [Vector2i.RIGHT,Vector2i.LEFT,Vector2i.UP,Vector2i.DOWN]:
 				var neighbor: Vector2i = Vector2i(x,z)+offset
-				var neighbor_top := int(heights[neighbor.x+neighbor.y*size.x]) if neighbor.x >= 0 and neighbor.y >= 0 and neighbor.x < size.x and neighbor.y < size.z else -1
+				var neighbor_top := (int(heights[neighbor.x+neighbor.y*size.x]) if heights.size() == size.x * size.z else _top_filled_y(resource.voxels,size,neighbor.x,neighbor.y)) if neighbor.x >= 0 and neighbor.y >= 0 and neighbor.x < size.x and neighbor.y < size.z else -1
 				lowest_neighbor = mini(lowest_neighbor,neighbor_top)
 			var px := floori(float(x)/pixel_step)*pixel_step
 			var pz := floori(float(z)/pixel_step)*pixel_step
@@ -736,6 +844,7 @@ static func oriented_stroke_changes(
 	brush_depth := 1,
 	coarse := false,
 	footprint_shape := "circle",
+	evaluation_region := Rect2i(),
 ) -> Dictionary:
 	## Fixed-layer volume/color footprint. Eligibility is always read from the
 	## pointer-down baseline, so revisiting a footprint during one gesture cannot
@@ -750,7 +859,7 @@ static func oriented_stroke_changes(
 	if outward == Vector3i.ZERO:
 		return changes
 	var depth_direction := outward if tool == TOOL_ADD else -outward
-	var radius := clampi(brush_radius, 1, 32)
+	var radius := clampi(brush_radius, 1, 256)
 	var step := 2 if coarse else 1
 	var depth := clampi(brush_depth, 1, 32)
 	if coarse:
@@ -759,8 +868,10 @@ static func oriented_stroke_changes(
 	var tangents := tangent_axes(outward)
 	var tangent_a: Vector3i = tangents[0]
 	var tangent_b: Vector3i = tangents[1]
-	for offset_b in range(-extent, extent + 1, step):
-		for offset_a in range(-extent, extent + 1, step):
+	var offsets := Rect2i(Vector2i(-extent, -extent), Vector2i(2 * extent + 1, 2 * extent + 1))
+	if evaluation_region.has_area(): offsets = offsets.intersection(evaluation_region)
+	for offset_b in range(offsets.position.y, offsets.end.y, step):
+		for offset_a in range(offsets.position.x, offsets.end.x, step):
 			if (
 				footprint_shape != "square"
 				and Vector2(offset_a, offset_b).length() > float(radius) - 0.25
@@ -1415,6 +1526,7 @@ static func level_segment_changes(
 	palette_index: int,
 	brush_radius := 4,
 	coarse := false,
+	evaluation_region := Rect2i(),
 ) -> Dictionary:
 	var changes := {}
 	if resource == null:
@@ -1422,7 +1534,7 @@ static func level_segment_changes(
 	var size := resource.grid_size()
 	if not contains(from, size) or not contains(to, size):
 		return changes
-	var radius := clampi(brush_radius, 1, 32)
+	var radius := clampi(brush_radius, 1, 256)
 	var step := 2 if coarse else 1
 	var target_top := clampi(target_top_y, 0, size.y - 1)
 	if coarse:
@@ -1433,10 +1545,11 @@ static func level_segment_changes(
 	var extent := radius - 1
 	var start_2d := Vector2(from.x, from.z)
 	var end_2d := Vector2(to.x, to.z)
-	var minimum_x := maxi(0, mini(from.x, to.x) - extent)
-	var maximum_x := mini(size.x - 1, maxi(from.x, to.x) + extent)
-	var minimum_z := maxi(0, mini(from.z, to.z) - extent)
-	var maximum_z := mini(size.z - 1, maxi(from.z, to.z) + extent)
+	var bounds := evaluation_bounds(size, from, to, radius, evaluation_region)
+	var minimum_x := bounds.position.x
+	var maximum_x := bounds.end.x - 1
+	var minimum_z := bounds.position.y
+	var maximum_z := bounds.end.y - 1
 	var first_x := floori(float(minimum_x) / float(step)) * step
 	var first_z := floori(float(minimum_z) / float(step)) * step
 	for base_z in range(first_z, maximum_z + 1, step):
@@ -1481,6 +1594,7 @@ static func smooth_segment_changes(
 	baseline_heightfield := PackedInt32Array(),
 	common_level := false,
 	fill_pits := true,
+	evaluation_region := Rect2i(),
 ) -> Dictionary:
 	var changes := {}
 	if resource == null:
@@ -1492,7 +1606,7 @@ static func smooth_segment_changes(
 		or not contains(to, size)
 	):
 		return changes
-	var radius := clampi(brush_radius, 1, 32)
+	var radius := clampi(brush_radius, 1, 256)
 	var step := 2 if coarse else 1
 	var effective_strength := clampi(strength, 1, size.y)
 	if coarse:
@@ -1500,10 +1614,11 @@ static func smooth_segment_changes(
 	var palette_value := clampi(palette_index, 1, resource.palette.size() - 1)
 	var has_heightfield := baseline_heightfield.size() == size.x * size.z
 	var extent := radius - 1
-	var minimum_x := maxi(0, mini(from.x, to.x) - extent)
-	var maximum_x := mini(size.x - 1, maxi(from.x, to.x) + extent)
-	var minimum_z := maxi(0, mini(from.z, to.z) - extent)
-	var maximum_z := mini(size.z - 1, maxi(from.z, to.z) + extent)
+	var bounds := evaluation_bounds(size, from, to, radius, evaluation_region)
+	var minimum_x := bounds.position.x
+	var maximum_x := bounds.end.x - 1
+	var minimum_z := bounds.position.y
+	var maximum_z := bounds.end.y - 1
 	var first_x := floori(float(minimum_x) / float(step)) * step
 	var first_z := floori(float(minimum_z) / float(step)) * step
 	var radius_limit := float(radius) - 0.25
@@ -1808,6 +1923,8 @@ static func relief_segment_changes(
 	baseline_top_cache: Dictionary = {},
 	previous_height := 0,
 	applied_amount_cache: Dictionary = {},
+	evaluation_region := Rect2i(),
+	empty_floor := -1,
 ) -> Dictionary:
 	var changes := {}
 	if resource == null or tool not in [TOOL_RAISE, TOOL_LOWER]:
@@ -1819,7 +1936,7 @@ static func relief_segment_changes(
 		or not contains(to, size)
 	):
 		return changes
-	var radius := clampi(brush_radius, 1, 32)
+	var radius := clampi(brush_radius, 1, 256)
 	var maximum_height := clampi(height_limit, 1, size.y)
 	var previous_maximum_height := clampi(previous_height, 0, maximum_height)
 	var palette_value := clampi(palette_index, 1, resource.palette.size() - 1)
@@ -1832,6 +1949,7 @@ static func relief_segment_changes(
 		previous_maximum_height,
 		coarse,
 		applied_amount_cache,
+		evaluation_region,
 	)
 	for raw_column_index in amount_changes:
 		var column_index := int(raw_column_index)
@@ -1847,8 +1965,10 @@ static func relief_segment_changes(
 			baseline_top = _top_filled_y(baseline_values, size, x, z)
 			baseline_top_cache[column_index] = baseline_top
 		if tool == TOOL_RAISE:
+			var empty_baseline := baseline_top < 0 and empty_floor >= 0
+			if empty_baseline: baseline_top = mini(size.y-1,empty_floor)
 			var target_top := mini(size.y - 1, baseline_top + amount)
-			var previous_target_top := mini(size.y - 1, baseline_top + applied_amount)
+			var previous_target_top := -1 if empty_baseline and applied_amount == 0 else mini(size.y - 1, baseline_top + applied_amount)
 			for y in range(previous_target_top + 1, target_top + 1):
 				var index := index_of(Vector3i(x, y, z), size)
 				var before := int(resource.voxels[index])
@@ -1884,6 +2004,7 @@ static func generative_relief_segment_changes(
 	baseline_heightfield := PackedInt32Array(),
 	facet_settings: Dictionary = {},
 	shore_settings: Dictionary = {},
+	evaluation_region := Rect2i(),
 ) -> Dictionary:
 	## Paints a deterministic height field anchored in model coordinates. The
 	## cache stores the strongest falloff and its resulting signed offset, so
@@ -1898,7 +2019,7 @@ static func generative_relief_segment_changes(
 		or not contains(to, size)
 	):
 		return changes
-	var radius := clampi(brush_radius, 1, 32)
+	var radius := clampi(brush_radius, 1, 256)
 	var safe_amplitude := clampi(amplitude, 1, size.y)
 	var step := 2 if coarse else 1
 	var palette_value := clampi(palette_index, 1, resource.palette.size() - 1)
@@ -1920,10 +2041,11 @@ static func generative_relief_segment_changes(
 	noise.fractal_lacunarity = 2.0
 	if shore: noise.fractal_type = FastNoiseLite.FRACTAL_NONE
 	var extent := radius - 1
-	var minimum_x := maxi(0, mini(from.x, to.x) - extent)
-	var maximum_x := mini(size.x - 1, maxi(from.x, to.x) + extent)
-	var minimum_z := maxi(0, mini(from.z, to.z) - extent)
-	var maximum_z := mini(size.z - 1, maxi(from.z, to.z) + extent)
+	var bounds := evaluation_bounds(size, from, to, radius, evaluation_region)
+	var minimum_x := bounds.position.x
+	var maximum_x := bounds.end.x - 1
+	var minimum_z := bounds.position.y
+	var maximum_z := bounds.end.y - 1
 	var first_x := floori(float(minimum_x) / float(step)) * step
 	var first_z := floori(float(minimum_z) / float(step)) * step
 	var radius_limit := float(radius) - 0.25
@@ -2272,16 +2394,18 @@ static func _relief_segment_amount_changes(
 	previous_maximum_height: int,
 	coarse: bool,
 	applied_amount_cache: Dictionary,
+	evaluation_region := Rect2i(),
 ) -> Dictionary:
 	var amount_changes := {}
 	var extent := radius - 1
 	var step := 2 if coarse else 1
 	var start_2d := Vector2(from.x, from.z)
 	var end_2d := Vector2(to.x, to.z)
-	var minimum_x := maxi(0, mini(from.x, to.x) - extent)
-	var maximum_x := mini(size.x - 1, maxi(from.x, to.x) + extent)
-	var minimum_z := maxi(0, mini(from.z, to.z) - extent)
-	var maximum_z := mini(size.z - 1, maxi(from.z, to.z) + extent)
+	var bounds := evaluation_bounds(size, from, to, radius, evaluation_region)
+	var minimum_x := bounds.position.x
+	var maximum_x := bounds.end.x - 1
+	var minimum_z := bounds.position.y
+	var maximum_z := bounds.end.y - 1
 	var first_x := floori(float(minimum_x) / float(step)) * step
 	var first_z := floori(float(minimum_z) / float(step)) * step
 	for base_z in range(first_z, maximum_z + 1, step):

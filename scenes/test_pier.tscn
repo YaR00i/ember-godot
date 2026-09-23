@@ -1,27 +1,26 @@
 [gd_scene format=4 uid="uid://ct2d14u6i5fm0"]
 
-[ext_resource type="Shader" path="res://shaders/ember_voxel_surface_water.gdshader" id="water_cartoon_shader"]
-
 [ext_resource type="Script" uid="uid://dechqn8w4wnur" path="res://scripts/test_pier.gd" id="1"]
 [ext_resource type="Script" uid="uid://ctwn2o6mocfe2" path="res://scripts/ember_map_loader.gd" id="2"]
 [ext_resource type="Script" uid="uid://4lkb6w8l82y0" path="res://scripts/ember_region.gd" id="3"]
 [ext_resource type="PackedScene" uid="uid://b5b153gkhkaip" path="res://prefabs/voxels/vox_shape_block_467332258_canvas_493047929.tscn" id="3_s7jpf"]
-[ext_resource type="PackedScene" uid="uid://b1l67qsoqyls7" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_0.tscn" id="3_u116l"]
+[ext_resource type="Resource" uid="uid://boxfkh6vnnf3i" path="res://content/world_surfaces/test_pier_surface.tres" id="3_vhds7"]
 [ext_resource type="PackedScene" uid="uid://bwafqv2l6m5sl" path="res://prefabs/voxels/vox_fan_crate_stack.tscn" id="4"]
 [ext_resource type="PackedScene" uid="uid://d0lu4udsiu0so" path="res://prefabs/voxels/vox_shape_block_182068941.tscn" id="4_j5jts"]
-[ext_resource type="PackedScene" uid="uid://bn5p6vhhar8e1" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_1_canvas_120981611.tscn" id="4_u116l"]
 [ext_resource type="PackedScene" uid="uid://dgs3s3fcxlh0i" path="res://prefabs/voxels/vox_fan_barrel_canvas_31516427_canvas_62266144.tscn" id="4_y8t1g"]
 [ext_resource type="PackedScene" uid="uid://c7qrgepeqllsw" path="res://prefabs/voxels/vox_fan_barrel.tscn" id="5"]
-[ext_resource type="PackedScene" uid="uid://b6jgfus8n6h3g" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_2.tscn" id="5_sijwm"]
-[ext_resource type="PackedScene" uid="uid://c3ns4um17hslr" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_3.tscn" id="6_ikush"]
-[ext_resource type="PackedScene" uid="uid://c0bx42hck3oe6" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_4_canvas_121360778.tscn" id="7_lxf6b"]
-[ext_resource type="PackedScene" uid="uid://bgm043vovoin4" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_5.tscn" id="8_ga0ds"]
-[ext_resource type="PackedScene" uid="uid://ccc6d6hute7ww" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_6.tscn" id="9_yb5pd"]
-[ext_resource type="PackedScene" uid="uid://c7bmhjtdryo8k" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_7_canvas_121725901.tscn" id="10_sijwm"]
-[ext_resource type="PackedScene" uid="uid://bwflxr4qfadxr" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_8.tscn" id="11_1txye"]
+[ext_resource type="PackedScene" uid="uid://cdemr3e6vu6bj" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_0_canvas_26907079957.tscn" id="5_vhds7"]
+[ext_resource type="PackedScene" uid="uid://cikw15unv75al" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_1_canvas_120981611_canvas_26907405849.tscn" id="6_kgewj"]
+[ext_resource type="PackedScene" uid="uid://b8j77oddgxuv8" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_2_canvas_26907729056.tscn" id="7_jg2fy"]
+[ext_resource type="PackedScene" uid="uid://nxjjnno8ppl5" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_3_canvas_26908053302.tscn" id="8_5qlpp"]
+[ext_resource type="PackedScene" uid="uid://dxvudx5foarp7" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_4_canvas_121360778_canvas_26908376269.tscn" id="9_0bpuf"]
+[ext_resource type="PackedScene" uid="uid://c33mu1426xghh" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_5_canvas_26908697847.tscn" id="10_r1j2j"]
+[ext_resource type="PackedScene" uid="uid://dmp41spgwt3ud" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_6_canvas_26909021619.tscn" id="11_l54y8"]
 [ext_resource type="PackedScene" uid="uid://bd3mdwrl48rtg" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_9.tscn" id="12_2lfjq"]
+[ext_resource type="PackedScene" uid="uid://dldlyl3cfwddf" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_7_canvas_121725901_canvas_26909343974.tscn" id="12_41tb8"]
 [ext_resource type="PackedScene" uid="uid://b8kk2blv12hgt" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_10.tscn" id="13_a55yo"]
 [ext_resource type="PackedScene" uid="uid://d3hhh86jg804h" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_11.tscn" id="14_hlj1e"]
+[ext_resource type="PackedScene" uid="uid://b8y4hdd655ygo" path="res://prefabs/voxels/vox_shape_block_15328782_canvas_117422242_part_32556083_8_canvas_26909671665.tscn" id="14_j0crr"]
 [ext_resource type="PackedScene" uid="uid://bxsqfhrh63o6a" path="res://prefabs/voxels/vox_shape_block_82315914_canvas_194380203_canvas_117373020_canvas_106179708_canvas_1509328469.tscn" id="20_ikush"]
 [ext_resource type="PackedScene" uid="uid://cjnb3khsmjdvc" path="res://prefabs/voxels/vox_fragment_112205362.tscn" id="22_sijwm"]
 [ext_resource type="PackedScene" uid="uid://b4lqiv7858j17" path="res://prefabs/voxels/vox_merge_60949294_0.tscn" id="22_yjp2r"]
@@ -34,6 +33,8 @@
 [ext_resource type="PackedScene" path="res://prefabs/voxels/vox_tree_352459298.tscn" id="30_a55yo"]
 [ext_resource type="PackedScene" path="res://prefabs/voxels/vox_merge_705909671_0.tscn" id="31_a55yo"]
 [ext_resource type="PackedScene" path="res://prefabs/voxels/vox_tree_522448705.tscn" id="31_hlj1e"]
+[ext_resource type="PackedScene" uid="uid://wh00vno8mxdf" path="res://prefabs/voxels/ember_surface_pilot.tscn" id="33_u00p0"]
+[ext_resource type="Shader" uid="uid://bgpgtrp6cxaeu" path="res://shaders/ember_voxel_surface_water.gdshader" id="water_cartoon_shader"]
 
 [sub_resource type="Environment" id="env"]
 background_mode = 1
@@ -47,22 +48,38 @@ fog_light_color = Color(0.48, 0.63, 0.66, 1)
 fog_density = 0.0005
 
 [sub_resource type="ShaderMaterial" id="water"]
+render_priority = 0
 shader = ExtResource("water_cartoon_shader")
-shader_parameter/background_water = true
 shader_parameter/coordinate_scale = 16.0
+shader_parameter/background_water = true
+shader_parameter/patch_cell_size = 40.0
+shader_parameter/palette_strength = 0.12
+shader_parameter/shallow_opacity = 0.56
+shader_parameter/deep_opacity = 0.78
+shader_parameter/preview_time = -1.0
+shader_parameter/water_tint = Color(0.18, 0.82, 0.78, 1)
 shader_parameter/water_light_tone = Color(0.25, 0.77, 0.68, 1)
-shader_parameter/water_deep_tone = Color(0.055, 0.40, 0.46, 1)
+shader_parameter/water_deep_tone = Color(0.055, 0.4, 0.46, 1)
+shader_parameter/ripple_color = Color(0.88, 1, 0.94, 1)
+shader_parameter/sky_reflection_color = Color(0.58, 0.9, 0.93, 1)
+shader_parameter/glint_color = Color(0.65, 0.94, 0.86, 1)
+shader_parameter/tint_strength = 0.18
 shader_parameter/tone_strength = 0.4
+shader_parameter/tone_alpha = 0.035
+shader_parameter/depth_alpha = 0.08
 shader_parameter/ripple_alpha = 0.01
-shader_parameter/network_cell_size = 24.0
-shader_parameter/network_width = 0.04
-shader_parameter/animation_fps = 8.0
+shader_parameter/reflection_strength = 0.14
+shader_parameter/reflection_alpha = 0.035
 shader_parameter/glint_strength = 0.28
 shader_parameter/glint_alpha = 0.04
 shader_parameter/glint_cell_size = 32.0
 shader_parameter/glint_density = 0.045
 shader_parameter/glint_length = 5.0
 shader_parameter/glint_thickness = 0.8
+shader_parameter/pixel_density = 16.0
+shader_parameter/network_cell_size = 24.0
+shader_parameter/network_width = 0.04
+shader_parameter/animation_fps = 8.0
 
 [sub_resource type="BoxMesh" id="b1"]
 material = SubResource("water")
@@ -513,7 +530,10 @@ map_id = "test_pier"
 script = ExtResource("2")
 map_id = "test_pier"
 hydrate_legacy_regions = false
+visual_surface = ExtResource("3_vhds7")
 authored_size_blocks = Vector2i(24, 25)
+surface_origin = Vector3(0, -32, 0)
+use_visual_surface_physics = true
 camera_distance = 180.0
 camera_polar = 0.84
 camera_yaw = 0.35
@@ -555,48 +575,72 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, -5, 160)
 [node name="Visual" type="Node3D" parent="Map/Terrain/TimberPier" unique_id=2067743009]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.009994507, -5.000002, -0.041168213)
 
-[node name="Part_01" parent="Map/Terrain/TimberPier/Visual" unique_id=2087500304 instance=ExtResource("3_u116l")]
+[node name="Part_01" parent="Map/Terrain/TimberPier/Visual" unique_id=2087500304 instance=ExtResource("5_vhds7")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, -96)
+model_id = "vox_shape_block_15328782_canvas_117422242_part_32556083_0_canvas_26907079957"
 placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_0"
+metadata/ember_source_signature = "5197a6dfcef7492091e814acaaaa81bac4a7dd97992476bc7032f9e5b8cff417"
+metadata/ember_canvas_unique_source = "vox_shape_block_15328782_canvas_117422242_part_32556083_0_canvas_26907079957"
 
-[node name="Part_02" parent="Map/Terrain/TimberPier/Visual" unique_id=1781618651 instance=ExtResource("4_u116l")]
+[node name="Part_02" parent="Map/Terrain/TimberPier/Visual" unique_id=1781618651 instance=ExtResource("6_kgewj")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -96)
+model_id = "vox_shape_block_15328782_canvas_117422242_part_32556083_1_canvas_120981611_canvas_26907405849"
 placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_1"
-metadata/ember_canvas_unique_source = "vox_shape_block_15328782_canvas_117422242_part_32556083_1_canvas_120981611"
+metadata/ember_source_signature = "56c2c76d0640213752ca167007af8fc5d56be6dd7e8cb7d8ceddee37ee4cf93d"
+metadata/ember_canvas_unique_source = "vox_shape_block_15328782_canvas_117422242_part_32556083_1_canvas_120981611_canvas_26907405849"
 
-[node name="Part_03" parent="Map/Terrain/TimberPier/Visual" unique_id=1435782634 instance=ExtResource("5_sijwm")]
+[node name="Part_03" parent="Map/Terrain/TimberPier/Visual" unique_id=1435782634 instance=ExtResource("7_jg2fy")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0, -96)
+model_id = "vox_shape_block_15328782_canvas_117422242_part_32556083_2_canvas_26907729056"
 placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_2"
+metadata/ember_source_signature = "22bc9e571caa152ea0fbb5493cf942051a11e3c5c2a3b1eacaffe9e9bcf76c27"
+metadata/ember_canvas_unique_source = "vox_shape_block_15328782_canvas_117422242_part_32556083_2_canvas_26907729056"
 
-[node name="Part_04" parent="Map/Terrain/TimberPier/Visual" unique_id=1517968370 instance=ExtResource("6_ikush")]
+[node name="Part_04" parent="Map/Terrain/TimberPier/Visual" unique_id=1517968370 instance=ExtResource("8_5qlpp")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, -32)
+model_id = "vox_shape_block_15328782_canvas_117422242_part_32556083_3_canvas_26908053302"
 placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_3"
+metadata/ember_source_signature = "12732f8760c2cfb4544f35915e33ec0ad6a7fdb8a81accec89a40d9bdb3c05d7"
+metadata/ember_canvas_unique_source = "vox_shape_block_15328782_canvas_117422242_part_32556083_3_canvas_26908053302"
 
-[node name="Part_05" parent="Map/Terrain/TimberPier/Visual" unique_id=1107862746 instance=ExtResource("7_lxf6b")]
+[node name="Part_05" parent="Map/Terrain/TimberPier/Visual" unique_id=1107862746 instance=ExtResource("9_0bpuf")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -32)
+model_id = "vox_shape_block_15328782_canvas_117422242_part_32556083_4_canvas_121360778_canvas_26908376269"
 placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_4"
-metadata/ember_canvas_unique_source = "vox_shape_block_15328782_canvas_117422242_part_32556083_4_canvas_121360778"
+metadata/ember_source_signature = "e1cca8925cde59c560684d1e5c801c1ce00c1eb832a23830b01f7735610b2fff"
+metadata/ember_canvas_unique_source = "vox_shape_block_15328782_canvas_117422242_part_32556083_4_canvas_121360778_canvas_26908376269"
 
-[node name="Part_06" parent="Map/Terrain/TimberPier/Visual" unique_id=181225988 instance=ExtResource("8_ga0ds")]
+[node name="Part_06" parent="Map/Terrain/TimberPier/Visual" unique_id=181225988 instance=ExtResource("10_r1j2j")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0, -32)
+model_id = "vox_shape_block_15328782_canvas_117422242_part_32556083_5_canvas_26908697847"
 placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_5"
+metadata/ember_source_signature = "011a940896a105b1f2ecf69ac86b0b2d8afa6315902a0ecea37ab7584eb619cc"
+metadata/ember_canvas_unique_source = "vox_shape_block_15328782_canvas_117422242_part_32556083_5_canvas_26908697847"
 
-[node name="Part_07" parent="Map/Terrain/TimberPier/Visual" unique_id=1041095338 instance=ExtResource("9_yb5pd")]
+[node name="Part_07" parent="Map/Terrain/TimberPier/Visual" unique_id=1041095338 instance=ExtResource("11_l54y8")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 32)
+model_id = "vox_shape_block_15328782_canvas_117422242_part_32556083_6_canvas_26909021619"
 placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_6"
+metadata/ember_source_signature = "4f4f250da846720da55d6e0a8982c75881626497e4181b34167b7046f9929a7e"
+metadata/ember_canvas_unique_source = "vox_shape_block_15328782_canvas_117422242_part_32556083_6_canvas_26909021619"
 
-[node name="Part_08" parent="Map/Terrain/TimberPier/Visual" unique_id=769002060 instance=ExtResource("10_sijwm")]
+[node name="Part_08" parent="Map/Terrain/TimberPier/Visual" unique_id=769002060 instance=ExtResource("12_41tb8")]
 transform = Transform3D(0.99999994, 0, 0, 0, 0.99999994, 0, 0, 0, 1, 0, -2.861023e-06, 32)
+model_id = "vox_shape_block_15328782_canvas_117422242_part_32556083_7_canvas_121725901_canvas_26909343974"
 placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_7"
-metadata/ember_canvas_unique_source = "vox_shape_block_15328782_canvas_117422242_part_32556083_7_canvas_121725901"
+metadata/ember_source_signature = "0f09c9a1efb546b45d0bef839f7d422406c53c68b0c3c1fe886232ac78e20f1a"
+metadata/ember_canvas_unique_source = "vox_shape_block_15328782_canvas_117422242_part_32556083_7_canvas_121725901_canvas_26909343974"
 
 [node name="Part_11" parent="Map/Terrain/TimberPier/Visual" unique_id=1081542407 instance=ExtResource("13_a55yo")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 96)
 placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_10"
 
-[node name="Part_09" parent="Map/Terrain/TimberPier/Visual" unique_id=750181801 instance=ExtResource("11_1txye")]
+[node name="Part_09" parent="Map/Terrain/TimberPier/Visual" unique_id=750181801 instance=ExtResource("14_j0crr")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0, 32)
+model_id = "vox_shape_block_15328782_canvas_117422242_part_32556083_8_canvas_26909671665"
 placement_id = "placed_shape_block_15328782_canvas_117422242_part_32556083_8"
+metadata/ember_source_signature = "7bdb2354bb84ad5230c3373079be4c909dbdb9e8034b29dba3fab3ee14bb4841"
+metadata/ember_canvas_unique_source = "vox_shape_block_15328782_canvas_117422242_part_32556083_8_canvas_26909671665"
 
 [node name="Part_10" parent="Map/Terrain/TimberPier/Visual" unique_id=2086471593 instance=ExtResource("12_2lfjq")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 96)
@@ -1249,6 +1293,14 @@ shape = SubResource("BoxShape3D_0qfyg")
 [node name="Shape33" type="CollisionShape3D" parent="Map/Props/WalkSurface_new" unique_id=561333379]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -35, -0.01, 23.5)
 shape = SubResource("BoxShape3D_48c6l")
+
+[node name="placed_ember_surface_pilot" parent="Map/Props" unique_id=959577835 instance=ExtResource("33_u00p0")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 124.644745, -1.0527554, 377.53735)
+placement_id = "placed_ember_surface_pilot"
+
+[node name="placed_ember_surface_pilot_2" parent="Map/Props" unique_id=693395817 instance=ExtResource("33_u00p0")]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 188.55873, -1.0527554, 377.53735)
+placement_id = "placed_ember_surface_pilot_2"
 
 [node name="Regions" type="Node3D" parent="Map" unique_id=1328498943]
 

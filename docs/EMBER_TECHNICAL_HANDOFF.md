@@ -1,5 +1,154 @@
 # Ember Godot — технический handoff
 
+## WorldCanvas / coastal authoring foundation — 2026-09-14
+
+Approved separate `scenes/world_canvas.tscn` / canonical
+`content/world_surfaces/world_canvas_surface.tres`. TestPier scene/source and
+props unchanged; no main-scene switch. Full24×25 footprint, density16/grid128,
+origin(0,−32,0); broad flat land+6, curved sand shore, gentle132voxel submerged
+descent to−20, water boundary32/sea0. No decorative props or duplicate water mesh.
+`tools/world_canvas_layout.gd` authors the initial Source; first-time builder
+refuses an existing file. Subsequent edits go through ordinary Model/Actions,
+World/Canvas shared sessions, mesher, material, SurfacePhysics and source Save.
+Empty Props recognizes a valid native Surface as authored content. The new
+scene bootstraps the existing fan_town play controller with isolated user saves,
+waiting for native physics before spawn (no temporary fake floor).
+
+Loaded-file publication now clears an IGNORE-loaded Resource path before
+takeover and retains the canonical identity in existing ModelStore cache,
+matching object publication. This prevents stale source binding and false
+external-change rejection on repeat Save. Existing source baselines stay intact.
+Water input follows existing boundary schema; old author arrays not migrated.
+Work-area plane picking reads Resource.size_blocks, not a nonexistent footprint
+property. Targeted test exercises this native map frame.
+
+PASS `tools/test_world_canvas.gd`: full validation/profile/shore/fill, real spawn
+and floor rays on land/shore/deep bed; wall paint; cross-seam raise/cancel/Undo;
+water level; existing-path Save, baseline immutability, reopen and post-Save Undo /
+repeat Save. Source/scene hashes protected; publication only user fixtures.
+Initial full coastal projection≈12.1–12.3s, shared map Save≈2.2–2.9s in these
+fixtures, not FPS or max-brush guarantees. Related WorldEditor/SurfaceProjection/
+native water/Canvas workflow/TestPier tests PASS.
+Opt-in native editor fixture uses real Ctrl+Z, not direct per-history undo
+(which bypasses global redo bookkeeping). Full Forward+ canvas and shared
+Save/reopen PASS. Standalone `tools/render_world_canvas.gd` captures real Forward+
+via fixed QA-only overview camera and writes only user output. Manual layout /
+brush/camera acceptance remains open; UX feature changes are deferred.
+Background synthetic F does not establish native viewport focus; native capture
+uses a QA-only camera immediately before forced draw (no intervening editor
+frame/cursor restore), explicitly sets the renderer camera and captures the
+editor 3D render target. Inspected native viewport PNG shows the full Surface;
+the background window composite can remain stale. Camera/input ergonomics are
+still manual, not a fixture PASS.
+Inherited UID/occasional outside-tree get_node / scan-aborted teardown diagnostics
+are retained separately; no zero-warning editor smoke claim.
+
+## Native world editor / shared drafts — 2026-09-14
+
+Approved full user plan implemented in the existing importer, not another voxel
+editor or renderer. `ember_world_editor.gd` is native UI/input routing;
+`ember_world_edit_sessions.gd` retains existing Resource/ObjectSession drafts.
+Canvas.open_world_draft binds that same Resource and scene Undo history.
+Source schema6 unchanged. ObjectSession still owns projection parity guards,
+individual fork, prepared prefab and node-state application. Native primitives
+are deliberately not auto-converted. Existing authored test_pier NOT modified
+by implementation/tests: native scene writes are confined to disposable copies.
+
+New map creation: blank24×25×128 / density16 source,19,660,800 voxel bytes;
+explicit author rectangle seeds empty columns only. Existing pilots/terrain/water
+stay separate. Map exports `surface_origin` (defaultZERO for old scenes), new
+ground originY=-32 world units. Projection, pick/brush frame and physical samples
+share that origin. Dense allocation rejects >32MiB before resize. No map resize,
+infinite world, second persistent topology or alternate map serializer added.
+
+SculptModel.StrokeJob evaluates existing shared leaf brush math over4×4 tiles
+with one immutable pointer-down source, center/falloff and shared top caches.
+Map radius1vox–8blocks; Canvas profile limits unchanged. Jobs compute≈4ms steps;
+apply/history packing and collision chunk builds have separate measured costs.
+Native mouse/controller stroke is one scene Undo; Esc restores pending channels.
+Voxel/fill/provenance/collision values are packed deltas, not full map snapshots.
+EditorUndoRedoManager calls use callv for four-argument delta application.
+Packed arrays in Resources and nested metadata are explicitly detached by
+Resource.duplicate_model/copy_authoring_value: Resource.duplicate(true) alone
+was insufficient for these draft/baseline restore paths. Normal object/Canvas
+sessions retain existing APIs. Bound Canvas strokes also send regional indices.
+
+Resource.geometry_changed(indices) precedes normal changed. Existing projection
+skips the following general full invalidation, refreshes touched16vox mesh chunks
+and seam neighbours, and resamples only affected solid-height columns /64vox
+physics chunks. Edits arriving during the first immutable worker are repaired
+before collision consumption. Removing the last solid region clears live physics.
+Unknown metadata/geometry changes retain conservative full rebuild. SurfacePhysics
+keeps the optimized top-solid heightfield for contiguous terrain; new world_surface
+regions with a gap (including padded seam neighbour) use the existing VoxMesher
+for exact exposed physical faces. Water/fill never invent solid collision.
+Navigation/floor queries remain the existing top-surface owner: multi-level cave
+navigation was not added. Object draft deformation retains original prop collision
+until prepared publication; saved prop geometry/collision follow ObjectSession.
+
+Save transaction: preflight target existence/source data/hash/validation for all
+dirty entries of the current scene; prepare unique objects; ModelStore installs
+source+prefab or native Surface .tres atomically; bind authored nodes; native scene
+write; only then accept baselines. Failures restore exact ZSTD byte snapshots,
+bindings and unsaved drafts; failed rollback also retains snapshots in user://.
+Scene targets and original visual nodes are WeakRefs. RenderingServer visibility
+and derived water material overrides avoid serializing working-view hide state.
+
+Native button/Ctrl+S uses EditorInterface.save_scene once. Godot4.7 calls plugin
+external-data hooks after initial scene serialization and before recording its
+final modified time (see [upstream editor_node.cpp::_save_scene](https://github.com/godotengine/godot/blob/4.7/editor/editor_node.cpp#L2283)). Inside that hook,
+prepare/install and pack the updated owned native PackedScene, then ResourceSaver
+writes it to the original path with REPLACE_SUBRESOURCE_PATHS and finalizes the
+same transaction. Never recursively invoke EditorInterface.save_scene, await
+scene_saved after the hook, or schedule a native Save/progress task with call_deferred.
+Those rejected prototypes emitted engine progress/recursion errors; logs retained.
+The native scene file/state remains Godot PackedScene, no custom serialized map.
+Pending prepare/finish API also retains a strong PackedScene if its root disappears.
+
+Canvas Ctrl+S also submits its pending instance-name field and refuses an active
+stroke/soft grab. Errors are shown in the bound workshop as well as the world dock.
+A generator's prospective new variation is not a placed-object voxel draft:
+its existing Creation/recipe transaction remains explicit «Сохранить вариацию
+и поставить». Shared Save refuses that visible unplaced preview rather than
+claiming it saved; it does not silently publish another asset/replace all instances.
+
+Save/Discard/Cancel world exit and standard unsaved-status integration are native.
+Idle recovery is editor-only user://ember_world_drafts (.tres+manifest), restores
+only explicit matching scene/target and unchanged source hashes, and never replaces
+an already newer dirty draft. Recovery full writes and full initial projection can
+still pause; no history depth or autosave-to-author-files introduced. Shared Save
+is per scene/map, not a multi-map project-wide transaction.
+
+Evidence: tools/test_world_editor.gd PASS (publication and late scene failures,
+exact rollback, source conflict, deleted target, unique rotated/scaled instance,
+shared Canvas, post-Save Undo, recovery, seven partitioned brush modes, vertical
+paint, locked water, regional/initial-worker physics, ledge faces, full-grid profile).
+Blank-ground recovery retains its original publication path; a re-bound source
+is refused. Owned native PackedScene publication after root destruction is tested.
+World water input maps the existing fill boundary level to the requested surface
+(SurfaceMesher returns level-1, apart from the established visual water bias); out-of-grid levels
+are refused instead of silently clamped to a different world height.
+Related Canvas/object/growth/context/fragment/brush/water/seam/height tests PASS.
+Opt-in tools/editor_test_world_editor.gd runs ONLY Temp/ember-world-native-* copies;
+Forward+ Vulkan RTX5070: actual scene history across object/water, native panels,
+unique Save + native menu Save + reopen and old StoneQuay collision PASS.
+Native camera-projected ray picking / mouse press-release raises ground in one
+real scene Undo, then restores the saved draft; empty-space construction overlay
+uses Resource.size_blocks, not a nonexistent derived footprint property.
+Inherited invalid prefab UID text-path fallbacks / scan-aborted teardown remain;
+do not infer a general clean-shutdown guarantee. Current fixtures are not manual
+acceptance of F/camera, physical pen-like gestures, Save-and-close, all maximum
+brushes or gameplay traversal. See MIGRATION_TEST_PLAN; contract remains OPEN.
+
+CPU profile on full-sized sparse fixture: allocation7ms, radius64 pure calculation
+661ms (peak5181us), apply+delta284ms, history pack117ms, raw voxel delta2,589,192B,
+static retained history growth4,527,992B (includes notification indices/containers,
+not just voxel payload). Initial all visual/physics chunks21.39s. After ready,
+one voxel at a seam:3 visual chunks38ms,3 physics chunks27ms. Native2×2 foundation
+stroke+frame0.6–1.3s /196,608B raw delta; common source+prefab+scene Save≈11s,
+preflight≈1.3s/publication≈4.8–4.9s/scene≈4.8–4.9s. No total FPS, full-filled Pier
+or eight-block brush latency guarantee. Detailed isolated measurements in tests.
+
 ## Native Ctrl+S after startup Window — 2026-09-14
 
 User reported Ctrl+S crashing Godot after placing2 identical water objects

@@ -85,6 +85,15 @@ static func build_collision_region_result(
 			heights[local_x + local_z * extent.x] = padded_heights[
 				(cell.x - cache_min.x) + (cell.y - cache_min.y) * cache_extent.x
 			]
+	# New world ground also admits the shared volumetric brushes. A top-solid
+	# heightfield would invent walls through a tunnel or under a floating ledge.
+	# Keep the existing greedy heightfield for ordinary contiguous terrain, but
+	# derive exact exposed voxel faces for a non-heightfield region and its seam.
+	if resource.material.get("preset","") == "world_surface" and _has_column_gaps(resource,cache_min,cache_extent,padded_heights):
+		var physical_palette := resource.palette.duplicate()
+		for palette_index in range(1,physical_palette.size()): physical_palette[palette_index] = Color.WHITE
+		mesh = VoxMesher.build_from_packed_voxel_region(resource.voxels,size,physical_palette,PackedByteArray(),Vector3i(start.x,0,start.y),Vector3i(extent.x,size.y,extent.y),voxel_size)
+		return {"mesh":mesh,"start":start,"extent":extent,"heights":heights,"volumetric":true}
 	var vertices := PackedVector3Array()
 	var indices := PackedInt32Array()
 	var claimed := PackedByteArray()
@@ -168,6 +177,18 @@ static func build_collision_region_result(
 	arrays[Mesh.ARRAY_INDEX] = indices
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return {"mesh": mesh, "start": start, "extent": extent, "heights": heights}
+
+
+static func _has_column_gaps(resource: EmberVoxelModelResource, start: Vector2i, extent: Vector2i, heights: PackedInt32Array) -> bool:
+	var size := resource.grid_size()
+	var layer_size := size.x * size.z
+	for z in extent.y:
+		for x in extent.x:
+			var height := heights[x+z*extent.x]
+			var column := start.x+x+(start.y+z)*size.x
+			for y in range(height):
+				if resource.voxels[column+y*layer_size] == 0: return true
+	return false
 
 
 static func _append_drop_quad(

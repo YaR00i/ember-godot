@@ -258,6 +258,56 @@ static func _snapshot_file(path: String) -> Dictionary:
 	var bytes := FileAccess.get_file_as_bytes(path)
 	return {"bytes": bytes.compress(FileAccess.COMPRESSION_ZSTD), "size": bytes.size(), "hash": _bytes_hash(bytes)}
 
+static func install_surface_resource(source: EmberVoxelModelResource, path: String) -> Dictionary:
+	var errors := source.validation_errors()
+	if not errors.is_empty(): return {"ok":false,"error":errors[0]}
+	var cache := "user://ember_world_save_cache"
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(cache))
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(path.get_base_dir()))
+	var serialized := cache.path_join("surface_%d_%d.tres" % [Time.get_ticks_usec(),source.get_instance_id()])
+	var error := ResourceSaver.save(source,serialized)
+	var uid := EmberVoxelPrefab.resource_uid_from_header(path) if FileAccess.file_exists(path) else ResourceUID.create_id()
+	if uid == ResourceUID.INVALID_ID: uid = ResourceUID.create_id()
+	if error == OK: error = _set_staged_uid(serialized,uid)
+	if error != OK: return {"ok":false,"error":error_string(error)}
+	var previous := _snapshot_file(path) if FileAccess.file_exists(path) else {}
+	var staged := path + ".world-stage"
+	error = DirAccess.copy_absolute(ProjectSettings.globalize_path(serialized),ProjectSettings.globalize_path(staged))
+	if error == OK:
+		error = asset_rename_override.call(staged,path) if asset_rename_override.is_valid() else DirAccess.rename_absolute(ProjectSettings.globalize_path(staged),ProjectSettings.globalize_path(path))
+	if FileAccess.file_exists(staged): DirAccess.remove_absolute(ProjectSettings.globalize_path(staged))
+	if error != OK: return {"ok":false,"error":error_string(error)}
+	ResourceUID.set_id(uid,path) if ResourceUID.has_id(uid) else ResourceUID.add_id(uid,path)
+	var saved := ResourceLoader.load(path,"",ResourceLoader.CACHE_MODE_IGNORE)
+	if saved != null:
+		# IGNORE retains the file path without installing the cache identity.
+		# Clear it before takeover, and retain the new canonical Resource just
+		# like object publication. Never reload/mutate the old baseline in place.
+		saved.resource_path = ""
+		saved.take_over_path(path)
+		_canvas_cache[path] = saved
+	return {"ok":true,"snapshot":_snapshot_file(path),"previous":previous}
+
+static func restore_surface_snapshot(snapshot: Dictionary, path: String) -> Error:
+	if snapshot.is_empty():
+		return DirAccess.remove_absolute(ProjectSettings.globalize_path(path)) if FileAccess.file_exists(path) else OK
+	var bytes: PackedByteArray = snapshot.bytes.decompress(int(snapshot.size),FileAccess.COMPRESSION_ZSTD)
+	if bytes.size() != int(snapshot.size) or _bytes_hash(bytes) != snapshot.hash: return ERR_FILE_CORRUPT
+	var staged := path + ".world-restore"
+	var file := FileAccess.open(staged,FileAccess.WRITE)
+	if file == null: return FileAccess.get_open_error()
+	file.store_buffer(bytes)
+	var error := file.get_error()
+	file.close()
+	if error == OK: error = DirAccess.rename_absolute(ProjectSettings.globalize_path(staged),ProjectSettings.globalize_path(path))
+	if error == OK:
+		var saved := ResourceLoader.load(path,"",ResourceLoader.CACHE_MODE_IGNORE)
+		if saved != null:
+			saved.resource_path = ""
+			saved.take_over_path(path)
+			_canvas_cache[path] = saved
+	return error
+
 
 static func _set_staged_uid(path: String, uid: int) -> Error:
 	# ResourceSaver.set_uid reparses the complete text resource. Only its header

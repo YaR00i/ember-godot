@@ -51,6 +51,28 @@ signal status_changed(message: String, color: Color)
 signal generator_assets_changed(model_id: String)
 
 var _object_session: RefCounted
+var _world_entry := {}
+var _world_sessions: RefCounted
+var _world_save: Callable
+
+func open_world_draft(entry: Dictionary, sessions: RefCounted, save_callback: Callable) -> bool:
+	ensure_ui()
+	if _world_entry.is_empty() and has_unsaved_changes():
+		_set_status("Сначала сохраните или отмените прежний Canvas; его черновик не заменён.",true)
+		return false
+	_flush_pending_stroke_position()
+	_finish_stroke()
+	_open_surface_unchecked(entry.resource,entry.path)
+	_world_entry = entry
+	_world_sessions = sessions
+	_world_save = save_callback
+	_object_session = entry.object_session
+	_actions.history_context = entry.scene.get_ref()
+	_context_controls.visible = _object_session != null
+	_grow_button.visible = _object_session != null
+	_title.text = "CANVAS · " + entry.resource.display_name
+	_resource_path_label.text = "Общий черновик мира · Ctrl+S сохраняет карту и объекты"
+	return true
 var _generator_panel: VBoxContainer
 var _generator_preview: Node3D
 var _extraction_go_to_3d := false
@@ -517,6 +539,9 @@ func request_close(continuation: Callable, cancel: Callable) -> void:
 	_flush_pending_stroke_position()
 	_finish_stroke()
 	_remember_current_editor_view()
+	if not _world_entry.is_empty():
+		if continuation.is_valid(): continuation.call()
+		return
 	if not has_unsaved_changes():
 		if continuation.is_valid():
 			continuation.call()
@@ -559,6 +584,10 @@ func _open_surface_unchecked(
 	resource: EmberVoxelModelResource, resource_path: String,
 	initial_region_blocks := Rect2i(),
 ) -> void:
+	_world_entry = {}
+	_world_sessions = null
+	_world_save = Callable()
+	if _actions != null: _actions.history_context = null
 	_reset_shore_anchor()
 	if _object_session != null:
 		_object_session.release_projection_cache()
@@ -669,6 +698,8 @@ func _clamped_block_region(region: Rect2i, width: int, depth: int) -> Rect2i:
 
 
 func has_unsaved_changes() -> bool:
+	if not _world_entry.is_empty() and _world_sessions != null:
+		return _world_sessions.dirty(_world_entry)
 	return (
 		_resource != null
 		and (
@@ -747,6 +778,13 @@ func _restore_editor_view_state(state: Dictionary) -> void:
 
 
 func discard_changes() -> void:
+	if not _world_entry.is_empty() and _world_sessions != null:
+		_cancel_stroke()
+		for field in _world_sessions.FIELDS:
+			_resource.set(field,EmberVoxelModelResource.copy_authoring_value(_world_entry.baseline.get(field)))
+		_resource.notify_geometry_changed(PackedInt32Array())
+		open_world_draft(_world_entry,_world_sessions,_world_save)
+		return
 	_reset_shore_anchor()
 	_cancel_stroke()
 	_cancel_precision_line(false)
@@ -5134,7 +5172,7 @@ func _finish_stroke() -> void:
 		return
 	if _selection_panel.preserves_mask_after_commit():
 		_selection_panel.preserve_next_source_change(clear_transient_selection)
-	_resource.emit_changed()
+	_resource.notify_geometry_changed(indices)
 	if not material_tool:
 		_surface_heightfield = Model.refresh_column_heights(
 			_surface_heightfield,
@@ -5576,6 +5614,10 @@ func _save() -> bool:
 	if _grab_interaction != null and _grab_interaction.active:
 		_set_status("Сначала отпустите ЛКМ, чтобы применить деформацию, или отмените её Esc.",true)
 		return false
+	if not _world_entry.is_empty() and _world_save.is_valid():
+		_flush_pending_stroke_position()
+		_finish_stroke()
+		return _world_save.call()
 	# Generator preview is not the sculpt Resource. Route every workshop Save
 	# entry point through the same explicit recipe publication transaction.
 	if _generator_active():

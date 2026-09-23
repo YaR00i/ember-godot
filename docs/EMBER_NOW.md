@@ -1,6 +1,249 @@
 # Ember — текущая точка
 
-Обновлено: 2026-09-14
+Обновлено: 2026-09-15
+
+## Художественный свет и материалы — отдельная графическая задача
+
+По явной просьбе пользователя создана отдельная задача
+«Ember — художественный свет и материалы» с ролью graphics designer / technical
+artist. Это не смена координатора редактора. Переданы три пользовательских
+pixel-art референса: мост/кот, сад у воды и крупный вид тёплых досок.
+Направление: тёплый свет, прохладные цветные тени, крупные спокойные пятна под
+кронами, читаемые материалы и согласованная вода без нового мелкого шума.
+Первый результат — один законченный эталонный уголок и реальные Forward+
+снимки до/после, затем проверки полного холста, Причала и ночного света.
+
+Графическая задача `01a0a187-0fc9-7a03-ab0b-ba17e686e6c7` завершила реализацию
+и автоматические проверки в отдельном worktree `d97c`, вернув управление
+основному координатору. Текущие незакоммиченные
+WorldEditor/WorldCanvas изменения доступны ей read-only в основном checkout;
+render fixtures создаются в собственной disposable копии с наложением только
+graphics diff. Основной checkout, авторские Source/сцены, palettes/Recipes,
+editor/Save/Undo/brushes/physics остаются вне её области записи.
+`ember_map_loader.gd` уже изменён редактором. Согласован только точечный вызов
+existing EmberLights helper в `_tune_look_environment`, с возвратом отдельным
+snippet. Нельзя молча менять scene-owned Environment/Sun storage fields:
+in-place правка в @tool может попасть в штатный Save даже без прямого Source
+write. Guard/idempotence/night и неизменность authored полей при pack/reopen
+обязательны и прошли в fixtures. Основной координатор проверил состав handoff,
+однострочный loader diff и финальные логи: 11 targeted headless gates PASS,
+native pixel/storage/lifecycle/save-reopen PASS; финальный source hash gate
+подтвердил неизменность 429 scene/source/prefab файлов. Подготовлены 38 native
+viewport PNG. Холодная ночь и FanTown8/12 в парных fixtures побайтно прежние.
+Передача: `C:/Users/novos/.codex/worktrees/d97c/ember-godot/art/lighting/HANDOFF.md`;
+семь production files, отдельная строка loader и только помеченные graphics
+секции документации. Полный старый loader/docs не заменяют main dirty work.
+Реальная PCF penumbra/просветы кроны не добавлены; stair side faces берега
+остаются. GPU timings — viewport proxy, не доказательство FPS/оптимизации.
+Commit/push и автоматический перенос результата в основной checkout не разрешены.
+Ручная художественная приёмка открыта до возвращения пользователя.
+Генерация карты по зонам моря/рек/дорог/домов остаётся отдельной будущей идеей,
+не входит в графический срез. Основной агент не ведёт параллельных code writes.
+
+В той же графической задаче пользователь отдельно согласовал библиотеку
+материалов и нативный стенд: матовая поверхность, дерево, камень, земля/песок,
+просвечивающая листва, металл, стекло, кристалл и свечение. Реализация и
+автоматические проверки этого нового среза завершены в `d97c`; основной
+координатор прочитал отдельный `art/materials/HANDOFF.md`, просмотрел дневной
+native стенд и проверил финальные логи. Library validation/independence/custom
+save-reopen для девяти presets PASS, native day/night/backlight/alpha-depth/
+emission/specular/transmission PASS, четыре связанные regressions PASS.
+Source guard: 429 прежних файлов побайтно сохранены; добавлена только owned
+stand scene. Шесть предыдущих lighting/water PNG совпали побайтно; прежние
+lighting handoff/38 PNG не заменены. Библиотека зависит только от неизменного
+`ember_diorama_light.gdshaderinc`; параметры пока хранятся в ShaderMaterial,
+не в per-voxel preset IDs. Main integration и ручная art/input приёмка открыты,
+commit/push отсутствуют; предыдущий кандидат света также ждёт ручной приёмки.
+Назначение объектам/вокселям, editor Save/Undo и изменение Resource/
+mesher/schema исключены; подключение к редактору требует отдельного среза
+основного координатора. Presets переиспользуют общий свет, не меняя defaults
+прежних voxel/water materials. Вода и расширение набора обсуждаются после
+библиотеки. Основной checkout остаётся read-only для графической задачи.
+
+Пользователь затем согласовал refinement библиотеки: GGX highlights,
+контролируемый цвет/перелив кристалла, слабая фактура color/roughness/normal и
+отражение окружения на disposable стенде. M02 реализация и material/storage/
+compatibility gates завершены; основной координатор прочитал отдельный
+`art/materials/refinement/HANDOFF.md`, проверил финальные логи и дневной native
+снимок. Новые controls/custom save-reopen/independence PASS; native GGX/tint/
+angular spectrum/reflection/weak texture/independent relief/alpha/emission/
+transmission PASS. Четыре related regressions PASS; 429 прежних Source файлов
+и шесть старых corner/day/night/Pier PNG побайтно прежние. Подготовлены 18 M02
+PNG, отдельный patch/docs excerpts. Первый M01 snapshot сохранён отдельно в
+`art/materials/checkpoint-m01/.gdignore`; прежние QA/handoff не перезаписаны.
+Native isolation Godot4.7.2: без ReflectionProbe shutdown log чистый; с одним
+probe — предупреждение 7 Texture RIDs при finalize, соответствующее открытому
+Godot issue https://github.com/godotengine/godot/issues/122498. Это shutdown
+diagnostic, не измеренная live-editor VRAM accumulation. Движок не обновлять/
+не патчить, warning не маскировать; production probes/editor/water вне среза.
+Library presets probes не создают. Native комбинированный reflection test
+с двумя atlas даёт 14 Texture RIDs warning; это НЕ clean lifecycle PASS.
+Cleanup limitation учитывается отдельно от material/storage/compatibility
+PASS при интеграции. Main integration, art/input и shimmer на authored формах
+OPEN; редактор/вода/production probes/engine fix не начинались.
+
+После M02 пользователь отдельно согласовал W01 воды в graphics `d97c`:
+спокойная стилизованная поверхность, smooth normal ripples без изменения уровня,
+настоящие sky/environment reflections, light/view-driven highlights и более
+прозрачное мелководье. Срез начат в existing water shader/material/QA с отдельным
+pre-W01 checkpoint. Source/editor/schema/mesher/physics/main не менять; Sky/
+ReflectionProbe/specular lights только disposable QA, production интеграция
+среды/света отдельно. Проверить authored WorldCanvas/Pier и QA reflection stand
+раздельно, стыки/global field/пену/alpha/объектную воду/день-ночь и движение.
+Прежние water PNG служат baseline, не требование byte-identity нового вида;
+lighting/M01/M02 checkpoints и исходные файлы остаются защищёнными.
+W01 реализация и автоматические gates завершены; основной координатор прочитал
+`art/water/HANDOFF.md`, проверил финальные логи и лично сравнил authored Pier
+до/после плюс кадр motion stand. 10 headless gates PASS; native material
+Sky/shallow-deep/reopen, Surface adapter-v-stock, object motion и split/noise
+continuity PASS. 429 canonical Source файлов сохранены, 18 non-water render
+files одинаковы, все 12 M02 material PNG повторно побайтно прежние. Подготовлены
+89 PNG и GIF из 48 реальных кадров/12fps; это QA-среда, не gameplay FPS.
+Production diff: existing water shader/.tres; отдельный targeted seam diagnostic
+и новые QA tools/patch/docs excerpts. Ручная art/input приёмка и main integration
+открыты. Authored no-Sky/no-probe карты не получают отражения окружения молча;
+production Sky/probe/light_specular — отдельное решение владельца карты.
+Known one-probe shutdown 7 Texture RIDs warning и fragment ObjectDB diagnostic
+оставлены явными, не включены в clean lifecycle PASS. Commit/push отсутствуют.
+Пользователь посмотрел W01 и отметил, что вода выбивается из pixel-art стиля.
+W01 НЕ финальный принятый визуал для интеграции. Graphics пересмотрел рефы и
+обсуждает более графичную воду: спокойная garden/boards база, ограниченные
+bridge accents, ясные бирюзовые зоны, broken light-driven glints и упрощённые
+низкоконтрастные отражения. Направление следующей итерации ещё ожидает согласия;
+нового кода нет, W01 baseline/QA/patch сохраняются.
+Последующее уточнение пользователя: движение/переливы W01 нравятся; сохранить
+их, пикселизировать отражения/блики и сделать цвет бирюзовее. Ориентир движения
+— пляжный курорт ZZZ, не полная замена воды рисованными штрихами. Native A/B
+W02 native A/B завершён: 1/2-voxel cells optical normal с плавным временем/
+alpha/VIEW и смягчением мелких деталей вдали. Основной координатор прочитал
+`art/water/pixel/HANDOFF.md`, проверил финальные логи и game/wide fine кадры.
+11 headless и 5 native gates PASS, 429 Source bytes сохранены, 18 owned
+non-water files одинаковы, incremental patch/checkpoint/docs готовы. Есть
+11 GIF по 48 native кадров и camera-motion strips. На широком плане прямой
+солнечный рисунок плотный/повторяющийся; это открытое art-решение, не повод
+молча менять wavelength/свет. Визуальный выбор fine/coarse не принят,
+main integration OPEN; известные shutdown diagnostics сохранены отдельно.
+Source/editor/schema/mesher/physics/foam/wakes не менять; production environment
+integration OPEN. Пользователь хочет иногда плавать между островами — будущий
+игровой ориентир, не реализованная механика и не основание расширять W02:
+плавание/след/refraction в этот срез не входят.
+W03 graphics продолжил тот же water owner после прямого уточнения пользователя:
+цвет заметно бирюзовее, поверх W01/W02 добавлена тонкая движущаяся светлая сеть,
+которая художественно показывает грани волн. Это ALBEDO-рисунок поверхности,
+не физическая каустика на дне; geometry/collision/body emission не меняются.
+Основной координатор прочитал `art/water/flow/HANDOFF.md`, проверил 12 headless
+и 6 native PASS logs и лично посмотрел close/wide кадры. 429 canonical author
+Source bytes сохранены, 18 non-water graphics files одинаковы, incremental
+patch/checkpoint/docs готовы. На близком плане сеть читается; на расстоянии/
+глубине намеренно исчезает. На широком прямом солнце прежние плотные белые
+W02 reflections всё ещё требуют art-решения. Main integration, ручная приёмка,
+реальные bottom caustics/refraction/swimming OPEN; commit/push отсутствуют.
+W04 по запросу пользователя подготовил native A/B трёх независимых water
+light-play branches: sparse pixel highlight, hard directional shadow shaping и
+shallow screen/depth refraction + caustic light play. Все mix в canonical .tres
+равны 0: W03 сохраняется bit-exact до художественного выбора. Основной
+координатор прочитал `art/water/lightplay/HANDOFF.md`, проверил 13 headless и
+7 native PASS logs и лично посмотрел current/sharp/shadow/caustics/game кадры.
+429 Source сохранены, 18 non-water files одинаковы, W03 checkpoint/hash и
+isolated import PASS; пять GIF по 48 Forward+ кадров готовы. Sharp блик стал
+разбитым на пиксельные кластеры, но вблизи остаётся плотным; подводная игра
+света screen-space и на одном кадре тонкая — оценивать в движении. Это не
+физическая проекция света в материалы дна/volume/refraction gameplay. Art/
+main-map/input acceptance OPEN; main checkout/commit/push не затронуты.
+После пользовательского фидбека W04 review2 убрал random hash-крошку из блика:
+теперь это цельные двухступенчатые optical world-cells. Тень получает snapped
+LIGHT_VERTEX и ступени ATTENUATION; QA pier поднят над водой для читаемого
+силуэта досок/опор. Основной координатор лично посмотрел review2 sharp/shadow/
+caustics/game кадры и проверил отдельные 7 native + 13 headless PASS logs.
+Белых пикселей >240 стало 19181→2245; W03 checkpoint и canonical mix=0
+сохранены. Новый блик значительно чище, тень причала читается и не привязана к
+анимации воды. Важная граница: чистый пиксельный край тени в QA использует
+глобальный RenderingServer SHADOW_QUALITY_HARD/zero angular distance. Runtime/
+project setting не менялся; принимать hard shadows нужно отдельно для всей
+сцены, а не скрыто внутри water integration. W04 art acceptance OPEN.
+Review3 по уточнению пользователя сохраняет крупные clean highlights review2,
+но добавляет регулируемую cohesion0..1: соседние world-cells и близкие phases
+поддерживают связную середину блика без history buffer/нового owner. Основной
+координатор просмотрел кадры0/12/24/36: форма заметно спокойнее и реже рвётся.
+После запроса на durable evidence сохранены и лично проверены отдельные логи:
+connected-vs-sharp native response, cohesion0/default, clone/save/reopen,
+pixel-exact review2 control с одинаковым SHA256, 429 Source guard, 18 non-water
+guard, W03 checkpoint/package/reverse-patch и clean audit9 логов — PASS.
+Исходный review2 при cohesion0 неизменен; W03 canonical defaults/global shadow
+settings/main checkout/commit/push не затронуты. Review3 art confirmation OPEN.
+
+## Холст мира — отдельная основа для следующей UX-итерации
+
+По согласованию добавлена `scenes/world_canvas.tscn`:24×25blocks/16vox,
+свободная суша слева, изогнутый песчаный берег, пологий спуск132vox,
+мелководье и дно до−20world units; уровень воды0, Surface origin−32.
+Одна обычная `content/world_surfaces/world_canvas_surface.tres`; никаких
+дублирующих water planes, сохранённых mesh/physics или декоративных объектов.
+Причал и его авторская Surface не заменялись. Main scene проекта прежняя.
+F6 продолжает существующий play controller с изолированными `user://` saves,
+дожидаясь готовности Surface physics до spawn. Пустая Props больше не вызывает
+legacy reimport при наличии валидной сохранённой общей Surface.
+
+Проверка существующей загруженной карты выявила и исправила Surface publication
+cache: IGNORE-loaded Resource очищает path перед takeover и удерживается как
+новый canonical cache identity, без in-place изменения baseline.
+World water input теперь следует существующей fill schema (boundary level,
+не top-voxel index): sea0→fill32 при origin−32. Старые authored fill arrays
+не мигрируются. tools/test_world_canvas.gd PASS: пологий профиль, реальные
+floor rays/spawn, стена, seam brush/cancel/Undo, повторный Save/reopen с кэшем.
+Disposable native Forward+ PASS с настоящим Ctrl+Z через native input;
+обход глобальной redo stack прямым per-history undo исключён из нового fixture.
+Выбор рабочей области читает footprint из size_blocks общей Surface;
+проверка native frame PASS. Первичная сборка полного холста≈12s, общий map Save
+≈2.2–2.9s в fixtures. Standalone Forward+ overview и прямой снимок нативного
+3D render target просмотрены; background window composite был устаревшим,
+это не исчезновение Surface. Наведение камеры остаётся ручным gate.
+WorldEditor/SurfaceProjection/native water/Canvas workflow/TestPier PASS.
+UX интерфейса пока не менялся; следующая приёмка — открыть холст в3D, посмотреть
+масштаб, берег/воду, попробовать кисти и подтвердить основу.
+
+## Редактор мира в 3D — реализован, ручная приёмка открыта
+
+Пользователь утвердил полный план «Редактор мира Ember прямо в 3D». Добавлен
+нативный режим «Редактировать мир»: земля карты / индивидуальный voxel-объект,
+форма, покраска стенок, сглаживание, берег/дно, генератор, открытая вода,
+мягкое вытягивание, существующая кисть объектов и editor-only избранная полка.
+Canvas и 3D используют тот же Resource-черновик и историю текущей сцены;
+переключение инструментов и возврат в 3D ничего не публикуют на диск.
+
+В авторский Причал новая земля автоматически НЕ добавлялась. Пользователь
+выделяет прямоугольник строительной плоскости и нажимает «Создать землю».
+Общая Surface имеет весь размер24×25,16vox/block,128vox по высоте и
+`Map.surface_origin=(0,-32,0)`. Основание заполняется только в пустых колонках
+выбранного участка; существующие объекты, вода и физика Причала сохраняются.
+Радиус карты1vox–8blocks. Остальная новая Surface пуста и доступна кистям.
+
+Общий Save проверяет все черновики текущей сцены, публикует source/prefab/сцену,
+при ошибке восстанавливает точные файлы и сохраняет несохранённые черновики.
+Обычная кнопка/Ctrl+S используют штатный scene Save; external-data hook меню
+завершает обновлённый native PackedScene без повторного EditorInterface.save_scene.
+Recovery — только `user://ember_world_drafts`, с проверкой внешних файлов.
+Мазки хранят sparse packed deltas; обновляются затронутые mesh/physics-фрагменты
+и соседние границы. Для навеса/пустоты новой земли физика использует точные
+voxel faces в существующем SurfacePhysics; обычный берег — прежний heightfield.
+
+PASS: tools/test_world_editor.gd + связанные Canvas/object/water/projection
+regressions; disposable native Forward+ на полном Причале — общая история,
+shared Canvas, индивидуальный объект, общий и штатный menu Save/reopen,
+наличие коллайдера новой земли при сохранённой StoneQuay physics.
+Профиль CPU fixture: source19,660,800B; radius64 calculation≈0.66–0.82s,
+packed voxel payload2,589,192B; retained history≈4.53MB; региональное обновление
+одного voxel на границе:3 visual≈38ms +3 physics≈27ms. Native общий Save≈11s.
+Это не FPS и не гарантия для полностью заполненной карты/максимальной кисти.
+
+Ближайший шаг — ручной полный сценарий из MIGRATION_TEST_PLAN: берег/песчаные
+стенки/вода/повторная расстановка/изменение одной доски/возврат к земле/Save/reopen,
+затем камера/F, Save/Discard/Cancel при закрытии и игровое движение F6.
+Контракт до этой приёмки НЕ закрыт. Commit/push этого среза не запрошены.
+Авторские scene/art/config правки не перезаписывались.
+
+## Предыдущий checkpoint оптимизации
+
 Git: checkpoint оптимизации и исправления Ctrl+S запрошен пользователем 2026-09-14.
 Commit: `perf(editor): optimize startup, voxel workflows and fix scene save crash`.
 Базовый checkpoint — `94ec785`; авторский Причал с двумя проверочными объектами,

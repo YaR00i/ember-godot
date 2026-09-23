@@ -560,14 +560,15 @@ func _test_world_surface_seed(errors: Array[String]) -> void:
 
 func _native_selector_probe() -> int:
 	var errors: Array[String] = []
-	var packed := load("res://scenes/test_pier.tscn") as PackedScene
-	var scene := packed.instantiate()
-	var map := scene.get_node("Map") as EmberMapLoader
+	var map := EmberMapLoader.new()
+	map.map_id = "native_primitive_selector_probe"
+	map.hydrate_legacy_regions = false
+	map.authored_size_blocks = Vector2i(24, 25)
 	var selector := BoundWorldSelector.new()
 	selector.selected_map = map
 	var toolbar := selector.build_toolbar()
 	if toolbar.visible or not selector._grid.is_empty():
-		errors.append("primitive pier incorrectly offers a voxel Surface selection")
+		errors.append("native primitive map incorrectly offers a voxel Surface selection")
 	# Repeat the exact selection-change callback; no pack read may be logged.
 	selector.selected_map = null
 	selector.refresh_context()
@@ -578,7 +579,7 @@ func _native_selector_probe() -> int:
 		errors.append("native map with transient unknown dimensions used legacy data")
 	var surface := EmberVoxelModelResource.new()
 	surface.size_blocks = Vector3i(2, 1, 3)
-	surface.material = {"semanticOwner": "test_pier"}
+	surface.material = {"semanticOwner": map.map_id}
 	map.visual_surface = surface
 	selector.selected_map = null
 	selector.refresh_context()
@@ -593,7 +594,7 @@ func _native_selector_probe() -> int:
 	if selector._surface_grid_for_map(legacy) != expected:
 		errors.append("legacy selector changed its source grid or heights")
 	toolbar.free()
-	scene.free()
+	map.free()
 	legacy.free()
 	for error in errors:
 		push_error(error)

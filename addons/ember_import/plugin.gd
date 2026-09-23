@@ -21,6 +21,10 @@ const EmberEncounterInspector = preload("res://addons/ember_import/ember_encount
 const EmberBattlefieldActions = preload("res://addons/ember_import/ember_battlefield_editor_actions.gd")
 const EmberBattlefieldPainter = preload("res://addons/ember_import/ember_battlefield_3d_painter.gd")
 const EmberWorldSurfaceSelectorScript = preload("res://addons/ember_import/ember_world_surface_selector.gd")
+const WorldEditor = preload("res://addons/ember_import/ember_world_editor.gd")
+var _world_editor: Node
+var _world_editor_toolbar: Control
+var _world_editor_sidebar: Control
 const EmberVoxelSculptModel = preload("res://addons/ember_import/ember_voxel_sculpt_model.gd")
 const EmberInspectorActions = preload("res://addons/ember_import/ember_object_inspector_actions.gd")
 const EmberGraphWorkspace = preload("res://addons/ember_import/ember_graph_workspace.gd")
@@ -281,6 +285,13 @@ func _enter_tree() -> void:
 	_world_surface_selector.surface_edit_requested.connect(_open_world_surface)
 	_world_surface_toolbar = _world_surface_selector.build_toolbar()
 	add_control_to_container(EditorPlugin.CONTAINER_SPATIAL_EDITOR_MENU, _world_surface_toolbar)
+	_world_editor = WorldEditor.new()
+	add_child(_world_editor)
+	_world_editor.configure(self,get_undo_redo())
+	_world_editor_toolbar = _world_editor.build_toolbar()
+	add_control_to_container(EditorPlugin.CONTAINER_SPATIAL_EDITOR_MENU,_world_editor_toolbar)
+	_world_editor_sidebar = _world_editor.build_sidebar()
+	add_control_to_container(EditorPlugin.CONTAINER_SPATIAL_EDITOR_SIDE_LEFT,_world_editor_sidebar)
 	set_input_event_forwarding_always_enabled()
 	set_force_draw_over_forwarding_enabled()
 	print("[Ember Migration] v2.64.1 loaded: staged combat command selection")
@@ -315,6 +326,13 @@ func _configure_fullscreen_playtest() -> void:
 
 
 func _exit_tree() -> void:
+	if is_instance_valid(_world_editor): _world_editor.free()
+	if is_instance_valid(_world_editor_sidebar):
+		remove_control_from_container(EditorPlugin.CONTAINER_SPATIAL_EDITOR_SIDE_LEFT,_world_editor_sidebar)
+		_world_editor_sidebar.free()
+	if is_instance_valid(_world_editor_toolbar):
+		remove_control_from_container(EditorPlugin.CONTAINER_SPATIAL_EDITOR_MENU,_world_editor_toolbar)
+		_world_editor_toolbar.free()
 	if is_instance_valid(_editor_preparation):
 		_editor_preparation.free()
 	_editor_preparation = null
@@ -576,6 +594,16 @@ func _open_voxel_assembly(group: Node3D) -> void:
 func _open_voxel_object(prop: EmberVoxelProp, shared: bool) -> void:
 	if not is_instance_valid(prop):
 		return
+	if not shared and is_instance_valid(_world_editor) and (_world_editor.active or _world_editor.sessions.entries.has(prop.get_instance_id())):
+		_world_editor.cancel_stroke()
+		if not _world_editor.entry.is_empty(): _world_editor.entry.scope = _world_editor.edit_region
+		_world_editor.entry = _world_editor.sessions.open_object(prop,EditorInterface.get_edited_scene_root())
+		if _world_editor.entry.is_empty(): push_warning(_world_editor.sessions.error); return
+		_world_editor.edit_region = _world_editor.entry.get("scope",Rect2i())
+		_world_editor.target_choice.select(1)
+		_world_editor._refresh_palette()
+		_world_editor.open_canvas()
+		return
 	var session := preload("res://addons/ember_import/ember_voxel_object_session.gd").new()
 	if not session.open(prop, get_editor_interface().get_edited_scene_root(), get_undo_redo(), shared):
 		push_warning(session.error)
@@ -591,6 +619,12 @@ func _open_voxel_object(prop: EmberVoxelProp, shared: bool) -> void:
 
 func _open_world_surface(map: EmberMapLoader, region_blocks: Rect2i) -> void:
 	if map == null or _graph_workspace == null:
+		return
+	if is_instance_valid(_world_editor) and _world_editor.active:
+		_world_editor.target_choice.select(0)
+		_world_editor._target_changed(0)
+		_world_editor.edit_region = region_blocks
+		_world_editor.open_canvas()
 		return
 	if not map.hydrate_legacy_regions:
 		var native_surface := map.resolved_visual_surface()
@@ -829,6 +863,8 @@ func _make_visible(visible: bool) -> void:
 
 
 func _forward_3d_gui_input(viewport_camera: Camera3D, event: InputEvent) -> int:
+	if is_instance_valid(_world_editor) and _world_editor.active:
+		return _world_editor.forward_input(viewport_camera,event)
 	if is_instance_valid(_walk_surface_panel):
 		var support_result: int = _walk_surface_panel.forward_3d_gui_input(viewport_camera,event)
 		if support_result == EditorPlugin.AFTER_GUI_INPUT_STOP:
@@ -856,6 +892,9 @@ func _forward_3d_gui_input(viewport_camera: Camera3D, event: InputEvent) -> int:
 
 
 func _forward_3d_force_draw_over_viewport(overlay: Control) -> void:
+	if is_instance_valid(_world_editor) and _world_editor.active:
+		_world_editor.draw_overlay(overlay)
+		return
 	if _world_surface_selector != null:
 		_world_surface_selector.draw_overlay(overlay)
 	if _battlefield_painter != null:
@@ -885,6 +924,22 @@ func _set_window_layout(configuration: ConfigFile) -> void:
 
 func _get_plugin_name() -> String:
 	return "Ember Graph"
+
+func _get_unsaved_status(for_scene: String) -> String:
+	return _world_editor.unsaved_status(for_scene) if is_instance_valid(_world_editor) else ""
+
+func _save_external_data() -> void:
+	# Godot is still inside _save_scene here; recursive save_scene is forbidden.
+	# Godot has already serialized the scene before this hook. Publish resources
+	# and the updated native PackedScene here, before Godot records its final
+	# modified time/close state. Never start a second EditorInterface Save task.
+	if is_instance_valid(_world_editor) and not _world_editor.sessions.saving and _world_editor.sessions.dirty_count(_world_editor.scene) > 0:
+		_world_editor.save_all(true)
+
+func _build() -> bool:
+	if is_instance_valid(_world_editor) and _world_editor.sessions.dirty_count(_world_editor.scene) > 0:
+		return _world_editor.save_all()
+	return true
 
 
 func _get_plugin_icon() -> Texture2D:
@@ -1346,6 +1401,9 @@ func _stop_scene_object_brush() -> void:
 
 
 func _activate_object_brush(model_id: String) -> void:
+	if is_instance_valid(_world_editor) and (_world_editor.dragging or not _world_editor.grab.is_empty()):
+		_world_editor._status("Подождите завершения мазка или отмените его Esc.")
+		return
 	var root := EditorInterface.get_edited_scene_root() as Node3D
 	var map := root.find_child("Map", true, false) as EmberMapLoader if root != null else null
 	var props := map.get_node_or_null("Props") as Node3D if map != null else null
@@ -1370,7 +1428,10 @@ func _activate_object_brush(model_id: String) -> void:
 	if not _object_brush.activate(root, props, packed, model_id, get_undo_redo(), tile_size):
 		_object_library.show_status("Не удалось подготовить превью объекта.", true)
 		return
-	_open_object_brush_settings()
+	if is_instance_valid(_world_editor) and _world_editor.active:
+		_world_editor.remember_object(model_id)
+	else:
+		_open_object_brush_settings()
 
 
 func _open_object_brush_settings() -> void:
@@ -1519,6 +1580,7 @@ func _remove_authored_voxel(parent: Node, prop: EmberVoxelProp) -> void:
 
 
 func _on_scene_changed(root: Node) -> void:
+	if is_instance_valid(_world_editor): _world_editor.scene_changed(root)
 	if is_instance_valid(_object_brush):
 		_object_brush.deactivate()
 	if is_instance_valid(_object_brush_settings):

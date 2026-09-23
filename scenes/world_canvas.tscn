@@ -1,0 +1,72 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/world_canvas.gd" id="1_root"]
+[ext_resource type="Script" path="res://scripts/ember_map_loader.gd" id="2_map"]
+[ext_resource type="Resource" path="res://content/world_surfaces/world_canvas_surface.tres" id="3_surface"]
+[ext_resource type="Script" path="res://scripts/ember_region.gd" id="4_region"]
+
+[sub_resource type="Environment" id="environment"]
+background_mode = 1
+background_color = Color(0.43, 0.57, 0.6, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.77, 0.84, 0.8, 1)
+ambient_light_energy = 0.35
+tonemap_mode = 2
+
+[node name="WorldCanvas" type="Node3D"]
+script = ExtResource("1_root")
+map_id = "world_canvas"
+
+[node name="Map" type="Node3D" parent="."]
+script = ExtResource("2_map")
+map_id = "world_canvas"
+hydrate_legacy_regions = false
+visual_surface = ExtResource("3_surface")
+authored_size_blocks = Vector2i(24, 25)
+surface_origin = Vector3(0, -32, 0)
+use_visual_surface_physics = true
+camera_distance = 200.0
+camera_polar = 0.88
+camera_yaw = 0.35
+camera_far = 2400.0
+camera_look_height = 3.0
+
+[node name="Look" type="Node3D" parent="Map"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="Map/Look"]
+environment = SubResource("environment")
+
+[node name="Sun" type="DirectionalLight3D" parent="Map/Look"]
+rotation_degrees = Vector3(-58, -32, 0)
+light_color = Color(1, 0.96, 0.87, 1)
+light_energy = 0.3
+shadow_enabled = true
+directional_shadow_max_distance = 800.0
+
+[node name="Terrain" type="Node3D" parent="Map"]
+
+[node name="Props" type="Node3D" parent="Map"]
+
+[node name="Regions" type="Node3D" parent="Map"]
+
+[node name="PlayerStart" type="Area3D" parent="Map/Regions"]
+position = Vector3(72, 6, 200)
+script = ExtResource("4_region")
+region_id = "world_canvas_start"
+map_id = "world_canvas"
+kind = "player_start"
+monitoring = false
+monitorable = false
+collision_layer = 0
+collision_mask = 0
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="Gate" type="Label" parent="CanvasLayer"]
+offset_left = 16.0
+offset_top = 14.0
+theme_override_colors/font_color = Color(0.98, 0.98, 0.9, 1)
+theme_override_colors/font_shadow_color = Color(0.12, 0.19, 0.17, 1)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+text = "ХОЛСТ МИРА · берег и вода"

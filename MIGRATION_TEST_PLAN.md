@@ -1,5 +1,125 @@
 # Ember — актуальные проверки и migration gates
 
+## Холст мира2026-09-14 — основа создана, визуальная приёмка открыта
+
+`scenes/world_canvas.tscn` and `content/world_surfaces/world_canvas_surface.tres`
+are a separate24×25 native map. TestPier scene/source and author props preserved;
+project main scene unchanged. No legacy hydration or decorative water plane.
+Source density16, height128/origin−32; dry floor+6, deep floor−20, sea0.
+Coast maximum neighboring X step1vox; broad sand and no fine random relief.
+`tools/world_canvas_layout.gd` authors initial content only, not a runtime provider.
+`tools/build_world_canvas.gd -- --write` REFUSES existing Source overwrite.
+
+PASS targeted: `--headless --path . --script tools/test_world_canvas.gd`:
+validation/full grid/shore/fill; empty Props stays native; isolated F6 bootstrap
+waits Surface physics; land/shore/deep rays match floor; wall paint; seam raise;
+Undo/Redo/cancel; work-area plane pick in native frame; water level/Undo; loaded-path cache publication and baseline
+immutability; post-Save Undo/repeat Save/reopen. Tests save ONLY `user://` fixtures
+and verify hashes of authored scene/source and TestPier scene/source afterward.
+World input sea0 stores32, not31; actual mesh/contact sample verifies top0.085
+(established visual bias). Old authored fill arrays are not migrated.
+Opt-in `tools/editor_test_world_canvas.gd` runs ONLY disposable ember-world-native
+copies: native world opening, wall paint, water/working view, shared native Save,
+reopen and post-Save Ctrl+Z/repeat Save PASS. The native shortcut is required:
+direct per-scene UndoRedo.undo bypasses the manager's global redo stack and may
+produce Inconsistent redo history diagnostics during native Save.
+Related WorldEditor/SurfaceProjection/native water/Canvas workflow/TestPier PASS.
+Standalone `tools/render_world_canvas.gd` Forward+ overview inspected. This uses
+an extra fixture-only fixed camera; no editor-camera transform override or
+author-file writes. Initial projection≈12s and shared map Save≈2.2–2.9s here,
+not FPS/max radius results.
+Native screenshot framing is separate from the functional fixture: background
+synthetic F did not reach viewport focus. A QA-only camera transform immediately
+before force_draw avoids the editor restoring its cursor on an intervening frame.
+Explicit renderer camera transform and direct native 3D render-target capture
+PASS / inspected; the background window composite was stale, not a missing map.
+No claim of native camera-shortcut/manual ergonomics acceptance. Existing UID
+fallback / occasional outside-tree get_node and scan-aborted teardown diagnostics
+remain separate from functional PASS.
+
+Manual: open WorldCanvas→3D→Редактировать мир; frame the full map using the
+native viewport controls; view gentle sand and visible shallow floor; hide water to inspect
+bottom; sculpt/paint/place objects; F6 walk. Approve layout before UX changes.
+Do not treat the native fixture or screenshot as acceptance of camera/brush feel.
+
+## Редактор мира прямо в 3D2026-09-14 — ручная приёмка OPEN
+
+Весь утверждённый набор доступен через «Редактировать мир» в3D: общий Surface
+карты, индивидуальные voxel-объекты, retained Canvas drafts, форма/покраска/берег/
+дно/сглаживание/открытая вода/мягкое вытягивание/существующая кисть объектов.
+Авторский Причал, две проверочные Surface-пропы и art/config drafts не заменялись.
+Новая земля появляется только после явного выбора участка пользователем.
+
+Автоматика: `--headless --path . --script tools/test_world_editor.gd` PASS.
+Native UI construction; exact draft switching; one-action Undo/Redo/cancel;
+empty construction-plane growth; negative-origin water; save/reopen; individual
+rotated/scaled instance/source untouched; multi-asset publication failure + late
+scene failure with exact rollback; prepare/finish native scene boundary; external
+file conflict; deleted target; recovery/no newer-draft overwrite; soft grab;
+partitioned leaf parity (7modes); exposed wall paint; clipped/locked water;
+unrelated mesh identity; initial-worker edits; last-column physics removal;
+exact ledge underside/seam fallback and accelerated ordinary heightfield PASS.
+Blank-ground recovery/publication path and native owned snapshot after its root
+is freed PASS. Requested water top/world origin (including voxel top-face offset)
+and out-of-grid rejection PASS. New unplaced recipe variation previews retain
+their existing explicit generator Save-and-place, not implicit world publication.
+
+Related PASS: test_voxel_surface_sculpt, test_world_surface_projection,
+test_surface_canvas_workflow, test_voxel_object_canvas, test_voxel_fragment,
+test_native_surface_water, test_voxel_canvas_growth, test_voxel_canvas_context,
+test_voxel_object_brush, test_voxel_cartoon_water, test_water_pattern_seams,
+test_water_contact_boundaries, test_surface_height_slice. Final affected subset
+rerun after Resource-copy/history/physics fixes. Existing Fragment test reports
+one UndoRedo ObjectDB leak at exit; new World fixture explicitly frees its history.
+
+Native opt-in fixture tools/editor_test_world_editor.gd ONLY in disposable
+Temp/ember-world-native-* copy with own project user:// and cached imports.
+Never enable that fixture plugin or --headless --editor in authored checkout.
+Forward+ full24×25 Pier: native dock, create2×2 foundation, paint/water, real
+EditorUndoRedoManager cross-target history, shared Canvas return, unique prop,
+common Save and native menu Save/reopen, working-water Node.visible unchanged,
+new collision present / StoneQuay collision not disabled, RMB pass/text shortcuts
+PASS. Screenshot inspected. This drives native APIs/controller, not manual feel.
+Native ray pick + mouse press/release→raise→one Undo→saved draft restored PASS;
+empty-space construction-grid drawing checked without script errors.
+
+Profiles (CPU fixture, not FPS): source19,660,800B; radius64 calculation≈0.66s,
+apply+delta≈0.28s, history packing≈0.12s; raw delta2.59MB versus measured retained
+history≈4.53MB. Full initial mesh+physics≈21.4s; ready projection at one seam edit
+3visual≈38ms +3physics≈27ms. Native foundation stroke+frame0.6–1.3s, shared
+source/prefab/scene Save≈11s. Full-filled terrain/max radius8blocks, peak transient
+memory and idle recovery cost are not implied by these sparse-fixture numbers.
+
+Ручной gate (контракт не закрывать заранее):
+
+1. Open TestPier→3D→«Редактировать мир». На свободном месте выбрать участок,
+   создать землю; не перекрыть старый Причал. Убедиться, что остальные колонки
+   новой Surface пусты. На пустом месте поднять грунт от видимой плоскости.
+2. Сделать длинный пологий берег/дно, проверить длину спуска; покрасить песок
+   сверху и по вертикальной стенке. Мазки через границы фрагментов/ограниченного
+   прямоугольника. Undo/Redo, Esc до завершения, обрезка on/off, большой радиус.
+3. Добавить открытый уровень воды, менять/убирать её локально. Проверить живые
+   пятна/пену/швы у берега и объектов; hide water→дно→обычный игровой вид.
+   Godot scene lighting/environment controls remain native, not authored toggles.
+4. Расставить несколько избранных/последних объектов повторными мазками без
+   поиска. Выбрать одну повёрнутую/масштабированную доску; тянуть мягко, красить;
+   Canvas→3D→земля: черновики и общая история остаются. Другие экземпляры/источник
+   не меняются. При незавершённом мазке переключение цели не портит данные.
+5. Ctrl+S (включая фокус текстового поля), Save menu, Save all/exit; reopen с теми
+   же origin/source/unique bindings и всеми material/fill/authoring parameters.
+   Нативное закрытие Save/Discard/Cancel, повторный вход/Recovery после аварии.
+   Внешнее изменение source/deleted target: понятная ошибка, черновик не потерян.
+6. RMB/MMB/Alt navigation; brackets outside text; F центр под курсором с возвратом
+   обычного selection; камера не теряется. Проверить широкий viewport/dock layout.
+7. F6: новый берег/дно/навес визуально соответствует физике; старые части Причала
+   всё ещё физические. Navigation остаётся top-surface, multi-level caves не scope.
+   Коллизия индивидуального объекта обновляется при публикации, не во время drag.
+
+Если максимальная кисть/Save/initial build мешают работе, сначала измерить их на
+репрезентативном заполненном участке, а не заявлять «оптимизированный FPS».
+Обновить текущую ручную приёмку после ответа пользователя и лишь затем закрыть
+контракт. Не выполнять commit/push без отдельной просьбы.
+
 ## Мультяшная вода / поставленный prefab2026-09-14 — последний рисунок принят
 
 Пользователь подтвердил последнюю коррекцию разрыва пятен («окей работает»).

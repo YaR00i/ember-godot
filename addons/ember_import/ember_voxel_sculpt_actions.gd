@@ -7,6 +7,7 @@ signal source_changed(indices: PackedInt32Array)
 
 var _undo_redo: Object
 var active_part := 0
+var history_context: Object
 
 func _record_parts(resource: EmberVoxelModelResource, before: PackedByteArray, after: PackedByteArray, indices: PackedInt32Array, applied := false) -> void:
 	if resource.voxel_part_ids.is_empty():
@@ -142,6 +143,24 @@ func commit_applied_stroke(
 ) -> bool:
 	if resource == null or _undo_redo == null or before == after:
 		return false
+	if is_instance_valid(history_context):
+		var channels := {"voxels":{},"__sizes":{}}
+		for index in indices: channels.voxels[index] = Vector2i(before[index],after[index])
+		if not resource.voxel_part_ids.is_empty():
+			var owners := preload("res://addons/ember_import/ember_voxel_parts.gd").stroke(resource,before,after,active_part,indices)
+			channels.voxel_part_ids = {}
+			for index in indices:
+				if resource.voxel_part_ids[index] != owners[index]: channels.voxel_part_ids[index] = Vector2i(resource.voxel_part_ids[index],owners[index])
+			resource.voxel_part_ids = owners
+		if not resource.collision_voxels.is_empty():
+			var collision := resource.collision_voxels.duplicate()
+			channels.collision_voxels = {}
+			for index in indices:
+				var next := 0 if after[index] == 0 else 1 if before[index] == 0 else int(collision[index])
+				if collision[index] != next: channels.collision_voxels[index] = Vector2i(collision[index],next)
+				collision[index] = next
+			resource.collision_voxels = collision
+		return commit_applied_delta(resource,channels,indices,"Мир / Canvas · мазок")
 	_create_action("Voxel Surface · непрерывный мазок (%d voxels)" % indices.size(), resource)
 	_record_parts(resource,before,after,indices,true)
 	_record_collision(resource, before, after, indices, true)
@@ -163,6 +182,10 @@ func commit_applied_transparency_stroke(
 ) -> bool:
 	if resource == null or _undo_redo == null or before == after:
 		return false
+	if is_instance_valid(history_context):
+		var channels := {"transparency":{},"__sizes":{"transparency":Vector2i(before.size(),after.size())}}
+		for index in indices: channels.transparency[index] = Vector2i(before[index] if index < before.size() else 0,after[index])
+		return commit_applied_delta(resource,channels,indices,"Мир / Canvas · материал")
 	_create_action("Voxel Surface · материал (%d voxels)" % indices.size(), resource)
 	_add_do_property(resource, &"transparency", after)
 	_add_undo_property(resource, &"transparency", before)
@@ -270,7 +293,7 @@ func _record_collision(
 
 func _create_action(title: String, context: Object) -> void:
 	if _undo_redo is EditorUndoRedoManager:
-		(_undo_redo as EditorUndoRedoManager).create_action(title, UndoRedo.MERGE_DISABLE, context)
+		(_undo_redo as EditorUndoRedoManager).create_action(title, UndoRedo.MERGE_DISABLE, history_context if is_instance_valid(history_context) else context)
 	else:
 		(_undo_redo as UndoRedo).create_action(title, UndoRedo.MERGE_DISABLE)
 
@@ -298,7 +321,7 @@ func _add_do_method(object: Object, method: StringName) -> void:
 
 func _add_do_method_with_args(object: Object, method: StringName, args: Array) -> void:
 	if _undo_redo is EditorUndoRedoManager:
-		(_undo_redo as EditorUndoRedoManager).add_do_method(object, method, args[0], args[1])
+		Callable(_undo_redo,&"add_do_method").callv([object,method]+args)
 	else:
 		(_undo_redo as UndoRedo).add_do_method(Callable(object, method).bindv(args))
 
@@ -312,7 +335,7 @@ func _add_undo_method(object: Object, method: StringName) -> void:
 
 func _add_undo_method_with_args(object: Object, method: StringName, args: Array) -> void:
 	if _undo_redo is EditorUndoRedoManager:
-		(_undo_redo as EditorUndoRedoManager).add_undo_method(object, method, args[0], args[1])
+		Callable(_undo_redo,&"add_undo_method").callv([object,method]+args)
 	else:
 		(_undo_redo as UndoRedo).add_undo_method(Callable(object, method).bindv(args))
 
@@ -335,8 +358,53 @@ func _notify_source_changed(
 	resource: EmberVoxelModelResource,
 	indices: PackedInt32Array,
 ) -> void:
-	resource.emit_changed()
+	resource.notify_geometry_changed(indices)
 	source_changed.emit(indices)
+
+func commit_applied_delta(resource: EmberVoxelModelResource, channels: Dictionary, indices: PackedInt32Array, title := "Мир · мазок") -> bool:
+	if _undo_redo == null or channels.is_empty():
+		return false
+	channels = pack_delta(resource,channels)
+	_create_action(title, resource)
+	_add_do_method_with_args(self, &"_apply_delta", [resource, channels, true, indices])
+	_add_undo_method_with_args(self, &"_apply_delta", [resource, channels, false, indices])
+	_commit_action(false)
+	return true
+
+static func pack_delta(resource: EmberVoxelModelResource, channels: Dictionary) -> Dictionary:
+	var packed := {"__sizes":channels.get("__sizes",{}).duplicate(true)}
+	for channel in channels:
+		if channel == "__sizes": continue
+		var before: Variant = PackedByteArray() if resource.get(channel) is PackedByteArray else PackedInt32Array()
+		var after: Variant = PackedByteArray() if resource.get(channel) is PackedByteArray else PackedInt32Array()
+		var indices := PackedInt32Array()
+		for index in channels[channel]:
+			var pair: Vector2i = channels[channel][index]
+			indices.append(index)
+			before.append(pair.x)
+			after.append(pair.y)
+		packed[channel] = {"indices":indices,"before":before,"after":after}
+	return packed
+
+func _apply_delta(resource: EmberVoxelModelResource, channels: Dictionary, forward: bool, indices: PackedInt32Array) -> void:
+	for channel in channels:
+		if channel == "__sizes": continue
+		var values: Variant = resource.get(channel)
+		var sizes: Vector2i = channels.get("__sizes",{}).get(channel,Vector2i(values.size(),values.size()))
+		if values.size() < sizes.y:
+			values.resize(sizes.y)
+			values.fill(0)
+		if channels[channel].has("indices"):
+			var indices_data: PackedInt32Array = channels[channel].indices
+			var data: Variant = channels[channel].after if forward else channels[channel].before
+			for i in indices_data.size(): values[indices_data[i]] = data[i]
+		else:
+			for raw_index in channels[channel]:
+				var pair: Vector2i = channels[channel][raw_index]
+				values[int(raw_index)] = pair.y if forward else pair.x
+		if not forward: values.resize(sizes.x)
+		resource.set(channel, values)
+	_notify_source_changed(resource, indices)
 
 
 func _commit_action(execute := true) -> void:

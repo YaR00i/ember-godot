@@ -40,6 +40,10 @@ var _heightfield_task_output: Dictionary = {}
 var _heightfield_generation := 0
 var _heightfield_task_generation := -1
 var _heightfield_restart_requested := false
+var _regional_notification := false
+var _pending_height_columns := {}
+var editor_hide_water := false
+var _hidden_water_material: StandardMaterial3D
 
 
 func _init() -> void:
@@ -71,6 +75,8 @@ func configure(
 		return
 	if _surface != null and _surface.changed.is_connected(_on_surface_changed):
 		_surface.changed.disconnect(_on_surface_changed)
+	if _surface != null and _surface.geometry_changed.is_connected(_on_geometry_changed):
+		_surface.geometry_changed.disconnect(_on_geometry_changed)
 	_surface = next_surface
 	_expected_blocks = expected_blocks
 	_fallback_visual = fallback_visual
@@ -85,6 +91,7 @@ func configure(
 	scale = Vector3.ONE * scale_value
 	if _surface != null:
 		_surface.changed.connect(_on_surface_changed)
+		_surface.geometry_changed.connect(_on_geometry_changed)
 	_begin_rebuild(not source_changed and not _chunks.is_empty())
 
 
@@ -97,6 +104,68 @@ func refresh_geometry() -> void:
 	# must invalidate derived chunks even though canonical data did not change.
 	if _surface != null:
 		_begin_rebuild(true)
+
+func set_editor_water_hidden(hidden: bool) -> void:
+	editor_hide_water = hidden
+	for visual in _chunks.values():
+		_apply_editor_materials(visual)
+
+func _apply_editor_materials(visual: MeshInstance3D) -> void:
+	if visual.mesh == null:
+		return
+	if _hidden_water_material == null:
+		_hidden_water_material = StandardMaterial3D.new()
+		_hidden_water_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_hidden_water_material.albedo_color = Color(0, 0, 0, 0)
+		_hidden_water_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	for index in visual.mesh.get_surface_count():
+		var surface_name: StringName = (visual.mesh as ArrayMesh).surface_get_name(index)
+		visual.set_surface_override_material(index, _hidden_water_material if editor_hide_water and surface_name in ["water", "water_foam"] else null)
+
+func _on_geometry_changed(indices: PackedInt32Array) -> void:
+	_regional_notification = true
+	refresh_indices(indices)
+
+func refresh_indices(indices: PackedInt32Array) -> void:
+	if indices.is_empty():
+		_begin_rebuild(true)
+		return
+	if not _surface_is_valid():
+		return
+	_water_height_cache.clear()
+	_water_revision += 1
+	_completion_emitted = false
+	var size := _surface.grid_size()
+	var columns := {}
+	for index in indices:
+		if index < 0 or index >= _surface.voxels.size():
+			continue
+		columns[Vector2i(index % size.x, (index / size.x) % size.z)] = true
+	var dirty := {}
+	var physics_dirty := {}
+	for cell in columns:
+		for offset in [Vector2i.ZERO, Vector2i.RIGHT, Vector2i.LEFT, Vector2i.UP, Vector2i.DOWN]:
+			var next: Vector2i = cell + offset
+			if next.x >= 0 and next.y >= 0 and next.x < size.x and next.y < size.z:
+				dirty[Vector2i(next.x / chunk_size, next.y / chunk_size)] = true
+				physics_dirty[Vector2i(next.x / PHYSICS_CHUNK_SIZE, next.y / PHYSICS_CHUNK_SIZE)] = true
+	for chunk in dirty:
+		if chunk not in _pending:
+			_pending.append(chunk)
+	# Initial imports retain their existing full asynchronous heightfield job.
+	# Completed projections resample only the edited columns, not the dense map.
+	if _physics_enabled and _surface.physical:
+		if _heightfield_task_id >= 0:
+			for cell in columns: _pending_height_columns[cell] = true
+		else:
+			if _building_solid_heights.size() != size.x * size.z and _solid_height_cache.size() == size.x * size.z:
+				_building_solid_heights = _solid_height_cache.duplicate()
+			if _building_solid_heights.size() == size.x * size.z:
+				for cell in columns:
+					_building_solid_heights[cell.x + cell.y * size.x] = SurfacePhysics.solid_height_at(_surface, cell)
+				for chunk in physics_dirty:
+					if chunk not in _physics_pending: _physics_pending.append(chunk)
+		_navigation_grid_cache.clear()
 
 
 func pending_chunk_count() -> int:
@@ -291,6 +360,7 @@ func drain_next_chunk() -> bool:
 		visual.position = native_projection.get("position", Vector3.ZERO)
 		visual.scale = native_projection.get("scale", Vector3.ONE)
 		visual.mesh = mesh
+		_apply_editor_materials(visual)
 	elif visual != null:
 		remove_child(visual)
 		visual.queue_free()
@@ -370,14 +440,17 @@ func drain_next_physics_chunk(wait_for_heightfield := true) -> bool:
 				(collision as StaticBody3D).collision_layer = 1
 			_set_fallback_collision_active(false)
 		else:
+			_solid_height_cache = _building_solid_heights
 			_building_solid_heights = PackedInt32Array()
 			_navigation_grid_cache.clear()
+			_physics_live = false
 			_set_fallback_collision_active(true)
 	_finish_if_ready()
 	return true
 
 
 func clear_projection() -> void:
+	_pending_height_columns.clear()
 	_heightfield_generation += 1
 	_heightfield_restart_requested = false
 	_water_height_cache.clear()
@@ -421,13 +494,19 @@ func _process(_delta: float) -> void:
 func _exit_tree() -> void:
 	if _surface != null and _surface.changed.is_connected(_on_surface_changed):
 		_surface.changed.disconnect(_on_surface_changed)
+	if _surface != null and _surface.geometry_changed.is_connected(_on_geometry_changed):
+		_surface.geometry_changed.disconnect(_on_geometry_changed)
 
 
 func _on_surface_changed() -> void:
+	if _regional_notification:
+		_regional_notification = false
+		return
 	_begin_rebuild(true)
 
 
 func _begin_rebuild(preserve_existing := false) -> void:
+	_pending_height_columns.clear()
 	_heightfield_generation += 1
 	_heightfield_restart_requested = false
 	_water_height_cache.clear()
@@ -536,6 +615,12 @@ func _consume_heightfield_task(wait_for_result: bool) -> bool:
 		_set_fallback_collision_active(true)
 		return false
 	_building_solid_heights = heights
+	# A stroke can arrive while the initial immutable worker is still running.
+	# Repair just those columns before using its result for collision chunks.
+	for cell in _pending_height_columns:
+		if cell.x < size.x and cell.y < size.z:
+			_building_solid_heights[cell.x+cell.y*size.x] = SurfacePhysics.solid_height_at(_surface,cell)
+	_pending_height_columns.clear()
 	var physics_count_x := ceili(float(size.x) / float(PHYSICS_CHUNK_SIZE))
 	var physics_count_z := ceili(float(size.z) / float(PHYSICS_CHUNK_SIZE))
 	for z in physics_count_z:

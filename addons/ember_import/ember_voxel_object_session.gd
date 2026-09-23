@@ -60,9 +60,9 @@ func open(prop: EmberVoxelProp, scene_root: Node, undo_redo: Object, edit_shared
 		_legacy_signature = EmberVoxelPrefab.source_signature(_expected_id)
 	if _source == null:
 		return _fail("Не удалось прочитать voxel source.")
-	_baseline = _source.duplicate(true) as EmberVoxelModelResource
+	_baseline = _source.duplicate_model()
 	_projection_cache = preload("res://scripts/ember_voxel_projection_cache.gd").new() if _baseline.voxels.size() > 131072 else null
-	draft = _source.duplicate(true) as EmberVoxelModelResource
+	draft = _source.duplicate_model()
 	_source_hash = FileAccess.get_sha256(_source_path)
 	var parity_errors := _projection_errors(prop, _baseline)
 	if not parity_errors.is_empty():
@@ -195,7 +195,7 @@ func save(resource: EmberVoxelModelResource, prepare_only := false, fresh_asset 
 		id = ""
 	if id.is_empty():
 		id = _allocate_id(_expected_id)
-	var next := resource.duplicate(true) as EmberVoxelModelResource
+	var next := resource.duplicate_model()
 	next.model_id = id
 	var packed := EmberVoxelPrefab.prepare_resource(next, _projection_cache)
 	if packed == null:
@@ -256,7 +256,7 @@ func save(resource: EmberVoxelModelResource, prepare_only := false, fresh_asset 
 		return _result_error("Сохранение не завершено: %s" % published.get("error", ""))
 	var old_asset: Dictionary = {}
 	if id == _expected_id and _source_path.begins_with(source_directory):
-		old_asset = previous_asset if not previous_asset.is_empty() else {"source": _baseline.duplicate(true), "packed": baseline_packed, "path": destination, "prefab": prefab_path}
+		old_asset = previous_asset if not previous_asset.is_empty() else {"source": _baseline.duplicate_model(), "packed": baseline_packed, "path": destination, "prefab": prefab_path}
 	var new_asset := {"snapshot": published.snapshot, "path": destination, "prefab": prefab_path}
 	_last_saved_asset = new_asset
 	for state in new_states:
@@ -285,7 +285,7 @@ func accept_prepared_save(next: EmberVoxelModelResource, destination: String, re
 	_source_hash = FileAccess.get_sha256(destination)
 	_legacy_signature = ""
 	_source = ResourceLoader.load(destination) as EmberVoxelModelResource
-	_baseline = next.duplicate(true) as EmberVoxelModelResource
+	_baseline = next.duplicate_model()
 
 func can_grow_canvas() -> bool:
 	return true
@@ -392,7 +392,7 @@ func create_independent_copy() -> bool:
 	var scene_root := _root.get_ref() as Node
 	if prop == null or scene_root == null or prop.get_parent() == null:
 		return _fail("Исходный объект больше недоступен.")
-	var source := draft.duplicate(true) as EmberVoxelModelResource
+	var source := draft.duplicate_model()
 	source.model_id = _allocate_id(prop.model_id)
 	var packed := EmberVoxelPrefab.prepare_resource(source)
 	if packed == null:

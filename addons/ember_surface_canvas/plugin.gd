@@ -65,10 +65,12 @@ func _return_to_canvas() -> void:
 func _get_unsaved_status(for_scene: String) -> String:
 	if not for_scene.is_empty() or not is_instance_valid(_workspace):
 		return ""
+	if not _workspace._world_entry.is_empty(): return "" # Importer owns shared drafts.
 	return _workspace.unsaved_status()
 
 
 func _save_external_data() -> void:
+	if is_instance_valid(_workspace) and not _workspace._world_entry.is_empty(): return
 	if is_instance_valid(_workspace) and _workspace.has_unsaved_changes():
 		_workspace.save_changes()
 

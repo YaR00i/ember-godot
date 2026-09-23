@@ -22,6 +22,21 @@ const SurfaceProjection := preload("res://scripts/ember_voxel_surface_projection
 ## Saved map footprint lets a native Surface validate without reading the
 ## temporary JOI archive. Zero keeps the legacy importer fallback for old maps.
 @export var authored_size_blocks := Vector2i.ZERO
+## Scene-owned origin of the shared voxel grid, in map-local world units.
+## Old maps keep zero. Native ground can reserve volume below sea level.
+@export var surface_origin := Vector3.ZERO:
+	set(value):
+		surface_origin = value
+		_refresh_visual_surface_projection()
+var _editor_surface_preview: EmberVoxelModelResource
+var _editor_surface_origin := Vector3.ZERO
+
+func set_editor_surface_preview(source: EmberVoxelModelResource, origin := Vector3.ZERO) -> void:
+	if not Engine.is_editor_hint():
+		return
+	_editor_surface_preview = source
+	_editor_surface_origin = origin
+	_refresh_visual_surface_projection()
 ## G3 pilot: derive world collision and route heights from visual_surface.
 ## Kept explicit per map until agent_sandbox proves the runtime contract.
 @export var use_visual_surface_physics := false
@@ -315,6 +330,10 @@ func _collect_focus_omnis(node: Node, lamps: Array, world: Vector3) -> void:
 
 
 func has_authored_content() -> bool:
+	# A native world canvas intentionally has no props. Its saved Surface is
+	# already authored content and must never fall through to legacy reimport.
+	if resolved_visual_surface() != null:
+		return true
 	var props := _content_node("Props")
 	return props != null and props.get_child_count() > 0
 
@@ -591,14 +610,15 @@ func _refresh_visual_surface_projection() -> void:
 	var terrain_visual := _content_node("Terrain/Mesh") as Node3D
 	var terrain_collision := _content_node("Terrain/Collision") as StaticBody3D
 	var expected := _expected_world_surface_blocks()
-	var source := resolved_visual_surface()
+	var source := _editor_surface_preview if Engine.is_editor_hint() and _editor_surface_preview != null else resolved_visual_surface()
+	_visual_surface_projection.position = _editor_surface_origin if Engine.is_editor_hint() and _editor_surface_preview != null else surface_origin
 	_visual_surface_projection.call(
 		"configure",
 		source,
 		imported_tile_size,
 		expected,
 		terrain_visual,
-		use_visual_surface_physics,
+		use_visual_surface_physics or (Engine.is_editor_hint() and _editor_surface_preview != null),
 		terrain_collision,
 	)
 	update_configuration_warnings()

@@ -1,6 +1,34 @@
 @tool
 class_name EmberVoxelModelResource
 extends Resource
+## Transient invalidation hint, never serialized. General Resource.changed remains
+## available to existing consumers; projections can rebuild only affected chunks.
+signal geometry_changed(indices: PackedInt32Array)
+
+func notify_geometry_changed(indices: PackedInt32Array) -> void:
+	geometry_changed.emit(indices)
+	emit_changed()
+
+static func copy_authoring_value(value: Variant) -> Variant:
+	match typeof(value):
+		TYPE_PACKED_BYTE_ARRAY,TYPE_PACKED_INT32_ARRAY,TYPE_PACKED_COLOR_ARRAY,TYPE_PACKED_STRING_ARRAY:
+			return value.duplicate()
+		TYPE_DICTIONARY:
+			var copied := {}
+			for key in value: copied[key] = copy_authoring_value(value[key])
+			return copied
+		TYPE_ARRAY:
+			var copied: Array = value.duplicate()
+			for i in copied.size(): copied[i] = copy_authoring_value(copied[i])
+			return copied
+	return value
+
+func duplicate_model() -> EmberVoxelModelResource:
+	var copied := duplicate(true) as EmberVoxelModelResource
+	for property in get_property_list():
+		if property.usage & PROPERTY_USAGE_STORAGE and property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE:
+			copied.set(property.name,copy_authoring_value(get(property.name)))
+	return copied
 ## Godot-owned editable source for one Ember voxel model.
 ## Meshes, collisions, thumbnails and PackedScenes are derived build products.
 
