@@ -80,6 +80,9 @@ static func movement_field(state: Dictionary, unit_id: String) -> Dictionary:
 	var unit := Combat.unit_definition(state, unit_id)
 	if unit.is_empty() or not unit.has("cell"):
 		return {"costs": {}, "previous": {}}
+	if not Combat.held_target_id(state, unit_id).is_empty():
+		var origin: Vector2i = unit.get("cell", Vector2i.ZERO)
+		return {"costs": {origin: 0}, "previous": {}}
 	var max_distance := maxi(0, int(unit.get("moveRange", 0)))
 	return _navigation_field(state, unit_id, max_distance)
 
@@ -199,7 +202,10 @@ static func enemy_command(state: Dictionary) -> Dictionary:
 			"movementPath": path,
 			"fallDamage": Terrain.path_fall_damage(state, path),
 		})
-	return Combat.enemy_command(state, options)
+	var resolved := Combat.enemy_command(state, options)
+	if bool(resolved.get("ok", false)):
+		resolved["stateHash"] = hash(state)
+	return resolved
 
 
 static func stage_move(state: Dictionary, destination: Vector2i) -> Dictionary:
@@ -222,6 +228,7 @@ static func command_preview(
 	destination: Vector2i,
 	secondary_cell: Vector2i = Combat.INVALID_CELL,
 	target_cell: Vector2i = Combat.INVALID_CELL,
+	lift_choice: String = "throw",
 ) -> Dictionary:
 	var actor_id := Combat.current_unit_id(state)
 	var actor := Combat.unit_definition(state, actor_id)
@@ -229,9 +236,12 @@ static func command_preview(
 	var staged := stage_move(state, destination)
 	if staged.is_empty():
 		return {"ok": false, "error": "Клетка недоступна для перемещения.", "summary": "Клетка недоступна для перемещения."}
-	var resolved := Combat.preview(staged, action_id, target_id, secondary_cell, target_cell)
+	var resolved := Combat.preview(staged, action_id, target_id, secondary_cell, target_cell, lift_choice)
 	if not bool(resolved.get("ok", false)):
 		return resolved
+	# Commit receives the unstaged battle snapshot; movement is already encoded in
+	# the resolved command, so stale validation must bind to that owner snapshot.
+	resolved["stateHash"] = hash(state)
 	if destination != origin:
 		var path := movement_path(state, actor_id, destination)
 		var moves: Dictionary = resolved.get("moves", {})
@@ -260,10 +270,10 @@ static func supports_auto_approach(state: Dictionary, action_id: String) -> bool
 	return (
 		state.has("grid")
 		and not action.is_empty()
-		and str(action.get("target", "")) == "enemy"
-		and str(action.get("effect", "")) != "lift_throw"
+		and str(action.get("target", "")) not in ["self", ""]
 		and str(action.get("partnerId", "")).is_empty()
-		and not Combat.is_item_command(action_id)
+		and action_id not in [Combat.HELD_THROW_COMMAND, Combat.HELD_LOWER_COMMAND, Combat.HELD_GUARD_COMMAND]
+		and not Combat.action_moves_actor(action)
 	)
 
 
@@ -304,6 +314,52 @@ static func approach_plan(
 	)
 
 
+static func approach_target_cells(
+	state: Dictionary,
+	action_id: String,
+	preferred_destination: Vector2i = Combat.INVALID_CELL,
+) -> Array[Vector2i]:
+	if not supports_auto_approach(state, action_id):
+		var staged := stage_move(state, preferred_destination)
+		return Combat.valid_target_cells(state if staged.is_empty() else staged, action_id)
+	var result: Array[Vector2i] = []
+	var actor_id := Combat.current_unit_id(state)
+	var field := _navigation_field(state, actor_id)
+	for cell in Combat.eligible_target_cells(state, action_id):
+		if not _approach_plan_to_cell_with_field(
+			state, action_id, "", cell, preferred_destination, field
+		).is_empty():
+			result.append(cell)
+	return result
+
+
+static func approach_cell_plan(
+	state: Dictionary,
+	action_id: String,
+	target_cell: Vector2i,
+	preferred_destination: Vector2i = Combat.INVALID_CELL,
+) -> Dictionary:
+	if not supports_auto_approach(state, action_id) or target_cell not in Combat.eligible_target_cells(state, action_id):
+		return {}
+	var actor_id := Combat.current_unit_id(state)
+	return _approach_plan_to_cell_with_field(
+		state, action_id, "", target_cell, preferred_destination, _navigation_field(state, actor_id)
+	)
+
+
+static func approach_secondary_cells(
+	state: Dictionary,
+	action_id: String,
+	target_id: String,
+	preferred_destination: Vector2i = Combat.INVALID_CELL,
+) -> Array[Vector2i]:
+	var plan := approach_plan(state, action_id, target_id, preferred_destination)
+	if plan.is_empty() or not bool(plan.get("willExecute", false)):
+		return []
+	var staged := stage_move(state, plan.get("destination", Combat.INVALID_CELL))
+	return Combat.valid_secondary_cells(staged, action_id, target_id)
+
+
 static func _approach_plan_with_field(
 	state: Dictionary,
 	action_id: String,
@@ -316,8 +372,24 @@ static func _approach_plan_with_field(
 	var target := Combat.unit_definition(state, target_id)
 	if actor.is_empty() or target.is_empty() or not actor.has("cell") or not target.has("cell"):
 		return {}
+	return _approach_plan_to_cell_with_field(
+		state, action_id, target_id, target.get("cell", Combat.INVALID_CELL), preferred_destination, field
+	)
+
+
+static func _approach_plan_to_cell_with_field(
+	state: Dictionary,
+	action_id: String,
+	target_id: String,
+	target_cell: Vector2i,
+	preferred_destination: Vector2i,
+	field: Dictionary,
+) -> Dictionary:
+	var actor_id := Combat.current_unit_id(state)
+	var actor := Combat.unit_definition(state, actor_id)
+	if actor.is_empty() or not actor.has("cell") or target_cell == Combat.INVALID_CELL:
+		return {}
 	var origin: Vector2i = actor.get("cell", Vector2i.ZERO)
-	var target_cell: Vector2i = target.get("cell", Combat.INVALID_CELL)
 	var action := Combat.command_definition(state, action_id)
 	var action_range := maxi(0, int(action.get("range", 0)))
 	var costs: Dictionary = field.get("costs", {})
@@ -330,7 +402,8 @@ static func _approach_plan_with_field(
 			continue
 		var cell := raw_cell as Vector2i
 		if (
-			Terrain.action_distance(state, cell, target_cell) > action_range
+			(not target_id.is_empty() and target_id != actor_id and cell == target_cell)
+			or Terrain.action_distance(state, cell, target_cell) > action_range
 			or not Terrain.has_line_of_sight(state, cell, target_cell)
 		):
 			continue
@@ -370,9 +443,10 @@ static func _approach_plan_with_field(
 		destination = preferred_destination
 		planned_path = manual_path
 		var staged := stage_move(state, destination)
-		will_execute = (
-			not staged.is_empty()
-			and target_id in Combat.valid_target_ids(staged, action_id)
+		will_execute = not staged.is_empty() and (
+			target_cell in Combat.valid_target_cells(staged, action_id)
+			if target_id.is_empty()
+			else target_id in Combat.valid_target_ids(staged, action_id)
 		)
 	elif not will_execute:
 		var stop_index := mini(move_range, best_path.size() - 1)
@@ -401,6 +475,8 @@ static func approach_command_preview(
 	action_id: String,
 	target_id: String,
 	preferred_destination: Vector2i = Combat.INVALID_CELL,
+	secondary_cell: Vector2i = Combat.INVALID_CELL,
+	lift_choice: String = "throw",
 ) -> Dictionary:
 	var plan := approach_plan(state, action_id, target_id, preferred_destination)
 	if plan.is_empty():
@@ -413,7 +489,7 @@ static func approach_command_preview(
 	var destination: Vector2i = plan.get("destination", Combat.INVALID_CELL)
 	var will_execute := bool(plan.get("willExecute", false))
 	var resolved := (
-		command_preview(state, action_id, target_id, destination)
+		command_preview(state, action_id, target_id, destination, secondary_cell, Combat.INVALID_CELL, lift_choice)
 		if will_execute
 		else command_preview(state, _defend_action_id(state, actor_id), actor_id, destination)
 	)
@@ -433,6 +509,40 @@ static func approach_command_preview(
 			"Подход к %s: остановка %s. %s не достигает цели; применяется Защита.\n%s"
 			% [target_name, cell_label(destination), action_name, str(resolved.get("summary", ""))]
 		)
+	return resolved
+
+
+static func approach_cell_command_preview(
+	state: Dictionary,
+	action_id: String,
+	target_cell: Vector2i,
+	preferred_destination: Vector2i = Combat.INVALID_CELL,
+) -> Dictionary:
+	var plan := approach_cell_plan(state, action_id, target_cell, preferred_destination)
+	if plan.is_empty():
+		return {"ok": false, "error": "До подходящей позиции нет маршрута.", "summary": "До подходящей позиции нет маршрута."}
+	var actor_id := str(plan.get("actorId", ""))
+	var destination: Vector2i = plan.get("destination", Combat.INVALID_CELL)
+	var will_execute := bool(plan.get("willExecute", false))
+	var resolved := (
+		command_preview(state, action_id, "", destination, Combat.INVALID_CELL, target_cell)
+		if will_execute
+		else command_preview(state, _defend_action_id(state, actor_id), actor_id, destination)
+	)
+	if not bool(resolved.get("ok", false)):
+		return resolved
+	resolved["requestedActionId"] = action_id
+	resolved["approachTargetCell"] = target_cell
+	resolved["approachDestination"] = destination
+	resolved["approachAttackPosition"] = plan.get("attackPosition", destination)
+	resolved["approachPath"] = plan.get("movementPath", []).duplicate()
+	resolved["approachWillExecute"] = will_execute
+	resolved["approachFallbackDefend"] = not will_execute
+	if not will_execute:
+		var action_name := str(Combat.command_definition(state, action_id).get("name", action_id))
+		resolved["summary"] = "Подход к %s: остановка %s. %s не достигает клетки; применяется Защита.\n%s" % [
+			cell_label(target_cell), cell_label(destination), action_name, str(resolved.get("summary", "")),
+		]
 	return resolved
 
 

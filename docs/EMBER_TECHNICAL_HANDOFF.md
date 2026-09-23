@@ -186,9 +186,13 @@ Battlefield нет.
 - свободный плавный yaw при заблокированном pitch по умолчанию, отдельный
   orthogonal toggle, независимые axis locks, authored camera values и отсутствие
   mouse-wheel zoom во время боя;
-- общий auto-approach для ближней/дальней hostile-команды: достижимая позиция
-  завершает атаку, недоход останавливает героя и применяет Defend без расхода
-  выбранной атаки.
+- общий positional auto-approach для непарных hostile/support/heal/item/cell/
+  lift-команд: достижимая позиция завершает выбранную команду, а недоход
+  останавливает героя и применяет Defend без расхода MP, item или команды;
+- battle-only связь удержания без новых authored Resources: поднятая цель не
+  занимает клетку и пропускает очередь, а носитель получает только синтетические
+  `Бросить / Опустить / Удерживать и защищаться`; player и AI используют одну
+  legality/preview реализацию.
 
 Projection-only animation queue показывает движение, подъём, дугу броска,
 выпад, hit squash и defend pulse после уже рассчитанного preview. Status badges
@@ -201,13 +205,10 @@ resolver test; редактор не генерирует gameplay-код.
 
 ## Следующий технический срез
 
-Актуальный порядок всегда берётся из `docs/EMBER_NOW.md`. Ближайший кандидат —
-расширение существующего positional planner на непарные support/heal/item/cell/
-lift commands и battle-only удержание поднятой цели. Парные техники остаются на
-своём authored-радиусе и не входят в этот срез. Точный UI-порядок после lift-цели
-и запрет обычных direct/cell/AOE/status effects по удерживаемой цели зафиксированы
-в GDD. Это ещё не реализовано и не разрешает второй resolver или изменение
-schema.
+Актуальный порядок всегда берётся из `docs/EMBER_NOW.md`. После ручной приёмки
+v2.64.3 ближайшие кандидаты — Retry/defeat и deployment. Парные техники остаются
+на своём authored-радиусе; их auto-approach не был добавлен скрыто. Текущие
+Action/Battlefield/save schemas, один resolver и один navigation owner сохранены.
 
 ## Известные долги
 

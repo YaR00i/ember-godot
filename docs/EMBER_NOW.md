@@ -1,7 +1,7 @@
 # Ember — текущая точка
 
 Обновлено: 2026-09-08  
-Git checkpoint: `20685ac` (`main`, совпадал с `origin/main` перед Phase A)
+Git checkpoint: `2c38bc5` (`main`/`origin/main`; v2.64.3 пока находится в рабочем дереве)
 
 Этот файл — короткая стартовая точка для нового Codex-thread. Он не заменяет
 GDD, продуктовый план, технический handoff или migration gates. Если здесь и в
@@ -14,9 +14,10 @@ GDD, продуктовый план, технический handoff или migr
   позволяет выполнить.
 - Базовый GDD вертикального среза принят. Расширение GDD v1.5 зафиксировано как
   план, но ещё не реализовано в коде.
-- Combat Lab доведён до v2.64.2: вертикальные поля, камера и preview; постоянная
+- Combat Lab доведён до v2.64.3: вертикальные поля, камера и preview; постоянная
   партия и save v2; характеристики, предметы, XP, парные приёмы; редактор
-  боевого контента; поэтапный выбор действий и auto-approach для hostile actions.
+  боевого контента; поэтапный выбор действий; общий auto-approach для непарных
+  hostile/support/heal/item/cell/lift-команд; battle-only удержание поднятой цели.
 - Workflow Phase A/B создаёт короткую точку входа и отделяет актуальные
   канонические документы от истории, сохранённой в Git. Gameplay, Resources,
   schema и runtime эти фазы не меняют.
@@ -26,35 +27,19 @@ GDD, продуктовый план, технический handoff или migr
 
 ## Следующий игровой срез
 
-Ближайший кандидат — Combat Lab v2.64.3. Это план, а не уже готовая функция:
-
-1. распространить единый positional planner на непарную поддержку, лечение,
-   предметы, cell-targeted действия и `Подъём и бросок`;
-2. разрешить завершить подъём, удерживая цель;
-3. удерживаемую цель нельзя атаковать, она пропускает ход без накопления ходов;
-4. несущий не может перемещаться и выбирает только `Бросить`, `Опустить` или
-   `Удерживать и защищаться`;
-5. при гибели носителя цель детерминированно опускается на ближайшую допустимую
-   клетку;
-6. сохранить один combat resolver и текущую схему данных.
-
-Парные техники уже используют собственный authored-радиус партнёра. Их
-автоподход не входит в v2.64.3 и требует отдельного решения после этого среза.
-
-Подтверждённое правило: удерживаемая цель исключена из обычных
-direct/cell/AOE/status effects. Носитель остаётся обычной целью, эффект на него
-не переносится на удерживаемого бойца, а гибель носителя освобождает цель.
-
-После принятия этого среза: Retry/defeat и предбоевая расстановка, затем один
-небольшой сквозной D3 production-участок. Большой player-facing UI согласуется
-позже отдельным HTML-прототипом перед переносом в Godot.
+Ближайшие кандидаты после ручной приёмки v2.64.3 — правила Retry/defeat и
+предбоевая расстановка. Затем нужен один небольшой сквозной D3
+production-участок. Парный auto-approach остаётся отдельным будущим решением:
+парные техники по-прежнему используют собственный authored-радиус партнёра.
+Большой player-facing UI согласуется позже отдельным HTML-прототипом перед
+переносом в Godot.
 
 ## Ключевые owners текущего боевого среза
 
 - `scripts/prototypes/ember_combat_prototype.gd` — чистый resolver,
   preview и commit;
 - `scripts/prototypes/ember_combat_grid.gd` — dense Battlefield, navigation,
-  staged selection и hostile auto-approach;
+  staged selection и общий positional auto-approach;
 - `scripts/prototypes/ember_combat_lab.gd` — контроллер выбора, targeting и HUD;
 - `scripts/prototypes/ember_combat_grid_3d_world.gd` и
   `scripts/prototypes/ember_combat_grid_view.gd` — представление поля;
@@ -69,11 +54,13 @@ direct/cell/AOE/status effects. Носитель остаётся обычной
 
 ## Ближайшие проверки
 
-Для v2.64.3 минимум:
+Для текущего v2.64.3 regression gate минимум:
 
 - `tools/test_combat_grid.gd`;
 - `tools/test_combat_prototype.gd`;
 - `tools/test_combat_lab.gd`;
+- `tools/test_combat_items.gd`, `tools/test_combat_personal_actions.gd`,
+  `tools/test_combat_vertical_animation.gd`, `tools/test_combat_vertical_profile.gd`;
 - все `tools/test_combat*.gd`;
 - связанные battlefield, encounter, party progression и save tests;
 - ручная проверка Combat Lab в Godot 4 Forward+.
@@ -94,7 +81,7 @@ direct/cell/AOE/status effects. Носитель остаётся обычной
 
 ## Состояние workflow-миграции
 
-Phase A и B реализованы в рабочем дереве: созданы короткий router/current-state,
+Phase A и B зафиксированы в checkpoint `2c38bc5`: созданы короткий router/current-state,
 Task Contract и lifecycle thread; README, product plan, handoff и test plan
 очищены от технической летописи. Точная старая история остаётся в checkpoint
 `20685ac`. Подробный GDD намеренно не сокращён: это действующий игровой документ,
@@ -105,8 +92,8 @@ Phase C успешно воспроизвела старт независимо�
 чтения больших документов. Найденные расхождения исправлены, правило cell/AOE
 при удержании подтверждено пользователем.
 
-Workflow Task Contract Phase A–C закрыт и ждёт отдельного Git checkpoint.
-Commit/push возможны только по явной просьбе пользователя.
+Workflow Task Contract Phase A–C закрыт. Commit/push следующих срезов возможны
+только по явной просьбе пользователя.
 
 ## Как обновлять этот файл
 

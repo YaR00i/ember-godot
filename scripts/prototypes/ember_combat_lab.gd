@@ -40,6 +40,7 @@ var _selected_target := ""
 var _selected_target_cell := Combat.INVALID_CELL
 var _selected_secondary_cell := Combat.INVALID_CELL
 var _lifted_target_id := ""
+var _lift_choice := ""
 var _current_preview: Dictionary = {}
 var _pending_cell := Vector2i(-1, -1)
 var _pending_actor_id := ""
@@ -70,6 +71,9 @@ var _preview_caption: Label
 var _preview_label: RichTextLabel
 var _predicted_label: Label
 var _confirm_button: Button
+var _lift_choice_row: HBoxContainer
+var _lift_throw_button: Button
+var _lift_hold_button: Button
 var _log_label: RichTextLabel
 var _console_input: LineEdit
 var _outcome_label: Label
@@ -462,6 +466,23 @@ func _build_command_panel() -> Control:
 	_confirm_button.pressed.connect(_confirm_action)
 	_confirm_button.visible = false
 	content.add_child(_confirm_button)
+	_lift_choice_row = HBoxContainer.new()
+	_lift_choice_row.name = "CombatLiftChoice"
+	_lift_choice_row.add_theme_constant_override("separation", 8)
+	_lift_choice_row.visible = false
+	content.add_child(_lift_choice_row)
+	_lift_throw_button = Button.new()
+	_lift_throw_button.name = "CombatLiftThrowNow"
+	_lift_throw_button.text = "Бросить сейчас"
+	_lift_throw_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_lift_throw_button.pressed.connect(_choose_lift_throw)
+	_lift_choice_row.add_child(_lift_throw_button)
+	_lift_hold_button = Button.new()
+	_lift_hold_button.name = "CombatLiftKeepHeld"
+	_lift_hold_button.text = "Оставить поднятой"
+	_lift_hold_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_lift_hold_button.pressed.connect(_choose_lift_hold)
+	_lift_choice_row.add_child(_lift_hold_button)
 	_scope_label = Label.new()
 	_scope_label.text = "Лаборатория не сохраняет прогресс и не создаёт battle Resources. Здесь проверяются только решения D1."
 	_scope_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -829,9 +850,11 @@ func _ensure_selection() -> void:
 		_clear_selected_action_state()
 		_browsed_command_id = ""
 		return
-	var actions: Array = actor.get("actions", [])
 	var selection_state := _selection_state()
-	var item_commands := Combat.combat_item_ids(selection_state)
+	var actions: Array[String] = Combat.command_ids_for_current_actor(selection_state, false)
+	var item_commands: Array[String] = []
+	if Combat.held_target_id(selection_state, actor_id).is_empty():
+		item_commands = Combat.combat_item_ids(selection_state)
 	if (
 		not _browsed_command_id.is_empty()
 		and not _browsed_command_id.begins_with("__")
@@ -844,6 +867,7 @@ func _ensure_selection() -> void:
 		_selected_target_cell = Combat.INVALID_CELL
 		_selected_secondary_cell = Combat.INVALID_CELL
 		_lifted_target_id = ""
+		_lift_choice = ""
 		return
 	var command_owned := (
 		_selected_action in actions
@@ -855,9 +879,12 @@ func _ensure_selection() -> void:
 	var selected_definition := Combat.command_definition(selection_state, _selected_action)
 	if str(selected_definition.get("target", "")) == "cell":
 		_selected_target = ""
-		if _selected_target_cell not in Combat.valid_target_cells(
-			selection_state, _selected_action
-		):
+		var valid_cells := (
+			Grid.approach_target_cells(_state, _selected_action, _pending_cell)
+			if _is_grid_mode()
+			else Combat.valid_target_cells(selection_state, _selected_action)
+		)
+		if _selected_target_cell not in valid_cells:
 			_selected_target_cell = Combat.INVALID_CELL
 	else:
 		_selected_target_cell = Combat.INVALID_CELL
@@ -873,12 +900,19 @@ func _ensure_selection() -> void:
 			if _radial_targeting and str(Combat.command_definition(selection_state, _selected_action).get("target", "")) != "self"
 			else (targets[0] if not targets.is_empty() else "")
 		)
+	var valid_secondary_cells := (
+		Grid.approach_secondary_cells(
+			_state, _selected_action, _selected_target, _pending_cell
+		)
+		if _is_grid_mode()
+		else Combat.valid_secondary_cells(
+			selection_state, _selected_action, _selected_target
+		)
+	)
 	if (
 		str(Combat.command_definition(selection_state, _selected_action).get("effect", "")) != "lift_throw"
 		or _selected_target.is_empty()
-		or _selected_secondary_cell not in Combat.valid_secondary_cells(
-			selection_state, _selected_action, _selected_target
-		)
+		or _selected_secondary_cell not in valid_secondary_cells
 	):
 		_selected_secondary_cell = Combat.INVALID_CELL
 
@@ -1020,6 +1054,7 @@ func _public_field_preview(field_action: String) -> Dictionary:
 	for key in [
 		"requestedActionId",
 		"approachTargetId",
+		"approachTargetCell",
 		"approachDestination",
 		"approachAttackPosition",
 		"approachPath",
@@ -1052,7 +1087,7 @@ func _approach_intent_copy(preview: Dictionary) -> String:
 			labels.append(Grid.cell_label(raw_cell))
 	var route_copy := "Маршрут: %s" % " → ".join(labels) if labels.size() > 1 else "Без перемещения"
 	if bool(preview.get("approachFallbackDefend", false)):
-		return "%s\nОстановка: %s · ◆ ЗАЩИТА\nВыбранная атака не достанет цель и не расходует ресурсы." % [
+		return "%s\nОстановка: %s · ◆ ЗАЩИТА\nВыбранная команда не достанет цель и не расходует ресурсы." % [
 			route_copy, Grid.cell_label(destination),
 		]
 	var requested_action := str(preview.get("requestedActionId", preview.get("actionId", "")))
@@ -1389,6 +1424,7 @@ func _sync_pair_context_visual() -> void:
 
 func _refresh_commands() -> void:
 	_clear(_action_list)
+	_lift_choice_row.visible = false
 	var outcome := Combat.outcome(_state)
 	var radial_mode := _is_grid_mode() and _field_view_mode == "3d"
 	_action_list.visible = not radial_mode
@@ -1415,6 +1451,7 @@ func _refresh_commands() -> void:
 	var actor := Combat.unit_definition(_state, actor_id)
 	_movement_row.visible = (
 		_is_grid_mode() and not radial_mode and str(actor.get("team", "")) == "hero"
+		and Combat.held_target_id(_state, actor_id).is_empty()
 	)
 	if _movement_row.visible:
 		_move_button.button_pressed = _move_mode
@@ -1430,10 +1467,7 @@ func _refresh_commands() -> void:
 		_confirm_button.disabled = true
 		return
 	var selection_state := _selection_state()
-	var commands: Array[String] = []
-	for raw_id in actor.get("actions", []):
-		commands.append(str(raw_id))
-	commands.append_array(Combat.combat_item_ids(selection_state))
+	var commands := Combat.command_ids_for_current_actor(selection_state)
 	for index in commands.size():
 		var action_id := commands[index]
 		var action := Combat.command_definition(selection_state, action_id)
@@ -1501,9 +1535,13 @@ func _refresh_commands() -> void:
 		]
 		if str(Combat.command_definition(selection_state, _selected_action).get("effect", "")) == "lift_throw":
 			_target_hint.text += (
+				" · выберите: бросить сейчас или оставить поднятой"
+				if _lift_choice.is_empty() and not _selected_target.is_empty()
+				else (
 				" · приземление: %s" % Grid.cell_label(_selected_secondary_cell)
 				if _selected_secondary_cell != Combat.INVALID_CELL
 				else " · затем выберите клетку приземления"
+				)
 			)
 		if _radial_targeting:
 			_target_hint.text += " · команда подтверждена: выберите цель, Esc/B — назад к списку"
@@ -1515,8 +1553,17 @@ func _refresh_commands() -> void:
 	else:
 		_current_preview = (
 			(
-				Grid.approach_command_preview(
+				Grid.approach_cell_command_preview(
+					_state, _selected_action, _selected_target_cell, _pending_cell,
+				)
+				if (
+					str(Combat.command_definition(selection_state, _selected_action).get("target", "")) == "cell"
+					and Grid.supports_auto_approach(_state, _selected_action)
+					and _selected_target_cell != Combat.INVALID_CELL
+				)
+				else Grid.approach_command_preview(
 					_state, _selected_action, _selected_target, _pending_cell,
+					_selected_secondary_cell,
 				)
 				if (
 					Grid.supports_auto_approach(_state, _selected_action)
@@ -1530,6 +1577,11 @@ func _refresh_commands() -> void:
 			if _is_grid_mode()
 			else Combat.preview(_state, _selected_action, _selected_target)
 		)
+	_lift_choice_row.visible = (
+		str(Combat.command_definition(selection_state, _selected_action).get("effect", "")) == "lift_throw"
+		and not _selected_target.is_empty()
+		and _lift_choice.is_empty()
+	)
 	_preview_label.text = "[b]%s[/b]" % (
 		Combat.describe_intent(
 			_state, _selected_action, _selected_target, _pending_cell, _selection_state(),
@@ -1733,11 +1785,16 @@ func _radial_entries(actor: Dictionary) -> Array[Dictionary]:
 	var basic: Array[String] = []
 	var skills: Array[String] = []
 	var magic: Array[String] = []
-	var items := Combat.combat_item_ids(_selection_state())
+	var selection_state := _selection_state()
+	var items: Array[String] = []
+	if Combat.held_target_id(
+		selection_state, Combat.current_unit_id(selection_state)
+	).is_empty():
+		items = Combat.combat_item_ids(selection_state)
 	var defend_id := ""
-	for raw_id in actor.get("actions", []):
+	for raw_id in Combat.command_ids_for_current_actor(selection_state, false):
 		var action_id := str(raw_id)
-		var action := Combat.action_definition(action_id)
+		var action := Combat.command_definition(selection_state, action_id)
 		if str(action.get("effect", "")) == "defend":
 			defend_id = action_id
 			continue
@@ -1749,7 +1806,8 @@ func _radial_entries(actor: Dictionary) -> Array[Dictionary]:
 			_:
 				basic.append(action_id)
 	var result: Array[Dictionary] = []
-	result.append({"id": "__move", "shortcut": "M", "label": "Движение"})
+	if Combat.held_target_id(selection_state, Combat.current_unit_id(selection_state)).is_empty():
+		result.append({"id": "__move", "shortcut": "M", "label": "Движение"})
 	var next_number := 1
 	for action_id in basic:
 		result.append(_radial_action_entry(action_id, str(next_number)))
@@ -1772,9 +1830,9 @@ func _drawer_entries(actor: Dictionary) -> Array[Dictionary]:
 	if _radial_page == "item":
 		action_ids = Combat.combat_item_ids(_selection_state())
 	else:
-		for raw_id in actor.get("actions", []):
+		for raw_id in Combat.command_ids_for_current_actor(_selection_state(), false):
 			var action_id := str(raw_id)
-			var action := Combat.action_definition(action_id)
+			var action := Combat.command_definition(_selection_state(), action_id)
 			if str(action.get("menuGroup", "basic")) == _radial_page:
 				action_ids.append(action_id)
 	var result: Array[Dictionary] = []
@@ -2095,7 +2153,8 @@ func _select_target(unit_id: String) -> void:
 	if str(Combat.command_definition(_selection_state(), _selected_action).get("effect", "")) == "lift_throw":
 		_selected_secondary_cell = Combat.INVALID_CELL
 		_lifted_target_id = unit_id
-		_radial_targeting = true
+		_lift_choice = ""
+		_radial_targeting = false
 		_refresh()
 		return
 	_radial_targeting = false
@@ -2127,6 +2186,7 @@ func _clear_selected_action_state() -> void:
 	_selected_target_cell = Combat.INVALID_CELL
 	_selected_secondary_cell = Combat.INVALID_CELL
 	_lifted_target_id = ""
+	_lift_choice = ""
 	_radial_targeting = false
 
 
@@ -2154,8 +2214,49 @@ func _action_target_ids(action_id: String) -> Array[String]:
 func _action_has_valid_target(action_id: String) -> bool:
 	var action := Combat.command_definition(_selection_state(), action_id)
 	if str(action.get("target", "")) == "cell":
-		return not Combat.valid_target_cells(_selection_state(), action_id).is_empty()
+		return not (
+			Grid.approach_target_cells(_state, action_id, _pending_cell)
+			if _is_grid_mode()
+			else Combat.valid_target_cells(_selection_state(), action_id)
+		).is_empty()
 	return not _action_target_ids(action_id).is_empty()
+
+
+func _choose_lift_throw() -> void:
+	if _selected_target.is_empty():
+		return
+	var plan := Grid.approach_plan(_state, _selected_action, _selected_target, _pending_cell)
+	if not plan.is_empty() and not bool(plan.get("willExecute", false)):
+		_current_preview = Grid.approach_command_preview(
+			_state, _selected_action, _selected_target, _pending_cell
+		)
+		if bool(_current_preview.get("ok", false)):
+			_confirm_action()
+		return
+	_lift_choice = "throw"
+	_radial_targeting = true
+	_refresh()
+
+
+func _choose_lift_hold() -> void:
+	if _selected_target.is_empty():
+		return
+	_lift_choice = "hold"
+	_current_preview = (
+		Grid.approach_command_preview(
+			_state, _selected_action, _selected_target, _pending_cell,
+			Combat.INVALID_CELL, "hold",
+		)
+		if _is_grid_mode() and Grid.supports_auto_approach(_state, _selected_action)
+		else Combat.preview(
+			_state, _selected_action, _selected_target, Combat.INVALID_CELL,
+			Combat.INVALID_CELL, "hold",
+		)
+	)
+	if bool(_current_preview.get("ok", false)):
+		_confirm_action()
+	else:
+		_refresh()
 
 
 func _combat_item_definitions(inventory: Dictionary) -> Dictionary:
@@ -2308,6 +2409,8 @@ func _toggle_move_mode() -> void:
 	var actor := Combat.unit_definition(_state, Combat.current_unit_id(_state))
 	if str(actor.get("team", "")) != "hero":
 		return
+	if not Combat.held_target_id(_state, Combat.current_unit_id(_state)).is_empty():
+		return
 	if _move_mode:
 		_cancel_radial_targeting()
 		return
@@ -2348,7 +2451,11 @@ func _on_grid_cell_chosen(cell: Vector2i, unit_id: String) -> void:
 		return
 	if (
 		str(Combat.command_definition(_selection_state(), _selected_action).get("target", "")) == "cell"
-		and cell in Combat.valid_target_cells(_selection_state(), _selected_action)
+		and cell in (
+			Grid.approach_target_cells(_state, _selected_action, _pending_cell)
+			if Grid.supports_auto_approach(_state, _selected_action)
+			else Combat.valid_target_cells(_selection_state(), _selected_action)
+		)
 	):
 		_selected_target = ""
 		_selected_target_cell = cell
@@ -2359,9 +2466,10 @@ func _on_grid_cell_chosen(cell: Vector2i, unit_id: String) -> void:
 		return
 	if (
 		str(Combat.command_definition(_selection_state(), _selected_action).get("effect", "")) == "lift_throw"
+		and _lift_choice == "throw"
 		and not _selected_target.is_empty()
-		and cell in Combat.valid_secondary_cells(
-			_selection_state(), _selected_action, _selected_target
+		and cell in Grid.approach_secondary_cells(
+			_state, _selected_action, _selected_target, _pending_cell
 		)
 	):
 		_selected_secondary_cell = cell
@@ -2375,7 +2483,7 @@ func _on_grid_cell_chosen(cell: Vector2i, unit_id: String) -> void:
 
 
 func _cancel_radial_targeting() -> void:
-	if not _radial_targeting:
+	if not _radial_targeting and _lifted_target_id.is_empty():
 		return
 	var restore_page := _selection_origin_page
 	var restore_action := _selection_origin_action
@@ -2693,7 +2801,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			_close_pause_menu()
 		elif _console_input != null and get_viewport().gui_get_focus_owner() == _console_input:
 			_console_input.release_focus()
-		elif Combat.outcome(_state) == "active" and _radial_targeting:
+		elif Combat.outcome(_state) == "active" and (
+			_radial_targeting or not _lifted_target_id.is_empty()
+		):
 			_cancel_radial_targeting()
 		elif Combat.outcome(_state) == "active" and _radial_page != "root":
 			_open_radial_page("root")
@@ -2744,8 +2854,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event.keycode == KEY_G:
 		var actor := Combat.unit_definition(_state, Combat.current_unit_id(_state))
-		if "defend" in actor.get("actions", []):
-			_select_action("defend")
+		var guard_id := (
+			Combat.HELD_GUARD_COMMAND
+			if not Combat.held_target_id(_state, Combat.current_unit_id(_state)).is_empty()
+			else "defend"
+		)
+		if guard_id in Combat.command_ids_for_current_actor(_state, false):
+			_select_action(guard_id)
 			get_viewport().set_input_as_handled()
 		return
 	if event.keycode >= KEY_1 and event.keycode <= KEY_9:
@@ -2754,8 +2869,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			handled = _activate_radial_number(int(event.keycode - KEY_0))
 		else:
 			var index := int(event.keycode - KEY_1)
-			var actor := Combat.unit_definition(_state, Combat.current_unit_id(_state))
-			var actions: Array = actor.get("actions", [])
+			var actions := Combat.command_ids_for_current_actor(_state)
 			if index < actions.size():
 				_select_action(str(actions[index]))
 				handled = true

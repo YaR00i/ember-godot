@@ -156,19 +156,15 @@ func _valid_targets_from_staged_state() -> Array[String]:
 func _valid_secondary_cells_from_staged_state() -> Array[Vector2i]:
 	if _selected_target.is_empty():
 		return []
-	var staged := Grid.stage_move(_state, _pending_cell)
-	if staged.is_empty():
-		return []
-	return Combat.valid_secondary_cells(staged, _selected_action, _selected_target)
+	return Grid.approach_secondary_cells(
+		_state, _selected_action, _selected_target, _pending_cell
+	)
 
 
 func _valid_target_cells_from_staged_state() -> Array[Vector2i]:
 	if _selected_action.is_empty():
 		return []
-	var staged := Grid.stage_move(_state, _pending_cell)
-	if staged.is_empty():
-		return []
-	return Combat.valid_target_cells(staged, _selected_action)
+	return Grid.approach_target_cells(_state, _selected_action, _pending_cell)
 
 
 func _cell_text(
@@ -193,6 +189,9 @@ func _cell_text(
 		lines.append("HP %d/%d%s" % [
 			int(unit.get("hp", 0)), int(unit.get("maxHp", 0)), " · ждёт F" if staged_destination else "",
 		])
+		var held_id := Combat.held_target_id(_state, occupant_id)
+		if not held_id.is_empty():
+			lines.append("↑ удерживает: %s" % str(Combat.unit_definition(_state, held_id).get("name", held_id)))
 	else:
 		if "frozen" in cell_def.get("tags", []):
 			lines.append("Frozen%s" % (" · прогноз" if _is_changed_cell(cell) else ""))

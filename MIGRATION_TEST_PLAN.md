@@ -202,10 +202,10 @@ Forward+ проверка должна подтвердить отсутстви
 исчезающих chunks, неверной прозрачности и изменений collision из-за
 visual-only эффекта.
 
-## Активный gate: следующий positional slice
+## Combat Lab v2.64.3 positional/hold regression gate
 
-До реализации точный Task Contract сверяется с `docs/EMBER_NOW.md` и GDD.
-Минимальная приёмка следующего кандидата:
+Срез реализован в рабочем дереве после `2c38bc5`; до checkpoint остаётся ручная
+Forward+ приёмка. Regression gate сохраняет следующие критерии:
 
 1. непарные support/heal/item/cell/lift-команды используют тот же positional
    planner, что hostile-команды;

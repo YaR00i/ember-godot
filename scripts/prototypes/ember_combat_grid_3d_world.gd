@@ -417,6 +417,12 @@ func _add_units(previous_positions: Dictionary = {}) -> void:
 		var root := Node3D.new()
 		root.name = "CombatUnit_%s" % unit_id
 		var final_position := _world_position(cell, UNIT_Y_OFFSET)
+		var carrier_id := Combat.carrier_id_for(_state, unit_id)
+		if not carrier_id.is_empty():
+			var carrier := Combat.unit_definition(_state, carrier_id)
+			final_position = _world_position(
+				carrier.get("cell", Vector2i.ZERO), UNIT_Y_OFFSET
+			) + Vector3.UP * 1.45
 		if unit_id == _lifted_target_id and _is_lift_selection_active():
 			var carrier_cell := active_cell
 			if staged:
@@ -452,7 +458,8 @@ func _add_units(previous_positions: Dictionary = {}) -> void:
 		root.add_child(water_contact)
 		var label := Label3D.new()
 		label.text = "%s%s\n%d/%d" % [
-			str(unit.get("name", unit_id)), " · план" if planned else "",
+			str(unit.get("name", unit_id)),
+			(" · удерживается" if not carrier_id.is_empty() else (" · план" if planned else "")),
 			int(unit.get("hp", 0)), int(unit.get("maxHp", 0)),
 		]
 		label.position.y = 0.7
@@ -572,7 +579,21 @@ func _play_action_animations(animations: Array, generation: int) -> void:
 				)
 				if lift_tween != null:
 					await lift_tween.finished
-		elif effect == "defend":
+		elif effect in ["held_throw", "held_lower"]:
+			var release := resolved.get("releaseHold", {}) as Dictionary
+			var held_id := str(release.get("targetId", ""))
+			var held_root := _unit_roots.get(held_id) as Node3D
+			var held_destination = (resolved.get("moves", {}) as Dictionary).get(held_id)
+			if is_instance_valid(held_root) and held_destination is Vector2i:
+				var release_tween := _arc_tween_to(
+					held_root,
+					_world_position(held_destination, UNIT_Y_OFFSET),
+					0.42 if effect == "held_throw" else 0.28,
+					0.85 if effect == "held_throw" else 0.18,
+				)
+				if release_tween != null:
+					await release_tween.finished
+		elif effect in ["defend", "held_guard"]:
 			var defend_tween := _pulse_tween(actor_root, 1.16)
 			if defend_tween != null:
 				await defend_tween.finished
@@ -828,9 +849,9 @@ func _add_overlays() -> void:
 		str(Combat.command_definition(_state, _selected_action).get("effect", "")) == "lift_throw"
 		and not _selected_target.is_empty()
 	):
-		var staged := Grid.stage_move(_state, _pending_cell)
-		if not staged.is_empty():
-			secondary_cells = Combat.valid_secondary_cells(staged, _selected_action, _selected_target)
+		secondary_cells = Grid.approach_secondary_cells(
+			_state, _selected_action, _selected_target, _pending_cell
+		)
 	for y in int((_state.get("grid", {}) as Dictionary).get("height", Grid.HEIGHT)):
 		for x in int((_state.get("grid", {}) as Dictionary).get("width", Grid.WIDTH)):
 			var cell := Vector2i(x, y)
@@ -1086,8 +1107,7 @@ func _valid_targets_from_staged_state() -> Array[String]:
 func _valid_target_cells_from_staged_state() -> Array[Vector2i]:
 	if _selected_action.is_empty():
 		return []
-	var staged := Grid.stage_move(_state, _pending_cell)
-	return [] if staged.is_empty() else Combat.valid_target_cells(staged, _selected_action)
+	return Grid.approach_target_cells(_state, _selected_action, _pending_cell)
 
 
 func _map_cell(cell: Vector2i) -> Vector3i:

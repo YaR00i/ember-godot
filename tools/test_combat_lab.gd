@@ -4,6 +4,7 @@ extends SceneTree
 const LAB_SCENE := preload("res://scenes/combat_lab.tscn")
 const Grid3D = preload("res://scripts/prototypes/ember_combat_grid_3d_world.gd")
 const Combat = preload("res://scripts/prototypes/ember_combat_prototype.gd")
+const Grid = preload("res://scripts/prototypes/ember_combat_grid.gd")
 
 
 func _init() -> void:
@@ -32,6 +33,9 @@ func _run_and_quit() -> void:
 	var enemy_info_panel := lab.find_child("CombatEnemyInfoPanel", true, false) as PanelContainer
 	var enemy_info := lab.find_child("CombatEnemyInfo", true, false) as RichTextLabel
 	var confirm := lab.find_child("CombatConfirm", true, false) as Button
+	var lift_choice := lab.find_child("CombatLiftChoice", true, false) as HBoxContainer
+	var lift_throw_now := lab.find_child("CombatLiftThrowNow", true, false) as Button
+	var lift_keep_held := lab.find_child("CombatLiftKeepHeld", true, false) as Button
 	var console_input := lab.find_child("CombatConsoleInput", true, false) as LineEdit
 	var pause_overlay := lab.find_child("CombatPauseOverlay", true, false) as ColorRect
 	var mode_picker := lab.find_child("CombatEncounterMode", true, false) as OptionButton
@@ -117,6 +121,12 @@ func _run_and_quit() -> void:
 		errors.append("standalone lab did not expose six hero actions, three candidate element actions and three shared items")
 	elif actions.visible:
 		errors.append("3D HUD still shows the duplicate sidebar action list instead of radial commands")
+	if (
+		lift_choice == null or lift_throw_now == null or lift_keep_held == null
+		or lift_throw_now.text != "Бросить сейчас"
+		or lift_keep_held.text != "Оставить поднятой"
+	):
+		errors.append("lift target choice does not expose the two confirmed Russian commands")
 	var radial := lab.find_child("CombatRadialMenu", true, false) as Control
 	var drawer := lab.find_child("CombatCommandDrawer", true, false) as PanelContainer
 	if radial == null or not radial.visible or radial.get_child_count() < 7:
@@ -606,6 +616,42 @@ func _run_and_quit() -> void:
 		hud.call("_submit_console_command", "reset")
 		if Combat.outcome(hud.call("state_snapshot")) != "active":
 			errors.append("reset console command did not restore the encounter snapshot")
+	var hold_state := Grid.initial_state()
+	var hold_units := hold_state.get("units", {}) as Dictionary
+	for raw_id in hold_units:
+		var unit := hold_units[raw_id] as Dictionary
+		unit["hp"] = int(unit.get("maxHp", 1)) if str(raw_id) in ["mira", "wisp"] else 0
+		unit["nextAt"] = 0.0 if str(raw_id) == "mira" else 100.0
+		hold_units[raw_id] = unit
+	(hold_units["mira"] as Dictionary)["cell"] = Vector2i(2, 2)
+	(hold_units["wisp"] as Dictionary)["cell"] = Vector2i(3, 2)
+	hold_state["units"] = hold_units
+	_lock_hit_seed(hold_state, "lift_throw", "wisp")
+	hud.set("_state", hold_state)
+	hud.set("_encounter_mode", "grid")
+	hud.set("_field_view_mode", "3d")
+	hud.set("_pending_actor_id", "")
+	hud.call("_refresh")
+	hud.call("_select_action", "lift_throw")
+	hud.call("_select_target", "wisp")
+	await process_frame
+	await process_frame
+	var projected_units := world.get("_unit_roots") as Dictionary
+	var preview_carrier := projected_units.get("mira", null) as Node3D
+	var preview_held := projected_units.get("wisp", null) as Node3D
+	if lift_choice == null or not lift_choice.visible:
+		errors.append("selecting a lift target did not show Throw now / Keep held")
+	if preview_carrier == null or preview_held == null or preview_held.position.y <= preview_carrier.position.y:
+		errors.append("lift choice preview did not project the target above its carrier")
+	if lift_keep_held != null:
+		hud.call("_choose_lift_hold")
+		await process_frame
+		var held_snapshot := hud.call("state_snapshot") as Dictionary
+		if Combat.held_target_id(held_snapshot, "mira") != "wisp":
+			errors.append("Keep held UI did not commit the battle-only hold relation")
+		var held_commands := Combat.command_ids_for_current_actor(held_snapshot, false)
+		if held_commands != [Combat.HELD_THROW_COMMAND, Combat.HELD_LOWER_COMMAND, Combat.HELD_GUARD_COMMAND]:
+			errors.append("carrier UI did not switch to the three synthetic hold commands")
 	lab.free()
 	if not errors.is_empty():
 		printerr("FAIL combat lab")
@@ -620,6 +666,7 @@ func _run_and_quit() -> void:
 	print("  distant hostile targets preview an exact stop cell and Defend fallback without mutation")
 	print("  command focus previews range; confirm enters targeting; Cancel restores the source list")
 	print("  root radial + adaptive Skills/Magic/Items drawer preserve hidden outcomes")
+	print("  lift target choice previews elevation and commits battle-only holding")
 	print("  Esc/B step back through targeting and command menus before pause")
 	print("  E3 projects elevation and Frozen changes; 2D remains a diagnostic view")
 	quit(0)
