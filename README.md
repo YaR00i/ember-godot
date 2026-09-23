@@ -8,7 +8,8 @@
 > Проект находится в активной pre-alpha-разработке. Это репозиторий игры,
 > редакторов контента и проверяемого вертикального среза, а не готовый релиз.
 > Текущая реализованная точка всегда описана в
-> [`docs/EMBER_NOW.md`](docs/EMBER_NOW.md).
+> [`docs/EMBER_NOW.md`](docs/EMBER_NOW.md), а карта документации — в
+> [`docs/README.md`](docs/README.md).
 
 ## Какой будет игра
 
@@ -181,11 +182,15 @@ python tools/test_vox_axes.py
 
 ## Документация
 
+- [`docs/README.md`](docs/README.md) — карта документации и правила, что хранить где;
 - [`docs/EMBER_NOW.md`](docs/EMBER_NOW.md) — текущий milestone и ближайший шаг;
 - [`docs/EMBER_GAME_DESIGN.md`](docs/EMBER_GAME_DESIGN.md) — правила и содержание
   вертикального среза;
 - [`docs/EMBER_PRODUCT_PLAN.md`](docs/EMBER_PRODUCT_PLAN.md) — направление и
   порядок этапов D0–D5;
+- [`docs/EMBER_WORLD_AUTHORING_ARCHITECTURE.md`](docs/EMBER_WORLD_AUTHORING_ARCHITECTURE.md)
+  — 3D world brushes, World Layout, planners, биомы, массовая расстановка и
+  building massing;
 - [`docs/EMBER_TECHNICAL_HANDOFF.md`](docs/EMBER_TECHNICAL_HANDOFF.md) — текущие
   owners и технические контракты;
 - [`docs/EMBER_WORKFLOW.md`](docs/EMBER_WORKFLOW.md) — процесс Task Contract,
