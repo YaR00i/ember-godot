@@ -31,10 +31,11 @@ func _run() -> int:
 	print("  10x8 and 16x12 use the existing dense one-height Battlefield Resource")
 	print("  Jump, height-aware range, LOS, falls, push and lift/throw share preview/commit")
 	print("  enemy AI evaluates the same movement paths and lift/throw previews")
-	print("  16x12 average: reachable %.2f ms · path %.2f ms · approach %.2f ms · AI %.2f ms" % [
+	print("  16x12 average: reachable %.2f ms · path %.2f ms · approach %.2f ms · cells %.2f ms · AI %.2f ms" % [
 		float(profile.get("reachableUsec", 0.0)) / 1000.0,
 		float(profile.get("pathUsec", 0.0)) / 1000.0,
 		float(profile.get("approachUsec", 0.0)) / 1000.0,
+		float(profile.get("cellTargetUsec", 0.0)) / 1000.0,
 		float(profile.get("aiUsec", 0.0)) / 1000.0,
 	])
 	return 0
@@ -220,6 +221,13 @@ func _profile_large_field(errors: Array[String]) -> Dictionary:
 	for _index in approach_iterations:
 		Grid.approach_target_ids(state, "strike")
 	var approach_usec := float(Time.get_ticks_usec() - started) / float(approach_iterations)
+	var cell_state := state.duplicate(true)
+	_force_turn(cell_state, "orik")
+	var cell_iterations := 60
+	started = Time.get_ticks_usec()
+	for _index in cell_iterations:
+		Grid.approach_target_cells(cell_state, "ice_wall")
+	var cell_target_usec := float(Time.get_ticks_usec() - started) / float(cell_iterations)
 	var ai_state := state.duplicate(true)
 	_force_turn(ai_state, "warden")
 	_keep_alive(ai_state, PackedStringArray(["mira", "warden"]))
@@ -241,12 +249,15 @@ func _profile_large_field(errors: Array[String]) -> Dictionary:
 		errors.append("16x12 path query exceeded 5 ms average: %.1f us" % path_usec)
 	if approach_usec > 10000.0:
 		errors.append("16x12 approach query exceeded 10 ms average: %.1f us" % approach_usec)
+	if cell_target_usec > 20000.0:
+		errors.append("16x12 cell target query exceeded 20 ms average: %.1f us" % cell_target_usec)
 	if ai_usec > 50000.0:
 		errors.append("16x12 AI query exceeded 50 ms average: %.1f us" % ai_usec)
 	return {
 		"reachableUsec": reachable_usec,
 		"pathUsec": path_usec,
 		"approachUsec": approach_usec,
+		"cellTargetUsec": cell_target_usec,
 		"aiUsec": ai_usec,
 	}
 

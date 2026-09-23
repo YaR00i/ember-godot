@@ -4,6 +4,7 @@ extends GridContainer
 ## mutates combat state, so the lab controller keeps staged movement ownership.
 
 signal cell_chosen(cell: Vector2i, unit_id: String)
+signal cell_hovered(cell: Vector2i)
 
 const Combat = preload("res://scripts/prototypes/ember_combat_prototype.gd")
 const Grid = preload("res://scripts/prototypes/ember_combat_grid.gd")
@@ -80,7 +81,7 @@ func _rebuild() -> void:
 			var actual_occupant := Grid.occupant_id(_state, cell)
 			var staged_origin := has_staged_move and cell == active_cell
 			var staged_destination := has_staged_move and cell == _pending_cell
-			var display_occupant := active_id if staged_destination else actual_occupant
+			var display_occupant := active_id if staged_destination else Grid.action_occupant_id(_state, _selected_action, cell)
 			if staged_origin:
 				display_occupant = ""
 			var button := Button.new()
@@ -90,10 +91,7 @@ func _rebuild() -> void:
 			button.text = _cell_text(
 				cell, display_occupant, staged_origin, staged_destination, active_id
 			)
-			if cell == approach_destination:
-				button.text += "\n%s · СТОП" % ("◆ ЗАЩИТА" if approach_fallback else "⚔ АТАКА")
-			elif cell in approach_path:
-				button.text += "\n· маршрут"
+
 			button.tooltip_text = _cell_tooltip(
 				cell, display_occupant, staged_origin, staged_destination
 			)
@@ -138,8 +136,13 @@ func _rebuild() -> void:
 				button.disabled = cell not in secondary_cells
 			else:
 				button.disabled = display_occupant.is_empty() or display_occupant not in valid_targets
+			button.mouse_entered.connect(func(): cell_hovered.emit(cell))
+			button.focus_entered.connect(func(): cell_hovered.emit(cell))
 			button.pressed.connect(_emit_cell.bind(cell, display_occupant))
+			button.set_meta("cell", cell)
+			button.set_meta("base_text", button.text)
 			add_child(button)
+	update_action_preview(_preview, _selected_target, _target_cell, _secondary_cell)
 
 
 func _valid_targets_from_staged_state() -> Array[String]:
@@ -154,21 +157,27 @@ func _valid_targets_from_staged_state() -> Array[String]:
 
 
 func _valid_secondary_cells_from_staged_state() -> Array[Vector2i]:
+	if _preview.has("secondaryCells"):
+		var cells: Array[Vector2i] = []
+		cells.assign(_preview["secondaryCells"])
+		return cells
 	if _selected_target.is_empty():
 		return []
-	var staged := Grid.stage_move(_state, _pending_cell)
-	if staged.is_empty():
-		return []
-	return Combat.valid_secondary_cells(staged, _selected_action, _selected_target)
+	return Grid.approach_secondary_cells(
+		_state, _selected_action, _selected_target, _pending_cell
+	)
 
 
 func _valid_target_cells_from_staged_state() -> Array[Vector2i]:
 	if _selected_action.is_empty():
 		return []
-	var staged := Grid.stage_move(_state, _pending_cell)
-	if staged.is_empty():
-		return []
-	return Combat.valid_target_cells(staged, _selected_action)
+	if _preview.has("validTargetCells"):
+		var preview_cells: Array[Vector2i] = []
+		for raw_cell in _preview.get("validTargetCells", []):
+			if raw_cell is Vector2i:
+				preview_cells.append(raw_cell)
+		return preview_cells
+	return Grid.approach_target_cells(_state, _selected_action, _pending_cell)
 
 
 func _cell_text(
@@ -193,6 +202,9 @@ func _cell_text(
 		lines.append("HP %d/%d%s" % [
 			int(unit.get("hp", 0)), int(unit.get("maxHp", 0)), " · ждёт F" if staged_destination else "",
 		])
+		var held_id := Combat.held_target_id(_state, occupant_id)
+		if not held_id.is_empty():
+			lines.append("↑ удерживает: %s" % str(Combat.unit_definition(_state, held_id).get("name", held_id)))
 	else:
 		if "frozen" in cell_def.get("tags", []):
 			lines.append("Frozen%s" % (" · прогноз" if _is_changed_cell(cell) else ""))
@@ -288,3 +300,37 @@ func _style(background: Color, border: Color, width: int) -> StyleBoxFlat:
 	style.corner_radius_bottom_left = 5
 	style.corner_radius_bottom_right = 5
 	return style
+
+
+func update_action_preview(preview: Dictionary, target: String, cell: Vector2i, secondary: Vector2i) -> void:
+	_preview = preview
+	_selected_target = target
+	_target_cell = cell
+	_secondary_cell = secondary
+	for child in get_children():
+		var button := child as Button
+		if button == null:
+			continue
+		var at: Vector2i = button.get_meta("cell")
+		var border := _cell_color(at).lightened(0.28)
+		var suffix := ""
+		if at in preview.get("castCells", []):
+			border = Color("728fbf")
+		if at in preview.get("movementCells", []):
+			border = Color("82e6a3")
+		if at in preview.get("validTargetCells", []) or Grid.occupant_id(_state, at) in preview.get("validTargetIds", []):
+			border = Color("cfad55")
+		if at in preview.get("footprint", []):
+			border = Color("f4d06f")
+		if at in preview.get("approachPath", []):
+			border = Color("79d8a3")
+			suffix = "\n· маршрут"
+		if at == preview.get("approachDestination", Combat.INVALID_CELL):
+			var fallback := bool(preview.get("approachFallbackDefend", false))
+			border = Color("b5a5ff") if fallback else Color("79d8a3")
+			suffix = "\n◆ ЗАЩИТА · СТОП" if fallback else "\nДЕЙСТВИЕ · СТОП"
+		if at == preview.get("applicationCell", Combat.INVALID_CELL) and not bool(preview.get("ok", true)):
+			border = Color("f04455")
+		button.text = str(button.get_meta("base_text")) + suffix
+		button.add_theme_stylebox_override("normal", _style(_cell_color(at).darkened(0.26), border, 2))
+		button.add_theme_stylebox_override("disabled", _style(_cell_color(at).darkened(0.16), border, 1))

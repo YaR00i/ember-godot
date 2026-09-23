@@ -10,6 +10,9 @@ const ActionCatalog = preload("res://scripts/prototypes/ember_combat_action_cata
 const AiProfileCatalog = preload("res://scripts/prototypes/ember_combat_ai_profile_catalog.gd")
 const INVALID_CELL := Vector2i(-999999, -999999)
 const ITEM_COMMAND_PREFIX := "item:"
+const HELD_THROW_COMMAND := "__held_throw"
+const HELD_LOWER_COMMAND := "__held_lower"
+const HELD_GUARD_COMMAND := "__held_guard"
 
 const ZONES := [
 	{
@@ -42,6 +45,7 @@ static func initial_state(rng_seed: int = 1) -> Dictionary:
 		"turn": 1,
 		"rngSeed": rng_seed,
 		"units": units,
+		"holds": {},
 		"zones": ZONES.duplicate(true),
 		"log": ["E1 · Мокрый проводник: подготовьте Wet и используйте реакцию."],
 	}
@@ -52,6 +56,32 @@ static func action_definition(action_id: String) -> Dictionary:
 
 
 static func command_definition(state: Dictionary, command_id: String) -> Dictionary:
+	if command_id in [HELD_THROW_COMMAND, HELD_LOWER_COMMAND, HELD_GUARD_COMMAND]:
+		var carrier_id := current_unit_id(state)
+		if held_target_id(state, carrier_id).is_empty():
+			return {}
+		var definitions := {
+			HELD_THROW_COMMAND: {
+				"id": HELD_THROW_COMMAND, "name": "Бросить", "element": "physical",
+				"target": "cell", "effect": "held_throw", "mpCost": 0,
+				"delay": 100, "range": _held_throw_range(state, carrier_id),
+				"power": int(_held_lift_action(state, carrier_id).get("power", 0)),
+				"hint": "Бросить удерживаемую цель на выбранную клетку.",
+			},
+			HELD_LOWER_COMMAND: {
+				"id": HELD_LOWER_COMMAND, "name": "Опустить", "element": "support",
+				"target": "self", "effect": "held_lower", "power": 0, "mpCost": 0,
+				"delay": 100, "range": 0,
+				"hint": "Поставить удерживаемую цель на ближайшую допустимую клетку.",
+			},
+			HELD_GUARD_COMMAND: {
+				"id": HELD_GUARD_COMMAND, "name": "Удерживать и защищаться",
+				"element": "support", "target": "self", "effect": "held_guard",
+				"power": 0, "mpCost": 0, "delay": 100, "range": 0,
+				"hint": "Сохранить удержание и завершить ход в Защите.",
+			},
+		}
+		return (definitions[command_id] as Dictionary).duplicate(true)
 	if not is_item_command(command_id):
 		return action_definition(command_id)
 	var item_id := item_id_from_command(command_id)
@@ -131,6 +161,36 @@ static func combat_item_ids(state: Dictionary) -> Array[String]:
 	return result
 
 
+static func command_ids_for_current_actor(state: Dictionary, include_items := true) -> Array[String]:
+	var actor_id := current_unit_id(state)
+	if actor_id.is_empty():
+		return []
+	if not held_target_id(state, actor_id).is_empty():
+		return [HELD_THROW_COMMAND, HELD_LOWER_COMMAND, HELD_GUARD_COMMAND]
+	var result: Array[String] = []
+	for raw_id in unit_definition(state, actor_id).get("actions", []):
+		result.append(str(raw_id))
+	if include_items and str(unit_definition(state, actor_id).get("team", "")) == "hero":
+		result.append_array(combat_item_ids(state))
+	return result
+
+
+static func held_target_id(state: Dictionary, carrier_id: String) -> String:
+	return str((state.get("holds", {}) as Dictionary).get(carrier_id, ""))
+
+
+static func carrier_id_for(state: Dictionary, target_id: String) -> String:
+	for raw_carrier_id in state.get("holds", {}):
+		var carrier_id := str(raw_carrier_id)
+		if held_target_id(state, carrier_id) == target_id:
+			return carrier_id
+	return ""
+
+
+static func is_held(state: Dictionary, unit_id: String) -> bool:
+	return not carrier_id_for(state, unit_id).is_empty()
+
+
 static func with_inventory(
 	state: Dictionary,
 	inventory: Dictionary,
@@ -182,7 +242,7 @@ static func current_unit_id(state: Dictionary) -> String:
 	for raw_id in state.get("units", {}):
 		var unit_id := str(raw_id)
 		var unit: Dictionary = (state.get("units", {}) as Dictionary).get(unit_id, {})
-		if int(unit.get("hp", 0)) <= 0:
+		if int(unit.get("hp", 0)) <= 0 or is_held(state, unit_id):
 			continue
 		var next_at := float(unit.get("nextAt", 0.0))
 		if next_at < best_at or (is_equal_approx(next_at, best_at) and unit_id < best_id):
@@ -198,7 +258,7 @@ static func timeline(state: Dictionary, count: int = 8, pending_action_id: Strin
 	for raw_id in units:
 		var unit_id := str(raw_id)
 		var unit: Dictionary = units[unit_id]
-		if int(unit.get("hp", 0)) <= 0:
+		if int(unit.get("hp", 0)) <= 0 or is_held(state, unit_id):
 			continue
 		times[unit_id] = float(unit.get("nextAt", 0.0))
 		speeds[unit_id] = maxi(1, int(unit.get("speed", 10)))
@@ -249,11 +309,13 @@ static func _unit_target_ids(
 	var actor := unit_definition(state, actor_id)
 	var action := command_definition(state, action_id)
 	var item_command := is_item_command(action_id)
+	var synthetic_command := action_id in [HELD_LOWER_COMMAND, HELD_GUARD_COMMAND]
 	if (
 		actor.is_empty()
 		or action.is_empty()
-		or (not item_command and action_id not in actor.get("actions", []))
+		or (not item_command and not synthetic_command and action_id not in actor.get("actions", []))
 		or (item_command and str(actor.get("team", "")) != "hero")
+		or (not held_target_id(state, actor_id).is_empty() and not synthetic_command)
 	):
 		return result
 	if item_command:
@@ -273,6 +335,8 @@ static func _unit_target_ids(
 	for raw_id in state.get("units", {}):
 		var target_id := str(raw_id)
 		var target := unit_definition(state, target_id)
+		if is_held(state, target_id):
+			continue
 		var same_team := str(target.get("team", "")) == str(actor.get("team", ""))
 		if item_command:
 			if not same_team or not _item_has_effect_for_target(action, target):
@@ -318,16 +382,26 @@ static func has_valid_target(state: Dictionary, action_id: String) -> bool:
 
 
 static func valid_target_cells(state: Dictionary, action_id: String) -> Array[Vector2i]:
+	return _target_cells(state, action_id, true)
+
+
+static func eligible_target_cells(state: Dictionary, action_id: String) -> Array[Vector2i]:
+	return _target_cells(state, action_id, false)
+
+
+static func _target_cells(state: Dictionary, action_id: String, check_position: bool) -> Array[Vector2i]:
 	var result: Array[Vector2i] = []
 	var actor_id := current_unit_id(state)
 	var actor := unit_definition(state, actor_id)
 	var action := command_definition(state, action_id)
+	var synthetic_throw := action_id == HELD_THROW_COMMAND
 	if (
 		actor.is_empty()
 		or action.is_empty()
 		or str(action.get("target", "")) != "cell"
 		or not state.has("grid")
-		or action_id not in actor.get("actions", [])
+		or (not synthetic_throw and action_id not in actor.get("actions", []))
+		or (not held_target_id(state, actor_id).is_empty() and not synthetic_throw)
 		or int(actor.get("mp", 0)) < int(action.get("mpCost", 0))
 		or not duo_partner_unavailable_reason(state, action_id).is_empty()
 	):
@@ -337,9 +411,15 @@ static func valid_target_cells(state: Dictionary, action_id: String) -> Array[Ve
 	for y in int(grid.get("height", 0)):
 		for x in int(grid.get("width", 0)):
 			var cell := Vector2i(x, y)
+			if synthetic_throw:
+				if _release_cell_available(state, actor_id, cell) and (
+					not check_position or Terrain.action_distance(state, actor_cell, cell) <= int(action.get("range", 0))
+				):
+					result.append(cell)
+				continue
 			if (
-				Terrain.action_distance(state, actor_cell, cell) > int(action.get("range", 0))
-				or not Terrain.has_line_of_sight(state, actor_cell, cell)
+				(check_position and Terrain.action_distance(state, actor_cell, cell) > int(action.get("range", 0)))
+				or (check_position and not Terrain.has_line_of_sight(state, actor_cell, cell))
 				or not _effect_steps_apply_to_cell(state, action, cell)
 			):
 				continue
@@ -440,6 +520,7 @@ static func preview(
 	target_id: String,
 	secondary_cell: Vector2i = INVALID_CELL,
 	target_cell: Vector2i = INVALID_CELL,
+	lift_choice: String = "throw",
 ) -> Dictionary:
 	var actor_id := current_unit_id(state)
 	var actor := unit_definition(state, actor_id)
@@ -451,8 +532,14 @@ static func preview(
 	var target := unit_definition(state, resolved_target_id)
 	if actor.is_empty() or action.is_empty() or (not cell_target and target.is_empty()):
 		return _invalid_preview("Не выбраны действие или цель.")
+	var synthetic_command := action_id in [HELD_THROW_COMMAND, HELD_LOWER_COMMAND, HELD_GUARD_COMMAND]
 	if (
-		(not is_item_command(action_id) and action_id not in actor.get("actions", []))
+		(
+			not is_item_command(action_id)
+			and not synthetic_command
+			and action_id not in actor.get("actions", [])
+		)
+		or (not held_target_id(state, actor_id).is_empty() and not synthetic_command)
 		or (
 			cell_target
 			and target_cell not in valid_target_cells(state, action_id)
@@ -466,6 +553,7 @@ static func preview(
 	var effect_id := str(action.get("effect", "damage"))
 	if (
 		effect_id == "lift_throw"
+		and lift_choice not in ["hold", "lower"]
 		and not _secondary_cell_available(state, action, target, secondary_cell)
 	):
 		return _invalid_preview("Выберите допустимую клетку приземления.")
@@ -476,6 +564,7 @@ static func preview(
 	var result := {
 		"ok": true,
 		"stateTurn": int(state.get("turn", 1)),
+		"stateHash": hash(state),
 		"actorId": actor_id,
 		"actionId": action_id,
 		"targetId": resolved_target_id,
@@ -639,6 +728,32 @@ static func preview(
 			_set_status(result, target_id, "guard", 2 if target_id == actor_id else 1)
 			result["reaction"] = "Оборона"
 			(result["notes"] as Array).append("Ход завершается без атаки.")
+		"held_guard":
+			_set_status(result, actor_id, "guard", 2)
+			result["reaction"] = "Удержание и оборона"
+			(result["notes"] as Array).append("Цель остаётся поднятой; носитель защищается.")
+		"held_lower":
+			var lower_cell := _nearest_release_cell(state, actor_id)
+			if lower_cell == INVALID_CELL:
+				return _invalid_preview("Нет допустимой клетки, чтобы опустить цель.")
+			result["releaseHold"] = {"carrierId": actor_id, "targetId": held_target_id(state, actor_id)}
+			(result["moves"] as Dictionary)[held_target_id(state, actor_id)] = lower_cell
+			result["reaction"] = "Цель опущена"
+			(result["notes"] as Array).append("Освобождение: %s." % _cell_label(lower_cell))
+		"held_throw":
+			var held_id := held_target_id(state, actor_id)
+			var held_target := unit_definition(state, held_id)
+			result["releaseHold"] = {"carrierId": actor_id, "targetId": held_id}
+			(result["moves"] as Dictionary)[held_id] = target_cell
+			result["throwPath"] = [actor.get("cell", INVALID_CELL), target_cell]
+			result["reaction"] = "Бросок удерживаемой цели"
+			if str(actor.get("team", "")) != str(held_target.get("team", "")) and power > 0:
+				_add_damage(result, held_id, power)
+			var held_origin: Vector2i = actor.get("cell", INVALID_CELL)
+			var held_fall := Terrain.fall_damage(state, held_origin, target_cell)
+			if held_fall > 0:
+				_add_fixed_damage(result, held_id, held_fall)
+				result["fallDamage"] = held_fall
 		"duo_pulse":
 			result["reaction"] = "Грозовая связка"
 			for raw_id in state.get("units", {}):
@@ -668,28 +783,39 @@ static func preview(
 				(result["notes"] as Array).append("Пар возвращает связанным панелям Wet.")
 		"lift_throw":
 			var target_origin: Vector2i = target.get("cell", INVALID_CELL)
-			var moves: Dictionary = result.get("moves", {})
-			moves[target_id] = secondary_cell
-			result["moves"] = moves
-			result["throwPath"] = [target_origin, secondary_cell]
-			result["reaction"] = "Подъём и бросок"
-			if str(actor.get("team", "")) != str(target.get("team", "")) and power > 0:
-				_add_damage(result, target_id, power)
-			var fall := Terrain.fall_damage(state, target_origin, secondary_cell)
-			if fall > 0:
-				_add_fixed_damage(result, target_id, fall)
-				result["fallDamage"] = int(result.get("fallDamage", 0)) + fall
+			if lift_choice == "lower":
+				(result["moves"] as Dictionary)[target_id] = target_origin
+				result["reaction"] = "Цель опущена"
+			elif lift_choice == "hold":
+				_set_status(result, actor_id, "guard", 2)
+				result["setHold"] = {"carrierId": actor_id, "targetId": target_id}
+				result["reaction"] = "Цель оставлена поднятой"
+				(result["notes"] as Array).append("Цель больше не занимает исходную клетку.")
+			else:
+				var moves: Dictionary = result.get("moves", {})
+				moves[target_id] = secondary_cell
+				result["moves"] = moves
+				result["throwPath"] = [target_origin, secondary_cell]
+				result["reaction"] = "Подъём и бросок"
+				if str(actor.get("team", "")) != str(target.get("team", "")) and power > 0:
+					_add_damage(result, target_id, power)
+				var fall := Terrain.fall_damage(state, target_origin, secondary_cell)
+				if fall > 0:
+					_add_fixed_damage(result, target_id, fall)
+					result["fallDamage"] = int(result.get("fallDamage", 0)) + fall
+					(result["notes"] as Array).append(
+						"Падение с h%d на h%d наносит %d HP." % [
+							Terrain.elevation(state, target_origin),
+							Terrain.elevation(state, secondary_cell),
+							fall,
+						]
+					)
 				(result["notes"] as Array).append(
-					"Падение с h%d на h%d наносит %d HP." % [
-						Terrain.elevation(state, target_origin),
-						Terrain.elevation(state, secondary_cell),
-						fall,
-					]
+					"Приземление: %s." % _cell_label(secondary_cell)
 				)
-			(result["notes"] as Array).append(
-				"Приземление: %s." % _cell_label(secondary_cell)
-			)
 	_apply_authored_effects(state, result, actor, target, action, target_cell)
+	if action_id not in [HELD_THROW_COMMAND, HELD_LOWER_COMMAND]:
+		_strip_held_effects(state, result)
 	_finalize_action_damage(state, result, actor, action)
 	_apply_guard_preview(state, result)
 	result["summary"] = describe_preview(state, result)
@@ -700,6 +826,8 @@ static func commit(state: Dictionary, resolved: Dictionary) -> Dictionary:
 	if not bool(resolved.get("ok", false)):
 		return state.duplicate(true)
 	if resolved.has("stateTurn") and int(resolved.get("stateTurn", -1)) != int(state.get("turn", 1)):
+		return state.duplicate(true)
+	if resolved.has("stateHash") and int(resolved.get("stateHash", 0)) != hash(state):
 		return state.duplicate(true)
 	var partner_id := str(resolved.get("partnerId", ""))
 	if not partner_id.is_empty():
@@ -780,6 +908,21 @@ static func commit(state: Dictionary, resolved: Dictionary) -> Dictionary:
 			else:
 				unit["zone"] = int(destination)
 			units[unit_id] = unit
+	var holds := (result.get("holds", {}) as Dictionary).duplicate(true)
+	var released_target_id := ""
+	var set_hold := resolved.get("setHold", {}) as Dictionary
+	if not set_hold.is_empty():
+		var carrier_id := str(set_hold.get("carrierId", ""))
+		var held_id := str(set_hold.get("targetId", ""))
+		if units.has(carrier_id) and units.has(held_id):
+			holds[carrier_id] = held_id
+			var held_unit: Dictionary = units[held_id]
+			held_unit.erase("cell")
+			units[held_id] = held_unit
+	var release_hold := resolved.get("releaseHold", {}) as Dictionary
+	if not release_hold.is_empty():
+		released_target_id = str(release_hold.get("targetId", ""))
+		holds.erase(str(release_hold.get("carrierId", "")))
 	result = Terrain.apply_cell_changes(result, resolved.get("cellChanges", {}))
 	if not inventory_cost.is_empty():
 		var inventory := (result.get("inventory", {}) as Dictionary).duplicate(true)
@@ -812,6 +955,24 @@ static func commit(state: Dictionary, resolved: Dictionary) -> Dictionary:
 			maxi(1, int(partner.get("speed", 10))),
 		)
 		units[partner_id] = partner
+	_normalize_held_timeline(units, holds)
+	if not released_target_id.is_empty():
+		var still_held_ids: Array[String] = []
+		for raw_held_id in holds.values():
+			still_held_ids.append(str(raw_held_id))
+		_advance_unit_past_current(units, released_target_id, still_held_ids)
+	for raw_carrier_id in holds.keys():
+		var carrier_id := str(raw_carrier_id)
+		if not units.has(carrier_id) or int((units[carrier_id] as Dictionary).get("hp", 0)) > 0:
+			continue
+		var held_id := str(holds.get(carrier_id, ""))
+		var release_cell := _nearest_release_cell_for_units(result, units, carrier_id, held_id)
+		if units.has(held_id) and release_cell != INVALID_CELL:
+			var held_unit: Dictionary = units[held_id]
+			held_unit["cell"] = release_cell
+			units[held_id] = held_unit
+		holds.erase(carrier_id)
+	result["holds"] = holds
 	result["units"] = units
 	result["turn"] = int(result.get("turn", 1)) + 1
 	var log: Array = result.get("log", []).duplicate()
@@ -837,7 +998,11 @@ static func enemy_command(
 			"lowHpThresholdPercent": 0, "lowHpBehavior": "keep_fighting",
 			"positioningBehavior": "move_to_action",
 		}
-	var low_hp_command := _ai_low_hp_command(state, actor, profile)
+	var low_hp_command := (
+		{}
+		if not held_target_id(state, actor_id).is_empty()
+		else _ai_low_hp_command(state, actor, profile)
+	)
 	if bool(low_hp_command.get("ok", false)):
 		low_hp_command["aiProfileId"] = profile_id
 		return low_hp_command
@@ -852,7 +1017,7 @@ static func enemy_command(
 	):
 		positions = position_options
 	var candidates: Array[Dictionary] = []
-	var actions: Array = actor.get("actions", [])
+	var actions: Array[String] = command_ids_for_current_actor(state, false)
 	var origin: Vector2i = actor.get("cell", Vector2i.ZERO)
 	for option in positions:
 		var positioned_state: Dictionary = option.get("state", state)
@@ -861,7 +1026,7 @@ static func enemy_command(
 		var movement_cost := maxi(0, int(option.get("movementCost", 0)))
 		for action_index in actions.size():
 			var action_id := str(actions[action_index])
-			var action := action_definition(action_id)
+			var action := command_definition(positioned_state, action_id)
 			if action.is_empty():
 				continue
 			if str(action.get("target", "")) == "cell":
@@ -1732,6 +1897,12 @@ static func _change_linked_surface(
 	add_tags: Array[String],
 	remove_tags: Array[String],
 ) -> void:
+	var affected := linked_surface_cells(state, origin)
+	for cell in affected:
+		_set_cell_tags(state, resolved, cell, add_tags, remove_tags)
+
+
+static func linked_surface_cells(state: Dictionary, origin: Vector2i) -> Array[Vector2i]:
 	var origin_group := str(_grid_cell_definition(state, origin).get("group", ""))
 	var affected: Array[Vector2i] = []
 	if origin_group.is_empty():
@@ -1745,8 +1916,7 @@ static func _change_linked_surface(
 			var parts := str(raw_key).split(":")
 			if parts.size() == 2:
 				affected.append(Vector2i(int(parts[0]), int(parts[1])))
-	for cell in affected:
-		_set_cell_tags(state, resolved, cell, add_tags, remove_tags)
+	return affected
 
 
 static func _set_cell_tags(
@@ -2180,6 +2350,192 @@ static func _decay_statuses(raw: Variant) -> Dictionary:
 		if remaining > 0:
 			result[str(raw_id)] = remaining
 	return result
+
+
+## Geometric intent only: never read resolved damage, hit, crit or cell deltas.
+static func target_unavailable_reason(state: Dictionary, action_id: String, cell: Vector2i, target_id: String) -> String:
+	var actor_id := current_unit_id(state)
+	var actor := unit_definition(state, actor_id)
+	var action := command_definition(state, action_id)
+	if int(actor.get("mp", 0)) < int(action.get("mpCost", 0)):
+		return "Недостаточно MP."
+	if not held_target_id(state, actor_id).is_empty():
+		return "Носитель может только бросить, опустить или удерживать и защищаться."
+	var partner_reason := duo_partner_unavailable_reason(state, action_id)
+	if not partner_reason.is_empty():
+		return partner_reason
+	if str(action.get("target", "")) == "cell":
+		return "Содержимое, препятствие или теги клетки не подходят этому действию."
+	if target_id.is_empty():
+		return "На клетке нет подходящего бойца."
+	var target := unit_definition(state, target_id)
+	if is_held(state, target_id):
+		return "Поднятую цель нельзя выбирать."
+	if str(action.get("effect", "")) == "lift_throw" and int(target.get("weightClass", 1)) > int(action.get("maxLiftWeight", 0)):
+		return "Цель слишком тяжёлая для подъёма."
+	if str(action.get("target", "")) == "enemy" and str(actor.get("team", "")) == str(target.get("team", "")):
+		return "Действие применяется к врагу."
+	if str(action.get("target", "")) == "ally" and str(actor.get("team", "")) != str(target.get("team", "")):
+		return "Действие применяется к союзнику."
+	return "Состояние цели или условия действия не позволяют применить его."
+
+
+static func action_footprint(state: Dictionary, action_id: String, center: Vector2i) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	if not _grid_inside(state, center):
+		return result
+	result.append(center)
+	var action := command_definition(state, action_id)
+	var preset := str(action.get("effect", ""))
+	var tags: Array = _grid_cell_definition(state, center).get("tags", [])
+	if (preset == "chill" and "wet" in tags) or (preset in ["kindle", "steam_breach"] and "frozen" in tags):
+		result = linked_surface_cells(state, center)
+	if preset in ["spark", "duo_pulse"]:
+		var target := unit_definition(state, _grid_occupant(state, center))
+		var actor := unit_definition(state, current_unit_id(state))
+		if not target.is_empty() and _is_wet(state, target):
+			for raw_id in state.get("units", {}):
+				var unit := unit_definition(state, str(raw_id))
+				if is_held(state, str(raw_id)) or int(unit.get("hp", 0)) <= 0 or str(unit.get("team", "")) == str(actor.get("team", "")):
+					continue
+				if _shares_conduction_area(state, target, unit) and _is_wet(state, unit) and unit.has("cell") and unit["cell"] not in result:
+					result.append(unit["cell"])
+	for raw_effect in action.get("effects", []):
+		var effect := raw_effect as Dictionary
+		if str(effect.get("operation", "")) != "spread":
+			continue
+		var grid: Dictionary = state.get("grid", {})
+		for y in int(grid.get("height", 0)):
+			for x in int(grid.get("width", 0)):
+				var cell := Vector2i(x, y)
+				if cell not in result and Terrain.action_distance(state, center, cell) <= maxi(1, int(effect.get("spreadRadius", 1))):
+					result.append(cell)
+	return result
+
+
+static func action_moves_actor(action: Dictionary) -> bool:
+	for raw_effect in action.get("effects", []):
+		if str((raw_effect as Dictionary).get("operation", "")) == "move_actor":
+			return true
+	return false
+
+
+static func _held_throw_range(state: Dictionary, carrier_id: String) -> int:
+	return maxi(1, int(_held_lift_action(state, carrier_id).get("throwRange", 1)))
+
+
+static func _held_lift_action(state: Dictionary, carrier_id: String) -> Dictionary:
+	var carrier := unit_definition(state, carrier_id)
+	for raw_action_id in carrier.get("actions", []):
+		var action := action_definition(str(raw_action_id))
+		if str(action.get("effect", "")) == "lift_throw":
+			return action
+	return {}
+
+
+static func _release_cell_available(state: Dictionary, carrier_id: String, cell: Vector2i) -> bool:
+	if (
+		not _grid_inside(state, cell)
+		or bool(_grid_cell_definition(state, cell).get("blocked", true))
+		or _is_grid_focus_cell(state, cell)
+	):
+		return false
+	var held_id := held_target_id(state, carrier_id)
+	for raw_id in state.get("units", {}):
+		var unit_id := str(raw_id)
+		if unit_id == held_id:
+			continue
+		var unit := unit_definition(state, unit_id)
+		if int(unit.get("hp", 0)) > 0 and unit.get("cell", INVALID_CELL) == cell:
+			return false
+	return true
+
+
+static func _nearest_release_cell(state: Dictionary, carrier_id: String) -> Vector2i:
+	return _nearest_release_cell_for_units(
+		state, state.get("units", {}) as Dictionary, carrier_id, held_target_id(state, carrier_id)
+	)
+
+
+static func _nearest_release_cell_for_units(
+	state: Dictionary,
+	units: Dictionary,
+	carrier_id: String,
+	held_id: String,
+) -> Vector2i:
+	if not units.has(carrier_id):
+		return INVALID_CELL
+	var origin: Vector2i = (units[carrier_id] as Dictionary).get("cell", INVALID_CELL)
+	if origin == INVALID_CELL:
+		return INVALID_CELL
+	var grid := state.get("grid", {}) as Dictionary
+	var candidates: Array[Vector2i] = []
+	for y in int(grid.get("height", 0)):
+		for x in int(grid.get("width", 0)):
+			var cell := Vector2i(x, y)
+			if bool(_grid_cell_definition(state, cell).get("blocked", true)) or _is_grid_focus_cell(state, cell):
+				continue
+			var occupied := false
+			for raw_id in units:
+				var unit_id := str(raw_id)
+				if unit_id in [carrier_id, held_id]:
+					continue
+				var unit := units[unit_id] as Dictionary
+				if int(unit.get("hp", 0)) > 0 and unit.get("cell", INVALID_CELL) == cell:
+					occupied = true
+					break
+			var carrier_dead := int((units[carrier_id] as Dictionary).get("hp", 0)) <= 0
+			if not occupied and (cell != origin or carrier_dead):
+				candidates.append(cell)
+	candidates.sort_custom(func(left: Vector2i, right: Vector2i) -> bool:
+		var left_distance := absi(left.x - origin.x) + absi(left.y - origin.y)
+		var right_distance := absi(right.x - origin.x) + absi(right.y - origin.y)
+		return left_distance < right_distance or (
+			left_distance == right_distance and _cell_label(left) < _cell_label(right)
+		)
+	)
+	return candidates[0] if not candidates.is_empty() else INVALID_CELL
+
+
+static func _strip_held_effects(state: Dictionary, resolved: Dictionary) -> void:
+	for key in ["damage", "fixedDamage", "setStatuses", "removeStatuses", "restoreHp", "restoreMp", "moves"]:
+		var values := resolved.get(key, {}) as Dictionary
+		for raw_id in values.keys():
+			if is_held(state, str(raw_id)):
+				values.erase(raw_id)
+		resolved[key] = values
+
+
+static func _normalize_held_timeline(units: Dictionary, holds: Dictionary) -> void:
+	var held_ids: Array[String] = []
+	for raw_held_id in holds.values():
+		held_ids.append(str(raw_held_id))
+	for raw_carrier_id in holds:
+		_advance_unit_past_current(units, str(holds[raw_carrier_id]), held_ids)
+
+
+static func _advance_unit_past_current(
+	units: Dictionary,
+	unit_id: String,
+	ignored_ids: Array[String] = [],
+) -> void:
+	if not units.has(unit_id):
+		return
+	var current_at := INF
+	for raw_id in units:
+		var other_id := str(raw_id)
+		if other_id == unit_id or other_id in ignored_ids:
+			continue
+		var other := units[other_id] as Dictionary
+		if int(other.get("hp", 0)) > 0:
+			current_at = minf(current_at, float(other.get("nextAt", 0.0)))
+	if is_inf(current_at):
+		return
+	var unit := units[unit_id] as Dictionary
+	var delay := _delay_for({"delay": 100}, maxi(1, int(unit.get("speed", 10))))
+	while float(unit.get("nextAt", 0.0)) <= current_at:
+		unit["nextAt"] = float(unit.get("nextAt", 0.0)) + delay
+	units[unit_id] = unit
 
 
 static func _invalid_preview(message: String) -> Dictionary:

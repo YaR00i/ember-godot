@@ -4,6 +4,7 @@ extends SubViewportContainer
 ## It instantiates the same standard Node3D world used by combat_lab.tscn.
 
 signal cell_chosen(cell: Vector2i, unit_id: String)
+signal cell_hovered(cell: Vector2i)
 
 const WorldScene := preload("res://scenes/prototypes/combat_grid_3d_world.tscn")
 const ITEM_NEUTRAL := 0
@@ -31,6 +32,7 @@ func _ready() -> void:
 	add_child(_viewport)
 	_world = WorldScene.instantiate() as Node3D
 	_world.cell_chosen.connect(_forward_cell_chosen)
+	_world.cell_hovered.connect(func(cell: Vector2i): cell_hovered.emit(cell))
 	_viewport.add_child(_world)
 
 
@@ -78,6 +80,9 @@ func _gui_input(event: InputEvent) -> void:
 	if bool(_world.call("handle_camera_input", event)):
 		accept_event()
 		return
+	if event is InputEventMouseMotion:
+		_world.call("hover_cell_at", event.position)
+		return
 	if not (event is InputEventMouseButton):
 		return
 	if event.button_index == MOUSE_BUTTON_LEFT and event.pressed and bool(_world.call("choose_cell_at", event.position)):
@@ -86,3 +91,7 @@ func _gui_input(event: InputEvent) -> void:
 
 func _forward_cell_chosen(cell: Vector2i, unit_id: String) -> void:
 	cell_chosen.emit(cell, unit_id)
+
+
+func update_action_preview(preview: Dictionary, target: String, cell: Vector2i, secondary: Vector2i) -> void:
+	_world.call("update_action_preview", preview, target, cell, secondary)

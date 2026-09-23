@@ -80,6 +80,9 @@ static func movement_field(state: Dictionary, unit_id: String) -> Dictionary:
 	var unit := Combat.unit_definition(state, unit_id)
 	if unit.is_empty() or not unit.has("cell"):
 		return {"costs": {}, "previous": {}}
+	if not Combat.held_target_id(state, unit_id).is_empty():
+		var origin: Vector2i = unit.get("cell", Vector2i.ZERO)
+		return {"costs": {origin: 0}, "previous": {}}
 	var max_distance := maxi(0, int(unit.get("moveRange", 0)))
 	return _navigation_field(state, unit_id, max_distance)
 
@@ -199,7 +202,32 @@ static func enemy_command(state: Dictionary) -> Dictionary:
 			"movementPath": path,
 			"fallDamage": Terrain.path_fall_damage(state, path),
 		})
-	return Combat.enemy_command(state, options)
+	var resolved := Combat.enemy_command(state, options)
+	if bool(resolved.get("ok", false)):
+		resolved["stateHash"] = hash(state)
+		var action_id := str(resolved.get("actionId", ""))
+		if not action_id.is_empty():
+			var action := Combat.command_definition(state, action_id)
+			var destination: Vector2i = (resolved.get("moves", {}) as Dictionary).get(actor_id, actor.get("cell", Combat.INVALID_CELL))
+			if Combat.action_moves_actor(action):
+				destination = actor.get("cell", Combat.INVALID_CELL)
+			var center: Vector2i = resolved.get("targetCell", Combat.INVALID_CELL)
+			if str(action.get("target", "")) != "cell":
+				center = Combat.unit_definition(state, str(resolved.get("targetId", ""))).get("cell", Combat.INVALID_CELL)
+			var context := {
+				"stateHash": hash(state), "actionId": action_id, "destination": destination, "fixedDestination": true,
+				"eligibleIds": Combat.eligible_target_ids(state, action_id), "eligibleCells": Combat.eligible_target_cells(state, action_id),
+			}
+			var plan := action_plan(state, action_id, center, destination, resolved.get("secondaryCell", Combat.INVALID_CELL), "throw", context)
+			var unified: Dictionary = plan.get("resolved", {})
+			if not bool(unified.get("ok", false)):
+				return {"ok": false, "error": plan.get("reason", "")}
+			unified["aiProfileId"] = resolved.get("aiProfileId", "")
+			if bool(resolved.get("approachFallbackDefend", false)):
+				for key in ["approachTargetId", "approachDestination", "approachPath", "approachWillExecute", "approachFallbackDefend", "summary"]:
+					unified[key] = resolved.get(key)
+			resolved = unified
+	return resolved
 
 
 static func stage_move(state: Dictionary, destination: Vector2i) -> Dictionary:
@@ -222,6 +250,7 @@ static func command_preview(
 	destination: Vector2i,
 	secondary_cell: Vector2i = Combat.INVALID_CELL,
 	target_cell: Vector2i = Combat.INVALID_CELL,
+	lift_choice: String = "throw",
 ) -> Dictionary:
 	var actor_id := Combat.current_unit_id(state)
 	var actor := Combat.unit_definition(state, actor_id)
@@ -229,9 +258,12 @@ static func command_preview(
 	var staged := stage_move(state, destination)
 	if staged.is_empty():
 		return {"ok": false, "error": "Клетка недоступна для перемещения.", "summary": "Клетка недоступна для перемещения."}
-	var resolved := Combat.preview(staged, action_id, target_id, secondary_cell, target_cell)
+	var resolved := Combat.preview(staged, action_id, target_id, secondary_cell, target_cell, lift_choice)
 	if not bool(resolved.get("ok", false)):
 		return resolved
+	# Commit receives the unstaged battle snapshot; movement is already encoded in
+	# the resolved command, so stale validation must bind to that owner snapshot.
+	resolved["stateHash"] = hash(state)
 	if destination != origin:
 		var path := movement_path(state, actor_id, destination)
 		var moves: Dictionary = resolved.get("moves", {})
@@ -255,15 +287,131 @@ static func command_preview(
 	return resolved
 
 
+## Ephemeral cell plan, never serialized. The resolved command stays private to
+## the controller; public projections receive only deterministic intent fields.
+static func action_plan_context(state: Dictionary, action_id: String, destination: Vector2i = Combat.INVALID_CELL, fixed_destination: bool = false) -> Dictionary:
+	var actor_id := Combat.current_unit_id(state)
+	var origin: Vector2i = Combat.unit_definition(state, actor_id).get("cell", Combat.INVALID_CELL)
+	var movement := movement_field(state, actor_id)
+	var action := Combat.command_definition(state, action_id)
+	var origins: Array = (movement.get("costs", {}) as Dictionary).keys()
+	if destination != Combat.INVALID_CELL and (fixed_destination or destination != origin):
+		origins = [destination] if destination in origins else []
+	elif not supports_auto_approach(state, action_id):
+		origins = [origin]
+	var envelope: Array[Vector2i] = []
+	var grid: Dictionary = state.get("grid", {})
+	for y in int(grid.get("height", 0)):
+		for x in int(grid.get("width", 0)):
+			var cell := Vector2i(x, y)
+			for cast_origin in origins:
+				if Terrain.action_distance(state, cast_origin, cell) <= int(action.get("range", 0)) and (action_id == Combat.HELD_THROW_COMMAND or Terrain.has_line_of_sight(state, cast_origin, cell)):
+					envelope.append(cell)
+					break
+	return {
+		"stateHash": hash(state), "actionId": action_id, "destination": destination, "fixedDestination": fixed_destination,
+		"movementField": movement, "navigationField": _navigation_field(state, actor_id),
+		"movementCells": (movement.get("costs", {}) as Dictionary).keys(),
+		"castCells": envelope,
+		"eligibleIds": Combat.eligible_target_ids(state, action_id),
+		"eligibleCells": Combat.eligible_target_cells(state, action_id),
+	}
+
+
+static func action_plan(
+	state: Dictionary, action_id: String, cell: Vector2i,
+	destination: Vector2i = Combat.INVALID_CELL,
+	secondary_cell: Vector2i = Combat.INVALID_CELL, lift_choice: String = "hold",
+	context: Dictionary = {},
+) -> Dictionary:
+	if context.get("stateHash", 0) != hash(state) or context.get("actionId", "") != action_id or context.get("destination", Combat.INVALID_CELL) != destination:
+		context = action_plan_context(state, action_id, destination, bool(context.get("fixedDestination", false)))
+	var actor_id := Combat.current_unit_id(state)
+	var origin: Vector2i = Combat.unit_definition(state, actor_id).get("cell", Combat.INVALID_CELL)
+	var action := Combat.command_definition(state, action_id)
+	var staged := stage_move(state, destination)
+	var selection := state if staged.is_empty() else staged
+	if str(action.get("target", "")) == "self":
+		cell = Combat.unit_definition(selection, actor_id).get("cell", origin)
+	var target_id := action_occupant_id(selection, action_id, cell)
+	var cell_target := str(action.get("target", "")) == "cell"
+	var plan := {
+		"stateHash": hash(state), "actorId": actor_id, "requestedActionId": action_id, "originCell": origin,
+		"applicationCell": cell, "occupantId": target_id, "cellContent": cell_definition(state, cell),
+		"destination": origin, "movementPath": [origin], "footprint": [],
+		"ok": false, "willExecute": false, "fallbackDefend": false,
+		"commitRule": "unavailable", "reason": "Эта клетка недоступна для выбранного действия.",
+		"resolved": {},
+	}
+	if action_id == "__move":
+		var path := movement_path(state, actor_id, cell)
+		plan["ok"] = not path.is_empty() and not is_focus_cell(state, cell)
+		plan["willExecute"] = plan["ok"]
+		plan["destination"] = cell if plan["ok"] else origin
+		plan["movementPath"] = path
+		plan["reason"] = "" if plan["ok"] else "Клетка недоступна для перемещения."
+		plan["commitRule"] = "stage_move" if plan["ok"] else "unavailable"
+		plan["resolved"] = {"ok": plan["ok"], "approachDestination": plan["destination"], "approachPath": path, "approachWillExecute": plan["ok"]}
+		return plan
+	if not is_inside(state, cell) or action.is_empty():
+		return plan
+	plan["effectCell"] = secondary_cell if str(action.get("effect", "")) == "lift_throw" and lift_choice == "throw" else cell
+	plan["footprint"] = Combat.action_footprint(selection, action_id, plan["effectCell"])
+	var approach := {}
+	if supports_auto_approach(state, action_id):
+		if (cell_target and cell not in context.get("eligibleCells", [])) or (not cell_target and target_id not in context.get("eligibleIds", [])):
+			plan["reason"] = Combat.target_unavailable_reason(selection, action_id, cell, target_id)
+			return plan
+		if bool(context.get("fixedDestination", false)):
+			approach = {"destination": destination, "willExecute": (
+				cell in Combat.valid_target_cells(selection, action_id) if cell_target
+				else target_id in Combat.valid_target_ids(selection, action_id)
+			)} if not staged.is_empty() else {}
+		else:
+			approach = _approach_plan_to_cell_with_field(
+				state, action_id, "" if cell_target else target_id, cell, destination,
+				context.get("movementField", {}) if cell_target else context.get("navigationField", {}),
+			)
+		if approach.is_empty() or (cell_target and not bool(approach.get("willExecute", false))):
+			plan["reason"] = "Не хватает перемещения или нет линии обзора к клетке применения."
+			return plan
+	else:
+		approach = {"destination": origin if destination == Combat.INVALID_CELL else destination, "willExecute": true}
+	var stop: Vector2i = approach.get("destination", origin)
+	var execute := bool(approach.get("willExecute", false))
+	var resolved := command_preview(
+		state, action_id if execute else _defend_action_id(state, actor_id),
+		target_id if execute else actor_id, stop, secondary_cell,
+		cell if cell_target and execute else Combat.INVALID_CELL, lift_choice,
+	)
+	plan["destination"] = (resolved.get("moves", {}) as Dictionary).get(actor_id, stop) if Combat.action_moves_actor(action) else stop
+	plan["movementPath"] = resolved.get("movementPath", approach.get("movementPath", [origin]))
+	plan["ok"] = bool(resolved.get("ok", false))
+	plan["willExecute"] = execute and plan["ok"]
+	plan["fallbackDefend"] = not execute and plan["ok"]
+	plan["reason"] = str(resolved.get("error", "")) if not plan["ok"] else ("" if execute else "Не хватает MOVE: подход и Защита.")
+	plan["commitRule"] = ("move_action" if execute else "stop_defend") if plan["ok"] else "unavailable"
+	# Existing animation/intent consumers retain their adapter keys.
+	resolved["requestedActionId"] = action_id
+	resolved["approachTargetId"] = target_id
+	resolved["approachTargetCell"] = cell
+	resolved["approachDestination"] = plan["destination"] if plan["ok"] else Combat.INVALID_CELL
+	resolved["approachPath"] = plan["movementPath"]
+	resolved["approachWillExecute"] = plan["willExecute"]
+	resolved["approachFallbackDefend"] = plan["fallbackDefend"]
+	plan["resolved"] = resolved
+	return plan
+
+
 static func supports_auto_approach(state: Dictionary, action_id: String) -> bool:
 	var action := Combat.command_definition(state, action_id)
 	return (
 		state.has("grid")
 		and not action.is_empty()
-		and str(action.get("target", "")) == "enemy"
-		and str(action.get("effect", "")) != "lift_throw"
+		and str(action.get("target", "")) not in ["self", ""]
 		and str(action.get("partnerId", "")).is_empty()
-		and not Combat.is_item_command(action_id)
+		and action_id not in [Combat.HELD_THROW_COMMAND, Combat.HELD_LOWER_COMMAND, Combat.HELD_GUARD_COMMAND]
+		and not Combat.action_moves_actor(action)
 	)
 
 
@@ -304,6 +452,87 @@ static func approach_plan(
 	)
 
 
+static func approach_target_cells(
+	state: Dictionary,
+	action_id: String,
+	preferred_destination: Vector2i = Combat.INVALID_CELL,
+) -> Array[Vector2i]:
+	if not supports_auto_approach(state, action_id):
+		var staged := stage_move(state, preferred_destination)
+		return Combat.valid_target_cells(state if staged.is_empty() else staged, action_id)
+	var actor_id := Combat.current_unit_id(state)
+	var actor := Combat.unit_definition(state, actor_id)
+	var actor_origin: Vector2i = actor.get("cell", Combat.INVALID_CELL)
+	if preferred_destination != Combat.INVALID_CELL and preferred_destination != actor_origin:
+		var staged := stage_move(state, preferred_destination)
+		return [] if staged.is_empty() else Combat.valid_target_cells(staged, action_id)
+	var result: Array[Vector2i] = []
+	# Cell commands only expose places where their authored effect can actually
+	# happen this turn. A remote empty cell is not a useful fallback target.
+	# Bounding the field by MOVE also avoids a full-board route scan per cell.
+	var field := movement_field(state, actor_id)
+	var eligible_cells := Combat.eligible_target_cells(state, action_id)
+	var eligible_lookup := {}
+	for cell in eligible_cells:
+		eligible_lookup[cell] = true
+	var action := Combat.command_definition(state, action_id)
+	var action_range := maxi(0, int(action.get("range", 0)))
+	var grid: Dictionary = state.get("grid", {})
+	var width := int(grid.get("width", 0))
+	var height := int(grid.get("height", 0))
+	var reachable_lookup := {}
+	for raw_origin in (field.get("costs", {}) as Dictionary):
+		if not raw_origin is Vector2i:
+			continue
+		var origin := raw_origin as Vector2i
+		var min_x := maxi(0, origin.x - action_range)
+		var max_x := mini(width - 1, origin.x + action_range)
+		var min_y := maxi(0, origin.y - action_range)
+		var max_y := mini(height - 1, origin.y + action_range)
+		for y in range(min_y, max_y + 1):
+			for x in range(min_x, max_x + 1):
+				var target_cell := Vector2i(x, y)
+				if (
+					not eligible_lookup.has(target_cell)
+					or Terrain.action_distance(state, origin, target_cell) > action_range
+					or not Terrain.has_line_of_sight(state, origin, target_cell)
+				):
+					continue
+				reachable_lookup[target_cell] = true
+	for cell in eligible_cells:
+		if reachable_lookup.has(cell):
+			result.append(cell)
+	return result
+
+
+static func approach_cell_plan(
+	state: Dictionary,
+	action_id: String,
+	target_cell: Vector2i,
+	preferred_destination: Vector2i = Combat.INVALID_CELL,
+) -> Dictionary:
+	if not supports_auto_approach(state, action_id) or target_cell not in Combat.eligible_target_cells(state, action_id):
+		return {}
+	var actor_id := Combat.current_unit_id(state)
+	var plan := _approach_plan_to_cell_with_field(
+		state, action_id, "", target_cell, preferred_destination, movement_field(state, actor_id)
+	)
+	return plan if bool(plan.get("willExecute", false)) else {}
+
+
+static func approach_secondary_cells(
+	state: Dictionary,
+	action_id: String,
+	target_id: String,
+	preferred_destination: Vector2i = Combat.INVALID_CELL,
+) -> Array[Vector2i]:
+	var plan := approach_plan(state, action_id, target_id, preferred_destination)
+	if plan.is_empty() or not bool(plan.get("willExecute", false)):
+		return []
+	var staged := stage_move(state, plan.get("destination", Combat.INVALID_CELL))
+	return Combat.valid_secondary_cells(staged, action_id, target_id)
+
+
 static func _approach_plan_with_field(
 	state: Dictionary,
 	action_id: String,
@@ -316,8 +545,25 @@ static func _approach_plan_with_field(
 	var target := Combat.unit_definition(state, target_id)
 	if actor.is_empty() or target.is_empty() or not actor.has("cell") or not target.has("cell"):
 		return {}
+	return _approach_plan_to_cell_with_field(
+		state, action_id, target_id, target.get("cell", Combat.INVALID_CELL), preferred_destination, field
+	)
+
+
+static func _approach_plan_to_cell_with_field(
+	state: Dictionary,
+	action_id: String,
+	target_id: String,
+	target_cell: Vector2i,
+	preferred_destination: Vector2i,
+	field: Dictionary,
+	fixed_destination: bool = false,
+) -> Dictionary:
+	var actor_id := Combat.current_unit_id(state)
+	var actor := Combat.unit_definition(state, actor_id)
+	if actor.is_empty() or not actor.has("cell") or target_cell == Combat.INVALID_CELL:
+		return {}
 	var origin: Vector2i = actor.get("cell", Vector2i.ZERO)
-	var target_cell: Vector2i = target.get("cell", Combat.INVALID_CELL)
 	var action := Combat.command_definition(state, action_id)
 	var action_range := maxi(0, int(action.get("range", 0)))
 	var costs: Dictionary = field.get("costs", {})
@@ -330,7 +576,8 @@ static func _approach_plan_with_field(
 			continue
 		var cell := raw_cell as Vector2i
 		if (
-			Terrain.action_distance(state, cell, target_cell) > action_range
+			(not target_id.is_empty() and target_id != actor_id and cell == target_cell)
+			or Terrain.action_distance(state, cell, target_cell) > action_range
 			or not Terrain.has_line_of_sight(state, cell, target_cell)
 		):
 			continue
@@ -358,7 +605,7 @@ static func _approach_plan_with_field(
 	var move_range := maxi(0, int(actor.get("moveRange", 0)))
 	var manual_destination := (
 		preferred_destination != Combat.INVALID_CELL
-		and preferred_destination != origin
+		and (fixed_destination or preferred_destination != origin)
 	)
 	var destination := best_cell
 	var planned_path := best_path.duplicate()
@@ -370,9 +617,10 @@ static func _approach_plan_with_field(
 		destination = preferred_destination
 		planned_path = manual_path
 		var staged := stage_move(state, destination)
-		will_execute = (
-			not staged.is_empty()
-			and target_id in Combat.valid_target_ids(staged, action_id)
+		will_execute = not staged.is_empty() and (
+			target_cell in Combat.valid_target_cells(staged, action_id)
+			if target_id.is_empty()
+			else target_id in Combat.valid_target_ids(staged, action_id)
 		)
 	elif not will_execute:
 		var stop_index := mini(move_range, best_path.size() - 1)
@@ -401,39 +649,24 @@ static func approach_command_preview(
 	action_id: String,
 	target_id: String,
 	preferred_destination: Vector2i = Combat.INVALID_CELL,
+	secondary_cell: Vector2i = Combat.INVALID_CELL,
+	lift_choice: String = "throw",
 ) -> Dictionary:
-	var plan := approach_plan(state, action_id, target_id, preferred_destination)
-	if plan.is_empty():
-		return {
-			"ok": false,
-			"error": "До подходящей позиции нет маршрута.",
-			"summary": "До подходящей позиции нет маршрута.",
-		}
-	var actor_id := str(plan.get("actorId", ""))
-	var destination: Vector2i = plan.get("destination", Combat.INVALID_CELL)
-	var will_execute := bool(plan.get("willExecute", false))
-	var resolved := (
-		command_preview(state, action_id, target_id, destination)
-		if will_execute
-		else command_preview(state, _defend_action_id(state, actor_id), actor_id, destination)
-	)
-	if not bool(resolved.get("ok", false)):
-		return resolved
-	resolved["requestedActionId"] = action_id
-	resolved["approachTargetId"] = target_id
-	resolved["approachDestination"] = destination
-	resolved["approachAttackPosition"] = plan.get("attackPosition", destination)
-	resolved["approachPath"] = plan.get("movementPath", []).duplicate()
-	resolved["approachWillExecute"] = will_execute
-	resolved["approachFallbackDefend"] = not will_execute
-	if not will_execute:
-		var action_name := str(Combat.command_definition(state, action_id).get("name", action_id))
-		var target_name := str(Combat.unit_definition(state, target_id).get("name", target_id))
-		resolved["summary"] = (
-			"Подход к %s: остановка %s. %s не достигает цели; применяется Защита.\n%s"
-			% [target_name, cell_label(destination), action_name, str(resolved.get("summary", ""))]
-		)
-	return resolved
+	var cell: Vector2i = Combat.unit_definition(state, target_id).get("cell", Combat.INVALID_CELL)
+	var plan := action_plan(state, action_id, cell, preferred_destination, secondary_cell, lift_choice)
+	var resolved: Dictionary = plan.get("resolved", {})
+	return resolved if not resolved.is_empty() else {"ok": false, "error": plan.get("reason", ""), "summary": plan.get("reason", "")}
+
+
+static func approach_cell_command_preview(
+	state: Dictionary,
+	action_id: String,
+	target_cell: Vector2i,
+	preferred_destination: Vector2i = Combat.INVALID_CELL,
+) -> Dictionary:
+	var plan := action_plan(state, action_id, target_cell, preferred_destination)
+	var resolved: Dictionary = plan.get("resolved", {})
+	return resolved if not resolved.is_empty() else {"ok": false, "error": plan.get("reason", ""), "summary": plan.get("reason", "")}
 
 
 static func _defend_action_id(state: Dictionary, actor_id: String) -> String:
@@ -443,6 +676,19 @@ static func _defend_action_id(state: Dictionary, actor_id: String) -> String:
 		if str(Combat.command_definition(state, candidate).get("effect", "")) == "defend":
 			return candidate
 	return ""
+
+
+## Target lookup includes eligible fallen units for revival, while navigation
+## occupancy still excludes them. Both use the same cell as their address.
+static func action_occupant_id(state: Dictionary, action_id: String, cell: Vector2i) -> String:
+	var occupant := occupant_id(state, cell)
+	var eligible := Combat.eligible_target_ids(state, action_id)
+	if occupant in eligible:
+		return occupant
+	for unit_id in eligible:
+		if Combat.unit_definition(state, unit_id).get("cell", Combat.INVALID_CELL) == cell:
+			return unit_id
+	return occupant
 
 
 static func occupant_id(state: Dictionary, cell: Vector2i, except_id: String = "") -> String:
