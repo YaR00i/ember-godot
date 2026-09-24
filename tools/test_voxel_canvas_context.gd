@@ -98,6 +98,22 @@ func _run() -> void:
 	for visual in canvas._scene_context.visuals:
 		if str(visual.get_meta("context_source")) == "Neighbor":
 			check((frame * visual.transform).is_equal_approx(neighbor.global_transform), "refresh did not update scene")
+	var shared_mesh := BoxMesh.new()
+	for index in 3:
+		var repeated := MeshInstance3D.new()
+		repeated.mesh = shared_mesh
+		scene.add_child(repeated)
+		repeated.global_position = target.global_position + Vector3(float(index) * 3.0, 0.0, 0.0)
+	canvas._context_mode.select(1)
+	canvas._context_mode.item_selected.emit(1)
+	var report := canvas._context_report as Dictionary
+	check(not bool(report.get("batching_allowed", true)) and int(report.get("batched_instances", -1)) == 0, "optimized 60% batched context")
+	canvas._context_opacity.value = 100
+	report = canvas._context_report as Dictionary
+	check(bool(report.get("batching_allowed", false)) and int(report.get("batched_instances", 0)) >= 3, "60 -> 100 did not rebuild opaque context batch")
+	canvas._context_opacity.value = 60
+	report = canvas._context_report as Dictionary
+	check(not bool(report.get("batching_allowed", true)) and int(report.get("batched_instances", -1)) == 0, "100 -> 60 left a transparent MultiMesh batch")
 	canvas._context_toggle.button_pressed = false
 	check(canvas._scene_context.visuals.is_empty(), "toggle did not release context")
 	canvas._context_toggle.button_pressed = true

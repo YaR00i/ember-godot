@@ -5,7 +5,10 @@ const Model = preload("res://addons/ember_import/ember_voxel_sculpt_model.gd")
 const Actions = preload("res://addons/ember_import/ember_voxel_sculpt_actions.gd")
 const Sessions = preload("res://addons/ember_import/ember_world_edit_sessions.gd")
 const Fragment = preload("res://addons/ember_import/ember_voxel_fragment.gd")
+const WorldEditTrace = preload("res://addons/ember_import/ember_world_edit_trace.gd")
 const SETTINGS := "user://ember_world_editor.cfg"
+const BRUSH_STEP_BUDGET_USEC := 4000
+const BRUSH_BACKLOG_STEP_BUDGET_USEC := 6000
 var sessions := Sessions.new()
 var actions := Actions.new()
 var plugin: EditorPlugin
@@ -71,6 +74,9 @@ var _background_water: Array[WeakRef] = []
 var _recovery_due := 0
 var _last_recovery := 0
 var _target_buttons: Array[Button] = []
+var _trace := WorldEditTrace.new()
+var _trace_button: Button
+var _job_queued_usec := 0
 
 func _set_busy(value: bool) -> void:
 	for control in [target_choice,category,tools,palette,sand_palette,clip,shore_direction]:
@@ -243,6 +249,8 @@ func build_sidebar() -> Control:
 	_button(box,"Восстановить аварийные черновики",func():
 		if scene != null: _status("Восстановлено: %d. %s" % [sessions.restore_recovery(scene),sessions.error])
 	)
+	_trace_button = _button(box,"Начать запись мазков",_toggle_trace)
+	_trace_button.tooltip_text = "Пассивная запись основной 3D-вкладки. Остановите после завершения отображения; JSON сохраняется в user://."
 	status = Label.new()
 	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	status.custom_minimum_size.x = 250
@@ -269,6 +277,42 @@ func build_sidebar() -> Control:
 
 func _status(message: String) -> void:
 	if is_instance_valid(status): status.text = message
+
+func _trace_projection() -> Node:
+	if entry.is_empty(): return null
+	var target: Node = entry.target.get_ref()
+	if not is_instance_valid(target): return null
+	return target._visual_surface_projection if target is EmberMapLoader else entry.preview if is_instance_valid(entry.preview) else null
+
+func _attach_trace_projection() -> void:
+	var projection := _trace_projection()
+	if is_instance_valid(projection): projection.editor_diagnostic_sink = _trace if _trace.recording else null
+
+func _toggle_trace() -> void:
+	if _trace.recording:
+		_stop_trace()
+		return
+	_trace.start()
+	var projection := _trace_projection()
+	_trace.metadata = {"fps_limit":Engine.max_fps,"vsync_mode":DisplayServer.window_get_vsync_mode(),"command_line":OS.get_cmdline_args(),"renderer":ProjectSettings.get_setting("rendering/renderer/rendering_method","not_measured"),"editor_viewport":"Godot main 3D tab via EditorPlugin._forward_3d_gui_input","target":"map" if entry.get("object_session") == null else "object","viewport_instance_id":camera.get_viewport().get_instance_id() if is_instance_valid(camera) else -1,"preexisting_visual_pending":projection.pending_chunk_count() if is_instance_valid(projection) else -1,"preexisting_physics_pending":projection.pending_physics_chunk_count() if is_instance_valid(projection) else -1}
+	_attach_trace_projection()
+	if is_instance_valid(_trace_button): _trace_button.text = "Остановить и сохранить запись"
+	_status("Запись мазков включена. Работайте кистью в основной 3D-вкладке; после обновления нажмите остановку.")
+
+func _stop_trace() -> void:
+	var report := _trace.stop()
+	var projection := _trace_projection()
+	if is_instance_valid(projection) and projection.editor_diagnostic_sink == _trace: projection.editor_diagnostic_sink = null
+	if is_instance_valid(_trace_button): _trace_button.text = "Начать запись мазков"
+	if report.is_empty(): return
+	var path := "user://ember_world_edit_trace_%d.json" % Time.get_ticks_usec()
+	var file := FileAccess.open(path,FileAccess.WRITE)
+	if file == null:
+		_status("Не удалось сохранить диагностику: %s" % FileAccess.get_open_error())
+		return
+	file.store_string(JSON.stringify(report,"  "))
+	file.close()
+	_status("Запись %d мазков сохранена: %s%s" % [report.strokes.size(),ProjectSettings.globalize_path(path)," · отображение ещё в очереди" if not report.pending_visual_at_stop.is_empty() or not report.pending_physics_at_stop.is_empty() else ""])
 
 func _refresh_dirty_status() -> void:
 	if is_instance_valid(enabled): enabled.text = "Редактировать мир%s" % (" · %d*" % sessions.dirty_count(scene) if sessions.dirty_count(scene) > 0 else "")
@@ -300,6 +344,7 @@ func _toggle(value: bool) -> void:
 		if current.scene.get_ref() == scene: sessions.preview(current)
 
 func _deactivate() -> void:
+	if _trace.recording: _stop_trace()
 	_set_working_water(false)
 	active = false
 	if is_instance_valid(library_favorites_panel): library_favorites_panel.hide()
@@ -322,6 +367,7 @@ func _deactivate() -> void:
 	_update_overlay()
 
 func scene_changed(root: Node) -> void:
+	if _trace.recording: _stop_trace()
 	for reference in _background_water:
 		var node: MeshInstance3D = reference.get_ref()
 		if is_instance_valid(node): RenderingServer.instance_set_visible(node.get_instance(),node.is_visible_in_tree())
@@ -336,6 +382,7 @@ func scene_changed(root: Node) -> void:
 
 func _target_changed(index: int) -> void:
 	cancel_stroke()
+	if _trace.recording: _stop_trace()
 	create_region = false
 	selecting = false
 	if not entry.is_empty(): entry.scope = edit_region
@@ -353,6 +400,7 @@ func _target_changed(index: int) -> void:
 		edit_region = entry.get("scope",Rect2i())
 		actions.history_context = scene
 		sessions.preview(entry)
+		_attach_trace_projection()
 		_refresh_palette()
 		_status("%s · один мазок — одно Undo · Ctrl+S сохраняет всё" % entry.resource.display_name)
 	else: _status(sessions.error if index == 0 else "Выберите voxel-объект кнопкой или нажмите на него в сцене.")
@@ -571,6 +619,8 @@ func _pick_object(position: Vector2) -> void:
 
 func forward_input(next_camera: Camera3D, event: InputEvent) -> int:
 	if not active: return EditorPlugin.AFTER_GUI_INPUT_PASS
+	var received_usec := Time.get_ticks_usec() if _trace.recording and event is InputEventMouse else 0
+	var scheduled_usec := int(event.get_meta("ember_scheduled_usec",0)) if received_usec > 0 else 0
 	camera = next_camera
 	if event is InputEventKey and (Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) or Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE)): return EditorPlugin.AFTER_GUI_INPUT_PASS
 	if event is InputEventKey and event.alt_pressed: return EditorPlugin.AFTER_GUI_INPUT_PASS
@@ -613,9 +663,17 @@ func forward_input(next_camera: Camera3D, event: InputEvent) -> int:
 			grab.position = event.position
 			grab.pending = true
 		else:
+			var pick_started := Time.get_ticks_usec() if _trace.recording and dragging else 0
 			hover = _pick(event.position)
-			if dragging and not released: _queue_pick(hover)
+			if dragging and not released:
+				if _trace.recording: _trace.stage("input_pick",Time.get_ticks_usec()-pick_started)
+				if _trace.recording: _trace.input("move",received_usec,event.position,_center(hover),scheduled_usec)
+				var enqueue_started := Time.get_ticks_usec() if _trace.recording else 0
+				_queue_pick(hover)
+				if _trace.recording: _trace.stage("input_enqueue",Time.get_ticks_usec()-enqueue_started)
+		var overlay_started := Time.get_ticks_usec() if _trace.recording and dragging else 0
 		_update_overlay()
+		if _trace.recording and dragging: _trace.stage("input_overlay_ui",Time.get_ticks_usec()-overlay_started)
 		return EditorPlugin.AFTER_GUI_INPUT_STOP
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if picking_object and event.pressed: _pick_object(event.position); return EditorPlugin.AFTER_GUI_INPUT_STOP
@@ -631,11 +689,20 @@ func forward_input(next_camera: Camera3D, event: InputEvent) -> int:
 			return EditorPlugin.AFTER_GUI_INPUT_STOP
 		if not event.pressed:
 			if not grab.is_empty(): grab.released = true; grab.position = event.position; grab.pending = true
-			elif dragging: released = true; _queue_pick(_pick(event.position))
+			elif dragging:
+				released = true
+				var pick_started := Time.get_ticks_usec() if _trace.recording else 0
+				var final_pick := _pick(event.position)
+				if _trace.recording: _trace.stage("input_pick",Time.get_ticks_usec()-pick_started)
+				if _trace.recording: _trace.input("release",received_usec,event.position,_center(final_pick),scheduled_usec)
+				var enqueue_started := Time.get_ticks_usec() if _trace.recording else 0
+				_queue_pick(final_pick)
+				if _trace.recording: _trace.stage("input_enqueue",Time.get_ticks_usec()-enqueue_started)
 		elif not dragging and grab.is_empty():
+			var pick_started := Time.get_ticks_usec() if _trace.recording else 0
 			hover = _pick(event.position)
 			if _mode() == "grab": _begin_grab(event.position)
-			else: _begin_stroke(hover,event.ctrl_pressed)
+			else: _begin_stroke(hover,event.ctrl_pressed,received_usec,event.position,scheduled_usec,Time.get_ticks_usec()-pick_started if _trace.recording else 0)
 		return EditorPlugin.AFTER_GUI_INPUT_STOP
 	return EditorPlugin.AFTER_GUI_INPUT_PASS
 
@@ -645,7 +712,7 @@ func _center(pick: Dictionary, mode := "") -> Vector3i:
 	if mode == "add": return pick.get("adjacent",Model.INVALID_CELL)
 	return pick.get("adjacent",Model.INVALID_CELL) if pick.get("empty_floor",false) else pick.get("hit",Model.INVALID_CELL)
 
-func _begin_stroke(pick: Dictionary, inverse := false) -> void:
+func _begin_stroke(pick: Dictionary, inverse := false, input_usec := 0, input_position := Vector2.ZERO, scheduled_usec := 0, pick_usec := 0) -> void:
 	if entry.is_empty(): return
 	stroke_mode = _mode()
 	if inverse:
@@ -662,7 +729,9 @@ func _begin_stroke(pick: Dictionary, inverse := false) -> void:
 	if stroke_mode == "water" and (level < 1 or level > entry.resource.height_voxels):
 		_status("Уровень воды вне вертикального диапазона земли. Выберите высоту внутри неё.")
 		return
+	var baseline_started := Time.get_ticks_usec() if _trace.recording else 0
 	baseline = entry.resource.duplicate_model()
+	var baseline_usec := Time.get_ticks_usec()-baseline_started if _trace.recording else 0
 	delta = {"__sizes":{}}
 	top_cache.clear()
 	amount_cache.clear()
@@ -675,18 +744,34 @@ func _begin_stroke(pick: Dictionary, inverse := false) -> void:
 	released = false
 	stroke_options["empty_floor"] = roundi((plane_height.value-entry.origin.y)*density/map.imported_tile_size)-1 if entry.target.get_ref() is EmberMapLoader else -1
 	stroke_started = Time.get_ticks_usec()
+	if _trace.recording:
+		_trace.begin_stroke({"tool":stroke_mode,"radius_blocks":radius.value,"radius_voxels":stroke_radius,"depth_voxels":stroke_depth,"palette":stroke_palette,"input_source":"main_3d_forward_input" if input_usec > 0 else "direct_call_not_real_input","resource_grid":[entry.resource.grid_size().x,entry.resource.grid_size().y,entry.resource.grid_size().z]},input_usec if input_usec > 0 else stroke_started,input_position,center,scheduled_usec)
+		_trace.stage("input_pick",pick_usec)
+		_trace.stage("baseline_snapshot",baseline_usec)
 	last_cell = Model.INVALID_CELL
+	var enqueue_started := Time.get_ticks_usec() if _trace.recording else 0
 	_queue_pick(pick)
+	if _trace.recording: _trace.stage("input_enqueue",Time.get_ticks_usec()-enqueue_started)
 
 func _queue_pick(pick: Dictionary) -> void:
 	var cell := _center(pick)
 	if cell == Model.INVALID_CELL or cell == last_cell: return
 	var previous := cell if last_cell == Model.INVALID_CELL else last_cell
+	var queued_at := Time.get_ticks_usec() if _trace.recording else 0
+	var appended := 0
 	if stroke_mode in ["add","remove","paint"]:
 		var count := clampi(ceili(Vector3(cell-previous).length()/maxf(1,stroke_radius*0.4)),1,2048)
 		for i in range(1,count+1):
-			queue.append({"from":Vector3i(Vector3(previous).lerp(Vector3(cell),float(i)/count)),"to":Vector3i(Vector3(previous).lerp(Vector3(cell),float(i)/count)),"normal":pick.get("normal",Vector3i.UP)})
-	else: queue.append({"from":previous,"to":cell,"normal":pick.get("normal",Vector3i.UP)})
+			var sample := {"from":Vector3i(Vector3(previous).lerp(Vector3(cell),float(i)/count)),"to":Vector3i(Vector3(previous).lerp(Vector3(cell),float(i)/count)),"normal":pick.get("normal",Vector3i.UP)}
+			if _trace.recording: sample.queued_usec = queued_at
+			queue.append(sample)
+		appended = count
+	else:
+		var sample := {"from":previous,"to":cell,"normal":pick.get("normal",Vector3i.UP)}
+		if _trace.recording: sample.queued_usec = queued_at
+		queue.append(sample)
+		appended = 1
+	if _trace.recording: _trace.queue_sample(appended,queue.size())
 	last_cell = cell
 
 func _create_ground() -> void:
@@ -746,10 +831,12 @@ func _write_values(channel: String, updates: Dictionary) -> PackedInt32Array:
 		values[index] = after
 		changed.append(index)
 	entry.resource.set(channel,values)
+	if _trace.recording: _trace.write_event(changed.size())
 	return changed
 
 func _apply_batch(changes: Dictionary) -> void:
 	if changes.is_empty(): return
+	var prepare_started := Time.get_ticks_usec() if _trace.recording else 0
 	var dirty := {}
 	var size: Vector3i = entry.resource.grid_size()
 	var updates := {}
@@ -776,11 +863,21 @@ func _apply_batch(changes: Dictionary) -> void:
 				if value == 0: updates.collision_voxels[index] = 0
 				elif baseline.voxels[index] == 0: updates.collision_voxels[index] = 1
 			if updates.has("voxel_part_ids") and value == 0: updates.voxel_part_ids[index] = 0
+	if _trace.recording: _trace.stage("batch_prepare",Time.get_ticks_usec()-prepare_started)
+	var write_started := Time.get_ticks_usec() if _trace.recording else 0
 	for channel in updates:
 		for index in _write_values(channel,updates[channel]): dirty[index] = true
-	if not dirty.is_empty(): entry.resource.notify_geometry_changed(PackedInt32Array(dirty.keys()))
+	if _trace.recording: _trace.stage("draft_write",Time.get_ticks_usec()-write_started)
+	if not dirty.is_empty():
+		var notify_started := Time.get_ticks_usec() if _trace.recording else 0
+		entry.resource.notify_geometry_changed(PackedInt32Array(dirty.keys()))
+		if _trace.recording: _trace.stage("notify_and_queue_projection",Time.get_ticks_usec()-notify_started)
 
 func _process(_elapsed: float) -> void:
+	if _trace.recording:
+		var projection := _trace_projection()
+		var oldest_brush_input := _job_queued_usec if job != null else int(queue.front().get("queued_usec",0)) if not queue.is_empty() else 0
+		_trace.frame(queue.size(),job != null,projection.pending_chunk_count() if is_instance_valid(projection) else -1,projection.pending_physics_chunk_count() if is_instance_valid(projection) else -1,oldest_brush_input,projection.rendered_chunk_count() if is_instance_valid(projection) else -1,projection.collision_chunk_count() if is_instance_valid(projection) else -1)
 	if _recovery_due > 0 and Time.get_ticks_msec() >= _recovery_due and Time.get_ticks_msec()-_last_recovery >= 30000 and not dragging and grab.is_empty():
 		sessions.write_recovery()
 		_last_recovery = Time.get_ticks_msec()
@@ -788,11 +885,25 @@ func _process(_elapsed: float) -> void:
 	if not grab.is_empty(): _process_grab(); return
 	if not dragging: return
 	if not is_instance_valid(entry.target.get_ref()): cancel_stroke(); _status("Цель удалена; мазок отменён."); return
-	if job == null and not queue.is_empty(): job = _new_job(queue.pop_front())
+	if job == null and not queue.is_empty():
+		var sample := queue.pop_front()
+		_job_queued_usec = int(sample.get("queued_usec",0))
+		if _trace.recording: _trace.job_wait(Time.get_ticks_usec()-int(sample.get("queued_usec",Time.get_ticks_usec())))
+		var setup_started := Time.get_ticks_usec() if _trace.recording else 0
+		job = _new_job(sample)
+		if _trace.recording: _trace.stage("job_initialize",Time.get_ticks_usec()-setup_started)
 	if job != null:
-		_apply_batch(job.step(4000))
-		if job.done: job = null
+		var step_started := Time.get_ticks_usec() if _trace.recording else 0
+		# Spend a little more on the current job only while later input waits.
+		# The same tiles and samples stay ordered; pointer-up still commits once.
+		var step_budget := BRUSH_BACKLOG_STEP_BUDGET_USEC if not queue.is_empty() else BRUSH_STEP_BUDGET_USEC
+		var changes: Dictionary = job.step(step_budget)
+		if _trace.recording: _trace.job_step()
+		if _trace.recording: _trace.stage("brush_evaluation",Time.get_ticks_usec()-step_started)
+		_apply_batch(changes)
+		if job.done: job = null; _job_queued_usec = 0
 	if released and job == null and queue.is_empty():
+		var prepare_started := Time.get_ticks_usec() if _trace.recording else 0
 		var channels := delta.duplicate(true)
 		for channel in delta:
 			if channel == "__sizes": continue
@@ -800,9 +911,13 @@ func _process(_elapsed: float) -> void:
 				var pair: Vector2i = delta[channel][index]
 				if pair.x == pair.y: channels[channel].erase(index)
 			if channels[channel].is_empty(): channels.erase(channel)
+		if _trace.recording: _trace.stage("undo_prepare",Time.get_ticks_usec()-prepare_started)
+		var changed_primary := (channels.get("voxels",channels.get("surface_fill_levels",{})) as Dictionary).size()
 		if channels.size() > 1:
 			var indices := PackedInt32Array(delta.get("voxels",delta.get("surface_fill_levels",{})).keys())
+			var commit_started := Time.get_ticks_usec() if _trace.recording else 0
 			actions.commit_applied_delta(entry.resource,channels,indices,"Мир · " + stroke_mode)
+			if _trace.recording: _trace.stage("undo_commit",Time.get_ticks_usec()-commit_started)
 		else:
 			for channel in delta.__sizes:
 				var sizes: Vector2i = delta.__sizes[channel]
@@ -811,6 +926,7 @@ func _process(_elapsed: float) -> void:
 					values.resize(0)
 					entry.resource.set(channel,values)
 		last_stroke_usec = Time.get_ticks_usec()-stroke_started
+		if _trace.recording: _trace.commit(changed_primary)
 		last_history_bytes = 0
 		for channel in channels:
 			if channel != "__sizes": last_history_bytes += channels[channel].size()*(6 if entry.resource.get(channel) is PackedByteArray else 12)
@@ -822,6 +938,7 @@ func _process(_elapsed: float) -> void:
 		sessions.changed.emit()
 
 func cancel_stroke() -> void:
+	if dragging and _trace.recording: _trace.cancel()
 	_set_busy(false)
 	if not grab.is_empty():
 		for field in Sessions.FIELDS: entry.resource.set(field,EmberVoxelModelResource.copy_authoring_value(grab.baseline.get(field)))
@@ -832,6 +949,7 @@ func cancel_stroke() -> void:
 		channels.erase("__sizes")
 		if not channels.is_empty(): actions._apply_delta(entry.resource,delta,false,PackedInt32Array(delta.get("voxels",delta.get("surface_fill_levels",{})).keys()))
 	job = null
+	_job_queued_usec = 0
 	queue.clear()
 	dragging = false
 	released = false

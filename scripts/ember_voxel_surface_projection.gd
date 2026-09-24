@@ -44,6 +44,8 @@ var _regional_notification := false
 var _pending_height_columns := {}
 var editor_hide_water := false
 var _hidden_water_material: StandardMaterial3D
+# Null outside an explicitly recorded editor session; runtime has no trace work.
+var editor_diagnostic_sink: RefCounted
 
 
 func _init() -> void:
@@ -152,6 +154,7 @@ func refresh_indices(indices: PackedInt32Array) -> void:
 	for chunk in dirty:
 		if chunk not in _pending:
 			_pending.append(chunk)
+		if editor_diagnostic_sink != null: editor_diagnostic_sink.visual_dirty(chunk,_pending.size())
 	# Initial imports retain their existing full asynchronous heightfield job.
 	# Completed projections resample only the edited columns, not the dense map.
 	if _physics_enabled and _surface.physical:
@@ -165,6 +168,7 @@ func refresh_indices(indices: PackedInt32Array) -> void:
 					_building_solid_heights[cell.x + cell.y * size.x] = SurfacePhysics.solid_height_at(_surface, cell)
 				for chunk in physics_dirty:
 					if chunk not in _physics_pending: _physics_pending.append(chunk)
+					if editor_diagnostic_sink != null: editor_diagnostic_sink.physics_dirty(chunk,_physics_pending.size())
 		_navigation_grid_cache.clear()
 
 
@@ -324,6 +328,9 @@ func drain_next_chunk() -> bool:
 	var opaque := SurfaceMaterials.opaque_material()
 	var transparent := SurfaceMaterials.water_material()
 	var foam := SurfaceMaterials.foam_material()
+	var traced := editor_diagnostic_sink != null
+	var native_ready := _native_mesher != null and NativeMesher.available()
+	var adapter_started := Time.get_ticks_usec() if traced else 0
 	var native_projection: Dictionary = (
 		_native_mesher.build_surface_region(
 			_surface,
@@ -333,15 +340,20 @@ func drain_next_chunk() -> bool:
 			opaque,
 			transparent,
 		)
-		if _native_mesher != null and NativeMesher.available()
+		if native_ready
 		else {}
 	)
+	var adapter_usec := Time.get_ticks_usec()-adapter_started if traced and native_ready else 0
 	var mesh := native_projection.get("mesh") as Mesh
+	var stock_usec := 0
 	if mesh == null:
+		var stock_started := Time.get_ticks_usec() if traced else 0
 		mesh = SurfaceMesher.build_region(
 			_surface, region_min, region_size, voxel_size
 		)
+		if traced: stock_usec = Time.get_ticks_usec()-stock_started
 		native_projection = {"position": Vector3.ZERO, "scale": Vector3.ONE}
+	var assignment_started := Time.get_ticks_usec() if traced else 0
 	var visual := _chunks.get(chunk) as MeshInstance3D
 	if mesh.get_surface_count() > 0:
 		if visual == null:
@@ -365,6 +377,8 @@ func drain_next_chunk() -> bool:
 		remove_child(visual)
 		visual.queue_free()
 		_chunks.erase(chunk)
+	if traced:
+		editor_diagnostic_sink.visual_rebuilt(chunk,"native" if stock_usec == 0 and native_projection.has("mesh") else "stock","" if native_projection.has("mesh") else "native_unavailable" if not native_ready else "adapter_returned_no_mesh",adapter_usec,stock_usec,Time.get_ticks_usec()-assignment_started,_pending.size())
 	if _pending.is_empty():
 		_set_fallback_visible(false)
 	_finish_if_ready()
@@ -376,6 +390,7 @@ func drain_next_physics_chunk(wait_for_heightfield := true) -> bool:
 	if _physics_pending.is_empty() or not _surface_is_valid() or not _physics_enabled:
 		return false
 	var chunk: Vector2i = _physics_pending.pop_front()
+	var physics_started := Time.get_ticks_usec() if editor_diagnostic_sink != null else 0
 	var size := _surface.grid_size()
 	var region_min := Vector3i(chunk.x * PHYSICS_CHUNK_SIZE, 0, chunk.y * PHYSICS_CHUNK_SIZE)
 	var region_size := Vector3i(
@@ -446,6 +461,7 @@ func drain_next_physics_chunk(wait_for_heightfield := true) -> bool:
 			_physics_live = false
 			_set_fallback_collision_active(true)
 	_finish_if_ready()
+	if editor_diagnostic_sink != null: editor_diagnostic_sink.physics_rebuilt(chunk,Time.get_ticks_usec()-physics_started,_physics_pending.size())
 	return true
 
 

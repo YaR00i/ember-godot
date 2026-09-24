@@ -20,7 +20,9 @@ const GroupsPanel = preload("res://addons/ember_import/ember_voxel_groups_panel.
 const Groups = preload("res://addons/ember_import/ember_voxel_groups.gd")
 const BrushProfiles = preload("res://addons/ember_import/ember_voxel_brush_profiles.gd")
 const WorkshopTheme = preload("res://addons/ember_import/ember_voxel_workshop_theme.gd")
-const PREVIEW_CHUNK_SIZE := 16
+const PerfPolicy = preload("res://addons/ember_import/ember_voxel_editor_perf_policy.gd")
+const PerfMonitor = preload("res://addons/ember_import/ember_voxel_editor_perf_monitor.gd")
+const EditTrace = preload("res://addons/ember_import/ember_voxel_editor_edit_trace.gd")
 const PREVIEW_REBUILD_BUDGET_USEC := 6000
 const MAX_VIEWPORT_DIMENSION := 4096
 const DEFAULT_CAMERA_TARGET := Vector3(2.0, 0.12, 2.0)
@@ -80,8 +82,13 @@ var _scene_context: Node3D
 var _context_controls: HFlowContainer
 var _context_toggle: CheckButton
 var _context_opacity: SpinBox
+var _context_mode: OptionButton
+var _context_radius: SpinBox
 var _context_refresh: Button
 var _context_poll := 0.0
+var _context_report := {}
+var _perf_poll := 0.0
+var _perf_chunk_mode: OptionButton
 
 var _editor_interface: EditorInterface
 var _actions: EmberVoxelSculptActions
@@ -115,7 +122,20 @@ var _camera: Camera3D
 var _surface_root: Node3D
 var _chunk_meshes: Dictionary = {}
 var _pending_preview_chunks: Dictionary = {}
+var _edit_trace: RefCounted
 var _native_preview: RefCounted
+
+
+func begin_edit_cost_trace() -> void:
+	_edit_trace = EditTrace.new()
+
+
+func end_edit_cost_trace() -> Dictionary:
+	if _edit_trace == null:
+		return {}
+	var result := _edit_trace.snapshot() as Dictionary
+	_edit_trace = null
+	return result
 var _grid: MeshInstance3D
 var _cursor: MeshInstance3D
 var _ramp_anchor_marker: MeshInstance3D
@@ -217,6 +237,10 @@ var _camera_margin_control: SpinBox
 var _status: Label
 var _info: Label
 var _footer_stats: Label
+var _perf_stats: Label
+var _perf_shadow_toggle: CheckButton
+var _perf_msaa: OptionButton
+var _studio_light: DirectionalLight3D
 var _workshop_preset_name := ""
 var _non_brush_tool_visibility: Dictionary = {}
 var _tool_profiles: Dictionary = {}
@@ -322,6 +346,10 @@ func _process(delta: float) -> void:
 		if _context_poll >= 0.5:
 			_context_poll = 0.0
 			_sync_context_frame()
+	_perf_poll += delta
+	if _perf_poll >= 0.5:
+		_perf_poll = 0.0
+		_update_performance_stats()
 	_drain_preview_chunk()
 	_flush_pending_stroke_position()
 	if not _stroke_active or _relief_hold_center == Model.INVALID_CELL:
@@ -989,11 +1017,34 @@ func _build() -> void:
 	_context_opacity.step = 5
 	_context_opacity.value = 60
 	_context_opacity.editable = false
-	_context_opacity.value_changed.connect(func(value: float):
-		if is_instance_valid(_scene_context):
-			_scene_context.set_opacity(value / 100.0)
-	)
+	_context_opacity.value_changed.connect(_on_context_opacity_changed)
 	_context_controls.add_child(_context_opacity)
+	_context_mode = OptionButton.new()
+	_context_mode.add_item("Фон · Legacy")
+	_context_mode.set_item_metadata(0, false)
+	_context_mode.add_item("Фон · Optimized")
+	_context_mode.set_item_metadata(1, true)
+	_context_mode.select(0)
+	_context_mode.tooltip_text = "Legacy повторяет прежний Canvas context; Optimized включает bounds-culling и opaque MultiMesh batching."
+	_context_mode.item_selected.connect(func(_index: int):
+		if is_instance_valid(_scene_context) and _scene_context.visible:
+			_refresh_scene_context()
+	)
+	_context_controls.add_child(_context_mode)
+	_context_radius = SpinBox.new()
+	_context_radius.custom_minimum_size.x = 175
+	_context_radius.prefix = "Радиус фона"
+	_context_radius.suffix = " блоков"
+	_context_radius.min_value = 2
+	_context_radius.max_value = PerfPolicy.MAX_CONTEXT_RADIUS_BLOCKS
+	_context_radius.step = 1
+	_context_radius.value = PerfPolicy.DEFAULT_CONTEXT_RADIUS_BLOCKS
+	_context_radius.editable = false
+	_context_radius.value_changed.connect(func(_value: float):
+		if is_instance_valid(_scene_context) and _scene_context.visible and _context_optimized():
+			_refresh_scene_context()
+	)
+	_context_controls.add_child(_context_radius)
 	_context_refresh = Button.new()
 	_context_refresh.text = "Обновить окружение"
 	_context_refresh.disabled = true
@@ -1808,6 +1859,40 @@ func _build() -> void:
 	_footer_stats.text = "0 vox · сетка —"
 	_footer_stats.modulate = Color(0.54, 0.64, 0.74)
 	footer.add_child(_footer_stats)
+	_perf_chunk_mode = OptionButton.new()
+	_perf_chunk_mode.name = "VoxelWorkshopChunkMode"
+	_perf_chunk_mode.add_item("Chunks · Legacy 16")
+	_perf_chunk_mode.set_item_metadata(0, false)
+	_perf_chunk_mode.add_item("Chunks · Adaptive")
+	_perf_chunk_mode.set_item_metadata(1, true)
+	_perf_chunk_mode.select(0)
+	_perf_chunk_mode.tooltip_text = "A/B: Legacy сохраняет 16 art-vox chunk; Adaptive выбирает 16/32/64 по размеру Surface."
+	_perf_chunk_mode.item_selected.connect(_on_perf_chunk_mode_changed)
+	footer.add_child(_perf_chunk_mode)
+	_perf_shadow_toggle = CheckButton.new()
+	_perf_shadow_toggle.name = "VoxelWorkshopStudioShadows"
+	_perf_shadow_toggle.text = "Shadows"
+	_perf_shadow_toggle.button_pressed = true
+	_perf_shadow_toggle.tooltip_text = "Диагностика Canvas: включает/выключает тени студийного DirectionalLight3D."
+	_perf_shadow_toggle.toggled.connect(_on_perf_shadow_toggled)
+	footer.add_child(_perf_shadow_toggle)
+	_perf_msaa = OptionButton.new()
+	_perf_msaa.name = "VoxelWorkshopMSAA"
+	_perf_msaa.add_item("MSAA Off")
+	_perf_msaa.set_item_metadata(0, Viewport.MSAA_DISABLED)
+	_perf_msaa.add_item("MSAA 2x")
+	_perf_msaa.set_item_metadata(1, Viewport.MSAA_2X)
+	_perf_msaa.add_item("MSAA 4x")
+	_perf_msaa.set_item_metadata(2, Viewport.MSAA_4X)
+	_perf_msaa.select(2)
+	_perf_msaa.tooltip_text = "Диагностика Canvas MSAA 3D; project settings не меняются."
+	_perf_msaa.item_selected.connect(_on_perf_msaa_changed)
+	footer.add_child(_perf_msaa)
+	_perf_stats = Label.new()
+	_perf_stats.name = "VoxelWorkshopPerfStats"
+	_perf_stats.text = "perf —"
+	_perf_stats.modulate = Color(0.46, 0.72, 0.64)
+	footer.add_child(_perf_stats)
 	root.add_child(footer)
 	_build_camera_popup()
 	_on_tool_selected(0)
@@ -2155,10 +2240,11 @@ func _build_viewport() -> void:
 	_viewport = SubViewport.new()
 	_viewport.name = "VoxelSculptViewport"
 	_viewport.size = Vector2i(960, 640)
-	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	_viewport.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
 	_viewport.own_world_3d = true
 	_viewport.msaa_3d = Viewport.MSAA_4X
 	_viewport_container.add_child(_viewport)
+	PerfMonitor.enable_viewport_measurement(_viewport)
 	var environment_node := WorldEnvironment.new()
 	var environment := Environment.new()
 	environment.background_mode = Environment.BG_COLOR
@@ -2168,12 +2254,13 @@ func _build_viewport() -> void:
 	environment.ambient_light_energy = 0.72
 	environment_node.environment = environment
 	_viewport.add_child(environment_node)
-	var light := DirectionalLight3D.new()
-	light.rotation_degrees = Vector3(-58.0, -38.0, 0.0)
-	light.light_color = Color("#ffe1b2")
-	light.light_energy = 1.25
-	light.shadow_enabled = true
-	_viewport.add_child(light)
+	_studio_light = DirectionalLight3D.new()
+	_studio_light.name = "VoxelSculptStudioLight"
+	_studio_light.rotation_degrees = Vector3(-58.0, -38.0, 0.0)
+	_studio_light.light_color = Color("#ffe1b2")
+	_studio_light.light_energy = 1.25
+	_studio_light.shadow_enabled = true
+	_viewport.add_child(_studio_light)
 	_surface_root = Node3D.new()
 	_surface_root.name = "SurfaceChunks"
 	_viewport.add_child(_surface_root)
@@ -2589,7 +2676,11 @@ func _rebuild_group_view_filter() -> void:
 func _rebuild_visual(indices := PackedInt32Array(), rebuild_grid := true) -> void:
 	if _resource == null or _surface_root == null:
 		return
+	if _edit_trace != null:
+		_edit_trace.begin("visual_rebuild")
 	var grid_size := _resource.grid_size()
+	if _edit_trace != null:
+		_edit_trace.begin("heightfield")
 	if (
 		_surface_heightfield.size() != grid_size.x * grid_size.z
 		or (indices.is_empty() and _resource.voxels != _heightfield_source_voxels)
@@ -2606,27 +2697,52 @@ func _rebuild_visual(indices := PackedInt32Array(), rebuild_grid := true) -> voi
 			_resource.palette.size() - 1,
 		)
 	_heightfield_source_voxels = _resource.voxels
+	if _edit_trace != null:
+		_edit_trace.end()
 	_pending_preview_chunks.clear()
+	if _edit_trace != null:
+		_edit_trace.queue_cleared()
+	if _edit_trace != null:
+		_edit_trace.begin("affected_chunks")
 	var chunks := _all_preview_chunks() if indices.is_empty() else _affected_preview_chunks(indices)
-	if indices.is_empty() and chunks.size() > 64:
+	if _edit_trace != null:
+		_edit_trace.end()
+	if indices.is_empty() and PerfPolicy.should_queue_full_rebuild(chunks.size(), _adaptive_chunks_enabled()):
 		for chunk in chunks:
 			_pending_preview_chunks[chunk] = false
+			if _edit_trace != null:
+				_edit_trace.queued(chunk, false)
 	else:
 		for chunk in chunks:
 			_rebuild_chunk(chunk)
+	if _edit_trace != null:
+		_edit_trace.begin("overlays_ui")
 	if rebuild_grid:
 		_rebuild_grid()
 	_rebuild_region_overlay()
 	_update_cursor(_viewport_container.get_local_mouse_position())
+	if _edit_trace != null:
+		_edit_trace.end()
+		_edit_trace.end()
 
 
 func _queue_visual_rebuild(indices: PackedInt32Array, draft_relief := false) -> void:
 	if _resource == null:
 		return
-	for chunk in _affected_preview_chunks(indices):
+	if _edit_trace != null:
+		_edit_trace.begin("affected_chunks")
+	var chunks := _affected_preview_chunks(indices)
+	if _edit_trace != null:
+		_edit_trace.end()
+		_edit_trace.begin("queue_mutation")
+	for chunk in chunks:
 		# Exact rebuild always wins over a still-pending draft for this chunk.
 		if not _pending_preview_chunks.has(chunk) or not draft_relief:
 			_pending_preview_chunks[chunk] = draft_relief
+			if _edit_trace != null:
+				_edit_trace.queued(chunk, draft_relief)
+	if _edit_trace != null:
+		_edit_trace.end()
 
 
 func _drain_preview_chunk() -> void:
@@ -2652,25 +2768,45 @@ func _drain_preview_chunk() -> void:
 
 
 func _rebuild_chunk(chunk: Vector2i, draft_relief := false) -> void:
+	var trace_start := Time.get_ticks_usec() if _edit_trace != null else 0
+	var queue_info: Dictionary = _edit_trace.chunk_started(chunk) if _edit_trace != null else {}
+	if _edit_trace != null:
+		_edit_trace.begin("chunk_rebuild")
+		_edit_trace.begin("editor_mesher_setup")
 	var preview_resource := _grab_preview_resource if _grab_preview_resource != null else (_isolation_resource if _isolation_resource != null else _resource)
 	var size := preview_resource.grid_size()
-	var region_min := Vector3i(chunk.x * PREVIEW_CHUNK_SIZE, 0, chunk.y * PREVIEW_CHUNK_SIZE)
+	var chunk_size := _preview_chunk_size()
+	var region_min := Vector3i(chunk.x * chunk_size, 0, chunk.y * chunk_size)
 	if region_min.x >= size.x or region_min.z >= size.z:
+		if _edit_trace != null:
+			_edit_trace.end()
+			_edit_trace.end()
 		return
 	var region_size := Vector3i(
-		mini(PREVIEW_CHUNK_SIZE, size.x - region_min.x),
+		mini(chunk_size, size.x - region_min.x),
 		size.y,
-		mini(PREVIEW_CHUNK_SIZE, size.z - region_min.z),
+		mini(chunk_size, size.z - region_min.z),
 	)
 	var voxel_size := 1.0 / float(preview_resource.normalized_density())
 	var opaque := SurfaceMaterials.opaque_material()
 	var transparent := SurfaceMaterials.water_material()
 	var foam := SurfaceMaterials.foam_material()
 	var include_water := _shows_water_overlay() and _isolation_resource == null
+	var native_available := not draft_relief and _native_preview != null and NativePreview.available()
+	if _edit_trace != null:
+		_edit_trace.end()
 	# The stock draft is cheaper while LMB is held. Voxel Tools produces the
 	# exact greedy mesh after pointer-up, without blocking every buildup tick.
-	var projection: Dictionary = (
-		_native_preview.build_surface_region(
+	var projection: Dictionary = {}
+	var backend := "draft" if draft_relief else "stock"
+	var fallback_reason := "draft_relief" if draft_relief else "native_unavailable"
+	var native_call_usec := -1
+	var stock_call_usec := -1
+	if native_available:
+		if _edit_trace != null:
+			_edit_trace.begin("native_adapter_call_including_internal_prep_and_composition")
+		var call_start := Time.get_ticks_usec() if _edit_trace != null else 0
+		projection = _native_preview.build_surface_region(
 			preview_resource,
 			region_min,
 			region_size,
@@ -2680,15 +2816,17 @@ func _rebuild_chunk(chunk: Vector2i, draft_relief := false) -> void:
 			include_water,
 			_slice_height,
 		)
-		if (
-			not draft_relief
-			and _native_preview != null
-			and NativePreview.available()
-		)
-		else {}
-	)
+		if _edit_trace != null:
+			native_call_usec = Time.get_ticks_usec() - call_start
+		if _edit_trace != null:
+			_edit_trace.end()
 	var mesh := projection.get("mesh") as Mesh
 	if mesh == null:
+		if native_available:
+			fallback_reason = "native_returned_no_mesh_reason_unmeasured"
+		if _edit_trace != null:
+			_edit_trace.begin("stock_mesher_call")
+		var stock_start := Time.get_ticks_usec() if _edit_trace != null else 0
 		mesh = SurfaceMesher.build_region(
 			preview_resource,
 			region_min,
@@ -2698,15 +2836,30 @@ func _rebuild_chunk(chunk: Vector2i, draft_relief := false) -> void:
 			include_water,
 			_slice_height,
 		)
+		if _edit_trace != null:
+			stock_call_usec = Time.get_ticks_usec() - stock_start
+		if _edit_trace != null:
+			_edit_trace.end()
 		projection = {"position": Vector3.ZERO, "scale": Vector3.ONE}
+	else:
+		backend = "native"
+		fallback_reason = "none"
+	if _edit_trace != null:
+		_edit_trace.begin("mesh_material_assignment")
+	var has_water_surface := false
 	for surface_index in mesh.get_surface_count():
 		var surface_name: StringName = mesh.surface_get_name(surface_index)
+		if surface_name == "water":
+			has_water_surface = true
 		mesh.surface_set_material(
 			surface_index,
 			transparent if surface_name == "water"
 			else foam if surface_name == "water_foam"
 			else opaque,
 		)
+	if _edit_trace != null:
+		_edit_trace.end()
+		_edit_trace.begin("mesh_instance_assignment")
 	var visual := _chunk_meshes.get(chunk) as MeshInstance3D
 	if visual == null:
 		visual = MeshInstance3D.new()
@@ -2717,6 +2870,27 @@ func _rebuild_chunk(chunk: Vector2i, draft_relief := false) -> void:
 	visual.scale = projection.get("scale", Vector3.ONE)
 	visual.mesh = mesh if mesh.get_surface_count() > 0 else null
 	visual.visible = true
+	if _edit_trace != null:
+		_edit_trace.end()
+		_edit_trace.end()
+		_edit_trace.chunk_finished({
+			"chunk_x": chunk.x,
+			"chunk_z": chunk.y,
+			"chunk_size": chunk_size,
+			"region_x": region_size.x,
+			"region_z": region_size.z,
+			"draft": draft_relief,
+			"backend": backend,
+			"fallback_reason": fallback_reason,
+			"water_surface_observed": has_water_surface,
+			"water_overlay_requested": include_water,
+			"native_adapter_call_usec": native_call_usec,
+			"stock_mesher_call_usec": stock_call_usec,
+			"active_rebuild_usec": Time.get_ticks_usec() - trace_start,
+			"queue_wait_usec": int(queue_info.get("wait_usec", -1)),
+			"requested_op": str(queue_info.get("requested_op", "direct")),
+			"superseded_requests": int(queue_info.get("superseded", 0)),
+		})
 
 
 func _shows_water_overlay() -> bool:
@@ -2794,8 +2968,9 @@ func _update_slice_tools() -> void:
 func _all_preview_chunks() -> Array[Vector2i]:
 	var chunks: Array[Vector2i] = []
 	var size := _resource.grid_size()
-	var count_x := ceili(float(size.x) / PREVIEW_CHUNK_SIZE)
-	var count_z := ceili(float(size.z) / PREVIEW_CHUNK_SIZE)
+	var chunk_size := _preview_chunk_size()
+	var count_x := ceili(float(size.x) / float(chunk_size))
+	var count_z := ceili(float(size.z) / float(chunk_size))
 	# A world map can contain hundreds of preview chunks. Build the selected
 	# authoring scope first so opening a distant rectangle never waits for every
 	# row before it to render; unchanged surrounding context follows afterwards.
@@ -2803,12 +2978,12 @@ func _all_preview_chunks() -> Array[Vector2i]:
 	if _edit_region_blocks.has_area():
 		var density := _resource.normalized_density()
 		var priority_from := Vector2i(
-			floori(float(_edit_region_blocks.position.x * density) / PREVIEW_CHUNK_SIZE),
-			floori(float(_edit_region_blocks.position.y * density) / PREVIEW_CHUNK_SIZE),
+			floori(float(_edit_region_blocks.position.x * density) / float(chunk_size)),
+			floori(float(_edit_region_blocks.position.y * density) / float(chunk_size)),
 		)
 		var priority_end := Vector2i(
-			ceili(float(_edit_region_blocks.end.x * density) / PREVIEW_CHUNK_SIZE),
-			ceili(float(_edit_region_blocks.end.y * density) / PREVIEW_CHUNK_SIZE),
+			ceili(float(_edit_region_blocks.end.x * density) / float(chunk_size)),
+			ceili(float(_edit_region_blocks.end.y * density) / float(chunk_size)),
 		)
 		priority = Rect2i(priority_from, priority_end - priority_from)
 		for z in range(priority.position.y, priority.end.y):
@@ -2825,25 +3000,26 @@ func _all_preview_chunks() -> Array[Vector2i]:
 func _affected_preview_chunks(indices: PackedInt32Array) -> Array[Vector2i]:
 	var found := {}
 	var size := _resource.grid_size()
+	var chunk_size := _preview_chunk_size()
 	var layer_size := size.x * size.z
-	var count_x := ceili(float(size.x) / PREVIEW_CHUNK_SIZE)
-	var count_z := ceili(float(size.z) / PREVIEW_CHUNK_SIZE)
+	var count_x := ceili(float(size.x) / float(chunk_size))
+	var count_z := ceili(float(size.z) / float(chunk_size))
 	for index in indices:
 		var flat := int(index) % layer_size
 		var x := flat % size.x
 		var z := floori(float(flat) / float(size.x))
 		var center := Vector2i(
-			floori(float(x) / PREVIEW_CHUNK_SIZE),
-			floori(float(z) / PREVIEW_CHUNK_SIZE),
+			floori(float(x) / float(chunk_size)),
+			floori(float(z) / float(chunk_size)),
 		)
 		var offsets: Array[Vector2i] = [Vector2i.ZERO]
-		if x % PREVIEW_CHUNK_SIZE == 0:
+		if x % chunk_size == 0:
 			offsets.append(Vector2i.LEFT)
-		if x % PREVIEW_CHUNK_SIZE == PREVIEW_CHUNK_SIZE - 1:
+		if x % chunk_size == chunk_size - 1:
 			offsets.append(Vector2i.RIGHT)
-		if z % PREVIEW_CHUNK_SIZE == 0:
+		if z % chunk_size == 0:
 			offsets.append(Vector2i.UP)
-		if z % PREVIEW_CHUNK_SIZE == PREVIEW_CHUNK_SIZE - 1:
+		if z % chunk_size == chunk_size - 1:
 			offsets.append(Vector2i.DOWN)
 		for offset in offsets:
 			var chunk := center + offset
@@ -2853,6 +3029,100 @@ func _affected_preview_chunks(indices: PackedInt32Array) -> Array[Vector2i]:
 	for chunk in found:
 		chunks.append(chunk)
 	return chunks
+
+
+func _adaptive_chunks_enabled() -> bool:
+	return (
+		is_instance_valid(_perf_chunk_mode)
+		and _perf_chunk_mode.selected >= 0
+		and bool(_perf_chunk_mode.get_selected_metadata())
+	)
+
+
+func _preview_chunk_size() -> int:
+	if _resource == null:
+		return PerfPolicy.CHUNK_LEGACY
+	return (
+		PerfPolicy.adaptive_preview_chunk_size(_resource.grid_size())
+		if _adaptive_chunks_enabled()
+		else PerfPolicy.CHUNK_LEGACY
+	)
+
+
+func _on_perf_chunk_mode_changed(_index: int) -> void:
+	if _resource == null:
+		return
+	for visual in _chunk_meshes.values():
+		if is_instance_valid(visual):
+			(visual as Node).queue_free()
+	_chunk_meshes.clear()
+	_pending_preview_chunks.clear()
+	_rebuild_visual(PackedInt32Array(), false)
+	_update_performance_stats()
+
+
+func _on_perf_shadow_toggled(enabled: bool) -> void:
+	if is_instance_valid(_studio_light):
+		_studio_light.shadow_enabled = enabled
+	_update_performance_stats()
+
+
+func _on_perf_msaa_changed(index: int) -> void:
+	if not is_instance_valid(_viewport) or not is_instance_valid(_perf_msaa):
+		return
+	if index < 0 or index >= _perf_msaa.item_count:
+		return
+	_viewport.msaa_3d = int(_perf_msaa.get_item_metadata(index)) as Viewport.MSAA
+	_update_performance_stats()
+
+
+func _context_optimized() -> bool:
+	return (
+		is_instance_valid(_context_mode)
+		and _context_mode.selected >= 0
+		and bool(_context_mode.get_selected_metadata())
+	)
+
+
+func _on_context_opacity_changed(value: float) -> void:
+	if not is_instance_valid(_scene_context):
+		return
+	var next_opacity := clampf(value / 100.0, 0.0, 1.0)
+	var previous_batching_allowed := bool(
+		_context_report.get("batching_allowed", false)
+	)
+	var needs_rebuild := (
+		_scene_context.visible
+		and PerfPolicy.context_opacity_requires_rebuild(
+			_context_optimized(),
+			previous_batching_allowed,
+			next_opacity,
+		)
+	)
+	if needs_rebuild:
+		_refresh_scene_context()
+	else:
+		_scene_context.set_opacity(next_opacity)
+	_update_performance_stats()
+
+
+func editor_performance_snapshot() -> Dictionary:
+	return PerfMonitor.snapshot(
+		_viewport,
+		_chunk_meshes.size(),
+		_pending_preview_chunks.size(),
+		_context_report,
+		is_instance_valid(_studio_light) and _studio_light.shadow_enabled,
+	)
+
+
+func _update_performance_stats() -> void:
+	if not is_instance_valid(_perf_stats):
+		return
+	var mode := "adaptive" if _preview_chunk_size() != PerfPolicy.CHUNK_LEGACY else "legacy"
+	var values := editor_performance_snapshot()
+	_perf_stats.text = PerfMonitor.short_text(values, _preview_chunk_size(), mode)
+	_perf_stats.tooltip_text = PerfMonitor.tooltip_text(values)
 
 
 func _rebuild_grid() -> void:
@@ -4148,17 +4418,39 @@ func _apply_surface_fill_click(position: Vector2) -> void:
 
 
 func _prepare_stroke(tool_id: int) -> void:
+	if _edit_trace != null:
+		_edit_trace.begin("prepare_stroke")
 	_stroke_tool_id = tool_id
 	_stroke_active = true
+	if _edit_trace != null:
+		_edit_trace.begin("stroke_snapshot_and_channel_setup")
+		_edit_trace.begin("voxel_snapshot_copy")
 	_stroke_before = _resource.voxels.duplicate()
+	if _edit_trace != null:
+		_edit_trace.end()
 	# Packed arrays are reference types in GDScript. Keep one live buffer for the
 	# whole gesture instead of copying the 128x24x128 canvas at every buildup level.
 	_stroke_live_values = _resource.voxels
 	_stroke_changes.clear()
-	_stroke_before_transparency = _resource.transparency.duplicate()
-	_stroke_live_transparency = Model.normalized_channel(
-		_resource.transparency, _resource.voxels.size()
-	)
+	# Only the material brush writes transparency. Other strokes must not scan
+	# and allocate a full model-sized channel just to prepare Undo/Cancel.
+	if _is_material_tool(tool_id):
+		if _edit_trace != null:
+			_edit_trace.begin("transparency_snapshot_copy")
+		_stroke_before_transparency = _resource.transparency.duplicate()
+		if _edit_trace != null:
+			_edit_trace.end()
+			_edit_trace.begin("transparency_normalization")
+		_stroke_live_transparency = Model.normalized_channel(
+			_resource.transparency, _resource.voxels.size()
+		)
+		if _edit_trace != null:
+			_edit_trace.end()
+	else:
+		_stroke_before_transparency = PackedByteArray()
+		_stroke_live_transparency = PackedByteArray()
+	if _edit_trace != null:
+		_edit_trace.end()
 	_stroke_material_changes.clear()
 	_stroke_smart_fill_applied = false
 	_stroke_rejected = false
@@ -4189,6 +4481,8 @@ func _prepare_stroke(tool_id: int) -> void:
 	_stroke_level_target_y = -1
 	_last_stroke_cell = Model.INVALID_CELL
 	_has_pending_stroke_position = false
+	if _edit_trace != null:
+		_edit_trace.end()
 
 
 func _handle_ramp_click(position: Vector2) -> void:
@@ -4892,6 +5186,8 @@ func _apply_stroke_centers(
 	relief_height := -1,
 	relief_previous_height := 0,
 ) -> bool:
+	if _edit_trace != null:
+		_edit_trace.begin("paint_step")
 	var tool_id := _selected_tool_id()
 	var radius := int(_radius.get_item_metadata(_radius.selected))
 	var palette_index := int(_palette.get_item_metadata(_palette.selected)) if _palette.selected >= 0 else 1
@@ -4943,6 +5239,8 @@ func _apply_stroke_centers(
 			)
 			_stroke_relief_center_height_cache[center_key] = active_height
 		else:
+			if _edit_trace != null:
+				_edit_trace.begin("brush_compute")
 			changes = Model.stroke_changes(
 				_resource,
 				line_center,
@@ -4951,8 +5249,13 @@ func _apply_stroke_centers(
 				radius,
 				_coarse.button_pressed,
 			)
+			if _edit_trace != null:
+				_edit_trace.end()
 		_merge_live_changes(changes, dirty)
-	return _finish_live_changes(dirty, tool_id, relief_height)
+	var finished := _finish_live_changes(dirty, tool_id, relief_height)
+	if _edit_trace != null:
+		_edit_trace.end()
+	return finished
 
 
 func _apply_material_center(
@@ -5045,6 +5348,8 @@ func _apply_material_center(
 
 
 func _merge_live_changes(changes: Dictionary, dirty: Dictionary) -> void:
+	if _edit_trace != null:
+		_edit_trace.begin("data_mutation")
 	if _resource != null:
 		changes = Model.changes_in_block_region(
 			changes,
@@ -5071,11 +5376,15 @@ func _merge_live_changes(changes: Dictionary, dirty: Dictionary) -> void:
 			_stroke_changes.erase(index)
 		else:
 			_stroke_changes[index] = {"before": original, "after": after}
+	if _edit_trace != null:
+		_edit_trace.end()
 
 
 func _finish_live_changes(dirty: Dictionary, tool_id: int, relief_height: int) -> bool:
 	if dirty.is_empty():
 		return true
+	if _edit_trace != null:
+		_edit_trace.begin("live_changes")
 	var dirty_indices := _dictionary_indices(dirty)
 	_queue_visual_rebuild(
 		dirty_indices, _is_relief_tool(tool_id) or _is_smooth_tool(tool_id)
@@ -5136,20 +5445,32 @@ func _finish_live_changes(dirty: Dictionary, tool_id: int, relief_height: int) -
 			if _stroke_smart_fill_applied
 			else "Материал: %d voxels · форма и цвет не меняются · Esc отменяет" % change_count
 		)
+	if _edit_trace != null:
+		_edit_trace.begin("overlays_ui")
 	_set_status(message, false, Color(1.0, 0.72, 0.30))
+	if _edit_trace != null:
+		_edit_trace.end()
+	if _edit_trace != null:
+		_edit_trace.end()
 	return true
 
 
 func _finish_stroke() -> void:
 	if not _stroke_active:
 		return
+	if _edit_trace != null:
+		_edit_trace.begin("pointer_up")
+		_edit_trace.begin("undo_snapshot_copy")
 	var before := _stroke_before
 	var after := _resource.voxels.duplicate() if _resource != null else PackedByteArray()
 	var material_tool := _is_material_tool(_selected_tool_id())
 	var before_transparency := _stroke_before_transparency
 	var after_transparency := (
-		_resource.transparency.duplicate() if _resource != null else PackedByteArray()
+		_resource.transparency.duplicate()
+		if material_tool and _resource != null else PackedByteArray()
 	)
+	if _edit_trace != null:
+		_edit_trace.end()
 	var clear_transient_selection := BrushProfiles.mask_kind(_stroke_tool_id) == "columns"
 	var indices := _dictionary_indices(
 		_stroke_material_changes if material_tool else _stroke_changes
@@ -5159,7 +5480,11 @@ func _finish_stroke() -> void:
 	if _resource == null or indices.is_empty():
 		if not rejected:
 			_set_status("Мазок ничего не изменил")
+		if _edit_trace != null:
+			_edit_trace.end()
 		return
+	if _edit_trace != null:
+		_edit_trace.begin("undo_commit")
 	var committed := (
 		_actions.commit_applied_transparency_stroke(
 			_resource, before_transparency, after_transparency, indices
@@ -5167,13 +5492,19 @@ func _finish_stroke() -> void:
 		if material_tool
 		else _actions.commit_applied_stroke(_resource, before, after, indices)
 	)
+	if _edit_trace != null:
+		_edit_trace.end()
 	if not committed:
 		_set_status("Не удалось добавить мазок в историю Undo", true)
+		if _edit_trace != null:
+			_edit_trace.end()
 		return
 	if _selection_panel.preserves_mask_after_commit():
 		_selection_panel.preserve_next_source_change(clear_transient_selection)
 	_resource.notify_geometry_changed(indices)
 	if not material_tool:
+		if _edit_trace != null:
+			_edit_trace.begin("heightfield")
 		_surface_heightfield = Model.refresh_column_heights(
 			_surface_heightfield,
 			_resource.voxels,
@@ -5182,9 +5513,13 @@ func _finish_stroke() -> void:
 			_resource.palette.size() - 1,
 		)
 		_heightfield_source_voxels = _resource.voxels
+		if _edit_trace != null:
+			_edit_trace.end()
 	# Replace any cheap hold-preview with the exact volumetric mesh after the
 	# gesture. It remains queued one chunk per frame, so pointer-up never stalls.
 	_queue_visual_rebuild(indices, false)
+	if _edit_trace != null:
+		_edit_trace.begin("overlays_ui")
 	_rebuild_grid()
 	_rebuild_region_overlay()
 	_update_cursor(_viewport_container.get_local_mouse_position())
@@ -5193,6 +5528,9 @@ func _finish_stroke() -> void:
 		false,
 		Color(1.0, 0.72, 0.30),
 	)
+	if _edit_trace != null:
+		_edit_trace.end()
+		_edit_trace.end()
 
 
 func _cancel_stroke() -> void:
@@ -5204,7 +5542,8 @@ func _cancel_stroke() -> void:
 	)
 	if _resource != null:
 		_resource.voxels = _stroke_before.duplicate()
-		_resource.transparency = _stroke_before_transparency.duplicate()
+		if material_tool:
+			_resource.transparency = _stroke_before_transparency.duplicate()
 		_selection_panel.preserve_next_source_change()
 		_resource.emit_changed()
 	_clear_stroke_state()
@@ -5765,6 +6104,8 @@ func _play_owner_scene() -> void:
 
 
 func _on_source_changed(indices: PackedInt32Array) -> void:
+	if _edit_trace != null:
+		_edit_trace.begin("source_changed")
 	if _grab_interaction != null and not _grab_interaction.committing:
 		_grab_interaction.cancel("Модель изменилась; перетаскивание отменено.")
 	_cancel_precision_line(false)
@@ -5781,11 +6122,15 @@ func _on_source_changed(indices: PackedInt32Array) -> void:
 		)
 	if not _isolated_group_indices.is_empty() or not _hidden_group_indices.is_empty():
 		_rebuild_group_view_filter()
+		if _edit_trace != null:
+			_edit_trace.end()
 		return
 	if _resource != null and _resource.palette != _displayed_palette:
 		_refresh_palette()
 	_rebuild_visual(indices)
 	show_current_status()
+	if _edit_trace != null:
+		_edit_trace.end()
 
 
 func _sync_canvas_dimensions() -> void:
@@ -5810,6 +6155,8 @@ func _sync_canvas_dimensions() -> void:
 
 func _toggle_scene_context(enabled: bool) -> void:
 	_context_opacity.editable = enabled
+	_context_mode.disabled = not enabled
+	_context_radius.editable = enabled and _context_optimized()
 	_context_refresh.disabled = not enabled
 	if not enabled:
 		_scene_context.visible = false
@@ -5822,15 +6169,49 @@ func _refresh_scene_context() -> void:
 	if _object_session == null:
 		return
 	var projection: Dictionary = _object_session.context_projection(_resource)
-	var report: Dictionary = projection if projection.has("error") else _scene_context.rebuild(projection.scene, projection.target, projection.frame)
+	var optimized := _context_optimized()
+	_context_radius.editable = optimized
+	var radius_world := (
+		PerfPolicy.context_radius_world(
+			projection.target as Node3D,
+			_context_radius.value,
+		)
+		if not projection.has("error") and optimized
+		else 0.0
+	)
+	var report: Dictionary = (
+		projection
+		if projection.has("error")
+		else _scene_context.rebuild(
+			projection.scene,
+			projection.target,
+			projection.frame,
+			true,
+			radius_world,
+			optimized,
+			_context_opacity.value / 100.0,
+		)
+	)
 	if report.has("error"):
 		_context_toggle.set_pressed_no_signal(false)
 		_toggle_scene_context(false)
 		_set_status(str(report.error), true)
 		return
+	_context_report = report.duplicate(true)
 	_scene_context.set_opacity(_context_opacity.value / 100.0)
 	_scene_context.visible = true
-	_set_status("Окружение: %d деталей · %.1f мс · только просмотр. После расстановки в 3D нажмите «Обновить окружение»." % [report.count, report.milliseconds])
+	_set_status(
+		"Окружение %s: %d источников → %d визуалов · batch %d · отсечено %d · %.1f мс"
+		% [
+			"optimized" if _context_optimized() else "legacy",
+			int(report.get("source_count", 0)),
+			int(report.get("visual_count", 0)),
+			int(report.get("batched_instances", 0)),
+			int(report.get("culled_count", 0)),
+			float(report.get("milliseconds", 0.0)),
+		]
+	)
+	_update_performance_stats()
 
 
 func _sync_context_frame() -> void:

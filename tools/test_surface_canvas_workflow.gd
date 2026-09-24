@@ -203,6 +203,13 @@ func _run() -> void:
 	_check(int(relief_profile.get("relief_seed", 0)) == 11, "tool profile lost generative Relief variant")
 	_check(not workspace.has_unsaved_changes(), "editor-only brush profiles dirtied the voxel Resource")
 	workspace.call("_on_height_slice_changed", false, -1)
+	workspace.call("_activate_tool_id", Model.TOOL_MATERIAL)
+	workspace.call("_prepare_stroke", Model.TOOL_MATERIAL)
+	_check(
+		(workspace.get("_stroke_live_transparency") as PackedByteArray).size() == first.voxels.size(),
+		"material stroke lost its writable transparency channel",
+	)
+	workspace.call("_finish_stroke")
 	workspace.call("_activate_tool_id", Model.TOOL_REMOVE)
 	radius.select(0)
 	depth.value = 2
@@ -212,6 +219,10 @@ func _run() -> void:
 	var brush_before := first.voxels.duplicate()
 	var brush_center := Vector3i(0, 5, 8)
 	workspace.call("_prepare_stroke", Model.TOOL_REMOVE)
+	_check(
+		(workspace.get("_stroke_live_transparency") as PackedByteArray).is_empty(),
+		"non-material stroke allocated the full transparency channel",
+	)
 	var fixed_segment: Array[Dictionary] = [{
 		"centers": [brush_center],
 		"normal": Vector3i.UP,

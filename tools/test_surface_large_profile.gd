@@ -3,6 +3,7 @@ extends SceneTree
 ## It reads the authored sandbox Surface, but writes only disposable user:// data.
 
 const Workspace = preload("res://addons/ember_import/ember_voxel_sculpt_workspace.gd")
+const PerfPolicy = preload("res://addons/ember_import/ember_voxel_editor_perf_policy.gd")
 const Selection = preload("res://addons/ember_import/ember_voxel_selection.gd")
 const Model = preload("res://addons/ember_import/ember_voxel_sculpt_model.gd")
 const NativePreview = preload("res://addons/ember_import/ember_voxel_tools_preview.gd")
@@ -95,7 +96,7 @@ func _run() -> void:
 	var opaque := StandardMaterial3D.new()
 	var transparent := StandardMaterial3D.new()
 	for sample in 12:
-		var region_min := Vector3i(sample * Workspace.PREVIEW_CHUNK_SIZE, 0, 0)
+		var region_min := Vector3i(sample * PerfPolicy.CHUNK_LEGACY, 0, 0)
 		started = Time.get_ticks_usec()
 		var projection := native.build_region(
 			resource.voxels,
@@ -103,7 +104,7 @@ func _run() -> void:
 			resource.palette,
 			resource.transparency,
 			region_min,
-			Vector3i(Workspace.PREVIEW_CHUNK_SIZE, size.y, Workspace.PREVIEW_CHUNK_SIZE),
+			Vector3i(PerfPolicy.CHUNK_LEGACY, size.y, PerfPolicy.CHUNK_LEGACY),
 			1.0 / resource.normalized_density(),
 			opaque,
 			transparent,
