@@ -25,6 +25,8 @@ const WorldEditor = preload("res://addons/ember_import/ember_world_editor.gd")
 var _world_editor: Node
 var _world_editor_toolbar: Control
 var _world_editor_sidebar: Control
+var _world_editor_dock: EditorDock
+var _world_editor_dock_added := false
 const EmberVoxelSculptModel = preload("res://addons/ember_import/ember_voxel_sculpt_model.gd")
 const EmberInspectorActions = preload("res://addons/ember_import/ember_object_inspector_actions.gd")
 const EmberGraphWorkspace = preload("res://addons/ember_import/ember_graph_workspace.gd")
@@ -63,6 +65,8 @@ var _graph_workspace: EmberGraphWorkspace
 var _last_selected_voxel: EmberVoxelProp
 var _last_duplicate_step := Vector3.ZERO
 var _last_selected_trigger: EmberInteract
+var _compact_map_dialog: ConfirmationDialog
+var _compact_extension_dialog: ConfirmationDialog
 
 
 func _enter_tree() -> void:
@@ -71,6 +75,7 @@ func _enter_tree() -> void:
 		_editor_preparation.theme = EditorInterface.get_editor_theme()
 		EditorInterface.get_base_control().add_child(_editor_preparation)
 	add_tool_menu_item("Ember: Новая voxel-форма…", _new_voxel_shape)
+	add_tool_menu_item("Ember: Новая компактная карта…", _new_compact_map)
 	add_tool_menu_item("Ember: Точная voxel-расстановка…", _place_voxel_selection)
 	name = "EmberImportPlugin"
 	_voxel_object_toolbar = HBoxContainer.new()
@@ -289,9 +294,26 @@ func _enter_tree() -> void:
 	add_child(_world_editor)
 	_world_editor.configure(self,get_undo_redo())
 	_world_editor_toolbar = _world_editor.build_toolbar()
+	var new_compact_map := Button.new()
+	new_compact_map.text = "+ Карта"
+	new_compact_map.icon = get_editor_interface().get_editor_theme().get_icon("Add","EditorIcons")
+	new_compact_map.tooltip_text = "Создать отдельную карту с ровной компактной землёй."
+	new_compact_map.pressed.connect(_new_compact_map)
+	_world_editor_toolbar.add_child(new_compact_map)
+	var extend_compact_map := Button.new()
+	extend_compact_map.text = "+ Участок"
+	extend_compact_map.icon = get_editor_interface().get_editor_theme().get_icon("Add", "EditorIcons")
+	extend_compact_map.tooltip_text = "Добавить участок 24×24 блока к открытой компактной карте."
+	extend_compact_map.pressed.connect(_extend_compact_map)
+	_world_editor_toolbar.add_child(extend_compact_map)
 	add_control_to_container(EditorPlugin.CONTAINER_SPATIAL_EDITOR_MENU,_world_editor_toolbar)
 	_world_editor_sidebar = _world_editor.build_sidebar()
 	add_control_to_container(EditorPlugin.CONTAINER_SPATIAL_EDITOR_SIDE_LEFT,_world_editor_sidebar)
+	_world_editor_dock = EditorDock.new()
+	_world_editor_dock.title = "Ember · Мир"
+	_world_editor_dock.default_slot = EditorDock.DOCK_SLOT_RIGHT_UL
+	_world_editor_dock.add_child(_world_editor.inspector_panel)
+	_world_editor.active_changed.connect(_set_world_editor_dock_active)
 	set_input_event_forwarding_always_enabled()
 	set_force_draw_over_forwarding_enabled()
 	print("[Ember Migration] v2.64.1 loaded: staged combat command selection")
@@ -325,7 +347,25 @@ func _configure_fullscreen_playtest() -> void:
 		settings.set_setting("run/window_placement/game_embed_mode", -1)
 
 
+func _set_world_editor_dock_active(value: bool) -> void:
+	if not is_instance_valid(_world_editor_dock) or value == _world_editor_dock_added: return
+	if value:
+		add_dock(_world_editor_dock)
+		_world_editor_dock.make_visible()
+	else: remove_dock(_world_editor_dock)
+	_world_editor_dock_added = value
+
+
 func _exit_tree() -> void:
+	if is_instance_valid(_compact_map_dialog):
+		_compact_map_dialog.free()
+	_compact_map_dialog = null
+	if is_instance_valid(_compact_extension_dialog):
+		_compact_extension_dialog.free()
+	_compact_extension_dialog = null
+	if _world_editor_dock_added: remove_dock(_world_editor_dock)
+	_world_editor_dock_added = false
+	if is_instance_valid(_world_editor_dock): _world_editor_dock.free()
 	if is_instance_valid(_world_editor): _world_editor.free()
 	if is_instance_valid(_world_editor_sidebar):
 		remove_control_from_container(EditorPlugin.CONTAINER_SPATIAL_EDITOR_SIDE_LEFT,_world_editor_sidebar)
@@ -353,6 +393,7 @@ func _exit_tree() -> void:
 		remove_control_from_container(EditorPlugin.CONTAINER_SPATIAL_EDITOR_MENU, _voxel_object_toolbar)
 		_voxel_object_toolbar.queue_free()
 	remove_tool_menu_item("Ember: Новая voxel-форма…")
+	remove_tool_menu_item("Ember: Новая компактная карта…")
 	remove_tool_menu_item("Ember: Точная voxel-расстановка…")
 	remove_tool_menu_item("Ember: Reimport map from pack…")
 	remove_tool_menu_item("Ember: Open Combat Lab")
@@ -928,6 +969,13 @@ func _get_plugin_name() -> String:
 func _get_unsaved_status(for_scene: String) -> String:
 	return _world_editor.unsaved_status(for_scene) if is_instance_valid(_world_editor) else ""
 
+func _apply_changes() -> void:
+	# Godot calls this before serializing a scene. West/north preview temporarily
+	# offsets displayed groups, so restore them before scene data is packed.
+	if is_instance_valid(_compact_extension_dialog) and is_instance_valid(_world_editor):
+		_world_editor.clear_compact_extension_preview()
+		_compact_extension_dialog.call("show_error", "Предпросмотр закрыт перед сохранением. Выберите сторону ещё раз.")
+
 func _save_external_data() -> void:
 	# Godot is still inside _save_scene here; recursive save_scene is forbidden.
 	# Godot has already serialized the scene before this hook. Publish resources
@@ -1186,6 +1234,71 @@ func _new_voxel_shape() -> void:
 	dialog.canceled.connect(dialog.queue_free)
 	var map := root.get_node_or_null("Map") as EmberMapLoader
 	dialog.open_for(root, parent, get_undo_redo(), position, map.imported_tile_size if map != null and map.imported_tile_size > 0 else 16.0)
+
+
+func _new_compact_map() -> void:
+	if is_instance_valid(_compact_map_dialog):
+		_compact_map_dialog.call("open_for")
+		return
+	var dialog := preload("res://addons/ember_import/ember_compact_map_dialog.gd").new() as ConfirmationDialog
+	_compact_map_dialog = dialog
+	EditorInterface.get_base_control().add_child(dialog)
+	dialog.created.connect(func(path: String) -> void:
+		preload("res://addons/ember_import/ember_editor_filesystem.gd").request()
+		EditorInterface.open_scene_from_path(path)
+		_compact_map_dialog = null
+		dialog.queue_free()
+	)
+	dialog.canceled.connect(func() -> void:
+		_compact_map_dialog = null
+		dialog.queue_free()
+	)
+	dialog.call("open_for")
+
+
+func _extend_compact_map() -> void:
+	var root := EditorInterface.get_edited_scene_root()
+	var map := root.find_child("Map", true, false) as EmberMapLoader if root != null else null
+	if map == null or map.compact_terrain == null:
+		_world_editor._status("Откройте компактную карту, чтобы добавить участок.")
+		return
+	if is_instance_valid(_compact_extension_dialog):
+		_compact_extension_dialog.call("open_for", map)
+		return
+	var dialog := preload("res://addons/ember_import/ember_compact_map_extension_dialog.gd").new() as ConfirmationDialog
+	_compact_extension_dialog = dialog
+	EditorInterface.get_base_control().add_child(dialog)
+	if not _world_editor.is_connected("compact_extension_preview_ready", Callable(self, "_on_compact_extension_preview_ready")):
+		_world_editor.connect("compact_extension_preview_ready", Callable(self, "_on_compact_extension_preview_ready"))
+	dialog.connect("preview_requested", func(direction: String, mode: String) -> void:
+		var error: String = _world_editor.preview_compact_extension(direction, mode)
+		if not error.is_empty(): dialog.call("show_error", error)
+	)
+	dialog.connect("requested", func(direction: String, mode: String) -> void:
+		var error: String = _world_editor.extend_compact_map(direction, mode)
+		if not error.is_empty():
+			dialog.call("show_error", error)
+			return
+		_compact_extension_dialog = null
+		dialog.queue_free()
+	)
+	dialog.canceled.connect(func() -> void:
+		_world_editor.clear_compact_extension_preview()
+		_compact_extension_dialog = null
+		dialog.queue_free()
+	)
+	dialog.visibility_changed.connect(func() -> void:
+		if not dialog.visible and _compact_extension_dialog == dialog:
+			_world_editor.clear_compact_extension_preview()
+			_compact_extension_dialog = null
+			dialog.queue_free()
+	)
+	dialog.call("open_for", map)
+
+
+func _on_compact_extension_preview_ready() -> void:
+	if is_instance_valid(_compact_extension_dialog):
+		_compact_extension_dialog.call("show_preview_ready")
 
 
 func _new_voxel_tree() -> void:
@@ -1580,6 +1693,8 @@ func _remove_authored_voxel(parent: Node, prop: EmberVoxelProp) -> void:
 
 
 func _on_scene_changed(root: Node) -> void:
+	if is_instance_valid(_compact_extension_dialog):
+		_compact_extension_dialog.hide()
 	if is_instance_valid(_world_editor): _world_editor.scene_changed(root)
 	if is_instance_valid(_object_brush):
 		_object_brush.deactivate()

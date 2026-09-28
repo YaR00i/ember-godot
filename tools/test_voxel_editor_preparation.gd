@@ -4,6 +4,11 @@ extends SceneTree
 const Preparation = preload("res://addons/ember_import/ember_editor_preparation.gd")
 var errors := 0
 
+class RecordingPreparation extends Preparation:
+	var show_requests := 0
+	func _show_window() -> void:
+		show_requests += 1
+
 class Filesystem extends RefCounted:
 	var scanning := true
 	var importing := false
@@ -48,7 +53,7 @@ func _run() -> void:
 	var filesystem := Filesystem.new()
 	var shelf := Shelf.new()
 	root.add_child(shelf)
-	var gate = Preparation.new()
+	var gate = RecordingPreparation.new()
 	root.add_child(gate)
 	var results: Array = []
 	gate.finished.connect(func(ok: bool, _ms: int, failures: int): results.append([ok, failures]))
@@ -64,6 +69,7 @@ func _run() -> void:
 	await wait_until(func(): return shelf.prepared == 1, "catalog begins once filesystem is settled")
 	await create_timer(0.15).timeout
 	check(results.is_empty() and shelf.prepared == 1, "pending previews keep the gate closed without duplicate catalog preparation")
+	check(gate.show_requests > 0,"new previews did not request the preparation window")
 	shelf.pending = 0
 	await wait_until(func(): return not results.is_empty(), "ready previews release the gate")
 	check(results == [[true, 0]] and shelf.cancelled == 0, "successful preparation preserves prepared thumbnails")
@@ -72,6 +78,14 @@ func _run() -> void:
 	check(not gate.exclusive and not gate.transient and gate._shelf == null and gate._filesystem == null, "completed window releases modal state and preparation references")
 	gate._continue_without_previews()
 	check(results == [[true, 0]] and shelf.cancelled == 0, "completed controller cannot cancel prepared thumbnails or emit another result")
+	var clean_shelf := Shelf.new()
+	clean_shelf.pending = 0
+	root.add_child(clean_shelf)
+	var clean_gate := RecordingPreparation.new()
+	root.add_child(clean_gate)
+	clean_gate.begin(clean_shelf,filesystem)
+	await wait_until(func(): return clean_gate._complete,"cached library completes startup")
+	check(clean_shelf.prepared == 1 and clean_gate.show_requests == 0,"unchanged library still opens preparation window")
 
 	var failed_shelf := Shelf.new()
 	failed_shelf.pending = 0
@@ -110,8 +124,8 @@ func _run() -> void:
 	exit_gate.begin(exit_shelf, filesystem)
 	exit_gate.free()
 	check(exit_shelf.cancelled == 1, "plugin/window exit cancels preparation")
-	for completed_gate in [gate, failed_gate, timeout_gate]: completed_gate.free()
-	for item in [shelf, failed_shelf, timeout_shelf, exit_shelf]: item.free()
+	for completed_gate in [gate, clean_gate, failed_gate, timeout_gate]: completed_gate.free()
+	for item in [shelf, clean_shelf, failed_shelf, timeout_shelf, exit_shelf]: item.free()
 	await process_frame
 	print("test_voxel_editor_preparation: %s · %d" % ["PASS" if errors == 0 else "FAIL", errors])
 	quit(errors)

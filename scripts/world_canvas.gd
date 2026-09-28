@@ -1,14 +1,15 @@
 extends "res://scripts/fan_town.gd"
 ## Isolated, non-story authoring scene. Continue the existing play controller.
-## No duplicate floor: wait for native Surface physics before spawning heroes.
+## No duplicate floor: wait for the selected native ground physics before spawning heroes.
 const STORAGE_ROOT := "user://ember-world-canvas-v1"
+@export var sandbox_storage_root := STORAGE_ROOT
 
 func _ready() -> void:
 	if Engine.is_editor_hint(): return
 	_hud.text = "ХОЛСТ МИРА · подготовка земли…"
 	var progress := _progress()
 	if progress != null:
-		var isolated_root := str(progress.get_meta("world_canvas_storage_root", STORAGE_ROOT))
+		var isolated_root := str(progress.get_meta("world_canvas_storage_root", sandbox_storage_root))
 		if progress.storage_root != isolated_root:
 			progress.storage_root = isolated_root
 			progress.legacy_storage_root = isolated_root.path_join("legacy-unused")

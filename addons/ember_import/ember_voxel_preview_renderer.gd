@@ -3,7 +3,7 @@ class_name EmberVoxelPreviewRenderer
 extends Node
 ## Background resource loading, main-thread scene/viewport work. Godot's stock
 ## preview service has no 3D scene thumbnail for these resources. This reuses a
-## single SubViewport and never writes images or content metadata.
+## single SubViewport; generated images are cached under user:// only.
 
 signal preview_ready(model_id: String, texture: Texture2D)
 signal preview_failed(model_id: String, reason: String)
@@ -11,6 +11,9 @@ signal preview_failed(model_id: String, reason: String)
 const PREVIEW_SIZE := Vector2i(128, 128)
 const BACKGROUND := Color(0.075, 0.08, 0.095, 1.0)
 const MAX_LOADING_REQUESTS := 2
+const DISK_CACHE_VERSION := 1
+
+var disk_cache_directory := "user://ember_voxel_previews"
 
 var _viewport: SubViewport
 var _stage: Node3D
@@ -42,15 +45,21 @@ func queue_preview(model_id: String, path := "") -> void:
 	if model_id.is_empty():
 		return
 	var resolved_path := path if not path.is_empty() and ResourceLoader.exists(path) else ""
-	var cache_key := _cache_key(model_id, resolved_path)
+	var fingerprint := _source_fingerprint(model_id, resolved_path)
+	var cache_key := _cache_key(model_id, resolved_path, fingerprint)
 	if _cache.has(cache_key):
 		preview_ready.emit(model_id, _cache[cache_key] as Texture2D)
+		return
+	var disk_texture := _load_disk_preview(model_id, resolved_path, fingerprint)
+	if disk_texture != null:
+		_cache[cache_key] = disk_texture
+		preview_ready.emit(model_id, disk_texture)
 		return
 	if _queued.has(cache_key):
 		return
 	_failures.erase(cache_key)
 	_queued[cache_key] = _epoch
-	_pending.append({"id": model_id, "path": resolved_path, "cacheKey": cache_key, "epoch": _epoch, "revision": _cache_revision(resolved_path, model_id)})
+	_pending.append({"id": model_id, "path": resolved_path, "cacheKey": cache_key, "fingerprint":fingerprint, "epoch": _epoch, "revision": _cache_revision(resolved_path, model_id)})
 	set_process(true)
 
 
@@ -59,6 +68,7 @@ func clear_cache(path := "") -> void:
 		_cache_epoch += 1
 		_cache.clear()
 		_failures.clear()
+		_remove_all_disk_previews()
 		return
 	var prefix := path + ":"
 	var model_id := path.get_file().get_basename()
@@ -71,6 +81,7 @@ func clear_cache(path := "") -> void:
 	for key in _failures.keys():
 		if str(key).begins_with(prefix) or str(key).begins_with(source_prefix):
 			_failures.erase(key)
+	_remove_disk_previews(model_id)
 
 
 func cancel_pending() -> void:
@@ -287,6 +298,7 @@ func _read_preview() -> void:
 		if image != null and not image.is_empty():
 			texture = ImageTexture.create_from_image(image)
 			_cache[str(request.cacheKey)] = texture
+			_store_disk_preview(str(request.id), str(request.path), image, str(request.fingerprint))
 	if is_instance_valid(_current):
 		_current.queue_free()
 	_current = null
@@ -357,10 +369,75 @@ func _disable_authored_lights(node: Node) -> void:
 		_disable_authored_lights(child)
 
 
-func _cache_key(model_id: String, path: String) -> String:
+func _cache_key(model_id: String, path: String, fingerprint := "") -> String:
+	if fingerprint.is_empty(): fingerprint = _source_fingerprint(model_id, path)
 	if not path.is_empty():
-		return "%s:%d:%s" % [path, FileAccess.get_modified_time(path), _cache_revision(path, model_id)]
-	return "source:%s:%s:%s" % [model_id, EmberVoxelPrefab.preview_source_revision(model_id), _cache_revision(path, model_id)]
+		return "%s:%s:%s" % [path, fingerprint, _cache_revision(path, model_id)]
+	return "source:%s:%s:%s" % [model_id, fingerprint, _cache_revision(path, model_id)]
+
+
+func _disk_preview_path(model_id: String, path: String, fingerprint := "") -> String:
+	if not path.is_empty() and path.get_file().get_basename() != model_id:
+		return ""
+	if fingerprint.is_empty(): fingerprint = _source_fingerprint(model_id, path)
+	var cache_identity := "v%d|%s|%s|%s" % [DISK_CACHE_VERSION, model_id, path, fingerprint]
+	return disk_cache_directory.path_join("%s-%s.png" % [model_id.sha256_text().left(16), cache_identity.sha256_text().left(24)])
+
+
+func _source_fingerprint(model_id: String, path: String) -> String:
+	if not path.is_empty():
+		return "%d:%d" % [FileAccess.get_modified_time(path), _file_length(path)]
+	var paths := EmberVoxelPrefab.source_paths(model_id)
+	var json_path := str(paths.get("json", ""))
+	var vox_path := str(paths.get("vox", ""))
+	return "%d:%d:%d:%d" % [
+		FileAccess.get_modified_time(json_path) if FileAccess.file_exists(json_path) else 0,
+		_file_length(json_path),
+		FileAccess.get_modified_time(vox_path) if FileAccess.file_exists(vox_path) else 0,
+		_file_length(vox_path),
+	]
+
+
+func _file_length(path: String) -> int:
+	if path.is_empty() or not FileAccess.file_exists(path): return 0
+	var file := FileAccess.open(path, FileAccess.READ)
+	return file.get_length() if file != null else 0
+
+
+func _load_disk_preview(model_id: String, path: String, fingerprint := "") -> Texture2D:
+	var cached := _disk_preview_path(model_id, path, fingerprint)
+	if cached.is_empty() or not FileAccess.file_exists(cached): return null
+	var image := Image.load_from_file(cached)
+	if image == null or image.is_empty() or image.get_size() != PREVIEW_SIZE:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(cached))
+		return null
+	return ImageTexture.create_from_image(image)
+
+
+func _store_disk_preview(model_id: String, path: String, image: Image, fingerprint := "") -> void:
+	var cached := _disk_preview_path(model_id, path, fingerprint)
+	if cached.is_empty(): return
+	var absolute_dir := ProjectSettings.globalize_path(disk_cache_directory)
+	if DirAccess.make_dir_recursive_absolute(absolute_dir) != OK: return
+	_remove_disk_previews(model_id)
+	image.save_png(cached)
+
+
+func _remove_disk_previews(model_id: String) -> void:
+	var absolute_dir := ProjectSettings.globalize_path(disk_cache_directory)
+	if not DirAccess.dir_exists_absolute(absolute_dir): return
+	var prefix := model_id.sha256_text().left(16) + "-"
+	for name in DirAccess.get_files_at(absolute_dir):
+		if name.begins_with(prefix) and name.ends_with(".png"):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(disk_cache_directory.path_join(name)))
+
+
+func _remove_all_disk_previews() -> void:
+	var absolute_dir := ProjectSettings.globalize_path(disk_cache_directory)
+	if not DirAccess.dir_exists_absolute(absolute_dir): return
+	for name in DirAccess.get_files_at(absolute_dir):
+		if name.ends_with(".png"):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(disk_cache_directory.path_join(name)))
 
 
 func _cache_revision(path: String, model_id: String) -> String:

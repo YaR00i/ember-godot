@@ -1,0 +1,65 @@
+[gd_scene format=3 uid="uid://do1hakcf7es3n"]
+
+[ext_resource type="Script" uid="uid://b174h8hlywqpb" path="res://scripts/world_canvas.gd" id="1_j2g4t"]
+[ext_resource type="Script" uid="uid://ctwn2o6mocfe2" path="res://scripts/ember_map_loader.gd" id="2_gk7g5"]
+[ext_resource type="Resource" uid="uid://cpaoqdeg3jirj" path="res://content/world_terrains/large_landscape_test.res" id="3_8rugr"]
+[ext_resource type="Script" uid="uid://4lkb6w8l82y0" path="res://scripts/ember_region.gd" id="4_44ihk"]
+
+[sub_resource type="Environment" id="Environment_2578i"]
+background_mode = 1
+background_color = Color(0.43, 0.57, 0.6, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.77, 0.84, 0.8, 1)
+ambient_light_energy = 0.35
+tonemap_mode = 2
+
+[node name="CompactMap" type="Node3D" unique_id=1920741197]
+script = ExtResource("1_j2g4t")
+sandbox_storage_root = "user://ember-large_landscape_test"
+map_id = "large_landscape_test"
+
+[node name="Map" type="Node3D" parent="." unique_id=1065089924]
+script = ExtResource("2_gk7g5")
+map_id = "large_landscape_test"
+hydrate_legacy_regions = false
+compact_terrain = ExtResource("3_8rugr")
+authored_size_blocks = Vector2i(120, 96)
+camera_distance = 200.0
+camera_polar = 0.88
+camera_yaw = 0.35
+camera_look_height = 10.0
+camera_far = 3072.0
+
+[node name="Look" type="Node3D" parent="Map" unique_id=2137855169]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="Map/Look" unique_id=468949466]
+environment = SubResource("Environment_2578i")
+
+[node name="Sun" type="DirectionalLight3D" parent="Map/Look" unique_id=2113407099]
+transform = Transform3D(0.8660254, 0.42402405, -0.26495963, 0, 0.52991927, 0.8480481, 0.5, -0.73443115, 0.45892355, 0, 0, 0)
+light_color = Color(1, 0.96, 0.87, 1)
+light_energy = 0.3
+shadow_enabled = true
+directional_shadow_max_distance = 800.0
+
+[node name="Terrain" type="Node3D" parent="Map" unique_id=254989643]
+
+[node name="Props" type="Node3D" parent="Map" unique_id=225807640]
+
+[node name="Regions" type="Node3D" parent="Map" unique_id=488604365]
+
+[node name="PlayerStart" type="Area3D" parent="Map/Regions" unique_id=1329283208]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 768, 10, 768)
+collision_layer = 0
+collision_mask = 0
+monitoring = false
+monitorable = false
+script = ExtResource("4_44ihk")
+region_id = "large_landscape_test_start"
+map_id = "large_landscape_test"
+kind = "player_start"
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1163009363]
+
+[node name="Gate" type="Label" parent="CanvasLayer" unique_id=17777579]
+text = "EMBER · НОВАЯ КАРТА"

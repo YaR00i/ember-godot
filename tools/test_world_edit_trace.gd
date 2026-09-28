@@ -20,12 +20,15 @@ func _run() -> void:
 	trace.visual_dirty(Vector2i(1,2),1)
 	trace.frame(0,false,1,0)
 	trace.visual_rebuilt(Vector2i(1,2),"native","",70,0,10,0)
+	trace.input("release",Time.get_ticks_usec(),Vector2(12,34),Vector3i(1,2,3))
+	trace.milestone("experimental_bake_started")
+	trace.milestone("experimental_preview_swap")
 	trace.commit(5)
 	trace.frame(0,false,0,0)
 	var result := trace.stop()
 	var stroke: Dictionary = result.strokes[0]
 	var rebuilt: Dictionary = result.events.filter(func(event): return event.kind == "visual_rebuilt")[0]
-	if stroke.input.size() != 1 or stroke.queued_samples != 3 or stroke.queue_wait_usec != 120 or stroke.stages_usec.brush_evaluation != 80 or stroke.changed_unique_voxels != 5 or stroke.changed_write_events != 7 or stroke.queue_drained_usec < stroke.committed_usec or rebuilt.requests_since_rebuild != 2 or rebuilt.first_dirty_age_usec < rebuilt.latest_request_age_usec or not result.pending_visual_at_stop.is_empty():
+	if stroke.input.size() != 2 or stroke.queued_samples != 3 or stroke.queue_wait_usec != 120 or stroke.stages_usec.brush_evaluation != 80 or stroke.changed_unique_voxels != 5 or stroke.changed_write_events != 7 or stroke.queue_drained_usec < stroke.committed_usec or rebuilt.requests_since_rebuild != 2 or rebuilt.first_dirty_age_usec < rebuilt.latest_request_age_usec or stroke.release_to_preview_swap_usec < 0 or not result.pending_visual_at_stop.is_empty():
 		printerr("FAIL world edit trace: ",result)
 		quit(1)
 		return

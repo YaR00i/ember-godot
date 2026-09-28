@@ -5,9 +5,11 @@ extends Node3D
 ## After Reimport, Ctrl+S. Geometry lives in Look / Terrain / Props / Regions.
 
 const SurfaceProjection := preload("res://scripts/ember_voxel_surface_projection.gd")
+const TerrainResource := preload("res://scripts/prototypes/ember_terrain_pilot_resource.gd")
+const TerrainProjection := preload("res://scripts/prototypes/ember_terrain_pilot_projection.gd")
 
 @export_group("0 · Карта и тест")
-## ID исходной карты в joi-conductor/content/ember/maps. Полный reimport затирает правки сцены.
+## ID карты. Legacy reimport читает joi-conductor; native scene держит свой Resource.
 @export var map_id := "fan_town"
 ## Native scenes author their regions directly and need no legacy pack hydration.
 @export var hydrate_legacy_regions := true
@@ -18,6 +20,12 @@ const SurfaceProjection := preload("res://scripts/ember_voxel_surface_projection
 		if visual_surface == value:
 			return
 		visual_surface = value
+		_refresh_visual_surface_projection()
+## Compact ground is an alternative map-owned source. A map may never render
+## both this and the legacy dense Surface as its ground.
+@export var compact_terrain: TerrainResource:
+	set(value):
+		compact_terrain = value
 		_refresh_visual_surface_projection()
 ## Saved map footprint lets a native Surface validate without reading the
 ## temporary JOI archive. Zero keeps the legacy importer fallback for old maps.
@@ -30,6 +38,18 @@ const SurfaceProjection := preload("res://scripts/ember_voxel_surface_projection
 		_refresh_visual_surface_projection()
 var _editor_surface_preview: EmberVoxelModelResource
 var _editor_surface_origin := Vector3.ZERO
+var _editor_terrain_preview: TerrainResource
+var editor_warning_timing_enabled := false
+var editor_warning_validation_count := 0
+var editor_warning_validation_usec := 0
+var editor_warning_validation_last_start_usec := 0
+var editor_warning_validation_last_duration_usec := 0
+
+func set_editor_terrain_preview(source: TerrainResource) -> void:
+	if not Engine.is_editor_hint():
+		return
+	_editor_terrain_preview = source
+	_refresh_visual_surface_projection()
 
 func set_editor_surface_preview(source: EmberVoxelModelResource, origin := Vector3.ZERO) -> void:
 	if not Engine.is_editor_hint():
@@ -330,8 +350,10 @@ func _collect_focus_omnis(node: Node, lamps: Array, world: Vector3) -> void:
 
 
 func has_authored_content() -> bool:
-	# A native world canvas intentionally has no props. Its saved Surface is
-	# already authored content and must never fall through to legacy reimport.
+	# A native scene may have no props; its saved ground is authored content.
+	# Never fall through to legacy reimport for either ground representation.
+	if compact_terrain != null and compact_terrain.validation_errors().is_empty():
+		return true
 	if resolved_visual_surface() != null:
 		return true
 	var props := _content_node("Props")
@@ -549,6 +571,8 @@ func world_surface_matches_map() -> bool:
 
 
 func resolved_visual_surface() -> EmberVoxelModelResource:
+	if compact_terrain != null:
+		return null
 	## The explicit scene reference wins. When the author has saved the Surface
 	## but not the .tscn yet, runtime/editor preview still resolve the one
 	## canonical map-owned Resource by map_id instead of silently showing legacy
@@ -603,6 +627,27 @@ func surface_navigation_path(
 func _refresh_visual_surface_projection() -> void:
 	if not is_inside_tree():
 		return
+	var terrain := _editor_terrain_preview if Engine.is_editor_hint() and _editor_terrain_preview != null else compact_terrain
+	if terrain != null:
+		if not is_instance_valid(_visual_surface_projection) or not _visual_surface_projection is EmberTerrainPilotProjection:
+			if is_instance_valid(_visual_surface_projection):
+				remove_child(_visual_surface_projection)
+				_visual_surface_projection.queue_free()
+			_visual_surface_projection = TerrainProjection.new()
+			_visual_surface_projection.name = "DerivedCompactWorldTerrain"
+			_visual_surface_projection.source = terrain
+			add_child(_visual_surface_projection)
+		else:
+			_visual_surface_projection.open_document(terrain)
+		_visual_surface_projection.scale = Vector3.ONE * (imported_tile_size / float(TerrainResource.CELLS_PER_BLOCK))
+		var terrain_visual := _content_node("Terrain/Mesh") as Node3D
+		var terrain_collision := _content_node("Terrain/Collision") as StaticBody3D
+		if terrain_visual != null:
+			terrain_visual.hide()
+		if terrain_collision != null:
+			terrain_collision.collision_layer = 0
+		update_configuration_warnings()
+		return
 	if not is_instance_valid(_visual_surface_projection):
 		_visual_surface_projection = SurfaceProjection.new()
 		_visual_surface_projection.name = "DerivedVoxelWorldSurface"
@@ -641,6 +686,40 @@ func _expected_world_surface_blocks() -> Vector2i:
 
 func _get_configuration_warnings() -> PackedStringArray:
 	var warnings := PackedStringArray()
+	var terrain := _editor_terrain_preview if Engine.is_editor_hint() and _editor_terrain_preview != null else compact_terrain
+	if terrain != null:
+		if visual_surface != null:
+			warnings.append("У карты назначены два источника земли. Оставьте только компактную землю.")
+		# The projection validates the whole Resource before it queues any tiles.
+		# Godot asks for configuration warnings again as derived tile nodes appear;
+		# scanning every column on each request would stall the 3D editor frame.
+		var building_validated_terrain: bool = _visual_surface_projection is EmberTerrainPilotProjection \
+			and _visual_surface_projection.source == terrain \
+			and _visual_surface_projection.document != null \
+			and _visual_surface_projection.pending_tile_count() > 0
+		# The world editor creates its private draft only after validating the source.
+		# Its brushes and Undo write bounded values; Save validates the full draft
+		# again. Rechecking millions of columns for Godot's idle warning refresh
+		# stalls the first frame after a stroke, even with no tiles left to build.
+		var editing_validated_draft: bool = Engine.is_editor_hint() \
+			and _editor_terrain_preview != null \
+			and _editor_terrain_preview == terrain \
+			and _visual_surface_projection is EmberTerrainPilotProjection \
+			and _visual_surface_projection.source == terrain \
+			and _visual_surface_projection.document != null
+		if not building_validated_terrain and not editing_validated_draft:
+			var validation_started := Time.get_ticks_usec() if editor_warning_timing_enabled else 0
+			var validation_errors := terrain.validation_errors()
+			if validation_started > 0:
+				editor_warning_validation_count += 1
+				editor_warning_validation_last_start_usec = validation_started
+				editor_warning_validation_last_duration_usec = Time.get_ticks_usec() - validation_started
+				editor_warning_validation_usec += editor_warning_validation_last_duration_usec
+			warnings.append_array(PackedStringArray(validation_errors))
+		var expected := _expected_world_surface_blocks()
+		if expected != Vector2i.ZERO and (terrain.width != expected.x * TerrainResource.CELLS_PER_BLOCK or terrain.depth != expected.y * TerrainResource.CELLS_PER_BLOCK):
+			warnings.append("Размер компактной земли не совпадает с размером карты: ожидается %dx%d ячеек." % [expected.x * TerrainResource.CELLS_PER_BLOCK,expected.y * TerrainResource.CELLS_PER_BLOCK])
+		return warnings
 	if visual_surface != null and not world_surface_matches_map():
 		var expected := _expected_world_surface_blocks()
 		warnings.append(

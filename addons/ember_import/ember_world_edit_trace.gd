@@ -89,6 +89,13 @@ func stage(name: String, duration_usec: int) -> void:
 	totals[name] = int(totals.get(name,0))+duration_usec
 
 
+func milestone(name: String) -> void:
+	if not recording or _current < 0: return
+	var at_usec := Time.get_ticks_usec()
+	events.append({"kind":name,"stroke":_current,"at_usec":at_usec})
+	strokes[_current][name + "_usec"] = at_usec
+
+
 func job_wait(duration_usec: int) -> void:
 	if recording and _current >= 0:
 		var stroke: Dictionary = strokes[_current]
@@ -189,6 +196,7 @@ func snapshot() -> Dictionary:
 		stroke.duration_usec = int(stroke.released_usec)-int(stroke.started_usec) if stroke.released_usec > 0 else -1
 		stroke.release_to_queue_drain_usec = int(stroke.queue_drained_usec)-int(stroke.released_usec) if stroke.queue_drained_usec > 0 and stroke.released_usec > 0 else -1
 		stroke.release_to_postdraw_proxy_usec = int(stroke.postdraw_settled_usec)-int(stroke.released_usec) if stroke.postdraw_settled_usec > 0 and stroke.released_usec > 0 else -1
+		stroke.release_to_preview_swap_usec = int(stroke.get("experimental_preview_swap_usec",0))-int(stroke.released_usec) if int(stroke.get("experimental_preview_swap_usec",0)) > 0 and stroke.released_usec > 0 else -1
 		stroke.visual_unique_chunks = stroke.visual_chunks.size()
 		stroke.physics_unique_chunks = stroke.physics_chunks.size()
 		stroke.visual_rebuilds_by_chunk = {}

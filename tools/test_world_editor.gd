@@ -5,6 +5,8 @@ const Model = preload("res://addons/ember_import/ember_voxel_sculpt_model.gd")
 const Store = preload("res://addons/ember_import/ember_voxel_model_store.gd")
 const ProjectionScript = preload("res://scripts/ember_voxel_surface_projection.gd")
 const Physics = preload("res://scripts/ember_voxel_surface_physics.gd")
+const TerrainResource = preload("res://scripts/prototypes/ember_terrain_pilot_resource.gd")
+const BrushParameters = preload("res://addons/ember_import/ember_world_brush_parameters.gd")
 var errors: Array[String] = []
 var fixture := "user://ember-tests/world-editor-%d-%d" % [OS.get_process_id(),Time.get_ticks_usec()]
 
@@ -41,8 +43,62 @@ func _run() -> void:
 	world.set_process(false)
 	var top := world.build_toolbar()
 	var side := world.build_sidebar()
+	var inspector := world.inspector_panel
 	root.add_child(top)
 	root.add_child(side)
+	root.add_child(inspector)
+	check(inspector.custom_minimum_size.x >= 300,"world tool inspector missing")
+	check(world.tool_list.get_child_count() >= 5,"world tool rail missing")
+	check(world.category_buttons.size() == 4 and world.category_buttons[0].button_pressed,"world tool groups not visible")
+	world.radius_slider.value = 2
+	check(is_equal_approx(world.radius.value,2),"radius slider does not update exact value")
+	world.radius.value = 3
+	check(is_equal_approx(world.radius_slider.value,3),"exact radius does not update slider")
+	var inspector_id := inspector.get_instance_id()
+	world.category.select(2)
+	world._category_changed(2)
+	check(world.tool_list.get_child_count() == 2 and world.inspector_panel.get_instance_id() == inspector_id,"water tools changed inspector layout")
+	check(world.category_buttons[2].button_pressed and not world.category_buttons[0].button_pressed,"world group highlight not updated")
+	world._category_changed(1)
+	check(world._parameter_group(world.radius).visible and world.radius.get_parent().get_parent().get_parent().visible,"paint radius controls hidden")
+	world._category_changed(2)
+	for parameter_id: String in world._brush_parameter_controls:
+		check(not BrushParameters.definition(parameter_id).is_empty(),"brush control missing shared definition: " + parameter_id)
+	for compact_profile in [false,true]:
+		var tool_sets: Dictionary = BrushParameters.COMPACT_TOOLS if compact_profile else BrushParameters.LEGACY_TOOLS
+		for tool_mode: String in tool_sets:
+			for parameter_id: String in BrushParameters.active_for(tool_mode,compact_profile,compact_profile,true):
+				check(world._brush_parameter_controls.has(parameter_id),"brush uses unbound shared parameter: " + parameter_id)
+	world.entry = {"compact":true,"resource":TerrainResource.new()}
+	world._category_changed(0)
+	check(world.terrain_edit_scale.visible and world.terrain_height_step.visible and world._parameter_group(world.coarse_depth).visible,"compact raise missing shared terrain controls")
+	check(not world.palette_row.visible and not world.material_title.visible,"compact raise shows unused palette")
+	world.tools.select(2)
+	world._tool_changed()
+	check(world._parameter_group(world.coarse_depth).visible,"compact smooth missing strength")
+	world.terrain_edit_scale.select(2)
+	world._tool_changed()
+	check(world._parameter_group(world.depth).visible and not world._parameter_group(world.coarse_depth).visible,"detailed smooth missing shared strength")
+	world.terrain_edit_scale.select(0)
+	world.tools.select(3)
+	world._tool_changed()
+	check(world.compact_level_from_point.visible and not world.plane_height.get_parent().visible,"point level shows manual height")
+	world.compact_level_from_point.button_pressed = false
+	world._tool_changed()
+	check(world.plane_height.get_parent().visible,"manual level hides height")
+	world._category_changed(1)
+	check(world.palette_row.visible and not world._parameter_group(world.coarse_depth).visible,"compact paint parameter set incorrect")
+	check(is_equal_approx(world.radius.value,3),"shared radius reset when switching compact tools")
+	world._category_changed(2)
+	check(world.palette_row.visible and world.water_height.get_parent().visible,"compact water parameter set incorrect")
+	world.tools.select(1)
+	world._tool_changed()
+	check(not world.palette_row.visible and not world.water_height.get_parent().visible,"compact dry shows unused water settings")
+	world.entry = {}
+	world.terrain_edit_scale.select(0)
+	world.compact_level_from_point.button_pressed = true
+	world.category.select(0)
+	world._category_changed(0)
 	world.scene = scene
 	world.map = map
 	world.active = true
@@ -192,6 +248,12 @@ func _run() -> void:
 	world.sessions.discard(scene)
 	# Crash-cache restore must not replace a newer, already dirty draft.
 	object_entry.resource.voxels[1] = 0
+	check(world.sessions.start_periodic_recovery(), "async object recovery did not start")
+	for iteration in 10000:
+		world.sessions.poll_recovery()
+		if not world.sessions.last_recovery_profile.is_empty(): break
+		await process_frame
+	check(int(world.sessions.last_recovery_profile.get("result", FAILED)) == OK, "async object recovery failed")
 	world.sessions.write_recovery()
 	world.sessions.discard(scene)
 	var restored_count: int = world.sessions.restore_recovery(scene)
@@ -224,6 +286,7 @@ func _run() -> void:
 	world.free()
 	top.free()
 	side.free()
+	inspector.free()
 	scene.free()
 	history.free()
 	_finish()

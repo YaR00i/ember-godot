@@ -1,0 +1,72 @@
+[gd_scene format=3 uid="uid://uunmmdoinoxi"]
+
+[ext_resource type="Script" uid="uid://b174h8hlywqpb" path="res://scripts/world_canvas.gd" id="1_root"]
+[ext_resource type="Script" uid="uid://ctwn2o6mocfe2" path="res://scripts/ember_map_loader.gd" id="2_map"]
+[ext_resource type="Resource" uid="uid://bs18sprmd8yxn" path="res://content/world_surfaces/landscape_v2_experimental_surface.tres" id="3_surface"]
+[ext_resource type="Script" uid="uid://4lkb6w8l82y0" path="res://scripts/ember_region.gd" id="4_region"]
+
+[sub_resource type="Environment" id="environment"]
+background_mode = 1
+background_color = Color(0.43, 0.57, 0.6, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.77, 0.84, 0.8, 1)
+ambient_light_energy = 0.35
+tonemap_mode = 2
+
+[node name="LandscapeV2Experimental" type="Node3D" unique_id=805765972]
+script = ExtResource("1_root")
+map_id = "landscape_v2_experimental"
+
+[node name="Map" type="Node3D" parent="." unique_id=123186039]
+script = ExtResource("2_map")
+map_id = "landscape_v2_experimental"
+hydrate_legacy_regions = false
+visual_surface = ExtResource("3_surface")
+authored_size_blocks = Vector2i(24, 25)
+surface_origin = Vector3(0, -32, 0)
+use_visual_surface_physics = true
+camera_distance = 200.0
+camera_polar = 0.88
+camera_yaw = 0.35
+camera_look_height = 3.0
+camera_far = 2400.0
+
+[node name="Look" type="Node3D" parent="Map" unique_id=902133210]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="Map/Look" unique_id=857763617]
+environment = SubResource("environment")
+
+[node name="Sun" type="DirectionalLight3D" parent="Map/Look" unique_id=786158174]
+transform = Transform3D(0.8480481, 0.44939703, -0.28081444, 0, 0.52991927, 0.8480481, 0.52991927, -0.7191856, 0.44939703, 0, 0, 0)
+light_color = Color(1, 0.96, 0.87, 1)
+light_energy = 0.3
+shadow_enabled = true
+directional_shadow_max_distance = 800.0
+
+[node name="Terrain" type="Node3D" parent="Map" unique_id=1185499313]
+
+[node name="Props" type="Node3D" parent="Map" unique_id=2083195552]
+
+[node name="Regions" type="Node3D" parent="Map" unique_id=1372404067]
+
+[node name="PlayerStart" type="Area3D" parent="Map/Regions" unique_id=1954658759]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 6, 200)
+collision_layer = 0
+collision_mask = 0
+monitoring = false
+monitorable = false
+script = ExtResource("4_region")
+region_id = "landscape_v2_experimental_start"
+map_id = "landscape_v2_experimental"
+kind = "player_start"
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1944218270]
+
+[node name="Gate" type="Label" parent="CanvasLayer" unique_id=799270627]
+offset_left = 16.0
+offset_top = 14.0
+theme_override_colors/font_color = Color(0.98, 0.98, 0.9, 1)
+theme_override_colors/font_shadow_color = Color(0.12, 0.19, 0.17, 1)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+text = "LANDSCAPE V2 EXPERIMENT · КОПИЯ БЕРЕГА · НЕ АВТОРСКАЯ КАРТА"

@@ -31,6 +31,10 @@
   **массового** authoring-слоя мира: большие 3D world brushes, World Layout,
   planners, биомы, дороги и building massing. Уже созданный локальный
   3D-редактор описан в handoff.
+- `EMBER_LANDSCAPE_V2_RFC.md` — отклонённый ручной проверкой GPU-preview/bake
+  эксперимент и его измерения. Компактный terrain pilot и первый scene-owned
+  срез `landscape_compact.tscn` перечислены в `EMBER_NOW.md`; ручная приёмка
+  новой карты и нативного редактора открыта.
 
 ### Техническая истина
 

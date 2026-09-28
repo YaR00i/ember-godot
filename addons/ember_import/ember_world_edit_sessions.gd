@@ -7,6 +7,7 @@ const Model = preload("res://addons/ember_import/ember_voxel_sculpt_model.gd")
 const ObjectSession = preload("res://addons/ember_import/ember_voxel_object_session.gd")
 const Store = preload("res://addons/ember_import/ember_voxel_model_store.gd")
 const SurfaceProjection = preload("res://scripts/ember_voxel_surface_projection.gd")
+const TerrainResource = preload("res://scripts/prototypes/ember_terrain_pilot_resource.gd")
 const FIELDS := ["schema_version","model_id","display_name","tags","voxels_per_block","size_blocks","height_voxels","palette","voxels","emissive","shine","transparency","transmittance","surface_fill_levels","surface_fill_materials","surface_fill_palette","voxel_groups","voxel_part_ids","merge_parts","collision_voxels","material","physical","emissive_casts_light","emissive_light_range","emissive_light_shadows","emissive_light_soft_rings","emissive_light_soft_shadows","emissive_strength","emissive_suppress_host_shadow","emissive_torch_flicker","emissive_light_offset","emissive_lights","imported_from","imported_source_hash"]
 const RECOVERY := "user://ember_world_drafts"
 var entries: Dictionary = {}
@@ -19,13 +20,19 @@ var last_save_profile := {}
 var pending_native_save := {}
 var source_directory := EmberVoxelCatalog.NATIVE_DIR
 var prefab_directory := EmberVoxelPrefab.PREFAB_DIR
+var _recovery_task_id := -1
+var _recovery_job := {}
+var last_recovery_profile := {}
 
 func configure(history: Object, scene_save := Callable()) -> void:
 	undo = history
 	save_scene = scene_save
 
-static func same_data(a: EmberVoxelModelResource, b: EmberVoxelModelResource) -> bool:
+static func same_data(a: Resource, b: Resource) -> bool:
 	if a == null or b == null: return false
+	if a is TerrainResource or b is TerrainResource:
+		if not (a is TerrainResource and b is TerrainResource): return false
+		return (a as TerrainResource).same_terrain_data(b as TerrainResource)
 	for field in FIELDS:
 		if a.get(field) != b.get(field): return false
 	return true
@@ -45,6 +52,19 @@ func _entry(target: Node, scene: Node, resource: EmberVoxelModelResource, path: 
 func open_map(map: EmberMapLoader, scene: Node) -> Dictionary:
 	error = ""
 	if entries.has(_key(map)): return entries[_key(map)]
+	if map.compact_terrain != null:
+		var source: TerrainResource = map.compact_terrain
+		if not source.validation_errors().is_empty():
+			error = source.validation_errors()[0]
+			return {}
+		var path := source.resource_path
+		if path.is_empty() or not FileAccess.file_exists(path):
+			error = "Компактная земля должна быть сохранена отдельным Resource."
+			return {}
+		var next := {"target": weakref(map), "scene": weakref(scene), "resource": source.working_copy(), "baseline": source.working_copy(), "path": path, "hash": FileAccess.get_sha256(path), "object_session": null, "origin": Vector3.ZERO, "scene_path": scene.scene_file_path, "target_path": str(scene.get_path_to(map)), "source_resource": source, "originals": [], "preview": null, "compact": true}
+		entries[_key(map)] = next
+		preview(next)
+		return next
 	var source := map.resolved_visual_surface()
 	if source == null:
 		error = "У карты ещё нет общей земли. Выделите место и нажмите «Создать землю»."
@@ -97,6 +117,8 @@ func frame(entry: Dictionary) -> Transform3D:
 	var target: Node3D = entry.target.get_ref()
 	if not is_instance_valid(target): return Transform3D.IDENTITY
 	if target is EmberMapLoader:
+		if entry.get("compact", false):
+			return target.global_transform * Transform3D(Basis.IDENTITY * (target.imported_tile_size / 16.0), Vector3.ZERO)
 		return target.global_transform * Transform3D(Basis.IDENTITY * target.imported_tile_size,entry.origin)
 	var context: Dictionary = entry.object_session.context_projection(entry.resource)
 	return context.get("frame",Transform3D.IDENTITY)
@@ -105,6 +127,9 @@ func preview(entry: Dictionary) -> void:
 	var target: Node3D = entry.target.get_ref()
 	if not is_instance_valid(target) or not target.is_inside_tree(): return
 	if target is EmberMapLoader:
+		if entry.get("compact", false):
+			target.set_editor_terrain_preview(entry.resource)
+			return
 		target.set_editor_surface_preview(entry.resource,entry.origin)
 		return
 	if not is_instance_valid(entry.preview):
@@ -134,12 +159,17 @@ func set_water_hidden(hidden: bool) -> void:
 func discard(scene: Node = null) -> void:
 	for entry in entries.values():
 		if scene != null and entry.scene.get_ref() != scene: continue
+		if entry.get("compact", false):
+			entry.resource = entry.baseline.working_copy()
+			preview(entry)
+			continue
 		for field in FIELDS: entry.resource.set(field,EmberVoxelModelResource.copy_authoring_value(entry.baseline.get(field)))
 		entry.resource.notify_geometry_changed(PackedInt32Array())
 		preview(entry)
 	changed.emit()
 
 func save_all(scene: Node, defer_scene_save := false) -> bool:
+	_finish_recovery_task()
 	if saving: return false
 	var profile_start := Time.get_ticks_usec()
 	last_save_profile = {}
@@ -174,6 +204,8 @@ func save_all(scene: Node, defer_scene_save := false) -> bool:
 				error = str(plan.get("error","Не удалось подготовить объект"))
 				break
 			prepared.append({"entry":entry,"plan":plan,"old_source":Store._snapshot_file(plan.path) if FileAccess.file_exists(plan.path) else {},"old_prefab":Store._snapshot_file(plan.prefab) if FileAccess.file_exists(plan.prefab) else {},"published":false})
+		elif entry.get("compact", false):
+			prepared.append({"entry": entry, "old_source": Store._snapshot_file(entry.path), "published": false, "compact": true})
 		else:
 			prepared.append({"entry":entry,"old_source":Store._snapshot_file(entry.path) if FileAccess.file_exists(entry.path) else {},"old_map_source":target.visual_surface,"old_origin":target.surface_origin,"old_physical":target.use_visual_surface_physics,"published":false})
 	last_save_profile.preflight_usec = Time.get_ticks_usec()-profile_start
@@ -181,7 +213,13 @@ func save_all(scene: Node, defer_scene_save := false) -> bool:
 	if error.is_empty():
 		for item in prepared:
 			var entry: Dictionary = item.entry
-			var result: Dictionary = Store.install_prepared_asset(item.plan.next,item.plan.packed,item.plan.path,item.plan.prefab,true) if item.has("plan") else Store.install_surface_resource(entry.resource,entry.path)
+			var result: Dictionary = (
+				Store.install_prepared_asset(item.plan.next,item.plan.packed,item.plan.path,item.plan.prefab,true)
+				if item.has("plan") else
+				{"ok": ResourceSaver.save(entry.resource, entry.path) == OK}
+				if item.get("compact", false) else
+				Store.install_surface_resource(entry.resource,entry.path)
+			)
 			if not result.get("ok",false):
 				error = str(result.get("error","Публикация не завершена"))
 				break
@@ -189,7 +227,7 @@ func save_all(scene: Node, defer_scene_save := false) -> bool:
 			if item.has("plan"):
 				for state in item.plan.new_states: state.signature = result.signature
 				entry.object_session._apply(item.plan.new_states,{})
-			else:
+			elif not item.get("compact", false):
 				var map: EmberMapLoader = entry.target.get_ref()
 				map.surface_origin = entry.origin
 				map.visual_surface = ResourceLoader.load(entry.path)
@@ -221,12 +259,14 @@ func _complete_save(prepared: Array[Dictionary], scene_snapshot: Dictionary, sce
 	if not error.is_empty():
 		var rollback_errors := PackedStringArray()
 		for item in prepared:
-			if not item.published: continue
+			if not item.published and not item.get("compact", false): continue
 			var entry: Dictionary = item.entry
 			if item.has("plan"):
 				_restore_checked(item.old_source,item.plan.path,rollback_errors)
 				_restore_checked(item.old_prefab,item.plan.prefab,rollback_errors)
 				entry.object_session._apply(item.plan.old_states,{})
+			elif item.get("compact", false):
+				_restore_checked(item.old_source,entry.path,rollback_errors)
 			else:
 				_restore_checked(item.old_source,entry.path,rollback_errors)
 				var map: EmberMapLoader = entry.target.get_ref()
@@ -246,9 +286,12 @@ func _complete_save(prepared: Array[Dictionary], scene_snapshot: Dictionary, sce
 				entry.path = item.plan.path
 				entry.object_session.accept_prepared_save(item.plan.next,item.plan.path)
 				paths.append(item.plan.prefab)
-			entry.baseline = entry.resource.duplicate_model()
+			entry.baseline = entry.resource.working_copy() if entry.get("compact", false) else entry.resource.duplicate_model()
 			entry.hash = FileAccess.get_sha256(entry.path)
-			entry.source_resource = ResourceLoader.load(entry.path)
+			entry.source_resource = ResourceLoader.load(entry.path,"",ResourceLoader.CACHE_MODE_REPLACE) if entry.get("compact", false) else ResourceLoader.load(entry.path)
+			if entry.get("compact", false):
+				var map: EmberMapLoader = entry.target.get_ref()
+				if is_instance_valid(map): map.compact_terrain = entry.source_resource
 			paths.append(entry.path)
 		if not paths.is_empty(): Store.asset_events.assets_published.emit(paths)
 	for entry in entries.values(): preview(entry)
@@ -267,25 +310,90 @@ func _restore_checked(snapshot: Dictionary, path: String, errors: PackedStringAr
 	backup.set_value("rollback","snapshot",snapshot)
 	backup.save(recovery_directory.path_join("rollback_"+path.sha256_text()+".cfg"))
 
-func write_recovery() -> void:
-	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(recovery_directory))
-	var manifest := ConfigFile.new()
+func _recovery_items(copy_resources: bool) -> Array[Dictionary]:
+	var items: Array[Dictionary] = []
 	for key in entries:
 		var entry: Dictionary = entries[key]
+		if not dirty(entry): continue
 		var scene: Node = entry.scene.get_ref()
 		var target: Node = entry.target.get_ref()
-		if not dirty(entry): continue
-		var path := recovery_directory.path_join("draft_%s.tres" % key)
-		if ResourceSaver.save(entry.resource,path) == OK:
-			manifest.set_value(str(key),"draft",path)
-			manifest.set_value(str(key),"scene",scene.scene_file_path if is_instance_valid(scene) else entry.scene_path)
-			manifest.set_value(str(key),"target",str(scene.get_path_to(target)) if is_instance_valid(scene) and is_instance_valid(target) else entry.target_path)
-			manifest.set_value(str(key),"source",entry.path)
-			manifest.set_value(str(key),"hash",entry.hash)
-			manifest.set_value(str(key),"origin",entry.origin)
-	manifest.save(recovery_directory.path_join("manifest.cfg"))
+		var resource: Resource = entry.resource
+		if copy_resources:
+			resource = (resource as TerrainResource).working_copy() if entry.get("compact", false) else (resource as EmberVoxelModelResource).duplicate_model()
+		items.append({"key": str(key), "resource": resource,
+			"draft": recovery_directory.path_join("draft_%s.%s" % [key, "res" if entry.get("compact", false) else "tres"]),
+			"scene": scene.scene_file_path if is_instance_valid(scene) else entry.scene_path,
+			"target": str(scene.get_path_to(target)) if is_instance_valid(scene) and is_instance_valid(target) else entry.target_path,
+			"source": entry.path, "hash": entry.hash, "origin": entry.origin})
+	return items
+
+
+static func _save_recovery_items(job: Dictionary) -> void:
+	var started := Time.get_ticks_usec()
+	var directory: String = job.directory
+	var result := DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(directory))
+	var manifest := ConfigFile.new()
+	if result == OK:
+		for item in job.items:
+			var staged_path: String = (item.draft as String).get_basename() + ".pending." + (item.draft as String).get_extension()
+			var saved := ResourceSaver.save(item.resource, staged_path)
+			if saved != OK:
+				result = saved
+				break
+			saved = DirAccess.rename_absolute(ProjectSettings.globalize_path(staged_path), ProjectSettings.globalize_path(item.draft))
+			if saved != OK:
+				result = saved
+				break
+			for field in ["draft", "scene", "target", "source", "hash", "origin"]:
+				manifest.set_value(item.key, field, item[field])
+		if result == OK:
+			var staged_manifest := directory.path_join("manifest.pending.cfg")
+			result = manifest.save(staged_manifest)
+			if result == OK:
+				result = DirAccess.rename_absolute(ProjectSettings.globalize_path(staged_manifest), ProjectSettings.globalize_path(directory.path_join("manifest.cfg")))
+	job.result = result
+	job.write_usec = Time.get_ticks_usec() - started
+
+
+func start_periodic_recovery() -> bool:
+	poll_recovery()
+	if _recovery_task_id >= 0: return false
+	var started := Time.get_ticks_usec()
+	var items := _recovery_items(true)
+	var snapshot_usec := Time.get_ticks_usec() - started
+	_recovery_job = {"directory": recovery_directory, "items": items, "result": ERR_BUSY, "write_usec": 0,
+		"snapshot_usec": snapshot_usec, "started_usec": started}
+	_recovery_task_id = WorkerThreadPool.add_task(Callable(self, "_save_recovery_items").bind(_recovery_job), false, "Ember world recovery")
+	if _recovery_task_id < 0:
+		write_recovery()
+		return true
+	return true
+
+
+func poll_recovery() -> void:
+	if _recovery_task_id >= 0 and WorkerThreadPool.is_task_completed(_recovery_task_id):
+		_finish_recovery_task()
+
+
+func _finish_recovery_task() -> void:
+	if _recovery_task_id < 0: return
+	var waited := WorkerThreadPool.wait_for_task_completion(_recovery_task_id)
+	last_recovery_profile = {"snapshot_usec": int(_recovery_job.snapshot_usec),
+		"write_usec": int(_recovery_job.write_usec), "result": int(_recovery_job.result),
+		"started_usec": int(_recovery_job.started_usec), "completed_usec": Time.get_ticks_usec()}
+	if waited != OK or int(_recovery_job.result) != OK:
+		push_warning("Ember recovery draft save failed: %s" % error_string(waited if waited != OK else int(_recovery_job.result)))
+	_recovery_task_id = -1
+	_recovery_job = {}
+
+
+func write_recovery() -> void:
+	_finish_recovery_task()
+	var job := {"directory": recovery_directory, "items": _recovery_items(false), "result": ERR_BUSY, "write_usec": 0}
+	_save_recovery_items(job)
 
 func restore_recovery(scene: Node) -> int:
+	_finish_recovery_task()
 	error = ""
 	var manifest := ConfigFile.new()
 	if manifest.load(recovery_directory.path_join("manifest.cfg")) != OK: return 0
@@ -300,8 +408,8 @@ func restore_recovery(scene: Node) -> int:
 		if target != null and entries.has(_key(target)) and dirty(entries[_key(target)]):
 			error = "Восстановление не заменило текущий несохранённый черновик. Сначала сохраните или отмените его."
 			continue
-		var draft := ResourceLoader.load(manifest.get_value(section,"draft",""),"",ResourceLoader.CACHE_MODE_IGNORE) as EmberVoxelModelResource
-		if draft == null or not draft.validation_errors().is_empty(): continue
+		var draft := ResourceLoader.load(manifest.get_value(section,"draft",""),"",ResourceLoader.CACHE_MODE_IGNORE)
+		if draft == null or not draft.has_method("validation_errors") or not draft.validation_errors().is_empty(): continue
 		var entry := open_map(target,scene) if target is EmberMapLoader else open_object(target,scene) if target is EmberVoxelProp else {}
 		var new_ground := entry.is_empty() and target is EmberMapLoader
 		if new_ground: entry = create_ground(target,scene)
@@ -311,9 +419,14 @@ func restore_recovery(scene: Node) -> int:
 			continue
 		entry.path = path
 		entry.hash = manifest.get_value(section,"hash","")
-		for field in FIELDS: entry.resource.set(field,EmberVoxelModelResource.copy_authoring_value(draft.get(field)))
+		if entry.get("compact", false):
+			if not draft is TerrainResource: continue
+			entry.resource = draft.working_copy()
+		else:
+			if not draft is EmberVoxelModelResource: continue
+			for field in FIELDS: entry.resource.set(field,EmberVoxelModelResource.copy_authoring_value(draft.get(field)))
 		entry.origin = manifest.get_value(section,"origin",entry.origin)
-		entry.resource.notify_geometry_changed(PackedInt32Array())
+		if not entry.get("compact", false): entry.resource.notify_geometry_changed(PackedInt32Array())
 		preview(entry)
 		restored += 1
 	return restored
@@ -322,9 +435,11 @@ func release() -> void:
 	if not pending_native_save.is_empty(): finish_native_save(ERR_CANT_CREATE)
 	write_recovery()
 	for entry in entries.values():
-		if entry.resource.geometry_changed.is_connected(entry.on_changed): entry.resource.geometry_changed.disconnect(entry.on_changed)
+		if not entry.get("compact", false) and entry.resource.geometry_changed.is_connected(entry.on_changed): entry.resource.geometry_changed.disconnect(entry.on_changed)
 		_show_originals(entry,true)
 		var target: Node = entry.target.get_ref()
-		if target is EmberMapLoader: target.set_editor_surface_preview(null)
+		if target is EmberMapLoader:
+			if entry.get("compact", false): target.set_editor_terrain_preview(null)
+			else: target.set_editor_surface_preview(null)
 		if is_instance_valid(entry.preview): entry.preview.free()
 	entries.clear()

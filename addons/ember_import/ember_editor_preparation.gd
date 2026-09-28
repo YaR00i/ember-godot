@@ -72,8 +72,6 @@ func begin(shelf: Node, filesystem: Object) -> void:
 	_started = Time.get_ticks_msec()
 	_quiet_since = _started
 	set_process(true)
-	if DisplayServer.get_name() != "headless":
-		popup_centered(size)
 
 
 func _process(_delta: float) -> void:
@@ -108,6 +106,7 @@ func _process(_delta: float) -> void:
 	_progress.value = 100.0 * (done + _shelf.preparation_loading_fraction()) / maxf(_total, 1)
 	_status.text = "Подготовка библиотеки: %d из %d. Пожалуйста, подождите…" % [done, _total]
 	if pending > 0:
+		_show_window()
 		return
 	if _surface_work_pending():
 		_status.text = "Подготовка поверхности открытых сцен…"
@@ -131,8 +130,14 @@ func _offer_continue(message: String) -> void:
 	_waiting_for_choice = true
 	_status.text = message
 	_continue.show()
+	_show_window()
 	_fit_message.call_deferred()
 	_continue.grab_focus()
+
+
+func _show_window() -> void:
+	if DisplayServer.get_name() != "headless" and not visible:
+		popup_centered(size)
 
 
 func _fit_message() -> void:
