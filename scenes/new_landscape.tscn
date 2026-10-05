@@ -1,0 +1,68 @@
+[gd_scene format=3 uid="uid://cp76eq1pimqv2"]
+
+[ext_resource type="Script" uid="uid://b174h8hlywqpb" path="res://scripts/world_canvas.gd" id="1_d3pey"]
+[ext_resource type="Script" uid="uid://ctwn2o6mocfe2" path="res://scripts/ember_map_loader.gd" id="2_sa3h3"]
+[ext_resource type="Resource" uid="uid://cgcqmslil11iv" path="res://content/world_terrains/new_landscape.res" id="3_rwn21"]
+[ext_resource type="Script" uid="uid://4lkb6w8l82y0" path="res://scripts/ember_region.gd" id="4_l517m"]
+
+[sub_resource type="Environment" id="Environment_hnsar"]
+background_mode = 1
+background_color = Color(0.43, 0.57, 0.6, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.77, 0.84, 0.8, 1)
+ambient_light_energy = 0.35
+tonemap_mode = 2
+
+[node name="CompactMap" type="Node3D" unique_id=1719552566]
+script = ExtResource("1_d3pey")
+sandbox_storage_root = "user://ember-new_landscape"
+map_id = "new_landscape"
+
+[node name="Map" type="Node3D" parent="." unique_id=576343159]
+script = ExtResource("2_sa3h3")
+map_id = "new_landscape"
+hydrate_legacy_regions = false
+compact_terrain = ExtResource("3_rwn21")
+authored_size_blocks = Vector2i(96, 24)
+camera_distance = 200.0
+camera_polar = 0.88
+camera_yaw = 0.35
+camera_look_height = 10.0
+camera_far = 2400.0
+
+[node name="Look" type="Node3D" parent="Map" unique_id=599751140]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="Map/Look" unique_id=1063390460]
+environment = SubResource("Environment_hnsar")
+
+[node name="Sun" type="DirectionalLight3D" parent="Map/Look" unique_id=1290703373]
+transform = Transform3D(0.8660254, 0.42402405, -0.26495963, 0, 0.52991927, 0.8480481, 0.5, -0.73443115, 0.45892355, 0, 0, 0)
+light_color = Color(1, 0.96, 0.87, 1)
+light_energy = 0.3
+shadow_enabled = true
+directional_shadow_max_distance = 800.0
+
+[node name="Terrain" type="Node3D" parent="Map" unique_id=1683318667]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 384, 0, 0)
+
+[node name="Props" type="Node3D" parent="Map" unique_id=6822427]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 384, 0, 0)
+
+[node name="Regions" type="Node3D" parent="Map" unique_id=1038734473]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 384, 0, 0)
+
+[node name="PlayerStart" type="Area3D" parent="Map/Regions" unique_id=1792369997]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 10, 192)
+collision_layer = 0
+collision_mask = 0
+monitoring = false
+monitorable = false
+script = ExtResource("4_l517m")
+region_id = "new_landscape_start"
+map_id = "new_landscape"
+kind = "player_start"
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=939365883]
+
+[node name="Gate" type="Label" parent="CanvasLayer" unique_id=710995051]
+text = "EMBER · НОВАЯ КАРТА"
