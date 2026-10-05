@@ -34,6 +34,10 @@ var _strength_by_distance := PackedInt32Array()
 var _row_extents := PackedInt32Array()
 var _group_offsets := PackedInt32Array()
 var diagnostic_sink: RefCounted
+var _section_baseline: TerrainResource
+var _section_touched := {}
+var _section_influence := {}
+var _section_groups := {}
 
 
 func configure(entry: Dictionary, history: Object, scene: Node) -> void:
@@ -91,6 +95,10 @@ func begin(mode: String, radius_blocks: float, depth_voxels: int, palette_index:
 	_before_tops = source.top_materials.duplicate()
 	_before_waters = source.water_levels.duplicate()
 	_before_water_colors = source.water_materials.duplicate()
+	_section_baseline = source.working_copy() if source.is_sectioned() else null
+	_section_touched.clear()
+	_section_influence.clear()
+	_section_groups.clear()
 	if mode == "generator":
 		_noise = FastNoiseLite.new()
 		_noise.seed = seed
@@ -126,6 +134,7 @@ func _stamp_point(cell: Vector2i, bounds: Rect2i, previous_center: Vector2i) -> 
 	var source: TerrainResource = _entry.resource
 	if cell.x < 0 or cell.y < 0 or cell.x >= source.width or cell.y >= source.depth:
 		return
+	if not source.has_column(cell.x, cell.y): return
 	var center := Vector2i(cell.x / _cell_stride, cell.y / _cell_stride)
 	var group_width := source.width / _cell_stride
 	var group_depth := source.depth / _cell_stride
@@ -135,7 +144,7 @@ func _stamp_point(cell: Vector2i, bounds: Rect2i, previous_center: Vector2i) -> 
 	if can_skip_previous and delta_squared == 0:
 		return
 	if _mode == "level" and _target_height < 0:
-		_target_height = BrushMath.group_height(_before_heights, source.width, center.x * _cell_stride, center.y * _cell_stride, _cell_stride, _height_step, source.height_limit)
+		_target_height = _baseline_group(source, center.x * _cell_stride, center.y * _cell_stride)
 	var gather_started := Time.get_ticks_usec() if diagnostic_sink != null else 0
 	var indices := PackedInt32Array()
 	var heights := PackedInt32Array()
@@ -149,6 +158,15 @@ func _stamp_point(cell: Vector2i, bounds: Rect2i, previous_center: Vector2i) -> 
 	var clear_water := _mode == "dry"
 	var square := _shape == "square"
 	var coarse := _cell_stride > 1
+	var sectioned := source.is_sectioned()
+	var read_address := Vector2i(-1, -1)
+	var read_part: TerrainResource = source
+	var current_heights := source.heights
+	var current_tops := source.top_materials
+	var current_waters := source.water_levels
+	var current_colors := source.water_materials
+	var local_offsets := _group_offsets
+	var offset_width := source.width
 	for dz in range(-_radius, _radius + 1):
 		var group_z := center.y + dz
 		if group_z < 0 or group_z >= group_depth: continue
@@ -173,33 +191,56 @@ func _stamp_point(cell: Vector2i, bounds: Rect2i, previous_center: Vector2i) -> 
 			var z := group_z * _cell_stride
 			if bounds.has_area() and (x < bounds.position.x or z < bounds.position.y or x + _cell_stride > bounds.end.x or z + _cell_stride > bounds.end.y): continue
 			var representative := x + z * source.width
+			if not source.has_column(x, z) or not source.has_column(x + _cell_stride - 1, z + _cell_stride - 1): continue
 			if repeated_height:
 				var strength := _strength_by_distance[distance_squared] if _mode == "generator" else _amount_by_distance[distance_squared]
-				if strength <= _influence[representative]: continue
-				_influence[representative] = strength
-			elif _touched[representative] != 0:
+				if strength <= _influence_at(representative): continue
+				_set_influence(representative, strength)
+			elif _was_touched(representative):
 				continue
 			var height := 0
 			if changes_height:
-				var baseline: int = _before_heights[representative] if _cell_stride == 1 else BrushMath.group_height(_before_heights, source.width, x, z, _cell_stride, _height_step, source.height_limit)
+				var baseline := _baseline_group(source, x, z)
 				match _mode:
 					"raise": height = clampi(baseline + _amount_by_distance[distance_squared], 1, source.height_limit) if _height_step == 1 else BrushMath.stepped_height(baseline + _amount_by_distance[distance_squared], _height_step, source.height_limit)
 					"lower": height = clampi(baseline - _amount_by_distance[distance_squared], 1, source.height_limit) if _height_step == 1 else BrushMath.stepped_height(baseline - _amount_by_distance[distance_squared], _height_step, source.height_limit)
 					"level": height = _target_height
-					"smooth": height = clampi(BrushMath.smooth_height(_before_heights, source.width, source.depth, x, z, _depth, influence), 1, source.height_limit) if _cell_stride == 1 else BrushMath.smooth_group_height(_before_heights, source.width, source.depth, group_x, group_z, _cell_stride, _height_step, maxi(1, _depth / _height_step), influence, source.height_limit)
+					"smooth": height = _smooth_baseline(source, x, z, group_x, group_z, influence)
 					"generator":
 						var steps := BrushMath.noise_offset(_noise, group_x, group_z, influence, maxi(1, _depth / _height_step), _detail, _direction)
 						height = clampi(baseline + steps, 1, source.height_limit) if _height_step == 1 else BrushMath.stepped_height(baseline + steps * _height_step, _height_step, source.height_limit)
 			var group_changed := false
-			for offset in _group_offsets:
+			var local_representative := representative
+			if sectioned:
+				var address := Vector2i(x / TerrainResource.Sections.CELLS, z / TerrainResource.Sections.CELLS)
+				if address != read_address:
+					read_address = address
+					read_part = source.sections[address]
+					current_heights = read_part.heights
+					current_tops = read_part.top_materials
+					current_waters = read_part.water_levels
+					current_colors = read_part.water_materials
+					if offset_width != read_part.width:
+						offset_width = read_part.width
+						local_offsets = PackedInt32Array()
+						for oz in _cell_stride:
+							for ox in _cell_stride: local_offsets.append(ox + oz * offset_width)
+				local_representative = x % TerrainResource.Sections.CELLS + (z % TerrainResource.Sections.CELLS) * read_part.width
+			for group_index in _group_offsets.size():
+				var offset := _group_offsets[group_index]
 				var index := representative + offset
-				var next_height: int = height if changes_height else source.heights[index]
-				var next_top: int = _palette if paint_surface else source.top_materials[index]
-				var next_water: int = _water_level if fill_water else 0 if clear_water else source.water_levels[index]
-				var next_water_color: int = _palette if fill_water else 0 if clear_water else source.water_materials[index]
-				if next_height == source.heights[index] and next_top == source.top_materials[index] and next_water == source.water_levels[index] and next_water_color == source.water_materials[index]: continue
-				if _touched[index] == 0:
-					_touched[index] = 1
+				var local_index := local_representative + local_offsets[group_index]
+				var current_height := current_heights[local_index]
+				var current_top := current_tops[local_index]
+				var current_water := current_waters[local_index]
+				var current_color := current_colors[local_index]
+				var next_height: int = height if changes_height else current_height
+				var next_top: int = _palette if paint_surface else current_top
+				var next_water: int = _water_level if fill_water else 0 if clear_water else current_water
+				var next_water_color: int = _palette if fill_water else 0 if clear_water else current_color
+				if next_height == current_height and next_top == current_top and next_water == current_water and next_water_color == current_color: continue
+				if not _was_touched(index):
+					_mark_touched(index)
 					_indices.append(index)
 				group_changed = true
 				indices.append(index)
@@ -207,7 +248,7 @@ func _stamp_point(cell: Vector2i, bounds: Rect2i, previous_center: Vector2i) -> 
 				tops.append(next_top)
 				waters.append(next_water)
 				water_colors.append(next_water_color)
-			if group_changed: _touched[representative] = 1
+			if group_changed: _mark_touched(representative)
 	if diagnostic_sink != null:
 		diagnostic_sink.stage("brush_collect", Time.get_ticks_usec() - gather_started)
 	if not indices.is_empty(): _apply(source, _entry.target, indices, heights, tops, waters, water_colors)
@@ -217,6 +258,13 @@ func _apply(source: TerrainResource, target_ref: WeakRef, indices: PackedInt32Ar
 	var map := target_ref.get_ref() as EmberMapLoader
 	var projection := map._visual_surface_projection as EmberTerrainPilotProjection if is_instance_valid(map) and _entry.get("resource") == source else null
 	var write_started := Time.get_ticks_usec() if diagnostic_sink != null else 0
+	if source.is_sectioned():
+		source.write_columns(indices, heights, tops, waters, water_colors)
+		if diagnostic_sink != null: diagnostic_sink.stage("resource_write", Time.get_ticks_usec() - write_started)
+		var projection_started := Time.get_ticks_usec() if diagnostic_sink != null else 0
+		if projection != null: projection.apply_columns(indices, heights, tops, waters, water_colors, source)
+		if diagnostic_sink != null: diagnostic_sink.stage("projection_apply", Time.get_ticks_usec() - projection_started)
+		return
 	var all_heights := source.heights
 	var all_tops := source.top_materials
 	var all_waters := source.water_levels
@@ -251,6 +299,23 @@ func end() -> void:
 	var snapshot_started := Time.get_ticks_usec() if diagnostic_sink != null else 0
 	var source: TerrainResource = _entry.resource
 	var target_ref: WeakRef = _entry.target
+	if _section_baseline != null:
+		var before_parts := _touched_parts(_section_baseline)
+		var after_parts := _touched_parts(source)
+		var title := "Мир · компактная земля · " + _mode
+		_clear()
+		if after_parts.is_empty(): return
+		if _history is EditorUndoRedoManager:
+			(_history as EditorUndoRedoManager).create_action(title, UndoRedo.MERGE_DISABLE, _scene)
+			Callable(_history, "add_do_method").callv([self, "_apply_parts", source, target_ref, after_parts])
+			Callable(_history, "add_undo_method").callv([self, "_apply_parts", source, target_ref, before_parts])
+			(_history as EditorUndoRedoManager).commit_action(false)
+		else:
+			(_history as UndoRedo).create_action(title, UndoRedo.MERGE_DISABLE)
+			(_history as UndoRedo).add_do_method(Callable(self, "_apply_parts").bind(source, target_ref, after_parts))
+			(_history as UndoRedo).add_undo_method(Callable(self, "_apply_parts").bind(source, target_ref, before_parts))
+			(_history as UndoRedo).commit_action(false)
+		return
 	var indices := _indices.duplicate()
 	var before_heights := PackedInt32Array()
 	var before_tops := PackedByteArray()
@@ -267,7 +332,7 @@ func end() -> void:
 	var current_water_colors := source.water_materials
 	var run_starts := PackedInt32Array()
 	var run_ends := PackedInt32Array()
-	if _cell_stride > 1 and changed_count >= 32768:
+	if _section_baseline == null and _cell_stride > 1 and changed_count >= 32768:
 		indices.sort()
 		var run_start: int = indices[0]
 		for i in range(1, changed_count):
@@ -302,14 +367,14 @@ func end() -> void:
 		after_water_colors.resize(changed_count)
 		for i in changed_count:
 			var index := indices[i]
-			before_heights[i] = _before_heights[index]
-			before_tops[i] = _before_tops[index]
-			before_waters[i] = _before_waters[index]
-			before_water_colors[i] = _before_water_colors[index]
-			after_heights[i] = current_heights[index]
-			after_tops[i] = current_tops[index]
-			after_waters[i] = current_waters[index]
-			after_water_colors[i] = current_water_colors[index]
+			before_heights[i] = _baseline_value("heights", index)
+			before_tops[i] = _baseline_value("top_materials", index)
+			before_waters[i] = _baseline_value("water_levels", index)
+			before_water_colors[i] = _baseline_value("water_materials", index)
+			after_heights[i] = _value(source, "heights", index)
+			after_tops[i] = _value(source, "top_materials", index)
+			after_waters[i] = _value(source, "water_levels", index)
+			after_water_colors[i] = _value(source, "water_materials", index)
 	if snapshot_started > 0: diagnostic_sink.stage("undo_snapshot", Time.get_ticks_usec() - snapshot_started)
 	var title := "Мир · компактная земля · " + _mode
 	var clear_started := Time.get_ticks_usec() if diagnostic_sink != null else 0
@@ -334,18 +399,38 @@ func cancel() -> void:
 	if not active(): return
 	var projection := _live_projection()
 	if projection != null: projection.end_live_brush()
+	if _section_baseline != null:
+		_apply_parts(_entry.resource, _entry.target, _touched_parts(_section_baseline))
+		_clear()
+		return
 	if not _indices.is_empty():
 		var heights := PackedInt32Array()
 		var tops := PackedByteArray()
 		var waters := PackedInt32Array()
 		var water_colors := PackedByteArray()
 		for index in _indices:
-			heights.append(_before_heights[index])
-			tops.append(_before_tops[index])
-			waters.append(_before_waters[index])
-			water_colors.append(_before_water_colors[index])
+			heights.append(_baseline_value("heights", index))
+			tops.append(_baseline_value("top_materials", index))
+			waters.append(_baseline_value("water_levels", index))
+			water_colors.append(_baseline_value("water_materials", index))
 		_apply(_entry.resource, _entry.target, _indices, heights, tops, waters, water_colors)
 	_clear()
+
+
+func _touched_parts(source: TerrainResource) -> Dictionary:
+	var result := {}
+	for index in _indices:
+		var key := Vector2i((index % source.width) / TerrainResource.Sections.CELLS, (index / source.width) / TerrainResource.Sections.CELLS)
+		result[key] = source.sections[key]
+	return result
+
+
+func _apply_parts(source: TerrainResource, target_ref: WeakRef, parts: Dictionary) -> void:
+	for key: Vector2i in parts: source.sections[key] = parts[key]
+	var map := target_ref.get_ref() as EmberMapLoader
+	if is_instance_valid(map) and _entry.get("resource") == source:
+		var projection := map._visual_surface_projection as EmberTerrainPilotProjection
+		if projection != null: projection.open_document(source)
 
 
 func _live_projection() -> EmberTerrainPilotProjection:
@@ -373,3 +458,50 @@ func _clear() -> void:
 	_strength_by_distance = PackedInt32Array()
 	_row_extents = PackedInt32Array()
 	_last = Vector2i(-1, -1)
+	_section_baseline = null
+	_section_touched.clear()
+	_section_influence.clear()
+	_section_groups.clear()
+
+
+func _value(source: TerrainResource, channel: String, index: int) -> int:
+	return source.column_value(channel, index) if source.is_sectioned() else source.get(channel)[index]
+
+
+func _baseline_value(channel: String, index: int) -> int:
+	if _section_baseline != null: return _section_baseline.column_value(channel, index)
+	match channel:
+		"heights": return _before_heights[index]
+		"top_materials": return _before_tops[index]
+		"water_levels": return _before_waters[index]
+		"water_materials": return _before_water_colors[index]
+	return 0
+
+
+func _baseline_group(source: TerrainResource, x: int, z: int) -> int:
+	if _section_baseline != null: return BrushMath.section_group_height(_section_baseline, x, z, _cell_stride, _height_step, _section_groups)
+	return BrushMath.group_height(_before_heights, source.width, x, z, _cell_stride, _height_step, source.height_limit)
+
+
+func _smooth_baseline(source: TerrainResource, x: int, z: int, gx: int, gz: int, influence: float) -> int:
+	if _section_baseline != null:
+		return BrushMath.section_smooth_height(_section_baseline, x, z, _cell_stride, _height_step, _depth if _cell_stride == 1 else maxi(1, _depth / _height_step), influence, _section_groups)
+	return clampi(BrushMath.smooth_height(_before_heights, source.width, source.depth, x, z, _depth, influence), 1, source.height_limit) if _cell_stride == 1 else BrushMath.smooth_group_height(_before_heights, source.width, source.depth, gx, gz, _cell_stride, _height_step, maxi(1, _depth / _height_step), influence, source.height_limit)
+
+
+func _was_touched(index: int) -> bool:
+	return _section_touched.has(index) if _section_baseline != null else _touched[index] != 0
+
+
+func _mark_touched(index: int) -> void:
+	if _section_baseline != null: _section_touched[index] = true
+	else: _touched[index] = 1
+
+
+func _influence_at(index: int) -> int:
+	return _section_influence.get(index, 0) if _section_baseline != null else _influence[index]
+
+
+func _set_influence(index: int, value: int) -> void:
+	if _section_baseline != null: _section_influence[index] = value
+	else: _influence[index] = value

@@ -6,6 +6,7 @@ const TerrainResource = preload("res://scripts/prototypes/ember_terrain_pilot_re
 const BrushMath = preload("res://scripts/prototypes/ember_terrain_pilot_brush_math.gd")
 const WorldCanvas = preload("res://scripts/world_canvas.gd")
 const Region = preload("res://scripts/ember_region.gd")
+const TerrainMath = preload("res://scripts/prototypes/ember_terrain_generation_math.gd")
 const SECTION_BLOCKS := 24
 const MAX_INITIAL_SECTIONS := 4
 const MAX_EXTENDED_SECTIONS := 5
@@ -49,35 +50,18 @@ func prepare_coast_sections(raw_id: String, width_sections: int, depth_sections:
 func _generate_coast(water_height: int, relief_voxels: int, seed: int) -> void:
 	# Sample one world-space field for the whole map. Section borders have no
 	# special sampling path, and every 8×8 square keeps one four-voxel step.
-	var coast := FastNoiseLite.new()
-	coast.seed = seed
-	coast.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	coast.frequency = 1.0 / 360.0
-	coast.fractal_type = FastNoiseLite.FRACTAL_FBM
-	coast.fractal_octaves = 2
-	var hills := FastNoiseLite.new()
-	hills.seed = seed + 1009
-	hills.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	hills.frequency = 1.0 / 192.0
-	hills.fractal_type = FastNoiseLite.FRACTAL_FBM
-	hills.fractal_octaves = 2
+	var sampler := TerrainMath.new()
+	sampler.configure_legacy_coast(source.depth, height, water_height, relief_voxels, seed)
 	var heights := source.heights
 	var tops := source.top_materials
 	var waters := source.water_levels
 	var water_colors := source.water_materials
 	var square := TerrainResource.CELLS_PER_BLOCK / 2
-	var coast_range := minf(160.0, float(source.depth) * 0.12)
-	var shore_width := 128.0
 	for square_z in source.depth / square:
 		var world_z := square_z * square
 		for square_x in source.width / square:
 			var world_x := square_x * square
-			var shoreline := float(source.depth) * 0.42 + coast.get_noise_2d(float(world_x), 0.0) * coast_range
-			var blend := clampf((float(world_z) - shoreline + shore_width * 0.5) / shore_width, 0.0, 1.0)
-			blend = blend * blend * (3.0 - 2.0 * blend)
-			var rolling := hills.get_noise_2d(float(world_x), float(world_z)) * float(relief_voxels) * blend
-			var raw_height := lerpf(float(water_height - 8), float(height), blend) + rolling
-			var ground := clampi(roundi(raw_height / 4.0) * 4, 4, source.height_limit)
+			var ground := sampler.legacy_coast_height(Vector2(world_x, world_z), source.height_limit)
 			var top := 3 if ground <= water_height + 8 else 2
 			var liquid := water_height if ground < water_height else 0
 			for dz in square:
@@ -126,6 +110,8 @@ func prepare(raw_id: String, width_blocks: int, depth_blocks: int, ground_height
 		Color(1, 1, 1, 0), Color8(125, 105, 80), Color8(127, 163, 106),
 		Color8(214, 189, 133), Color8(179, 185, 144), Color8(80, 170, 163),
 	])
+	source.palette_surface_roles = PackedStringArray(["", "soil", "grass", "sand", "stone", ""])
+	source.palette_material_ids = PackedStringArray(["", "soil", "grass", "sand", "stone", ""])
 	var columns := source.width * source.depth
 	source.heights.resize(columns)
 	source.heights.fill(ground_height)
@@ -163,7 +149,8 @@ func commit() -> String:
 		if DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(directory)) != OK:
 			error = "Не удалось подготовить папку новой карты."
 			return ""
-	if ResourceSaver.save(source, terrain_path()) != OK:
+	var stored := source.sectioned_copy()
+	if ResourceSaver.save(stored, terrain_path()) != OK:
 		error = "Не удалось сохранить компактную землю."
 		return ""
 	var saved := ResourceLoader.load(terrain_path(), "", ResourceLoader.CACHE_MODE_IGNORE) as TerrainResource
@@ -224,6 +211,7 @@ func _scene_root(saved: TerrainResource) -> Node3D:
 	sun.rotation_degrees = Vector3(-58, -30, 0)
 	sun.light_color = Color(1, 0.96, 0.87)
 	sun.light_energy = 0.3
+	sun.light_angular_distance = 1.1
 	sun.shadow_enabled = true
 	sun.directional_shadow_max_distance = 800.0
 	_owned(look, sun, root)

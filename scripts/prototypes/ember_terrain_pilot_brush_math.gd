@@ -106,3 +106,44 @@ static func smooth_height(baseline: PackedInt32Array, width: int, depth: int, x:
 	var average := roundi(float(total) / float(maxi(1, count)))
 	var maximum_step := maxi(1, ceili(float(strength) * influence))
 	return original + clampi(average - original, -maximum_step, maximum_step)
+
+
+static func section_group_height(source: TerrainResource, x: int, z: int, stride: int, step: int, cache: Dictionary) -> int:
+	var key := Vector2i(x, z)
+	if cache.has(key): return cache[key]
+	var total := 0
+	var address := Vector2i(x / TerrainResource.Sections.CELLS, z / TerrainResource.Sections.CELLS)
+	var part := source.sections.get(address) as TerrainResource
+	var local_x := x % TerrainResource.Sections.CELLS
+	var local_z := z % TerrainResource.Sections.CELLS
+	if part != null and local_x + stride <= part.width and local_z + stride <= part.depth:
+		# A normal edit group is inside one immutable payload. Read its channel
+		# once, rather than resolving the section separately for every column.
+		var values := part.heights
+		for oz in stride:
+			var row := local_x + (local_z + oz) * part.width
+			for ox in stride: total += values[row + ox]
+	else:
+		for oz in stride:
+			for ox in stride: total += source.column_value("heights", source.column_index(x + ox, z + oz))
+	var height := total if stride == 1 else stepped_height(roundi(float(total) / (stride * stride)), step, source.height_limit)
+	cache[key] = height
+	return height
+
+
+static func section_smooth_height(source: TerrainResource, x: int, z: int, stride: int, step: int, strength: int, influence: float, cache: Dictionary) -> int:
+	var total := 0
+	var count := 0
+	for oz in range(-1, 2):
+		for ox in range(-1, 2):
+			var px := x + ox * stride
+			var pz := z + oz * stride
+			if not source.has_column(px, pz) or not source.has_column(px + stride - 1, pz + stride - 1): continue
+			total += section_group_height(source, px, pz, stride, step, cache)
+			count += 1
+	var original := section_group_height(source, x, z, stride, step, cache)
+	var average := roundi(float(total) / maxi(1, count))
+	if stride > 1: average = stepped_height(average, step, source.height_limit)
+	var maximum := maxi(1, ceili(float(strength) * influence)) * (step if stride > 1 else 1)
+	var next := original + clampi(average - original, -maximum, maximum)
+	return stepped_height(next, step, source.height_limit) if stride > 1 else clampi(next, 1, source.height_limit)

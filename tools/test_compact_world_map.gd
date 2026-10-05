@@ -15,6 +15,7 @@ func _run() -> void:
 	root.size = Vector2i(1200,800)
 	var source := load(SOURCE) as TerrainResource
 	assert(source != null and source.validation_errors().is_empty())
+	assert(source.palette_surface_roles.is_empty())
 	var map := EmberMapLoader.new()
 	map.map_id = "compact_world_fixture"
 	map.hydrate_legacy_regions = false
@@ -26,6 +27,11 @@ func _run() -> void:
 	assert(map.resolved_visual_surface() == null)
 	while projection.pending_tile_count() > 0:
 		await process_frame
+	var old_ground := projection.get_node("TerrainTile_0_0/Ground") as MeshInstance3D
+	var old_material := (old_ground.mesh as ArrayMesh).surface_get_material(0) as ShaderMaterial
+	var old_roles := (old_material.get_shader_parameter("role_lookup") as ImageTexture).get_image()
+	for slot in range(1, source.palette.size()):
+		assert(int(round(old_roles.get_pixel(slot, 0).r * 255.0)) == 0)
 	var initial_ready_ms := projection.all_tiles_ms
 	var found_ground := false
 	var found_water := false
@@ -36,6 +42,7 @@ func _run() -> void:
 				var point := Vector3(x + 0.5, 0, z + 0.5)
 				var sample := map.surface_floor_sample(point)
 				assert(sample.solid)
+				assert(sample.material_role == "")
 				assert(is_equal_approx(sample.position.y, float(source.origin_y + source.heights[index])))
 				found_ground = true
 			if not found_water and source.water_levels[index] > source.heights[index] and source.water_materials[index] > 0:

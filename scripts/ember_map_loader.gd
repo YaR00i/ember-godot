@@ -27,6 +27,20 @@ const TerrainProjection := preload("res://scripts/prototypes/ember_terrain_pilot
 	set(value):
 		compact_terrain = value
 		_refresh_visual_surface_projection()
+## Optional scene-owned water look. Zero mesh step preserves the shared
+## greedy water geometry; a positive step only refines visual wave vertices.
+@export var compact_water_visual_material: ShaderMaterial
+@export_range(0, 16, 1) var compact_water_mesh_step := 0
+@export var compact_water_volume_sides := false
+## Scene-owned material comparison. Old maps retain their existing light.
+@export_enum("Прежний свет", "Естественный мультяшный", "Игрушечный пластик") var compact_material_light_mode := 0:
+	set(value):
+		compact_material_light_mode = clampi(value, 0, 2)
+		_apply_compact_material_light()
+@export var compact_material_gray_preview := false:
+	set(value):
+		compact_material_gray_preview = value
+		_apply_compact_material_light()
 ## Saved map footprint lets a native Surface validate without reading the
 ## temporary JOI archive. Zero keeps the legacy importer fallback for old maps.
 @export var authored_size_blocks := Vector2i.ZERO
@@ -229,10 +243,31 @@ func _tune_look_environment() -> void:
 	if env_node == null or env_node.environment == null:
 		return
 	var e := env_node.environment
-	e.ssao_enabled = false
+	# Contact shading belongs to the authored Environment, like exposure.
 	e.ssil_enabled = false
 	e.sdfgi_enabled = false
 	e.volumetric_fog_enabled = false
+	EmberLights.apply_diorama_environment(e,
+		_content_node("Look/Sun") as DirectionalLight3D if compact_material_light_mode == 0 else null)
+
+
+func _apply_compact_material_light() -> void:
+	# Godot can retain Nil for newly added exports during a live script reload.
+	var mode: int = compact_material_light_mode if typeof(compact_material_light_mode) == TYPE_INT else 0
+	var gray: bool = compact_material_gray_preview if typeof(compact_material_gray_preview) == TYPE_BOOL else false
+	if is_instance_valid(_visual_surface_projection) and _visual_surface_projection is TerrainProjection:
+		_visual_surface_projection.set_material_light(mode, gray)
+	if is_inside_tree():
+		_tune_look_environment()
+
+
+func refresh_compact_material_light() -> void:
+	# Reconcile only new look defaults, preserving the live Sun and terrain draft.
+	if typeof(compact_material_light_mode) != TYPE_INT:
+		compact_material_light_mode = 0
+	if typeof(compact_material_gray_preview) != TYPE_BOOL:
+		compact_material_gray_preview = false
+	_apply_compact_material_light()
 
 
 func apply_quality() -> void:
@@ -426,8 +461,17 @@ func spawn_world() -> Vector3:
 			# Read export, do not call EmberRegion methods (editor placeholders).
 			if child is Node3D and str(child.get("kind")) == "player_start":
 				var start := child as Node3D
-				return start.global_position if start.is_inside_tree() else start.position
-	return Vector3(16, 8, 16)
+				return safe_spawn_world(start.global_position if start.is_inside_tree() else start.position)
+	return safe_spawn_world(Vector3(16, 8, 16))
+
+
+func safe_spawn_world(point: Vector3) -> Vector3:
+	# Terrain authoring can raise land around an unchanged entry marker. Resolve
+	# against the same physical surface, without rewriting authored node positions.
+	if compact_terrain != null:
+		var floor_sample := surface_floor_sample(point)
+		if floor_sample.get("solid", false): point.y = maxf(point.y, floor_sample.position.y)
+	return point
 
 
 func region_world(region_id: String) -> Vector3:
@@ -440,7 +484,7 @@ func region_world(region_id: String) -> Vector3:
 				str(child.get("region_id")) == region_id or child.name == region_id
 			):
 				var region := child as Node3D
-				return region.global_position if region.is_inside_tree() else region.position
+				return safe_spawn_world(region.global_position if region.is_inside_tree() else region.position)
 	push_warning("ember map %s: spawn region '%s' not found; using player_start" % [map_id, region_id])
 	return spawn_world()
 
@@ -636,6 +680,11 @@ func _refresh_visual_surface_projection() -> void:
 			_visual_surface_projection = TerrainProjection.new()
 			_visual_surface_projection.name = "DerivedCompactWorldTerrain"
 			_visual_surface_projection.source = terrain
+			_visual_surface_projection.water_visual_material = compact_water_visual_material
+			_visual_surface_projection.water_mesh_step = compact_water_mesh_step
+			_visual_surface_projection.water_volume_sides = compact_water_volume_sides
+			_visual_surface_projection.material_light_mode = compact_material_light_mode
+			_visual_surface_projection.material_gray_preview = compact_material_gray_preview
 			add_child(_visual_surface_projection)
 		else:
 			_visual_surface_projection.open_document(terrain)
@@ -693,10 +742,12 @@ func _get_configuration_warnings() -> PackedStringArray:
 		# The projection validates the whole Resource before it queues any tiles.
 		# Godot asks for configuration warnings again as derived tile nodes appear;
 		# scanning every column on each request would stall the 3D editor frame.
-		var building_validated_terrain: bool = _visual_surface_projection is EmberTerrainPilotProjection \
+		# Keep trusting that successful projection after the final tile too: its
+		# lifetime is not a validation boundary. Save still validates the draft.
+		var projecting_validated_terrain: bool = _visual_surface_projection is EmberTerrainPilotProjection \
 			and _visual_surface_projection.source == terrain \
 			and _visual_surface_projection.document != null \
-			and _visual_surface_projection.pending_tile_count() > 0
+			and (Engine.is_editor_hint() or _visual_surface_projection.pending_tile_count() > 0)
 		# The world editor creates its private draft only after validating the source.
 		# Its brushes and Undo write bounded values; Save validates the full draft
 		# again. Rechecking millions of columns for Godot's idle warning refresh
@@ -707,7 +758,7 @@ func _get_configuration_warnings() -> PackedStringArray:
 			and _visual_surface_projection is EmberTerrainPilotProjection \
 			and _visual_surface_projection.source == terrain \
 			and _visual_surface_projection.document != null
-		if not building_validated_terrain and not editing_validated_draft:
+		if not projecting_validated_terrain and not editing_validated_draft:
 			var validation_started := Time.get_ticks_usec() if editor_warning_timing_enabled else 0
 			var validation_errors := terrain.validation_errors()
 			if validation_started > 0:

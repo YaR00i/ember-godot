@@ -15,7 +15,13 @@ const WorkshopTheme = preload("res://addons/ember_import/ember_voxel_workshop_th
 const BrushParameters = preload("res://addons/ember_import/ember_world_brush_parameters.gd")
 const CompactMapExtension = preload("res://addons/ember_import/ember_compact_map_extension.gd")
 const CompactExtensionPreview = preload("res://addons/ember_import/ember_compact_map_extension_preview.gd")
+const TerrainGeneration = preload("res://addons/ember_import/ember_compact_terrain_generation.gd")
+const TerrainGenerationDialog = preload("res://addons/ember_import/ember_compact_terrain_generation_dialog.gd")
+const SectionSelection = preload("res://addons/ember_import/ember_compact_section_selection.gd")
 const TerrainDiagnostics = preload("res://addons/ember_import/ember_terrain_diagnostics.gd")
+const MaterialPatternDialog = preload("res://addons/ember_import/ember_compact_material_pattern_dialog.gd")
+const WorldLookPanel = preload("res://addons/ember_import/ember_world_look_panel.gd")
+const TerrainPattern = preload("res://scripts/ember_compact_terrain_pattern.gd")
 const HoverGridShader = preload("res://shaders/ember_terrain_hover_grid.gdshader")
 const SETTINGS := "user://ember_world_editor.cfg"
 const EXPERIMENT_SCENE := "res://scenes/landscape_v2_experimental.tscn"
@@ -56,7 +62,14 @@ var inspector_panel: PanelContainer
 var inspector_title: Label
 var inspector_hint: Label
 var inspector_icon: TextureRect
+var look_panel: VBoxContainer
 var material_title: Label
+var surface_role_title: Label
+var surface_role_choice: OptionButton
+var material_variant_choice: OptionButton
+var material_slot_button: Button
+var material_pattern_button: Button
+var material_pattern_dialog: MaterialPatternDialog
 var tool_settings_title: Label
 var tool_list: VBoxContainer
 var object_shelf_toggle: Button
@@ -157,12 +170,26 @@ var _compact_grid_visible_tiles := {}
 var _compact_hover_grid_stats := {}
 var _compact_extension_preview: Node3D
 var _compact_extension_candidate := {}
+var _generation_dialog: ConfirmationDialog
+var _generation_button: Button
+var _generation_job: RefCounted
+var _generation_preview: Node3D
+var _generation_context := {}
+var _section_mode := false
+var _section_dragging := false
+var _section_anchor := Vector2i.ZERO
+var _section_rect := Rect2i()
+var _section_controls: HBoxContainer
+var _section_label: Label
+var _section_next: Button
+var _section_error_dialog: AcceptDialog
+var _section_hidden_controls: Array[Dictionary] = []
 
 func _compact_active() -> bool:
 	return not entry.is_empty() and entry.get("compact", false)
 
 func _set_busy(value: bool) -> void:
-	for control in [target_choice,category,tools,palette,sand_palette,clip,shore_direction,compact_direction,compact_level_from_point,terrain_edit_scale,terrain_height_step,brush_shape]:
+	for control in [target_choice,category,tools,palette,sand_palette,surface_role_choice,material_variant_choice,material_slot_button,material_pattern_button,clip,shore_direction,compact_direction,compact_level_from_point,terrain_edit_scale,terrain_height_step,brush_shape]:
 		if is_instance_valid(control): control.disabled = value
 	for control in [radius,depth,coarse_depth,plane_height,water_height,shore_width,softness,compact_feature_scale,compact_detail,compact_seed]:
 		if is_instance_valid(control): control.editable = not value
@@ -204,7 +231,138 @@ func configure(owner_plugin: EditorPlugin, history: Object) -> void:
 	set_process_input(true)
 
 
-func preview_compact_extension(direction: String, mode: String) -> String:
+func _open_terrain_generation() -> void:
+	cancel_stroke()
+	if not _compact_active(): _status("Выберите компактную землю."); return
+	# The session owns the current terrain extent, including unsaved changes.
+	# Scene metadata can still describe a different footprint on older study maps.
+	var terrain: EmberTerrainPilotResource = entry.resource
+	var area := edit_region if edit_region.has_area() else Rect2i(Vector2i.ZERO, Vector2i(terrain.width / 16, terrain.depth / 16))
+	if area.size.x > TerrainGeneration.MAX_BLOCKS or area.size.y > TerrainGeneration.MAX_BLOCKS:
+		_status("Сначала выделите область до 96×96 м через «Область и вид → Ограничить участок».")
+		return
+	clear_compact_extension_preview()
+	_ensure_generation_dialog()
+	_generation_context = {"area": area, "target": weakref(map)}
+	_generation_dialog.open_for(area)
+
+
+func _ensure_generation_dialog() -> void:
+	if not is_instance_valid(_generation_dialog):
+		_generation_dialog = TerrainGenerationDialog.new()
+		EditorInterface.get_base_control().add_child(_generation_dialog)
+		_generation_dialog.preview_requested.connect(_prepare_terrain_generation)
+		_generation_dialog.settings_changed.connect(clear_terrain_generation_preview)
+		_generation_dialog.visibility_changed.connect(func():
+			if not _generation_dialog.visible: clear_terrain_generation_preview()
+		)
+		_generation_dialog.confirmed.connect(_submit_terrain_generation)
+		_generation_dialog.select_area_requested.connect(func(): begin_section_selection(true))
+
+
+func _prepare_terrain_generation(parameters: Dictionary) -> void:
+	var context := {"target": _generation_context.get("target"), "area": _generation_context.get("area", Rect2i()), "addition": _generation_context.get("addition", false)}
+	clear_terrain_generation_preview()
+	_generation_context = context
+	var target: EmberMapLoader = context.target.get_ref() if context.get("target") is WeakRef else null
+	if not is_instance_valid(target): _generation_dialog.set_pending("Карта была закрыта."); return
+	var draft := sessions.open_map(target, scene)
+	if draft.is_empty(): _generation_dialog.set_pending(sessions.error); return
+	_generation_job = TerrainGeneration.new()
+	if not _generation_job.begin(draft.resource, context.area, parameters, context.addition):
+		_generation_dialog.set_pending(_generation_job.error)
+		_generation_job = null
+		return
+	_generation_context["draft"] = draft
+	_generation_context["version"] = draft.resource.working_copy()
+	_generation_context["layout"] = Sessions.compact_layout(target).positions
+	_generation_context["selection"] = _generation_job.addition.duplicate()
+	_generation_dialog.set_pending("Подготавливаю землю…")
+
+
+func clear_terrain_generation_preview() -> void:
+	if _generation_job != null: _generation_job.cancel(); _generation_job = null
+	if is_instance_valid(_generation_preview):
+		_generation_preview.clear_preview()
+		_generation_preview.hide()
+		_generation_preview.queue_free()
+	_generation_preview = null
+	_generation_context.erase("candidate")
+	_generation_context.erase("draft")
+	_generation_context.erase("version")
+
+
+func _process_terrain_generation() -> void:
+	if _generation_job == null: return
+	_generation_job.step(4000)
+	_generation_dialog.set_pending("Подготовка земли: %d%%" % roundi(_generation_job.progress() * 100.0))
+	if not _generation_job.finished: return
+	var target: EmberMapLoader = _generation_context.target.get_ref()
+	var candidate: EmberTerrainPilotResource = _generation_job.candidate
+	var bounds: Rect2i = _generation_job.bounds
+	var profile_ms := float(_generation_job.elapsed_us) / 1000.0
+	_generation_job = null
+	if not is_instance_valid(target): _generation_dialog.set_pending("Карта была закрыта."); return
+	_generation_context["candidate"] = candidate
+	var preview := CompactExtensionPreview.new() as Node3D
+	target.add_child(preview, false, Node.INTERNAL_MODE_BACK)
+	if not preview.show_area(target, candidate, bounds, _generation_context.selection.get("offset", Vector2i.ZERO)):
+		preview.queue_free()
+		_generation_dialog.set_pending("3D-предпросмотр пока недоступен. Дождитесь открытия карты.")
+		return
+	_generation_preview = preview
+	_generation_dialog.set_pending("Строю 3D-предпросмотр…")
+	preview.preview_built.connect(func():
+		if _generation_preview == preview and is_instance_valid(_generation_dialog):
+			_generation_dialog.set_ready("Предпросмотр готов. Добавится %d участков; прежняя земля сохранится." % _generation_context.selection.keys.size() if _generation_context.addition else "Предпросмотр готов · расчёт %.0f мс. Применение заменит выбранную землю; отмена вернёт прежний вид." % profile_ms)
+	)
+
+
+func _submit_terrain_generation() -> void:
+	if not _generation_context.has("candidate"): return
+	var context := _generation_context.duplicate()
+	var target: EmberMapLoader = context.target.get_ref()
+	clear_terrain_generation_preview()
+	var message := commit_selected_sections(target, context) if context.get("addition", false) else commit_terrain_generation(target, context.draft, context.version, context.candidate)
+	if message.is_empty():
+		_generation_dialog.hide()
+	else:
+		_generation_dialog.set_pending(message)
+	_status("Участки добавлены и выбраны для редактирования · Ctrl+Z отменяет · Ctrl+S сохраняет." if message.is_empty() and context.get("addition", false) else "Рельеф применён. Можно править кистями, отменить или сохранить карту." if message.is_empty() else message)
+
+
+func commit_terrain_generation(target: EmberMapLoader, draft: Dictionary, before_version: EmberTerrainPilotResource, candidate: EmberTerrainPilotResource) -> String:
+	if not is_instance_valid(target) or candidate == null: return "Карта была закрыта."
+	if draft.get("target") is not WeakRef or draft.target.get_ref() != target or not sessions.entries.values().has(draft): return "Черновик карты изменился."
+	var before: EmberTerrainPilotResource = draft.resource
+	if not before.same_terrain_data(before_version): return "Земля изменилась после предпросмотра. Подготовьте рельеф заново."
+	if Vector2i(candidate.width, candidate.depth) != Vector2i(before.width, before.depth): return "Генерация не может изменять размер карты."
+	var validation := candidate.validation_errors()
+	if not validation.is_empty(): return validation[0]
+	var extent_error := _compact_extent_error(scene, candidate)
+	if not extent_error.is_empty(): return extent_error
+	var history: Object = sessions.undo
+	if history is EditorUndoRedoManager:
+		(history as EditorUndoRedoManager).create_action("Сгенерировать рельеф области", UndoRedo.MERGE_DISABLE, scene)
+		Callable(history, "add_do_method").callv([self, "_apply_generated_terrain", target, draft, candidate])
+		Callable(history, "add_undo_method").callv([self, "_apply_generated_terrain", target, draft, before])
+		(history as EditorUndoRedoManager).commit_action()
+	else:
+		(history as UndoRedo).create_action("Сгенерировать рельеф области", UndoRedo.MERGE_DISABLE)
+		(history as UndoRedo).add_do_method(Callable(self, "_apply_generated_terrain").bind(target, draft, candidate))
+		(history as UndoRedo).add_undo_method(Callable(self, "_apply_generated_terrain").bind(target, draft, before))
+		(history as UndoRedo).commit_action()
+	return ""
+
+
+func _apply_generated_terrain(target: EmberMapLoader, draft: Dictionary, source: EmberTerrainPilotResource) -> void:
+	if not is_instance_valid(target): return
+	draft.resource = source
+	sessions.preview(draft)
+	sessions.changed.emit()
+
+
+func preview_compact_extension(direction: String, mode: String, section_index := -1, address := Vector2i(-1, -1)) -> String:
 	clear_compact_extension_preview()
 	var root := EditorInterface.get_edited_scene_root() as Node3D
 	var target := root.find_child("Map", true, false) as EmberMapLoader if root != null else null
@@ -219,17 +377,19 @@ func preview_compact_extension(direction: String, mode: String) -> String:
 		return sessions.error
 	var before: EmberTerrainPilotResource = draft.resource
 	if target.authored_size_blocks != Vector2i(before.width / 16, before.depth / 16):
-		return "Размер сцены и земли не совпадает. Сначала сохраните или исправьте карту."
-	var after: EmberTerrainPilotResource = CompactMapExtension.expanded(before, direction, mode)
+		return "Размер сцены не совпадает с землёй.\nНажмите «Исправить размер сцены»."
+	var after: EmberTerrainPilotResource = CompactMapExtension.at_address(before, address, mode) if address.x >= 0 else CompactMapExtension.expanded(before, direction, mode, section_index)
 	if after == null:
-		return "Предел тестовой карты — %d блоков по каждой оси." % (CompactMapExtension.Creation.MAX_EXTENDED_SECTIONS * CompactMapExtension.Creation.SECTION_BLOCKS)
+		return "Участок занят, адрес недоступен или достигнут предел размера карты."
+	var extent_error := _compact_extent_error(root, after)
+	if not extent_error.is_empty(): return extent_error
 	var preview := CompactExtensionPreview.new() as Node3D
 	target.add_child(preview, false, Node.INTERNAL_MODE_BACK)
-	if not preview.call("show_candidate", target, before, after, direction):
+	if not preview.call("show_candidate", target, before, after, "address" if address.x >= 0 else direction, section_index, address):
 		preview.free()
 		return "3D-предпросмотр земли сейчас недоступен."
 	_compact_extension_preview = preview
-	_compact_extension_candidate = {"target": weakref(target), "before": before, "after": after, "direction": direction, "mode": mode}
+	_compact_extension_candidate = {"target": weakref(target), "before": before, "after": after, "direction": direction, "mode": mode, "section_index": section_index, "address": address}
 	preview.connect("preview_built", func() -> void:
 		if _compact_extension_preview == preview:
 			compact_extension_preview_ready.emit()
@@ -246,7 +406,7 @@ func clear_compact_extension_preview() -> void:
 	_compact_extension_preview = null
 
 
-func extend_compact_map(direction: String, mode := CompactMapExtension.MODE_CONTINUE) -> String:
+func extend_compact_map(direction: String, mode := CompactMapExtension.MODE_CONTINUE, section_index := -1, address := Vector2i(-1, -1)) -> String:
 	var root := EditorInterface.get_edited_scene_root() as Node3D
 	var target := root.find_child("Map", true, false) as EmberMapLoader if root != null else null
 	if target == null or target.compact_terrain == null:
@@ -261,17 +421,20 @@ func extend_compact_map(direction: String, mode := CompactMapExtension.MODE_CONT
 		return sessions.error
 	var before: EmberTerrainPilotResource = draft.resource
 	if target.authored_size_blocks != Vector2i(before.width / 16, before.depth / 16):
-		return "Размер сцены и земли не совпадает. Сначала сохраните или исправьте карту."
+		return "Размер сцены не совпадает с землёй.\nНажмите «Исправить размер сцены»."
 	var cached := _compact_extension_candidate
-	var after: EmberTerrainPilotResource = cached.get("after") if not cached.is_empty() and cached.get("target") is WeakRef and cached.target.get_ref() == target and cached.get("before") == before and cached.get("direction") == direction and cached.get("mode") == mode else CompactMapExtension.expanded(before, direction, mode)
+	var cached_matches: bool = not cached.is_empty() and cached.get("target") is WeakRef and cached.target.get_ref() == target and cached.get("before") == before and cached.get("direction") == direction and cached.get("mode") == mode and cached.get("section_index", -1) == section_index and cached.get("address", Vector2i(-1, -1)) == address
+	var after: EmberTerrainPilotResource = cached.get("after") if cached_matches else CompactMapExtension.at_address(before, address, mode) if address.x >= 0 else CompactMapExtension.expanded(before, direction, mode, section_index)
 	if after == null:
-		return "Предел тестовой карты — %d блоков по каждой оси." % (CompactMapExtension.Creation.MAX_EXTENDED_SECTIONS * CompactMapExtension.Creation.SECTION_BLOCKS)
+		return "Участок занят, адрес недоступен или достигнут предел размера карты."
+	var extent_error := _compact_extent_error(root, after)
+	if not extent_error.is_empty(): return extent_error
 	clear_compact_extension_preview()
 	var before_blocks := target.authored_size_blocks
 	var after_blocks := Vector2i(after.width / 16, after.depth / 16)
 	var old_positions := {}
 	var new_positions := {}
-	var shift: Vector3 = CompactMapExtension.scene_shift(direction, target.imported_tile_size)
+	var shift: Vector3 = CompactMapExtension.scene_shift(direction, target.imported_tile_size) if address.x < 0 else Vector3.ZERO
 	for group_name in ["Terrain", "Props", "Regions"]:
 		var group := target.get_node_or_null(group_name) as Node3D
 		if group == null: continue
@@ -279,9 +442,55 @@ func extend_compact_map(direction: String, mode := CompactMapExtension.MODE_CONT
 		new_positions[group_name] = group.position + shift
 	var history := sessions.undo as EditorUndoRedoManager
 	history.create_action("Расширить компактную карту: " + direction, UndoRedo.MERGE_DISABLE, root)
-	Callable(history, "add_do_method").callv([self, "_apply_compact_extension", target, draft, after, after_blocks, new_positions, direction])
-	Callable(history, "add_undo_method").callv([self, "_apply_compact_extension", target, draft, before, before_blocks, old_positions, direction])
+	Callable(history, "add_do_method").callv([self, "_apply_compact_extension", target, draft, after, after_blocks, new_positions, direction if address.x < 0 else ""])
+	Callable(history, "add_undo_method").callv([self, "_apply_compact_extension", target, draft, before, before_blocks, old_positions, direction if address.x < 0 else ""])
 	history.commit_action()
+	return ""
+
+
+func repair_compact_map_extent() -> String:
+	var root := EditorInterface.get_edited_scene_root()
+	var target := root.find_child("Map", true, false) as EmberMapLoader if root != null else null
+	if target == null or target.compact_terrain == null: return "Откройте компактную карту."
+	var draft := sessions.open_map(target, root)
+	if draft.is_empty(): return sessions.error
+	return commit_compact_extent_repair(target, draft, root)
+
+
+func commit_compact_extent_repair(target: EmberMapLoader, draft: Dictionary, root: Node) -> String:
+	if not is_instance_valid(target) or not is_instance_valid(root) or not root.is_ancestor_of(target): return "Карта была закрыта."
+	if draft.get("target") is not WeakRef or draft.target.get_ref() != target or not sessions.entries.values().has(draft): return "Черновик карты изменился."
+	var source: EmberTerrainPilotResource = draft.resource
+	var validation := source.validation_errors()
+	if not validation.is_empty(): return validation[0]
+	var expected := Vector2i(source.width / 16, source.depth / 16)
+	if target.authored_size_blocks == expected: return ""
+	var history: Object = sessions.undo
+	if history is EditorUndoRedoManager:
+		(history as EditorUndoRedoManager).create_action("Исправить размер компактной сцены", UndoRedo.MERGE_DISABLE, root)
+		Callable(history, "add_do_method").callv([self, "_apply_compact_extent_repair", target, draft, expected])
+		Callable(history, "add_undo_method").callv([self, "_apply_compact_extent_repair", target, draft, target.authored_size_blocks])
+		(history as EditorUndoRedoManager).commit_action()
+	else:
+		(history as UndoRedo).create_action("Исправить размер компактной сцены", UndoRedo.MERGE_DISABLE)
+		(history as UndoRedo).add_do_method(Callable(self, "_apply_compact_extent_repair").bind(target, draft, expected))
+		(history as UndoRedo).add_undo_method(Callable(self, "_apply_compact_extent_repair").bind(target, draft, target.authored_size_blocks))
+		(history as UndoRedo).commit_action()
+	return ""
+
+
+func _apply_compact_extent_repair(target: EmberMapLoader, draft: Dictionary, blocks: Vector2i) -> void:
+	target.authored_size_blocks = blocks
+	sessions.preview(draft)
+	sessions.changed.emit()
+	if map == target: _refresh_scope()
+
+
+func _compact_extent_error(root: Node, source: EmberTerrainPilotResource) -> String:
+	for node in root.get_children():
+		if node.has_method("terrain_extent_error"):
+			var message := str(node.call("terrain_extent_error", Vector2i(source.width, source.depth)))
+			if not message.is_empty(): return message
 	return ""
 
 
@@ -293,7 +502,10 @@ func _apply_compact_extension(target: EmberMapLoader, draft: Dictionary, source:
 	target.authored_size_blocks = blocks
 	for group_name in positions:
 		var group := target.get_node_or_null(group_name) as Node3D
-		if group != null: group.position = positions[group_name]
+		if group != null:
+			if not draft.has("compact_layout_delta"): draft.compact_layout_delta = {}
+			draft.compact_layout_delta[group_name] = draft.compact_layout_delta.get(group_name, Vector3.ZERO) + positions[group_name] - group.position
+			group.position = positions[group_name]
 	sessions.preview(draft)
 	sessions.changed.emit()
 	if map == target:
@@ -320,7 +532,211 @@ func build_toolbar() -> Control:
 	save_button.pressed.connect(save_all)
 	save_button.hide()
 	toolbar.add_child(save_button)
+	_section_controls = HBoxContainer.new()
+	_section_controls.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	toolbar.add_child(_section_controls)
+	_section_label = Label.new()
+	_section_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_section_label.custom_minimum_size.x = 180
+	_section_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_section_controls.add_child(_section_label)
+	_section_next = Button.new()
+	_section_next.text = "Далее: рельеф и вода"
+	_section_next.pressed.connect(_confirm_section_selection)
+	_section_controls.add_child(_section_next)
+	var cancel_section := Button.new()
+	cancel_section.text = "Отмена"
+	cancel_section.pressed.connect(cancel_section_selection)
+	_section_controls.add_child(cancel_section)
+	_section_controls.hide()
 	return toolbar
+
+
+func begin_section_selection(keep_area := false) -> void:
+	var root := EditorInterface.get_edited_scene_root()
+	var target := root.find_child("Map", true, false) as EmberMapLoader if root != null else null
+	if target == null or target.compact_terrain == null:
+		_status("Откройте компактную карту, чтобы выбрать новые участки."); return
+	if not active: enabled.button_pressed = true
+	if scene != root: scene_changed(root)
+	cancel_stroke()
+	clear_terrain_generation_preview()
+	clear_compact_extension_preview()
+	if is_instance_valid(_generation_dialog): _generation_dialog.hide()
+	map = target
+	target_choice.select(0)
+	_target_changed(0)
+	if entry.is_empty(): _status(sessions.error); return
+	_category_changed(0)
+	selecting = false
+	picking_object = false
+	hover.clear()
+	_section_mode = true
+	_section_dragging = false
+	if not keep_area: _section_rect = Rect2i()
+	_show_section_controls(true)
+	_update_section_selection()
+	_status("Выберите пустое место в 3D: щёлкните для одного участка или потяните прямоугольник · Enter — далее · Esc — отмена.")
+
+
+func cancel_section_selection() -> void:
+	_section_mode = false
+	_section_dragging = false
+	_section_rect = Rect2i()
+	_show_section_controls(false)
+	_update_overlay()
+
+
+func _show_section_controls(value: bool) -> void:
+	if not is_instance_valid(_section_controls): return
+	_section_controls.visible = value
+	if value and _section_hidden_controls.is_empty():
+		# Keep this step legible in a narrow native 3D viewport. Restore each
+		# prior visibility rather than changing the normal toolbar's layout.
+		for child in toolbar.get_children():
+			if child is Button and child != enabled:
+				_section_hidden_controls.append({"node": weakref(child), "visible": child.visible})
+				child.hide()
+	elif not value:
+		for saved in _section_hidden_controls:
+			var child: Control = saved.node.get_ref()
+			if is_instance_valid(child): child.visible = saved.visible
+		_section_hidden_controls.clear()
+
+
+func _update_section_selection() -> void:
+	var selection := SectionSelection.plan(entry.resource, _section_rect)
+	_section_next.disabled = not selection.error.is_empty()
+	_section_label.text = "%d новых · %d×%d м" % [selection.keys.size(), _section_rect.size.x * 24, _section_rect.size.y * 24] if selection.error.is_empty() else "Выберите новые участки"
+	_section_label.tooltip_text = selection.error
+	if not selection.error.is_empty() and _section_rect.has_area(): _status(selection.error)
+	_update_overlay()
+
+
+func _confirm_section_selection() -> void:
+	if not _section_mode: return
+	var selection := SectionSelection.plan(entry.resource, _section_rect)
+	if not selection.error.is_empty(): _status(selection.error); return
+	# Extent validation is cheap and uses the same gate as Apply.
+	var proposed := entry.resource.duplicate(false) as EmberTerrainPilotResource
+	proposed.width = selection.extent.x * EmberTerrainPilotResource.Sections.CELLS
+	proposed.depth = selection.extent.y * EmberTerrainPilotResource.Sections.CELLS
+	var extent_error := _compact_extent_error(scene, proposed)
+	if not extent_error.is_empty():
+		_show_section_extent_error(extent_error, Vector2i(proposed.width, proposed.depth) / EmberTerrainPilotResource.CELLS_PER_BLOCK)
+		return
+	_section_mode = false
+	_show_section_controls(false)
+	_ensure_generation_dialog()
+	_generation_context = {"area": Rect2i(_section_rect.position * 24, _section_rect.size * 24), "target": weakref(map), "addition": true}
+	_generation_dialog.open_for(_generation_context.area, selection.keys.size())
+	_update_overlay()
+
+
+func _show_section_extent_error(message: String, proposed_blocks: Vector2i) -> void:
+	_status(message)
+	if not is_instance_valid(_section_error_dialog):
+		_section_error_dialog = AcceptDialog.new()
+		_section_error_dialog.title = "Не удалось добавить выбранные участки"
+		_section_error_dialog.ok_button_text = "Понятно"
+		_section_error_dialog.dialog_autowrap = true
+		_section_error_dialog.wrap_controls = false
+		EditorInterface.get_base_control().add_child(_section_error_dialog)
+	_section_error_dialog.dialog_text = "После добавления размер карты: %d×%d м.\n\n%s\n\nВыделение сохранено: можно закрыть это окно и изменить область." % [proposed_blocks.x, proposed_blocks.y, message]
+	var available := EditorInterface.get_base_control().size
+	var requested := Vector2i(mini(560, int(available.x * 0.9)), mini(320, int(available.y * 0.8)))
+	_section_error_dialog.max_size = requested
+	_section_error_dialog.popup_centered(requested)
+
+
+func _section_point(position: Vector2) -> Variant:
+	var projection := map._visual_surface_projection as Node3D
+	if not is_instance_valid(projection): return null
+	var inverse := projection.global_transform.affine_inverse()
+	var origin := inverse * camera.project_ray_origin(position)
+	var direction := inverse.basis * camera.project_ray_normal(position)
+	var source: EmberTerrainPilotResource = entry.resource
+	# The construction plane uses the current land's centre height. Unlike
+	# terrain picking it also exists outside the footprint, on every side.
+	var height := source.origin_y + source.column_value("heights", source.column_index(source.width / 2, source.depth / 2))
+	var point = Plane(Vector3.UP, float(height)).intersects_ray(origin, direction)
+	if point == null: return null
+	return Vector2i(floori(point.x / EmberTerrainPilotResource.Sections.CELLS), floori(point.z / EmberTerrainPilotResource.Sections.CELLS))
+
+
+func _forward_section_selection(event: InputEvent) -> int:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_ESCAPE: cancel_section_selection(); return EditorPlugin.AFTER_GUI_INPUT_STOP
+		if event.keycode in [KEY_ENTER, KEY_KP_ENTER]: _confirm_section_selection(); return EditorPlugin.AFTER_GUI_INPUT_STOP
+	if event is InputEventMouse and (event.alt_pressed or event.button_mask & (MOUSE_BUTTON_MASK_RIGHT | MOUSE_BUTTON_MASK_MIDDLE)):
+		_section_dragging = false
+		return EditorPlugin.AFTER_GUI_INPUT_PASS
+	if event is InputEventMouseMotion:
+		var point = _section_point(event.position)
+		if point != null and _section_dragging:
+			_section_rect = Rect2i(_section_anchor.min(point), _section_anchor.max(point) - _section_anchor.min(point) + Vector2i.ONE)
+			_update_section_selection()
+		return EditorPlugin.AFTER_GUI_INPUT_STOP
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		var point = _section_point(event.position)
+		if point == null: return EditorPlugin.AFTER_GUI_INPUT_STOP
+		if event.pressed:
+			_section_anchor = point
+			_section_dragging = true
+			_section_rect = Rect2i(point, Vector2i.ONE)
+		elif _section_dragging:
+			_section_rect = Rect2i(_section_anchor.min(point), _section_anchor.max(point) - _section_anchor.min(point) + Vector2i.ONE)
+			_section_dragging = false
+		_update_section_selection()
+		return EditorPlugin.AFTER_GUI_INPUT_STOP
+	return EditorPlugin.AFTER_GUI_INPUT_PASS
+
+
+func commit_selected_sections(target: EmberMapLoader, context: Dictionary) -> String:
+	if not is_instance_valid(target): return "Карта была закрыта."
+	var draft: Dictionary = context.draft
+	if not sessions.entries.values().has(draft) or draft.target.get_ref() != target: return "Черновик карты изменился."
+	var before: EmberTerrainPilotResource = draft.resource
+	var candidate: EmberTerrainPilotResource = context.candidate
+	if not before.same_terrain_data(context.version) or Sessions.compact_layout(target).positions != context.layout:
+		return "Карта изменилась после предпросмотра. Обновите предпросмотр."
+	var errors := candidate.validation_errors()
+	if not errors.is_empty(): return errors[0]
+	var extent_error := _compact_extent_error(scene, candidate)
+	if not extent_error.is_empty(): return extent_error
+	var offset: Vector2i = context.selection.offset
+	var shift := Vector3(offset.x, 0, offset.y) * 24 * target.imported_tile_size
+	var positions: Dictionary = context.layout.duplicate()
+	for group_name in positions:
+		positions[group_name] += -(target.basis * shift) if group_name == "Map" else shift
+	var history: Object = sessions.undo
+	var after_blocks := Vector2i(candidate.width / 16, candidate.depth / 16)
+	var before_blocks := target.authored_size_blocks
+	var old_scope := edit_region
+	var new_scope: Rect2i = context.selection.area
+	if history is EditorUndoRedoManager:
+		(history as EditorUndoRedoManager).create_action("Добавить выбранные участки", UndoRedo.MERGE_DISABLE, scene)
+		Callable(history, "add_do_method").callv([self, "_apply_selected_sections", target, draft, candidate, after_blocks, positions, new_scope])
+		Callable(history, "add_undo_method").callv([self, "_apply_selected_sections", target, draft, before, before_blocks, context.layout, old_scope])
+		(history as EditorUndoRedoManager).commit_action()
+	else:
+		(history as UndoRedo).create_action("Добавить выбранные участки", UndoRedo.MERGE_DISABLE)
+		(history as UndoRedo).add_do_method(_apply_selected_sections.bind(target, draft, candidate, after_blocks, positions, new_scope))
+		(history as UndoRedo).add_undo_method(_apply_selected_sections.bind(target, draft, before, before_blocks, context.layout, old_scope))
+		(history as UndoRedo).commit_action()
+	return ""
+
+
+func _apply_selected_sections(target: EmberMapLoader, draft: Dictionary, source: EmberTerrainPilotResource, blocks: Vector2i, positions: Dictionary, scope: Rect2i) -> void:
+	if not is_instance_valid(target): return
+	var new_position: Vector3 = positions.get("Map", target.position)
+	draft.compact_layout_delta["Map"] = draft.compact_layout_delta.get("Map", Vector3.ZERO) + new_position - target.position
+	target.position = new_position
+	_apply_compact_extension(target, draft, source, blocks, positions)
+	if map == target:
+		edit_region = scope
+		clip.button_pressed = true
+		_refresh_scope()
 
 func _editor_icon(name: StringName) -> Texture2D:
 	if not Engine.is_editor_hint(): return null
@@ -456,6 +872,15 @@ func build_sidebar() -> Control:
 	inspector_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	inspector_hint.add_theme_color_override("font_color",WorkshopTheme.MUTED)
 	settings.add_child(inspector_hint)
+	var look_toggle := Button.new()
+	look_toggle.text = "Вид мира ▾"
+	look_toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	look_toggle.toggle_mode = true
+	look_toggle.button_pressed = true
+	settings.add_child(look_toggle)
+	look_panel = WorldLookPanel.new()
+	settings.add_child(look_panel)
+	look_toggle.toggled.connect(func(open: bool): look_panel.visible = open; look_toggle.text = "Вид мира ▾" if open else "Вид мира ▸")
 	var title := Label.new()
 	title.text = "EMBER · МИР"
 	box.add_child(title)
@@ -480,6 +905,8 @@ func build_sidebar() -> Control:
 		_status("Потяните прямоугольник рядом с готовым берегом. Создание не меняет остальные объекты.")
 	)
 	create_ground_button.icon = _editor_icon(&"Add")
+	_generation_button = _button(box, "Сгенерировать рельеф…", _open_terrain_generation)
+	_generation_button.tooltip_text = "Остров, берег и холмы в существующей рабочей области. Сначала предпросмотр; применение отменяется одной командой."
 	category = _choice(box,["Форма","Покраска","Вода","Объекты"])
 	category.tooltip_text = "Раздел инструментов мира"
 	category.item_selected.connect(_category_changed)
@@ -522,8 +949,37 @@ func build_sidebar() -> Control:
 	palette_swatch.custom_minimum_size = Vector2(24,24)
 	palette_swatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	palette_row.add_child(palette_swatch)
+	surface_role_title = Label.new()
+	surface_role_title.text = "РОЛЬ ЦВЕТА · ВСЯ КАРТА"
+	surface_role_title.add_theme_color_override("font_color",WorkshopTheme.MUTED)
+	settings.add_child(surface_role_title)
+	surface_role_choice = _choice(settings,[])
+	surface_role_choice.tooltip_text = "Смысл материала выбранного слота карты."
+	surface_role_choice.add_item("Без роли")
+	surface_role_choice.set_item_metadata(0, "")
+	for role in EmberTerrainPilotResource.SURFACE_ROLE_IDS:
+		surface_role_choice.add_item(EmberTerrainPilotResource.surface_role_name(role))
+		surface_role_choice.set_item_metadata(surface_role_choice.item_count - 1, role)
+	material_variant_choice = _choice(settings,[])
+	material_variant_choice.tooltip_text = "Именованный паттерн выбранного слота. Один вариант можно использовать на многих картах."
+	material_slot_button = Button.new()
+	material_slot_button.text = "Добавить материал карты"
+	material_slot_button.tooltip_text = "Копирует выбранный слот; новый паттерн можно назначить и покрасить им соседние участки."
+	settings.add_child(material_slot_button)
+	material_slot_button.pressed.connect(_add_compact_material_slot)
+	material_pattern_button = Button.new()
+	material_pattern_button.text = "Рисовать паттерн…"
+	material_pattern_button.tooltip_text = "Рисование через сетку паттернов Surface Canvas. Вариант хранится отдельно от карты."
+	settings.add_child(material_pattern_button)
+	material_pattern_button.pressed.connect(_open_material_pattern)
+	material_pattern_dialog = MaterialPatternDialog.new()
+	material_pattern_dialog.pattern_saved.connect(_on_material_pattern_saved)
+	material_pattern_dialog.pattern_created.connect(_on_material_pattern_created)
+	add_child(material_pattern_dialog)
 	sand_palette = _choice(settings,[])
 	palette.item_selected.connect(func(_index): cancel_stroke(); _refresh_palette_swatch())
+	surface_role_choice.item_selected.connect(func(index): set_compact_surface_role(int(palette.get_selected_metadata()), str(surface_role_choice.get_item_metadata(index))))
+	material_variant_choice.item_selected.connect(func(index): set_compact_surface_material(int(palette.get_selected_metadata()), entry.resource.surface_role_for_palette(int(palette.get_selected_metadata())), str(material_variant_choice.get_item_metadata(index))))
 	sand_palette.item_selected.connect(func(_index): cancel_stroke())
 	tool_settings_title = Label.new()
 	tool_settings_title.add_theme_color_override("font_color",WorkshopTheme.MUTED)
@@ -925,6 +1381,9 @@ func _toggle(value: bool) -> void:
 		if current.scene.get_ref() == scene: sessions.preview(current)
 
 func _deactivate() -> void:
+	cancel_section_selection()
+	clear_terrain_generation_preview()
+	if is_instance_valid(_generation_dialog): _generation_dialog.hide()
 	if _trace.recording: _stop_trace()
 	if _compact_trace.recording: _stop_compact_trace()
 	_clear_experiment()
@@ -955,6 +1414,9 @@ func _deactivate() -> void:
 	_update_overlay()
 
 func scene_changed(root: Node) -> void:
+	cancel_section_selection()
+	clear_terrain_generation_preview()
+	if is_instance_valid(_generation_dialog): _generation_dialog.hide()
 	clear_compact_extension_preview()
 	_clear_compact_grid_overlay()
 	if _trace.recording: _stop_trace()
@@ -971,6 +1433,7 @@ func scene_changed(root: Node) -> void:
 	sessions.write_recovery()
 	scene = root as Node3D
 	map = root as EmberMapLoader if root is EmberMapLoader else root.find_child("Map",true,false) as EmberMapLoader if root != null else null
+	if is_instance_valid(look_panel): look_panel.call("set_target",scene,map,sessions.undo)
 	if map != null and map.compact_terrain != null and is_instance_valid(terrain_edit_scale):
 		terrain_edit_scale.select(0)
 		terrain_height_step.select(0)
@@ -1015,6 +1478,7 @@ func _target_changed(index: int) -> void:
 	_refresh_experiment_gate()
 
 func _refresh_target_actions() -> void:
+	if is_instance_valid(_generation_button): _generation_button.visible = _compact_active()
 	if is_instance_valid(create_ground_button): create_ground_button.visible = target_choice.selected == 0 and not _compact_active()
 	if is_instance_valid(open_canvas_button): open_canvas_button.visible = target_choice.selected == 1 or not _compact_active()
 	if is_instance_valid(_terrain_diagnostics_button): _terrain_diagnostics_button.visible = _compact_active()
@@ -1087,7 +1551,13 @@ func _tool_changed() -> void:
 		var control: Control = _brush_parameter_controls[parameter_id]
 		control.visible = parameter_id in active_parameters
 	material_title.visible = "palette" in active_parameters
-	material_title.text = "ЦВЕТ ВОДЫ" if category.selected == 2 else "ЦВЕТ ПОВЕРХНОСТИ"
+	material_title.text = "ЦВЕТ ВОДЫ" if category.selected == 2 else "МАТЕРИАЛ ПОВЕРХНОСТИ" if _compact_active() else "ЦВЕТ ПОВЕРХНОСТИ"
+	var show_surface_role := _compact_active() and category.selected == 1 and "palette" in active_parameters
+	surface_role_title.visible = show_surface_role
+	surface_role_choice.visible = show_surface_role
+	material_variant_choice.visible = show_surface_role
+	material_slot_button.visible = show_surface_role
+	material_pattern_button.visible = show_surface_role
 	if is_instance_valid(tool_settings_title):
 		var headings := {"level":"ПЛОЩАДКА","shore":"БЕРЕГ И ДНО","generator":"НЕРОВНОСТИ","grab":"ПЕРЕМЕЩЕНИЕ","water":"ВОДА"}
 		tool_settings_title.text = headings.get(_mode(),"ДОПОЛНИТЕЛЬНО")
@@ -1100,12 +1570,18 @@ func _refresh_palette() -> void:
 	if entry.is_empty(): return
 	_refresh_brush_scale_settings()
 	for choice in [palette,sand_palette]:
+		var selected_index := int(choice.get_selected_metadata()) if choice.selected >= 0 else -1
 		choice.clear()
 		for index in range(1,entry.resource.palette.size()):
 			var color: Color = entry.resource.palette[index]
-			choice.add_item("Цвет %d · #%s" % [index,color.to_html(false)])
+			var role: String = entry.resource.surface_role_for_palette(index) if _compact_active() else ""
+			var label := "%s · %s · слот %d" % [EmberTerrainPilotResource.surface_role_name(role), entry.resource.material_id_for_palette(index), index] if not role.is_empty() else "Цвет %d · #%s" % [index,color.to_html(false)]
+			choice.add_item(label)
 			choice.set_item_metadata(choice.item_count-1,index)
-	if sand_palette.item_count > 2: sand_palette.select(2)
+		if selected_index >= 1 and selected_index < entry.resource.palette.size():
+			choice.select(selected_index - 1)
+		elif choice == sand_palette and choice.item_count > 2:
+			choice.select(2)
 	_refresh_palette_swatch()
 
 func _refresh_brush_scale_settings() -> void:
@@ -1123,6 +1599,121 @@ func _refresh_palette_swatch() -> void:
 	if entry.is_empty() or palette.selected < 0: return
 	var index := int(palette.get_selected_metadata())
 	if index >= 0 and index < entry.resource.palette.size(): palette_swatch.color = entry.resource.palette[index]
+	if _compact_active():
+		var role: String = entry.resource.surface_role_for_palette(index)
+		material_pattern_button.disabled = role.is_empty()
+		material_variant_choice.clear()
+		if not role.is_empty():
+			var ids := EmberVoxelSurfaceMaterials.variants_for_role(role)
+			for id in ids:
+				material_variant_choice.add_item(id)
+				material_variant_choice.set_item_metadata(material_variant_choice.item_count - 1, id)
+				if id == entry.resource.material_id_for_palette(index): material_variant_choice.select(material_variant_choice.item_count - 1)
+		for item in surface_role_choice.item_count:
+			if str(surface_role_choice.get_item_metadata(item)) == role:
+				surface_role_choice.select(item)
+				break
+
+
+func _open_material_pattern() -> void:
+	if not _compact_active() or palette.selected < 0 or not is_instance_valid(material_pattern_dialog):
+		return
+	var index := int(palette.get_selected_metadata())
+	var role: String = entry.resource.surface_role_for_palette(index)
+	var id: String = entry.resource.material_id_for_palette(index)
+	if role.is_empty() or not material_pattern_dialog.open_variant(id, role):
+		_status("Паттерн выбранного материала не найден или повреждён.")
+
+
+func _on_material_pattern_saved(pattern: TerrainPattern, id: String) -> void:
+	var projection := map._visual_surface_projection as EmberTerrainPilotProjection if is_instance_valid(map) else null
+	if projection != null:
+		projection.set_shared_material_pattern(pattern)
+	_status("Паттерн %s сохранён. Карты с этим вариантом обновятся без пересборки земли." % id)
+
+
+func _on_material_pattern_created(id: String, role: String) -> void:
+	if _compact_active() and palette.selected >= 0:
+		set_compact_surface_material(int(palette.get_selected_metadata()), role, id)
+	_status("Создан вариант %s. Выбранному материалу карты он назначен." % id)
+
+func set_compact_surface_role(palette_index: int, role: String) -> bool:
+	return set_compact_surface_material(palette_index, role, role)
+
+
+func set_compact_surface_material(palette_index: int, role: String, id: String) -> bool:
+	if not _compact_active() or palette_index <= 0 or palette_index >= entry.resource.palette.size(): return false
+	if not role.is_empty() and role not in EmberTerrainPilotResource.SURFACE_ROLE_IDS: return false
+	if not id.is_empty():
+		var pattern := EmberVoxelSurfaceMaterials.load_compact_terrain_variant(id)
+		if pattern == null or pattern.role_id != role or not pattern.validation_errors().is_empty(): return false
+	var terrain: EmberTerrainPilotResource = entry.resource
+	var before_roles := terrain.palette_surface_roles.duplicate()
+	var before_ids := terrain.palette_material_ids.duplicate()
+	if terrain.surface_role_for_palette(palette_index) == role and terrain.material_id_for_palette(palette_index) == id: return true
+	var after_roles := before_roles.duplicate()
+	var after_ids := before_ids.duplicate()
+	if after_roles.is_empty(): after_roles.resize(terrain.palette.size())
+	if after_ids.is_empty(): after_ids.resize(terrain.palette.size())
+	after_roles[palette_index] = role
+	after_ids[palette_index] = id
+	clear_compact_extension_preview()
+	var history := sessions.undo
+	var title := "Материал земли · цвет %d" % palette_index
+	if history is EditorUndoRedoManager:
+		(history as EditorUndoRedoManager).create_action(title, UndoRedo.MERGE_DISABLE, scene)
+		Callable(history, "add_do_method").callv([self, "_apply_compact_surface_material", entry, terrain, terrain.palette, after_roles, after_ids])
+		Callable(history, "add_undo_method").callv([self, "_apply_compact_surface_material", entry, terrain, terrain.palette, before_roles, before_ids])
+		(history as EditorUndoRedoManager).commit_action()
+	elif history is UndoRedo:
+		(history as UndoRedo).create_action(title, UndoRedo.MERGE_DISABLE)
+		(history as UndoRedo).add_do_method(Callable(self, "_apply_compact_surface_material").bind(entry, terrain, terrain.palette, after_roles, after_ids))
+		(history as UndoRedo).add_undo_method(Callable(self, "_apply_compact_surface_material").bind(entry, terrain, terrain.palette, before_roles, before_ids))
+		(history as UndoRedo).commit_action()
+	else:
+		return false
+	return true
+
+func _add_compact_material_slot() -> void:
+	if not _compact_active() or palette.selected < 0: return
+	var terrain: EmberTerrainPilotResource = entry.resource
+	if terrain.palette.size() >= 256:
+		_status("Достигнут предел 255 материалов карты.")
+		return
+	var selected := int(palette.get_selected_metadata())
+	var next_palette := terrain.palette.duplicate()
+	next_palette.append(terrain.palette[selected])
+	var next_roles := terrain.palette_surface_roles.duplicate()
+	if next_roles.is_empty(): next_roles.resize(terrain.palette.size())
+	next_roles.append(terrain.surface_role_for_palette(selected))
+	var next_ids := terrain.palette_material_ids.duplicate()
+	if next_ids.is_empty(): next_ids.resize(terrain.palette.size())
+	next_ids.append(terrain.material_id_for_palette(selected))
+	var history := sessions.undo
+	if history is EditorUndoRedoManager:
+		(history as EditorUndoRedoManager).create_action("Добавить материал карты", UndoRedo.MERGE_DISABLE, scene)
+		Callable(history, "add_do_method").callv([self, "_apply_compact_surface_material", entry, terrain, next_palette, next_roles, next_ids])
+		Callable(history, "add_undo_method").callv([self, "_apply_compact_surface_material", entry, terrain, terrain.palette, terrain.palette_surface_roles, terrain.palette_material_ids])
+		(history as EditorUndoRedoManager).commit_action()
+	elif history is UndoRedo:
+		(history as UndoRedo).create_action("Добавить материал карты")
+		(history as UndoRedo).add_do_method(Callable(self, "_apply_compact_surface_material").bind(entry, terrain, next_palette, next_roles, next_ids))
+		(history as UndoRedo).add_undo_method(Callable(self, "_apply_compact_surface_material").bind(entry, terrain, terrain.palette, terrain.palette_surface_roles, terrain.palette_material_ids))
+		(history as UndoRedo).commit_action()
+	else: return
+	palette.select(terrain.palette.size() - 2)
+	_refresh_palette_swatch()
+	_status("Новый слот добавлен. Создайте или выберите вариант и рисуйте им по карте.")
+
+
+func _apply_compact_surface_material(draft: Dictionary, terrain: EmberTerrainPilotResource, colors: PackedColorArray, roles: PackedStringArray, ids: PackedStringArray) -> void:
+	if draft.resource != terrain: return
+	terrain.palette = colors.duplicate()
+	terrain.palette_surface_roles = roles.duplicate()
+	terrain.palette_material_ids = ids.duplicate()
+	sessions.preview(draft)
+	sessions.changed.emit()
+	if entry.get("resource") == terrain: _refresh_palette()
 
 func _refresh_scope() -> void:
 	if is_instance_valid(scope_label): scope_label.text = "Участок: %s" % edit_region if edit_region.has_area() else "Вся доступная поверхность"
@@ -1202,6 +1793,13 @@ func save_all(defer_scene_save := false) -> bool:
 		_status("Завершите мазок или отмените его Esc перед сохранением.")
 		return false
 	if scene == null: return false
+	# A west/north candidate compensates Map/group transforms only for display.
+	# Restore those before sessions takes its scene snapshot, even when the
+	# native editor's _apply_changes hook has not run yet (toolbar Save).
+	clear_compact_extension_preview()
+	clear_terrain_generation_preview()
+	if is_instance_valid(_generation_dialog) and _generation_dialog.visible:
+		_generation_dialog.set_pending("Предпросмотр закрыт перед сохранением. Обновите его для применения.")
 	var saved := sessions.save_all(scene,defer_scene_save)
 	_status("Завершаю штатное сохранение сцены…" if saved and defer_scene_save else "Карта и изменённые объекты сохранены." if saved else "Сохранение остановлено: " + sessions.error)
 	if saved and defer_scene_save: saved = _finish_native_scene_save()
@@ -1321,6 +1919,7 @@ func forward_input(next_camera: Camera3D, event: InputEvent) -> int:
 	var received_usec := Time.get_ticks_usec() if _trace.recording and event is InputEventMouse else 0
 	var scheduled_usec := int(event.get_meta("ember_scheduled_usec",0)) if received_usec > 0 else 0
 	camera = next_camera
+	if _section_mode: return _forward_section_selection(event)
 	if _compact_active() and category.selected != 3:
 		return _forward_compact(event)
 	if event is InputEventKey and (Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) or Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE)): return EditorPlugin.AFTER_GUI_INPUT_PASS
@@ -1733,6 +2332,7 @@ func _apply_batch(changes: Dictionary, notify_projection := true) -> void:
 		if _trace.recording: _trace.stage("notify_and_queue_projection",Time.get_ticks_usec()-notify_started)
 
 func _process(_elapsed: float) -> void:
+	_process_terrain_generation()
 	var compact_process_started := Time.get_ticks_usec() if _compact_trace.recording else 0
 	sessions.poll_recovery()
 	if _trace.recording:
@@ -1986,8 +2586,33 @@ func _focus_cursor() -> void:
 		_focusing = false
 	)
 
+func _draw_section_selection(overlay: Control) -> void:
+	if not _section_rect.has_area() or entry.is_empty() or _section_rect.size.x > 22 or _section_rect.size.y > 22: return
+	var projection := map._visual_surface_projection as Node3D
+	if not is_instance_valid(projection): return
+	var source: EmberTerrainPilotResource = entry.resource
+	var height := float(source.origin_y + source.column_value("heights", source.column_index(source.width / 2, source.depth / 2))) + 1.0
+	for z in range(_section_rect.position.y, _section_rect.end.y):
+		for x in range(_section_rect.position.x, _section_rect.end.x):
+			var key := Vector2i(x, z)
+			var polygon := PackedVector2Array()
+			for corner in [key, key + Vector2i.RIGHT, key + Vector2i.ONE, key + Vector2i.DOWN]:
+				var world_point := projection.to_global(Vector3(corner.x * 384, height, corner.y * 384))
+				if camera.is_position_behind(world_point): polygon.clear(); break
+				polygon.append(camera.unproject_position(world_point))
+			if polygon.size() != 4: continue
+			var occupied := SectionSelection.occupied(source, key)
+			var colour := Color(0.6, 0.65, 0.7, 0.7) if occupied else Color(0.3, 0.9, 1.0, 0.95)
+			overlay.draw_colored_polygon(polygon, Color(colour, 0.07 if occupied else 0.22))
+			polygon.append(polygon[0])
+			overlay.draw_polyline(polygon, colour, 2, true)
+
+
 func draw_overlay(overlay: Control) -> void:
 	if not active or not is_instance_valid(camera): return
+	if _section_mode:
+		_draw_section_selection(overlay)
+		return
 	if _compact_active():
 		var selected_rect := region_preview if selecting and region_preview.has_area() else edit_region
 		if selected_rect.has_area():
@@ -2025,7 +2650,7 @@ func draw_overlay(overlay: Control) -> void:
 			var z := snapped_center.y + offset.y * brush_radius
 			var sample_x := clampi(floori(x),0,terrain.width-1)
 			var sample_z := clampi(floori(z),0,terrain.depth-1)
-			var height: int = terrain.heights[terrain.column_index(sample_x,sample_z)]
+			var height := terrain.column_value("heights", terrain.column_index(sample_x,sample_z))
 			var world := projection.to_global(Vector3(x,float(terrain.origin_y+height)+0.35,z))
 			if camera.is_position_behind(world): return
 			points.append(camera.unproject_position(world))
@@ -2168,6 +2793,9 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT: cancel_stroke()
 
 func _exit_tree() -> void:
+	clear_terrain_generation_preview()
+	if is_instance_valid(_generation_dialog): _generation_dialog.queue_free()
+	if is_instance_valid(_section_error_dialog): _section_error_dialog.queue_free()
 	clear_compact_extension_preview()
 	_clear_compact_grid_overlay()
 	if is_instance_valid(library_favorites_panel): library_favorites_panel.queue_free()

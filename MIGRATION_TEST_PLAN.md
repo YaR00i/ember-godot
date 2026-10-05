@@ -1,5 +1,83 @@
 # Ember — актуальные проверки и migration gates
 
+## Роли и текстуры компактной земли — ручная приёмка OPEN
+
+`test_compact_material_patterns.gd` проверяет общий ресурс 16×16,
+validation, покраску клетки, Undo/Redo внутри окна, закрытие без записи,
+сохранение/повторное открытие в `user://` и обновление texture uniform.
+Также проверяет необязательные бока, переключение граней, Undo к пустому
+fallback, PNG выбранной грани и её атлас. Исходные RGBA8-тона при экспорте и
+импорте совпадают даже после дробного ColorPicker-значения.
+`capture_compact_material_relief_swatches.gd` проверяет Forward+ рельеф и Sun
+на четырёх материалах; `capture_compact_material_relief_study.gd` снимает
+одну землю/камеру/свет/фазу воды с исходными и новыми вариантами.
+`test_compact_material_light.gd` проверяет панель трёх вариантов, серый режим,
+SSAO, Undo/Redo, Save/Reopen/Discard, наследование runtime uniforms и отсутствие
+remesh/recollision/изменения terrain. `test_world_look_panel.gd` сохраняет
+регрессию света/воды/их сохранения. Native QA проверяет те же controls через
+EditorUndoRedoManager, Save, новый процесс/Reopen и настоящий F6.
+`capture_compact_material_light.gd` снимает три варианта на той же геометрии,
+палитре и камере; отдельные одноцветные swatches, Sun/camera и AO on/off.
+В живой `compact_material_light_study.tscn`: «Вид мира → Материалы»,
+переключить 0/1/2, отдельно отключить AO, вращать Sun и камеру. В сером режиме
+должна читаться разница отделки; в пластике — подвижный блик покрытия.
+Ctrl+S → F6 → Reopen должны сохранять выбор. Изменение F6-пробы не записывается
+само; постоянный вид выбирают в редакторе. Вращение не меняет физическую поверхность.
+Скругления геометрии/volumetric fog не заявлены. Технические gates PASS,
+ручная художественная оценка с игровой камеры и стоимость на слабом ПК OPEN.
+`test_party_followers.gd` проверяет рост заглушек и смену высоты коллизии
+лидера вместе с героем.
+В живом 3D-редакторе: «Цвет» → роль и вариант → «Рисовать паттерн»;
+вести непрерывный штрих по сетке Canvas, взять тон правой кнопкой,
+изменить все три цвета, отменить/повторить, закрыть окно без сохранения и
+проверить старый рисунок. Экспортировать PNG 16×16, изменить в Aseprite
+только тремя тонами, импортировать и сохранить. Создать `grass_autumn`,
+добавить материал карты копией травы, назначить новый вариант и покрасить
+рядом с обычной травой. Проверить Undo/Redo назначения и добавления слота,
+Save/Reopen, вторую карту с тем же вариантом и отсутствие изменения весенней
+травы при правке осенней.
+Проверить Миру как лидера и follower рядом с блоком высотой 1 м: высота
+должна читаться около 1,5 блока, коллизия и проход под навесом — как в кадре.
+
+`test_compact_map_creation.gd` проверяет роли и варианты новой карты, validation,
+назначение в 3D UI, Undo/Redo, Save/Reopen, пробу поверхности, передачу слота
+в mesh/шейдер, два вида травы в атласе и отсутствие перестройки tile при смене варианта.
+`test_compact_world_map.gd` проверяет,
+что старый берег без ролей сохраняет прежнее поведение; расширение карты
+сохраняет таблицу ролей через `test_compact_map_extension.gd`.
+
+В обычном Forward+ открыть новую compact-карту: на земле должны быть видны
+стилизованные рисунки травы, грунта, песка и камня на верхних и боковых гранях.
+Проверить с игровой камеры масштаб рисунка, повторение без заметных швов и
+новую воду в движении. В «Редактировать мир» → «Цвет» должны быть
+`Грунт`, `Трава`, `Песок`, `Камень` со свотчами. Смена роли выбранного цвета
+должна менять рисунок всех его ячеек сразу, без перестройки tile. Проверить
+Ctrl+Z/Y, Ctrl+S и повторное открытие.
+На старом `landscape_compact.tscn` роли не должны угадываться по оттенку;
+назначить роль вручную и увидеть соответствующую текстуру; проверить
+Undo/Discard без изменения исходного Resource. Автоматические тесты и runtime
+Forward+ кадр не закрывают художественную приёмку в живом 3D editor.
+Сравнить `scenes/new_landscape4.tscn` и
+`scenes/compact_terrain_lighting_study.tscn` на одной камере: объём боковых
+граней, читаемость теней и насыщенность песка/травы. Study-сцена использует
+тот же Resource земли, но отдельный свет; перенос света на карты требует
+ручного художественного решения.
+В «Редактировать мир» справа открыть «Вид мира»: проверить силу и тон
+солнца/окружения, поворот/высоту солнца, размер/мягкость и выключение теней, яркость, контраст и
+насыщенность. Сравнить боковые грани на одном ракурсе с выключенными тенями:
+они должны остаться видимыми гранями, без чёрных провалов. Изменить параметры,
+проверить Ctrl+Z/Y, Ctrl+S, повторное открытие этой карты и независимость
+другой карты. Проверить редактор и F6, а воду — в движении у берега.
+`test_world_look_panel.gd` покрывает Undo/Redo и save/reopen значений,
+`test_diorama_materials.gd` — применение света без записи в authored поля,
+`test_water_material.gd`, `test_water_flow.gd` и `test_water_pattern_seams.gd`
+— новый материал. Полный прибой на компактной карте этим срезом не заявлен.
+Прежний runtime Forward+ замер `new_landscape4` (48×48 блоков, 144 tile)
+на одинаковой камере: 117 видимых draw calls в обоих вариантах, медиана
+GPU кадра 0,343 мс с четырьмя текстурами и 0,331 мс с пустыми ролями.
+Новый атлас вариантов отдельно не профилирован. Это только standalone окно
+при параллельно открытом редакторе, не его FPS.
+
 ## Landscape Compact в обычной карте и 3D-редакторе — ручная приёмка OPEN
 
 `scenes/landscape_compact.tscn` связывает одну карту с собственным
@@ -72,6 +150,83 @@ F6-ходьбу героев по берегу и воде проверить о
 
 ## Новая компактная карта · ровная земля — ручная приёмка OPEN
 
+Адресная основа (2026-10-03): новые карты сохраняют schema 2 прежнего terrain
+Resource, плотная schema 1 читается без миграции при открытии. Перевод черновика
+при добавлении отдельного участка публикуется только явным Save.
+`test_compact_map_sections.gd` проверяет все каналы/flow/боковые исключения,
+неполный край и свободный адрес, пустоту без mesh/коллизии, отдельные версии
+payloads для кисти/Undo/Redo/cancel/cap, Save/Reopen/Discard, immutable recovery,
+смену палитры, физическую высоту и navigation у стыка и вдали от начала координат.
+Шесть участков в оболочке 528 м дают 216 tile вместо полной сетки.
+`editor_test_compact_map_sections.gd` включается только в одноразовой native
+Forward+ копии: диалог/отмена/геометрическое preview=Apply, часть края,
+западный сдвиг и Undo, заполнение пустого адреса, EditorUndoRedoManager,
+кисть через стык, Save/Reopen/Discard и настоящий F6. Playback fixture
+`test_compact_map_sections_playback.gd` провёл обычного персонажа с X=720 до
+X≈812 через границу X=768; физический пол совпал с terrain (Y≈12).
+Дополнительный regression: несохранённый north resize → Discard возвращает
+размер и anchors, сохраняя независимый сдвиг Props; recovery → Discard делает
+то же. Повреждённая layout metadata отвергается без изменения сцены. Save/Reopen
+принимает новый baseline. Native проверяет mismatch 72×48 / 48×48 → явная
+кнопка исправления → Undo/Redo → обычный preview/Apply, затем resize/Discard/F6.
+Действующий вход «+ Участок» проверяется `test_compact_section_selection.gd`:
+signed адреса, несколько новых участков, сохранение занятой земли/потока/каналов,
+общий seed независимо от бюджета, переход, cancel/validation/stale candidate,
+мировые позиции при росте слева/сверху (включая повёрнутый Map), единый Undo/Redo,
+recovery/Discard и Save/Reopen. `editor_test_compact_section_selection.gd` в
+disposable Forward+ проверяет настоящий input, Enter/Back/Esc/камеру, occupied
+отказ, смешанное выделение, preview=Apply, единый native history и два пути Save
+с открытым preview без сериализации временных transforms; Discard/Reopen и F6.
+Подтверждение проходит через `get_ok_button().pressed`, включая внутренний
+обработчик AcceptDialog: после успеха окно закрыто, при stale candidate остаётся
+видимый отказ без изменения земли. `-- --confirm-button-regression` сокращает
+прогон до проверки настоящей кнопки и числа участков 4 → 7. Прежний прямой вызов
+`confirmed` обходил закрытие окна и не покрывал пользовательское применение.
+`-- --section-budget-regression` проверяет первый Apply → повторный «+ Участок»
+без выхода из редактирования → открытие параметров, затем отказ большой области
+через настоящую кнопку Next и действующий water owner. Окно причины видимо,
+не больше 560×320, показывает размер/120 м; выделение, Resource и файл не меняются.
+После закрытия можно выделить меньшую область и снова открыть параметры.
+Native regression воспроизводил скрытый отказ до fix, после fix прошёл;
+снимок самого окна проверен. Ручная оценка в авторском редакторе OPEN.
+`test_compact_section_selection_playback.gd` проверяет ходьбу и коллизию новой
+земли слева/сверху после runtime загрузки. Native панель/параметры прошли 125%
+в 1600×900 и 1280×750. Прежний адресный fixture обращается к внутреннему adapter,
+он больше не описывает основной пользовательский вход.
+Ручной gate: «+ Участок» → щелчок или протягивание пустого места → «Далее:
+рельеф и вода» → параметры/preview, назад/отмена/Apply, кисть через шов,
+Ctrl+Z/Y, Save/Reopen и F6. Авторская оценка удобства/формы стыка и слабый ПК OPEN.
+Полностью заполненные 256–512 м с водой/объектами ещё не измерены; разреженная
+оболочка не закрывает этот gate. Плотные поля пробной сложной воды ограничены
+120 м по оси; их участок должен пройти отказ до Apply при большем размере.
+
+Генератор выбранной области (2026-10-03): `tools/test_compact_terrain_generation.gd`
+проверяет deterministic sampling независимо от work budget, отличия profiles/seed,
+cancel/validation/legacy, область через несколько участков, внешние каналы и
+переход 2 м, расширение height ceiling без перестройки прежних tile, stale preview,
+Undo/Redo, Save/Reopen/Discard, физическую высоту/navigation и точный mesher preview.
+Fixture до 96×96 м и 28 м по высоте, без авторских файлов; замер расчёта отдельно
+от validation и 3D-сборки. Старый creation coast после переноса sampling в общий
+leaf сохраняет результат и проверяется `test_compact_map_coast.gd`.
+`editor_test_compact_terrain_generation.gd` работает только в одноразовой native
+копии: прежний edit_region, окно/отмена, настоящая OK-кнопка с закрытием после
+commit, exact candidate, EditorUndoRedoManager,
+Save/Reopen/Discard и F6 по изрезанному рельефу с неизменным маркером ниже земли;
+playback проверяет горизонтальное движение и настоящую опорную грань капсулы
+у ступенек. Headless также проверяет высоту входа/сохранённой позиции и сохранность
+маркера. Native/F6 PASS;
+это не художественное принятие.
+`-- --dialog-regression` в той же disposable native копии воспроизводит первый
+popup при 125%, статус ошибки/повторный popup и metadata 72×48 против terrain
+48×48; проверяет ограниченный размер и доступность preview. Проверены реальные
+1600×900 и 1280×750 (native editor minimum при 125%); окна карты/участка
+также открыты без применения. Размер 1280×720 при иных настройках остаётся ручным.
+Ручной gate: новая compact-копия/рабочая область
+до 96 м → «Сгенерировать рельеф…» → параметры → явный предпросмотр; отменить,
+сравнить profiles/seed, применить, проверить соседние правки и обычные кисти,
+Undo/Redo/Save/Reopen/F6. Проходимость сложных склонов, перенастройка существующих
+объектов, 256–512 м, слабый ПК, узкое окно/125% и специальные поля воды OPEN.
+
 `tools/test_compact_map_creation.gd` создаёт сцену и Resource только в `user://`,
 проверяет совпадение предпросмотра с записанным Resource, отказ от перезаписи
 существующей карты, обязательное обновление предпросмотра после изменения
@@ -112,6 +267,90 @@ validation, верхние/боковые/водные грани, Mesh Resource
 правки одной колонки; треугольники коллизии берутся из того же ground mesh.
 Для крупной сетки 8×8 тест отдельно проверяет ступени, воду, детальный
 fallback и шов с соседним tile, включая детальную колонку за швом.
+Срез ground side runs (2026-10-05): ровная 16×16 площадка с двумя слоями
+материала в opt-in runtime сократилась с 774 до 54 vertices; editor default
+сохраняет 774. Test проверяет оба режима и section window, точное совпадение
+water arrays между ними, все четыре стены,
+материалы/semantic alpha, разрыв, разную cap depth и единичное боковое исключение.
+Коллизия остаётся из тех же итоговых ground faces. Addressed-map/projection и
+clear-water seam regressions PASS. В отдельной native QA editor команды
+preview/Apply, кисть/Undo/Redo, Save/Reopen/Discard прошли; F6-персонаж прошёл
+через стык X=720→811,64, on_floor=true, поверхность Y=12 совпала с физикой.
+Native policy QA дополнительно проверил фактический editor tile: 774 vertices
+и точные faces старого mesher; F6 на этом же fixture использовал 18 vertices.
+Лог `qa_ground_runtime_policy_final.log` в текущем Temp QA. Сообщённая автором
+плавность кисти после удаления editor coalescing остаётся ручным OPEN gate;
+фоновые 10 FPS при sleep=100 мс не считать измерением активного редактирования.
+`tools/test_compact_section_brush_batches.gd` воспроизводит radius=8, coarse/square,
+strength=48 на 96×120 м / 20 участках: 61 504 изменённых колонок в первом шаге,
+163 456 после перемещения. Stall budget 1/2 с намеренно отделён от frame budget:
+старый путь занимал 2,86/6,30 с, исправленный ~0,14/0,32 с. Тест проверяет общий
+source/document payload, сохранение untouched/baseline, Undo/Redo и 48 комбинаций
+кисти против dense источника через неполный стык. Связанные scale/overlap/addressed
+regressions PASS. Native Forward+ QA изменил 134 912 колонок: шаги 141/147/146 мс,
+проверки данных/Undo/Redo, Save/Reopen/Discard и F6-ходьба PASS; лог
+`qa_section_brush_batches_final.log` в текущей Temp QA. Ручной повтор trace автора
+остаётся OPEN; PASS не обещает отсутствие пауз широкого мазка.
+Игровой ground LOD: `tools/test_terrain_ground_lod.gd` на независимом шумовом
+fixture проверяет точные ближние vertices/normals/colors/UV/faces, защищённые
+border triangles, границы и semantic material ID каждого дальнего triangle,
+меньшее число indices, прежние collision/water, отсутствие camera rebuild,
+отмену при закрытии и выключенную policy. World startup test проверяет LOD gate.
+Native `editor_test_compact_map_sections.gd` проверяет ноль editor LOD jobs/Thread
+и прежний lod_bias после команд/кисти/Undo/Save/Reopen/Discard; F6 проверяет
+пустую очередь при появлении героя и ходьбу через стык. Оба сценария PASS.
+Forward+ ground-only A/B 192×120 м / 40 участков: дальние primitives −8,6%, ближние
+прежние, jobs не меняются при движении камеры, существенного FPS gain нет.
+Подробные startup/memory/geometry замеры — Terrain Authoring; native artifacts
+`qa_selection/ground_lod_native.json`, near/far PNG, `qa_ground_lod_editor_native.log`.
+Ручная оценка переключения LOD/материалов/стыков на авторской карте, экспорт и
+слабый ПК OPEN. Это не приёмка водной геометрии или persistent geometry cache.
+Точная runtime water geometry: `tools/test_terrain_water_indexing.gd` разворачивает
+indices и проверяет полный прежний порядок vertices/normals/colors/UV у каждого
+triangle. Dense/sectioned, grouped/fine, неполный tile, несколько уровней/материалов,
+границы, walls/swash/falling sheet, collision/source, повторная правка и выключенная
+policy PASS. Native editor подтвердил отсутствие water index buffer после
+команд/кисти/Undo/Save/Reopen/Discard; F6-ходьба через стык PASS
+(`qa_water_index_editor_native.log`). В F6 water geometry индексируется только
+при загрузке/изменении входов; shader и physical surface прежние. Два Forward+
+A/B 192×120 м / 40 участков: water vertices −81%, primitives/draw calls прежние,
+дальний GPU median около −14%, VRAM −122,3 MiB, общий кадр около 5 мс прежний.
+Артефакты `qa_selection/water_geometry_on/off.json`, round1 JSON и
+`qa_water_geometry_final_on/off.log`; замеры и ограничения — Water Rendering.
+Ручная F6-приёмка берега/набега/водопада, ближнего/дальнего вида и стыков OPEN.
+Runtime water LOD: `tools/test_terrain_water_lod.gd` проверяет near arrays/order,
+dense/sectioned/partial tile, защищённые patch/tile boundaries, holes/depth/material,
+walls/swash/sheet, collision/source, отсутствие camera jobs, remesh без column
+revision, worker cancellation и disabled policy. Общий worker/WorldCanvas barrier
+земли и воды, ground/indexing/startup/swashes/waterfall/regions regressions PASS.
+Native editor не строит gameplay LOD при командах/кисти/Undo/Save/Reopen/Discard;
+F6 seam walk с pending_runtime_lod_count=0 PASS (`qa_water_lod_editor_native.log`).
+Два Forward+ A/B на 192×120 м: дальний primitives −18,6%, GPU median около −7,8%,
+ближние primitives прежние. Запуск дольше около 3,7 с, VRAM +4,7 MiB; это не
+оптимизация загрузки. Визуальная проба wave_height=4 на 50/100/212,5 м без новых
+дыр/длинных швов; полные метрики/ограничения — Water Rendering. QA artifacts
+`qa_selection/water_lod_final_on.json`, `qa_water_lod_final_native.log`,
+`qa_water_lod_wave_native.log`, max-wave near/far PNG. Ручная оценка LOD-перехода,
+берега/водопада/материалов/стыков, экспорт и слабый ПК OPEN.
+Runtime geometry cache: `tools/test_terrain_geometry_cache.gd` проверяет fresh
+Resource/save/reopen, exact near arrays/collision, warm ground+water LOD без derive
+CPU, локальное кольцо invalidation/Undo, рост без distant invalidation, swash/sheet
+при том же revision, missing/corrupt/version/malformed/I-O fallback, bounded disk,
+camera без jobs и закрытие во время worker I/O без временных файлов. PASS;
+старый береговой cache и ground/water/indexing/projection/startup regressions PASS.
+Native editor sections test проверяет ноль geometry cache/jobs после кисти и
+Undo/Redo/Save/Reopen/Discard, затем два F6: cold writes, warm hits/0 misses,
+герой после pending=0 и ходьба через стык PASS (`qa_geometry_cache_editor_retry.log`).
+Первый QA editor save crash не воспроизвёлся в отдельном повторе; причина не
+установлена, production save не менялся. Большой Forward+ geometry benchmark
+192×120 м: disabled/cold/warm 19,72/26,69/4,89 с, GPU/geometry прежние; первый
+запуск дороже, это не полный игровой startup. Подробные метрики/артефакты —
+Terrain Authoring. Ручной повтор F6 авторской карты после Save/local edit/Undo,
+LODs/берег/водопад, экспорт, 256–512 м/слабый ПК и cold editor timing OPEN.
+192×120 м ground-only сравнение подтвердило −37% ground geometry, water vertex
+count прежний; детали — Terrain Authoring → «Производительность и границы
+доказательств». Ручная приёмка большой карты, материалы при приближении,
+длинный мазок и слабый ПК OPEN; прежний cold-water editor timing gate не закрыт.
 После оптимизации пользователь повторяет короткую запись в обычной 3D-вкладке:
 на большой карте один мазок «Поднять» и один мазок «Неровности» радиусом 8,
 дождаться появления всех квадратов после отпускания, сохранить JSON и
@@ -441,7 +680,329 @@ floor than shallow water. No full library rebuild, swimming or new physical wate
 Latest author scene judgement accepted the corrected pattern; broader gates above
 are not implied solely by this acceptance or automated PASS.
 
+## Компактная проба реки — ручная художественная приёмка открыта
+
+World Canvas startup gate (2026-10-05): `test_compact_world_startup.gd` в native
+и headless воспроизводит период готовой земли/неготовых берегов и проверяет
+отсутствие героя, cover/HUD, движение после открытия, стабильный вид, водопад,
+карту без water controller и отмену при удалении сцены. Native `--cancel-startup`
+проверяет закрытие Esc во время расчёта. QA-only `editor_test_compact_world_startup`
+с `--world-startup-f6` и playback probe проверяет два настоящих F6 на копии
+96×120 м / 20 участков и продолжение 3D setup. QA terrain привязывается по path,
+дублирующий UID старой profiling fixture не должен подменять карту. Скриншоты
+loading/loaded проверены. Авторские карты не используются для записи тестов.
+Автор подтвердил работу запуска F6 (2026-10-05). Отдельный manual выход Esc
+до завершения подготовки не зафиксирован. Ожидание не ускоряет CPU build;
+disk cache остаётся отдельным контрактом; срез дальних деталей описан ниже.
+
+Water detail distance gate (2026-10-05): согласованы и реализованы только
+мелкие разводы/оптическая рябь по расстоянию камеры, defaults 40/100 м.
+`test_world_look_panel.gd` закрывает drag одним Undo, оба значения в переносе F6,
+нечисловые/вне диапазона snapshots, Save/Reopen/Discard. Native Forward+
+`test_compact_water_detail_distance.gd` проверяет реальный fragment на near/mid/far,
+непрерывность между региональными материалами, возврат камеры, перекрещённые
+пороги и полный ближний материал. `test_compact_water_editor_preview.gd`
+проверяет обновление региональных uniforms без нового build/foam history и с
+прежней физической высотой; `test_compact_water_sun.gd` — реальный блик на
+упрощённом пути. Guarded native editor проверил оба ползунка, Undo/Redo,
+Save/Reopen/Discard; настоящий F6 загрузил 22/64 м во всех регионах.
+Контрольная 192×120 м / 40 участков сохраняет геометрию/draw calls, медиана
+дальнего кадра снижена примерно на 5%; точные данные/ограничения — документ воды.
+Автор подтвердил работу среза дальности (2026-10-05). Это не закрывает прежние
+отдельные художественные gates солнца/морского набега/речных разводов.
+Слабый ПК/заполненные 256–512 м, геометрический LOD, остановка невидимых регионов
+и постоянный кэш береговых данных этим gate не закрываются.
+
+Static regional water disk cache gate (2026-10-05): реализован в существующем
+Regions/SeaSwash, disposable helper `ember_compact_water_cache.gd`,
+`user://ember-water-region-cache`. Source Resources/геометрия/шейдерная анимация
+не меняются. Content/version/core/halo/origin key учитывает water/height/flow
+payload соседей, ocean flags и labels компонентов (включая влияние flow за halo).
+`test_compact_water_cache.gd` сравнивает fresh Save/Reopen с обычным расчётом:
+records/info/static GPU records/shore/height, physical height/foam/wetness query,
+palette-only reuse, локальную правку/Undo, дальний inlet и внешний flow. Проверены
+fresh history, truncation/checksum/version/malformed/missing/I-O fallback,
+cancellation и quota без удаления авторского fixture. Headless и native Forward+
+cache parity прошли; исходные 702 GPU сравнения сохранены. Повторный runtime F6
+проверяется с ожиданием World Canvas startup barrier, не только готовности поля.
+Измерять worker phases, cache I/O/hits, geometry queue, main-thread upload и полный
+запуск по отдельности; кэш не обещает сократить первый старт/RAM/VRAM/кадр.
+Точные замеры, native editor Save/Reopen/Discard/F6 и ограничения — документ воды.
+Native editor commands/runtime correct, но полный региональный harness FAIL:
+один cold gap 105,84 мс после declared sleep превысил gate 100 мс. Причина пика
+не изолирована; cold timing OPEN, порог не ослаблять и не объявлять весь suite PASS.
+Manual OPEN: повторный F6 собственной карты, берег/пена/мокрый след после правки
+и Undo. Заполненные 256–512 м/слабый ПК, geometry LOD, невидимые регионы и общий
+streaming остаются отдельными gates.
+
+Региональный water preparation gate (2026-10-04): `test_compact_water_regions.gd`
+проверяет halo/seam/current-query parity, озеро через границу участка, дальнюю
+связность после открытия/Undo inlet, persistent reuse/cancellation и источник.
+`test_compact_sea_swash_gpu.gd` в native Forward+ проверяет исходные 702 сравнения,
+GPU→GPU перенос истории заменённого поля и release. `test_compact_water_editor_preview`
+проверяет тот же setup/контакты/параметры/Save и изменение света regional ground.
+Guarded `editor_test_compact_water_regions.gd` включается только как QA plugin в
+`Ember River Preview QA`, с копией 96×120 м и правильным path terrain (дублирующий
+ext_resource UID удалить только в копии). Реальные Next/preview/Apply до 192×120,
+одно Undo/Redo, Discard/отмена pending work, Save/Reopen/F6 проверены программно.
+Поля построены один раз на стабильную revision; idle не повторяет field/mesh build.
+Fixture сохраняет сырой межкадровый промежуток, declared OS sleep и отдельный
+stall gate без этого sleep, а также CPU preparation/upload/bind/publication stats.
+Исходный 10-секундный main-thread build был RED. Цифры и ограничения остаются
+у Water Rendering → «Действующий путь пробы», не копируются в этот gate.
+Manual OPEN: активная 3D/F6, прибой/пена/мокрый песок на стыках, новая локальная
+правка/быстрые Undo/Discard во время подготовки, длительный lifecycle, слабый ПК,
+полностью заполненные 256–512 м и общая память/CPU/GPU/draw calls. Разные водные
+уровни и общий planar/underwater plane не объявлены принятыми этим срезом.
+
+Обтекание неподвижных препятствий сравнивается в `scenes/compact_wave_obstacle_study.tscn`.
+`test_compact_wave_obstacles.gd` использует fixtures: отражающий Box/Circle,
+CFL, конечность и ограниченность height, ослабление lee/сохранение боковой волны,
+live seek от того же bake, большие/обратные time jumps, выключение, неизменность
+terrain и disk cache invalidation при повороте/удалении. Sea/query/removal читают
+общую поправку. Forward+ проверяет реальное vertex displacement и равенство
+GPU поля обоих режимов при одном времени. `test_world_look_panel` проверяет enum
+Undo/Redo, цельный F6 snapshot, запрет дробного mode и Save/Reopen/Discard.
+`capture_compact_wave_obstacles.gd` снимает реальную реку/море при mode 0/1/2,
+проверяет отсутствие animation remesh/column revision и новых solver steps в bake,
+pause/restore при runtime движении без новых bake файлов; ABBA timing суммирует
+GPU timestamps активных viewports и отдельно замеряет solver CPU. Это сравнение
+на RTX 5070, не доказательство FPS слабого ПК. Native disposable QA прошёл 3D
+shared field, F6 OptionButton/strength/apply/ack, одну Undo/Redo, программный Save
+и fresh-process Reopen/второй F6; известные shutdown warnings остаются.
+Ручной gate: обе формы/направления/размеры препятствий, тонкий гребень и пена,
+граница участка/замыкание цикла, 3D/F6, перемещение в editor, strength 0/1,
+native Ctrl+S/Reopen/Discard и длительная работа/целевой слабый ПК. Не принимать
+это как симуляцию горизонтального течения, движущихся тел или произвольных mesh.
+
+Один водопад вынесен в `scenes/compact_waterfall_study.tscn`, действующий результат —
+`EMBER_WATER_RENDERING.md` → «Пробный водопад». `test_compact_waterfall.gd` использует
+fixture: направление/перепад, отсутствие uphill перелива, lower-wet маска,
+неизменные Resource/ground collision, жизнь/скорость/отключение impact и пены,
+чистый rebuild, общий Water mesh/material/query и отсутствие remesh анимации.
+Forward+ дополнительно проверяет изменение реального кадра при выключенных прочих
+волнах и удаление струи/impact при силе 0.
+`test_compact_waterfall_approach.gd` отдельно воспроизводит подмешивание верхнего
+дна: смена цвета opaque поверхности за струёй должна оставить её тело неизменным.
+Также проверяет видимые/движущиеся верхние полосы, локальность (дальняя/нижняя вода
+не меняется), разворот вместе с направлением перелива и отключение силой 0;
+обе ошибки дали RED до соответствующей правки общего shader.
+`test_world_look_panel.gd` переносит
+четыре отличающихся waterfall значения одним snapshot/Undo и сохраняет их в сцене.
+Native disposable QA проверил editor 3D поле, видимые F6 регуляторы, apply/ack,
+один Undo/Redo, программный Save, fresh-process Reopen/второй F6 и нижний ракурс.
+При закрытии QA editor остаются известные scan-aborted/ObjectDB warnings;
+этот PASS не объявляет весь lifecycle редактора чистым и не заменяет native Ctrl+S.
+Ручной gate: 3D/F6, край/основание струи и низкие боковые ракурсы, плавность/скорость
+при 0,2/1/2, неровность при 0/0,65/1, пена при 0/0,75/1, сила при 0/1,
+Undo/Redo и Ctrl+S/Reopen/Discard. Проверить, что верхняя вода и сухой берег не
+получают нижний impact, нет дыр или лишних прямоугольных стенок; оценить затухание
+дуг/web. Общие underwater/planar planes ещё не принимаются для нескольких уровней.
+
+`tools/test_compact_water_editor_preview.gd` проверяет общий tool-контроллер,
+поля пены/течения, скрытие старого кругового контакта, Undo/Redo настроек и
+сериализацию без производных узлов.
+Проверяет также реальные сохранённые sky/obstacle/waterfall сцены: одобренные
+Sun/ripple значения и сечения Box/Cylinder при уровнях 15,27/16,02. Это ловит
+риг, оставшийся над водой после понижения уровня, который fixture не обнаруживал.
+Native scene branch проверяет material identity, ripple field и два точных контура.
+Только в disposable checkout его editor
+режим дополнительно проверяет перемещение/отключение объекта и обновление
+после правки земли; `-- --native-scene` снимает реальную вкладку 3D в Forward+.
+`tools/test_compact_river_phase.gd` проверяет шаг фазы на прямом и повёрнутом
+потоке, непрерывность текущего изгиба и обоих берегов, пустое течение и
+неизменность исходного Resource. Это не тест нескольких отдельных русел.
+`tools/test_world_look_panel.gd` проверяет вкладки «Свет и цвет»/«Вода», общий
+scene owner регуляторов, один шаг Undo за drag, Save/Reopen/Discard и отключение
+ссылок закрытой сцены. Runtime snapshot проверяется как одно Undo/Redo,
+Save/Reopen/Discard; неверный scene/node path, NaN, диапазон и неизвестные поля
+не должны частично менять сцену. Повтор того же набора не создаёт новый Undo.
+Preview-тест дополнительно проверяет независимость
+береговой/объектной ширины, обновление движущегося аналитического контура,
+образцы расходящихся дуг, скрытие второго flat wake и затухание после остановки.
+Живой образец обязан сохранить исходную точку при следующем emission.
+`tools/test_compact_water_sun.gd` запускается в disposable Forward+:
+на fixture настоящий Sky/sun должен давать блик в реке и море; diagnostic
+настоящего fragment проверяет одинаковые roughness/specular при flow 0/1,
+glints 0/0,32/1 и sky roughness 0/0,45. Пустой край coastal state texture
+не должен наклонять нормаль плоской воды к ложной высоте 0. Обе причины
+по отдельности воспроизведены RED → GREEN. Native runtime capture той же
+пробной карты фиксирует камеру/свет/время: `tools/capture_compact_water_sun.gd`,
+`docs/art/references/compact-water-sun-before-after.png`. Manual gate: 3D/F6,
+река → устье → море, низкий ракурс, движение/форма блика на морском набеге.
+Сила/размытость неба и блики остаются у прежнего World Look/scene owner.
+`tools/test_compact_ripple_field.gd` — disposable Forward+: настоящая новая
+текстура/fragment, переиспользование без генерации на кадрах, конечные значения,
+невыделяющийся периодический край, shape morph и его отключение/плавный соседний
+кадр. `test_world_look_panel.gd` дополнительно проверяет Sun+water snapshot,
+отказ без частичного применения при неверном угле, общий Undo/Redo, drag одной
+оси, независимость другой и Save/Reopen rotation существующего Sun.
+Manual: новые ползунки размера/деформации/скорости ряби, glints 0/0,32/1,
+размер солнца 0,5–1° и 2,9°, низкий ракурс/3D/F6. Изменить поворот/высоту/силу
+солнца в F6, применить в редактор, Ctrl+Z/Y, Ctrl+S, Reopen и новый F6.
+Сравнение реального renderer — `docs/art/references/compact-water-ripple-comparison.gif`.
+Нативный QA UI/debugger/Undo/Save/fresh reopen пройден программно; ручной визуальный
+gate и слабый ПК остаются открыты. Авторские scene/terrain прежние.
+
+`tools/test_compact_water_arc_response.gd` запускается в disposable Forward+
+через `--path <qa-copy> --script res://tools/test_compact_water_arc_response.gd`:
+диагностический fragment вызывает реальные функции шейдера без копии wave math.
+Проверяет выступающий по течению центр при flow +Z/-Z и плавное нарастание новой
+реакции; до исправления обе проверки были красными. Реальная функция пенных
+разводов должна увеличивать их длительность при росте lifetime и давать ноль
+при strength 0 и river speed 0. Общий width pulse проверяется на GPU: плавность
+по времени, ограниченная ширина и возвращение к постоянной при силе 0.
+Реальная shore foam функция должна сохранять корень у мокрой границы на ширинах
+0,4/1,8/6 и при максимальных motion/pulse; увеличение ширины растит только
+внешний край, сухая сторона и дальняя вода остаются пустыми. До исправления
+фиксированный distance 0,4 давал ноль на ширинах 0,4/1,8, после — пену.
+Уровень воды: GPU diagnostic по world vertex Y проверяет сдвиг −0,5;
+preview regression проверяет аналогичный сдвиг physical query/возврат при 0 без
+изменения authoring levels, column revision или field rebuild. Отрицательное
+значение включено в общий snapshot Undo/Redo/Save/Reopen и native F6-перенос.
+Ручной gate: 0/−0,35/−0,75 в 3D/F6, мелководье/море, оба берега, контакт объектов,
+камера погружения; нижние грани воды на дне. Само смещение уровня не добавляет
+воду на сушу; морской набег проверяется отдельно ниже.
+Новый параметр проходит snapshot Undo/Redo/Save/Reopen и настоящий F6-перенос
+в отдельном native editor, затем повторный F6 после нового открытия.
+`capture_compact_water_surface.gd` сравнивает
+до/после при одинаковой фазе/авторских значениях и проверяет отсутствие rebuild
+terrain-полей от изменения новых регуляторов.
+`tools/test_compact_sea_swash.gd` PASS headless и Forward+ в disposable copy:
+реальная очередь projection после остановки должна возобновиться и создать
+dry-bank вершины в прежнем Water mesh, затем убрать их при снятии поля.
+Проверяются приход/пена/откат/высыхание, покрытие и билинейная высота query,
+reach 0, high-bank barrier, flow guard, landlocked puddle и неизменные authoring
+channels/column revision. Forward+ часть использует настоящий water/ground shader:
+пиксель песка меняется при набеге, темнеет после отката, возвращает исходный цвет
+после высыхания. Неверная выборка экранного пикселя/экспозиция fixture исправлены;
+render failure завершает тест ненулевым кодом и не печатает итоговый PASS.
+Sea history проверяет рождение сетки на прошедшем входящем гребне, отсутствие
+следа впереди него, старение на откате и запрет новых births при выключенной волне.
+GPU diagnostic вызывает настоящую `study_sea_foam_trails`/общую pattern функцию,
+изолируя её цвет от освещения: longer lifetime сохраняет больше старых линий;
+sea trail strength 0, sea height 0 и полное старение дают ноль; river strength 0
+не выключает морской рисунок. Birth/death и смена ширины при откате непрерывны,
+дальность/сила подхода меняют offshore профиль, но сохраняют высоту у берега.
+Query включает ранний профиль за прежним порогом 15 вокселей. River GPU regression
+сохраняет прежний результат после выделения общей pattern функции.
+`capture_compact_water_surface.gd -- --sea-swash` проверяет завершение очереди,
+отсутствие field rebuild от скаляров и записывает один и тот же цикл до/после.
+`-- --sea-foam` сравнивает тот же набег без сетки/с ней; переключается только
+морская trail strength, остальные авторские параметры/фаза одинаковые.
+`-- --sea-approach` сравнивает точки рождения 6/20 нового профиля, без field rebuild.
+GPU history теперь проверяется `tools/test_compact_sea_swash_gpu.gd` в native
+Forward+: сравнение с CPU reference через несколько циклов, rewind, выключение,
+смена drying, холодные запросы, текущая билинейная физика и перенос истории
+существующего поля; повтор frozen preview не делает dispatch, удаление owner
+освобождает GPU handles. Headless сохраняет прежний reference для data gates.
+На RTX 5070 / авторских 96×48 м / 113 117 активных клетках CPU-подготовка
+обновления ~1,58 мс вместо ~47. Активные 90 кадров native 3D: median 6,98 мс /
+p95 7,86; настоящий F6: median 7,17 / p95 10,65. Coast/terrain rebuild = 0,
+scene/terrain-файлы неизменны. Детали и caveats — Water Rendering → «Морской набег».
+После установки использовать обычное переоткрытие редактора: принудительный
+keep-state reload изменённого sea leaf завершил редактор. Он восстановлен.
+Отдельные GPU/pixel tests чистые; native `--editor --script` fixture сохраняет
+Godot window/cleanup warnings и не доказывает чистый lifecycle всего editor.
+Все пять sea/sand значений прошли snapshot Undo/Redo/Save/Reopen/Discard,
+настоящие F6-ползунки/кнопку/debugger, единый native Undo/Redo, Save и новый
+editor → второй F6. При выходе остаются прежние Godot scan/ObjectDB warnings.
+Manual: оба морских берега, устье, высокие ступени, несколько периодов,
+height 0/2,8/4, reach 0/10/16, period 4/9/16, wet strength 0/0,55/1,
+drying 3/12/20, уровень 0/−0,35/−0,75, низкий ракурс/плавность; река сохраняет
+свой путь. Морская сетка: соединение с гребнем, дрейф/распад на откате, strength
+0/0,38/1, lifetime 0,3/2,2/4, отсутствие белого следа на осушенном песке.
+Пять новых sea exports проходят общий snapshot/validation/Undo/Redo/Save/Reopen/
+Discard: approach distance/strength, crest foam и отдельные sea trails strength/lifetime.
+Manual: начало 6/20, сила 0/0,65/1, морская пена 0/1 отдельно от разводов;
+включая coastal obstacle patches. Речные настройки сохраняются.
+Нет автоматической приёмки переворачивающегося гребня, полной fluid
+physics, погоды, больших карт или телефона. `EMBER_WATER_RENDERING.md` — результат/границы.
+Native ordinary-editor QA в отдельной копии проверил настоящий
+EditorUndoRedoManager через ползунок панели и штатные Save/Reload. Итоговый PASS
+без script/shader errors; при выходе Godot предупреждает `Scan thread aborted`.
+Живая пользовательская Save/Reopen/Discard и художественная приёмка открыты.
+F6-перенос дополнительно проверяется с настоящим editor debugger: несколько
+ползунков → «Применить в редактор» → единый Undo/Redo → Ctrl+S → закрыть редактор,
+открыть заново → следующий F6 с теми же значениями. Без применения исходная
+сцена не меняется; standalone не предлагает активную кнопку переноса.
+В disposable editor автоматический `reload_scene_from_path` после F6 выводит
+внутренний `List::erase`; это воспроизведено также без debugger plugin/переноса.
+Отдельный открытый случай, не подменять им проверку обычного Save/Reopen.
+`tools/capture_compact_water_arcs.gd` сравнивает мягкий/чёткий гребень, контакт,
+движение/остановку и ширину панели; `-- --live-motion` снимает настоящую F6-пробу
+движения камня. Forward+ runtime capture завершился с exit 0 без ошибок/предупреждений.
+
+`tools/test_compact_river_study.gd` проверяет изогнутое мокрое русло, векторы
+течения, одинаковую глубину общих вершин, неизменность исходной пробы,
+validation и save/reopen. `tools/test_compact_river_water_contact.gd` проверяет
+выбор compact projection, маску у берега, след в потоке, исчезновение контакта
+на сухой земле и сечение прямоугольного/круглого объекта. Тест расширения карты проверяет перенос векторов на старых
+блоках. Контакт с `top_level=true` обязан сохранять ссылку на прямого
+родителя; Forward+ capture проверяет, что R8-маска двух объектов дошла до
+материала поверхности. При белизне гребня 1 проверить низкий ракурс и оба
+берега: короткая рябь не должна рисовать частые полигональные белые полосы.
+Forward+ кадры в двух
+моментах и проба с выключенными речными волнами создаются
+`tools/capture_compact_river_study.gd`; этот же захват сравнивает три ракурса
+при «Искажении» 0, 0,005, 0,015 и 0,035, отдельно нулевую высоту волн, пену 0 и
+приближённый 3D-вид редактора без камеры дна. Близкий ракурс сравнивает
+узкую/широкую/мягкую пену, неподвижный/сильный ход и максимальную белизну
+гребня; кадр F6 показывает всю панель без обрезки. Старые кадры отражений и
+подводного вида снимаются через `tools/capture_compact_sky_reflection_study.gd`.
+Manual: открыть `scenes/compact_sky_reflection_study.tscn` и сначала в обычной
+вкладке 3D проверить береговую пену и контуры камня/столба.
+В «Редактировать мир → Вид мира → Вода» сравнить «Белизна гребня» 0/1,
+«Чёткость гребня» 0/1, расстояние между волнами и раскрытие дуг;
+центр дуги должен идти впереди её краёв по потоку. «Неровность гребня»
+0/0,45/1 меняет фактуру узкой пенной линии, а не сетку поверхности;
+ширину/чёткость объектной кромки менять независимо от береговой пены.
+Параметры остаются также у `PlanarReflection` в Inspector. Изменение настроек не должно
+перестраивать землю. Сдвинуть камень, Undo/Redo, вернуть исходное положение;
+контур должен обновляться без старого круга. Ползунок отменяется одним Ctrl+Z.
+Сравнить блики 0/0,32, разводы 0/0,38, затухание 0,3/2,2/4 с и разрывы
+береговой пены 0/0,4/1, изменение толщины 0/0,45/1. Проверить неровную сетку:
+линии соединяются с гребнем, плавно движутся и распадаются без скачков/ровной решётки.
+Проверить толщину у обоих берегов и квадратного/круглого объекта, вблизи и издалека;
+внутренняя грань контакта остаётся отсечённой. Фактура затухает после гребня;
+цвет/глубина сохраняются, крупные волны остаются читаемыми. Проверить
+«Применить в редактор» и единый Ctrl+Z/Redo до сохранения выбранных значений.
+Save/Reopen и Discard должны
+сохранить/восстановить авторские значения и заново вывести временные поля.
+Затем запустить F6 (камера открывается на реке), от верхнего расширения пройти
+вдоль русла до устья, повернуть камеру низко над
+водой, кнопкой «К морю» сравнить с прежней гладью. Сравнить
+«Скорость реки» и «Волны реки» при 0 и текущих значениях; заметить, нет ли
+регулярных полос, резкой границы движения у устья или разрыва поверхности.
+Низко над водой пройти и посмотреть вдоль реки в обе стороны при максимальной
+высоте волн и «Плюпанье»: гребни на мелководье не должны проваливаться через
+дно, выходить поверх суши или открывать угловатые пустоты. Сравнить «Пена у
+берега» при 0 и 0,6, ширину от 0,7 до 4 вокселей, чёткость при 0 и 1 и
+«Ход пены» при 0 и 3,5: кромка должна оставаться на мокрой стороне и идти с
+волной, включая устье. Белизна гребня при 0 не должна менять волну, при 1
+должна следовать за ней; подобрать более слабое игровое значение. У камня и
+столба сравнить контакт на двух фазах: линии должны повторять разные формы,
+не рваться и двигаться вместе с поверхностью; герой сохраняет обычный след при движении.
+Кнопкой «Проба следа: двигать камень» включить движение: у помеченного камня
+должны расходиться несколько задних дуг с небольшим изгибом воды; при остановке
+след затухает. Сила реакции 0 отключает этот отклик; скорость/раскрытие меняют его
+рисунок. Сравнить скорость 0,4–0,5 и время появления 0,35–0,6 с: дуга должна
+плавно нарастать и не перескакивать при появлении следующей.
+Контур движущегося камня следует его форме, дуги остаются на воде.
+В нативном 3D-виде и F6 поднять «Искажение» до текущего значения: светлые
+пятна не должны возникать у берега, а песчаные ступени не должны сильно
+искривляться. Проверить погружённую часть персонажа возле берега.
+Оценить песчаный спуск, затем подводный режим и прежнее море. Художественная
+приёмка пены и контактов открыта; нынешний морской набег на низкий сухой песок
+проверять по gate выше, отдельный водопад — по сценарию в начале этого раздела.
+
 ## Мягкий край берега2026-09-14 — ручная приёмка открыта
+
+Смежная проверка 2026-09-30: `test_compact_material_patterns.gd` сообщает
+`PNG import did not update draft`. Тот же отказ воспроизведён в disposable copy
+без нового coastal include/wetness блока ground shader. PNG importer, dialog
+и авторские материалы водным срезом не менялись; этот gate остаётся открытым
+для отдельной диагностики в теме материалов.
 
 tools/test_voxel_shore_soft_edge.gd PASS: parallel coast stroke radius16/depth4/
 length60/−X, quiet full center depth and cross-rim jumps≤1 voxel, midpoint/rim

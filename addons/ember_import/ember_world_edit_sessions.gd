@@ -62,6 +62,7 @@ func open_map(map: EmberMapLoader, scene: Node) -> Dictionary:
 			error = "Компактная земля должна быть сохранена отдельным Resource."
 			return {}
 		var next := {"target": weakref(map), "scene": weakref(scene), "resource": source.working_copy(), "baseline": source.working_copy(), "path": path, "hash": FileAccess.get_sha256(path), "object_session": null, "origin": Vector3.ZERO, "scene_path": scene.scene_file_path, "target_path": str(scene.get_path_to(map)), "source_resource": source, "originals": [], "preview": null, "compact": true}
+		next.compact_layout_delta = {}
 		entries[_key(map)] = next
 		preview(next)
 		return next
@@ -156,11 +157,48 @@ func set_water_hidden(hidden: bool) -> void:
 		var projection: Node = target._visual_surface_projection if target is EmberMapLoader else entry.preview if is_instance_valid(entry.preview) else null
 		if is_instance_valid(projection): projection.set_editor_water_hidden(hidden)
 
+static func compact_layout(map: EmberMapLoader) -> Dictionary:
+	var positions := {"Map": map.position}
+	for name in ["Terrain", "Props", "Regions"]:
+		var group := map.get_node_or_null(name) as Node3D
+		if group != null: positions[name] = group.position
+	return {"positions": positions}
+
+
+static func compact_layout_error(layout: Variant) -> String:
+	if not layout is Dictionary: return "Повреждена расстановка compact recovery."
+	for field in ["positions", "delta"]:
+		var values: Variant = layout.get(field, {})
+		if not values is Dictionary: return "Повреждена расстановка compact recovery."
+		for name in values:
+			if name not in ["Map", "Terrain", "Props", "Regions"] or not values[name] is Vector3 or not values[name].is_finite():
+				return "Повреждена расстановка compact recovery."
+	return ""
+
+
+func restore_compact_layout(entry: Dictionary, layout: Dictionary) -> void:
+	var map: EmberMapLoader = entry.target.get_ref()
+	if not is_instance_valid(map): return
+	map.authored_size_blocks = Vector2i(entry.resource.width / 16, entry.resource.depth / 16)
+	var positions: Dictionary = layout.get("positions", {})
+	if positions.get("Map") is Vector3: map.position = positions.Map
+	for name in ["Terrain", "Props", "Regions"]:
+		var group := map.get_node_or_null(name) as Node3D
+		var point: Variant = positions.get(name)
+		if group != null and point is Vector3 and point.is_finite(): group.position = point
+
+
 func discard(scene: Node = null) -> void:
 	for entry in entries.values():
 		if scene != null and entry.scene.get_ref() != scene: continue
 		if entry.get("compact", false):
 			entry.resource = entry.baseline.working_copy()
+			var target: EmberMapLoader = entry.target.get_ref()
+			var layout := compact_layout(target) if is_instance_valid(target) else {}
+			for name in entry.get("compact_layout_delta", {}):
+				if layout.get("positions", {}).has(name): layout.positions[name] -= entry.compact_layout_delta[name]
+			restore_compact_layout(entry, layout)
+			entry.compact_layout_delta = {}
 			preview(entry)
 			continue
 		for field in FIELDS: entry.resource.set(field,EmberVoxelModelResource.copy_authoring_value(entry.baseline.get(field)))
@@ -291,7 +329,9 @@ func _complete_save(prepared: Array[Dictionary], scene_snapshot: Dictionary, sce
 			entry.source_resource = ResourceLoader.load(entry.path,"",ResourceLoader.CACHE_MODE_REPLACE) if entry.get("compact", false) else ResourceLoader.load(entry.path)
 			if entry.get("compact", false):
 				var map: EmberMapLoader = entry.target.get_ref()
-				if is_instance_valid(map): map.compact_terrain = entry.source_resource
+				if is_instance_valid(map):
+					map.compact_terrain = entry.source_resource
+					entry.compact_layout_delta = {}
 			paths.append(entry.path)
 		if not paths.is_empty(): Store.asset_events.assets_published.emit(paths)
 	for entry in entries.values(): preview(entry)
@@ -318,13 +358,16 @@ func _recovery_items(copy_resources: bool) -> Array[Dictionary]:
 		var scene: Node = entry.scene.get_ref()
 		var target: Node = entry.target.get_ref()
 		var resource: Resource = entry.resource
+		var layout := compact_layout(target) if entry.get("compact", false) and is_instance_valid(target) else {}
+		if entry.get("compact", false): layout.delta = entry.get("compact_layout_delta", {}).duplicate(true)
 		if copy_resources:
 			resource = (resource as TerrainResource).working_copy() if entry.get("compact", false) else (resource as EmberVoxelModelResource).duplicate_model()
 		items.append({"key": str(key), "resource": resource,
 			"draft": recovery_directory.path_join("draft_%s.%s" % [key, "res" if entry.get("compact", false) else "tres"]),
 			"scene": scene.scene_file_path if is_instance_valid(scene) else entry.scene_path,
 			"target": str(scene.get_path_to(target)) if is_instance_valid(scene) and is_instance_valid(target) else entry.target_path,
-			"source": entry.path, "hash": entry.hash, "origin": entry.origin})
+			"source": entry.path, "hash": entry.hash, "origin": entry.origin,
+			"compact_layout": layout})
 	return items
 
 
@@ -344,7 +387,7 @@ static func _save_recovery_items(job: Dictionary) -> void:
 			if saved != OK:
 				result = saved
 				break
-			for field in ["draft", "scene", "target", "source", "hash", "origin"]:
+			for field in ["draft", "scene", "target", "source", "hash", "origin", "compact_layout"]:
 				manifest.set_value(item.key, field, item[field])
 		if result == OK:
 			var staged_manifest := directory.path_join("manifest.pending.cfg")
@@ -410,6 +453,10 @@ func restore_recovery(scene: Node) -> int:
 			continue
 		var draft := ResourceLoader.load(manifest.get_value(section,"draft",""),"",ResourceLoader.CACHE_MODE_IGNORE)
 		if draft == null or not draft.has_method("validation_errors") or not draft.validation_errors().is_empty(): continue
+		var recovered_layout: Variant = manifest.get_value(section, "compact_layout", {})
+		if draft is TerrainResource and not compact_layout_error(recovered_layout).is_empty():
+			error = compact_layout_error(recovered_layout)
+			continue
 		var entry := open_map(target,scene) if target is EmberMapLoader else open_object(target,scene) if target is EmberVoxelProp else {}
 		var new_ground := entry.is_empty() and target is EmberMapLoader
 		if new_ground: entry = create_ground(target,scene)
@@ -422,6 +469,12 @@ func restore_recovery(scene: Node) -> int:
 		if entry.get("compact", false):
 			if not draft is TerrainResource: continue
 			entry.resource = draft.working_copy()
+			var layout: Dictionary = recovered_layout
+			restore_compact_layout(entry, layout)
+			entry.compact_layout_delta = {}
+			for name in ["Map", "Terrain", "Props", "Regions"]:
+				var delta: Variant = layout.get("delta", {}).get(name)
+				if delta is Vector3 and delta.is_finite(): entry.compact_layout_delta[name] = delta
 		else:
 			if not draft is EmberVoxelModelResource: continue
 			for field in FIELDS: entry.resource.set(field,EmberVoxelModelResource.copy_authoring_value(draft.get(field)))

@@ -55,7 +55,8 @@ func _run() -> void:
 	var path := creation.commit()
 	assert(not path.is_empty(), creation.error)
 	var saved := ResourceLoader.load(creation.terrain_path(), "", ResourceLoader.CACHE_MODE_IGNORE) as TerrainResource
-	assert(saved != null and saved.validation_errors().is_empty() and saved.heights == terrain.heights)
+	assert(saved != null and saved.is_sectioned() and saved.validation_errors().is_empty())
+	assert(saved.dense_window(Rect2i(0, 0, terrain.width, terrain.depth)).heights == terrain.heights)
 	var packed := ResourceLoader.load(path, "PackedScene", ResourceLoader.CACHE_MODE_IGNORE) as PackedScene
 	assert(packed != null)
 	var scene := packed.instantiate()
@@ -71,7 +72,7 @@ func _run() -> void:
 	brush.configure({"target": weakref(map), "resource": editable}, undo, map)
 	var center := Vector2i(terrain.width / 2, terrain.depth * 3 / 4)
 	var sample_index := center.x + center.y * terrain.width
-	var initial_height := editable.heights[sample_index]
+	var initial_height := editable.column_value("heights", sample_index)
 	var floor_sample := map.surface_floor_sample(Vector3(center.x + 0.5, 0, center.y + 0.5))
 	assert(floor_sample.solid and is_equal_approx(floor_sample.position.y, float(initial_height)))
 	var sea_sample := projection.water_surface_sample(Vector3(terrain.width * 0.5, 0, terrain.depth * 0.1))
@@ -79,9 +80,9 @@ func _run() -> void:
 	assert(brush.begin("raise", 0.5, 4, 2, 0, 16, 0, 371, 0, -99999, "coarse", "square", 4))
 	brush.stamp(center)
 	brush.end()
-	assert(editable.heights[sample_index] > initial_height)
+	assert(editable.column_value("heights", sample_index) > initial_height)
 	undo.undo()
-	assert(editable.heights[sample_index] == initial_height)
+	assert(editable.column_value("heights", sample_index) == initial_height)
 	undo.clear_history()
 	undo.free()
 	var dialog := Dialog.new()

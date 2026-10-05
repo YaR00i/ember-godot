@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://xkrorf5ub5my"
+path="res://.godot/imported/ember_compact_sea_swash_compute.glsl-808e18270d4350da7c7f63d11ca00880.res"
+
+[deps]
+
+source_file="res://shaders/ember_compact_sea_swash_compute.glsl"
+dest_files=["res://.godot/imported/ember_compact_sea_swash_compute.glsl-808e18270d4350da7c7f63d11ca00880.res"]
+
+[params]
+

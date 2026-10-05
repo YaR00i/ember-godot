@@ -17,18 +17,19 @@ var _saved_groups: Array[Dictionary] = []
 var _pending: Array[Vector2i] = []
 var _ground_material: Material
 var _liquid_material: Material
+var _area := Rect2i()
+var _saved_hidden := {}
 
 
-func show_candidate(target: EmberMapLoader, previous: TerrainResource, candidate: TerrainResource, direction: String) -> bool:
-	if target == null or previous == null or candidate == null or direction not in Extension.DIRECTIONS:
+func show_candidate(target: EmberMapLoader, previous: TerrainResource, candidate: TerrainResource, direction: String, along := -1, address := Vector2i(-1, -1)) -> bool:
+	if target == null or previous == null or candidate == null or (direction not in Extension.DIRECTIONS and direction != "address"):
 		return false
 	_projection = target._visual_surface_projection as EmberTerrainPilotProjection
 	if not is_instance_valid(_projection) or not _projection.is_inside_tree():
 		return false
 	_candidate = candidate
-	_ground_material = Materials.opaque_material()
-	_liquid_material = Materials.water_material().duplicate() as Material
-	(_liquid_material as ShaderMaterial).set_shader_parameter("coordinate_scale", float(TerrainResource.CELLS_PER_BLOCK))
+	_ground_material = _projection._ground_material
+	_liquid_material = _projection._water_material
 	scale = _projection.scale
 	position = _projection.position
 	var cells := Extension.Creation.SECTION_BLOCKS * TerrainResource.CELLS_PER_BLOCK
@@ -40,16 +41,21 @@ func show_candidate(target: EmberMapLoader, previous: TerrainResource, candidate
 		if group != null:
 			_saved_groups.append({"node": weakref(group), "position": group.position})
 			group.position += shift
-	_projection.set_editor_extension_edge_hidden(direction, true)
-	var old_x_tiles := ceili(float(previous.width) / TerrainProjection.TILE_SIZE)
-	var old_z_tiles := ceili(float(previous.depth) / TerrainProjection.TILE_SIZE)
-	var new_x_tiles := ceili(float(candidate.width) / TerrainProjection.TILE_SIZE)
-	var new_z_tiles := ceili(float(candidate.depth) / TerrainProjection.TILE_SIZE)
-	for z in new_z_tiles:
-		for x in new_x_tiles:
-			var on_strip := (direction == "west" and x <= new_x_tiles - old_x_tiles) or (direction == "east" and x >= old_x_tiles - 1) or (direction == "north" and z <= new_z_tiles - old_z_tiles) or (direction == "south" and z >= old_z_tiles - 1)
-			if on_strip:
-				_pending.append(Vector2i(x, z))
+	_saved_hidden = _projection._editor_hidden_edge_keys.duplicate()
+	if address.x >= 0:
+		_area = Rect2i(address * cells, Vector2i(cells, cells))
+	elif along >= 0:
+		_area = Rect2i(Vector2i(previous.width if direction == "east" else 0, along * cells) if direction in ["west", "east"] else Vector2i(along * cells, previous.depth if direction == "south" else 0), Vector2i(cells, cells))
+	else:
+		_area = Rect2i(Vector2i(previous.width if direction == "east" else 0, previous.depth if direction == "south" else 0), Vector2i(cells, candidate.depth) if direction in ["west", "east"] else Vector2i(candidate.width, cells))
+	var moved := Vector2i(cells / TerrainProjection.TILE_SIZE if direction == "west" else 0, cells / TerrainProjection.TILE_SIZE if direction == "north" else 0)
+	for key in candidate.tile_keys(TerrainProjection.TILE_SIZE):
+		if not Rect2i(key * TerrainProjection.TILE_SIZE, Vector2i.ONE * TerrainProjection.TILE_SIZE).intersects(_area.grow(TerrainProjection.TILE_SIZE)): continue
+		_pending.append(key)
+		var old_key := key - moved
+		if _projection._tiles.has(old_key):
+			_projection._editor_hidden_edge_keys[old_key] = true
+			(_projection._tiles[old_key] as Node3D).hide()
 	_add_border(previous, candidate, direction, cells)
 	set_process(true)
 	return true
@@ -59,7 +65,7 @@ func _process(_delta: float) -> void:
 	var started := Time.get_ticks_usec()
 	while not _pending.is_empty() and Time.get_ticks_usec() - started < 4000:
 		var key: Vector2i = _pending.pop_front()
-		var generated := MeshBuilder.build_tile(_candidate, key.x * TerrainProjection.TILE_SIZE, key.y * TerrainProjection.TILE_SIZE, TerrainProjection.TILE_SIZE)
+		var generated := MeshBuilder.build_tile(_candidate, key.x * TerrainProjection.TILE_SIZE, key.y * TerrainProjection.TILE_SIZE, TerrainProjection.TILE_SIZE, _projection.water_mesh_step, _projection.water_volume_sides)
 		var tile := Node3D.new()
 		tile.name = "PreviewTile_%d_%d" % [key.x, key.y]
 		add_child(tile, false, Node.INTERNAL_MODE_BACK)
@@ -80,12 +86,49 @@ func _process(_delta: float) -> void:
 		preview_built.emit()
 
 
+func show_area(target: EmberMapLoader, candidate: TerrainResource, area_cells: Rect2i, offset_sections := Vector2i.ZERO) -> bool:
+	# The same exact-candidate renderer also serves bounded terrain generation.
+	# It has no collision or saved nodes and never installs the candidate draft.
+	if target == null or candidate == null or not area_cells.has_area(): return false
+	_projection = target._visual_surface_projection as EmberTerrainPilotProjection
+	if not is_instance_valid(_projection) or not _projection.is_inside_tree(): return false
+	_candidate = candidate
+	_ground_material = _projection._ground_material
+	_liquid_material = _projection._water_material
+	scale = _projection.scale
+	position = _projection.position
+	_saved_projection_position = _projection.position
+	_saved_hidden = _projection._editor_hidden_edge_keys.duplicate()
+	var moved := offset_sections * TerrainResource.Sections.CELLS / TerrainProjection.TILE_SIZE
+	var shift := Vector3(offset_sections.x, 0, offset_sections.y) * Extension.Creation.SECTION_BLOCKS * target.imported_tile_size
+	if shift != Vector3.ZERO:
+		_saved_groups.append({"node": weakref(target), "position": target.position})
+		target.position -= target.basis * shift
+	_projection.position += shift
+	for group_name in ["Terrain", "Props", "Regions"]:
+		var group := target.get_node_or_null(group_name) as Node3D
+		if group != null and shift != Vector3.ZERO:
+			_saved_groups.append({"node": weakref(group), "position": group.position})
+			group.position += shift
+	_area = area_cells
+	for key in candidate.tile_keys(TerrainProjection.TILE_SIZE):
+		if not Rect2i(key * TerrainProjection.TILE_SIZE, Vector2i.ONE * TerrainProjection.TILE_SIZE).intersects(_area.grow(TerrainProjection.TILE_SIZE)): continue
+		_pending.append(key)
+		var old_key: Vector2i = key - moved
+		if _projection._tiles.has(old_key):
+			_projection._editor_hidden_edge_keys[old_key] = true
+			(_projection._tiles[old_key] as Node3D).hide()
+	_add_border(candidate, candidate, "area", 0)
+	set_process(true)
+	return true
+
+
 func _add_border(previous: TerrainResource, candidate: TerrainResource, direction: String, cells: int) -> void:
-	var x0 := 0 if direction == "west" else previous.width if direction == "east" else 0
-	var x1 := cells if direction == "west" else candidate.width if direction == "east" else candidate.width
-	var z0 := 0 if direction == "north" else previous.depth if direction == "south" else 0
-	var z1 := cells if direction == "north" else candidate.depth if direction == "south" else candidate.depth
-	var height := float(candidate.origin_y + candidate.heights[candidate.column_index(clampi(x0, 0, candidate.width - 1), clampi(z0, 0, candidate.depth - 1))]) + 0.4
+	var x0 := _area.position.x
+	var x1 := _area.end.x
+	var z0 := _area.position.y
+	var z1 := _area.end.y
+	var height := float(candidate.origin_y + candidate.column_value("heights", candidate.column_index(x0, z0))) + 0.4
 	var lines := ImmediateMesh.new()
 	var material := StandardMaterial3D.new()
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -107,7 +150,8 @@ func clear_preview() -> void:
 	_pending.clear()
 	if is_instance_valid(_projection):
 		_projection.position = _saved_projection_position
-		_projection.set_editor_extension_edge_hidden("", false)
+		_projection._editor_hidden_edge_keys = _saved_hidden
+		for key in _projection._tiles: (_projection._tiles[key] as Node3D).visible = not _saved_hidden.has(key)
 	for saved in _saved_groups:
 		var group: Node3D = saved.node.get_ref()
 		if is_instance_valid(group):

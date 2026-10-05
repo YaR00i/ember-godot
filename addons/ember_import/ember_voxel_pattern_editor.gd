@@ -3,12 +3,18 @@ extends Control
 ## Small binary-mask editor. The voxel Resource remains the serialized geometry owner.
 
 signal pattern_changed
+signal stroke_started
+signal stroke_finished
+signal tone_picked(tone: int)
 
 var pattern_size := Vector2i(8,8)
 var drawing := true
 var _mask := PackedByteArray()
 var _painting := false
 var _paint_value := 1
+var tone_mode := false
+var current_tone := 0
+var tone_colors: Array = [Color.WHITE, Color.WHITE, Color.WHITE]
 
 
 func _init() -> void:
@@ -44,6 +50,18 @@ func mask() -> PackedByteArray:
 	return _mask.duplicate()
 
 
+func set_tones(value: PackedByteArray, colors: Array) -> void:
+	tone_mode = true
+	pattern_size = Vector2i(16, 16)
+	_mask = value.duplicate()
+	tone_colors = colors.duplicate()
+	queue_redraw()
+
+
+func tones() -> PackedByteArray:
+	return _mask.duplicate()
+
+
 func clear() -> void:
 	_mask.fill(0)
 	queue_redraw()
@@ -65,7 +83,7 @@ func paint_at(point: Vector2, value: int) -> bool:
 	if cell.x < 0:
 		return false
 	var index := cell.x+cell.y*pattern_size.x
-	var normalized := 1 if value != 0 else 0
+	var normalized := clampi(value, 0, 2) if tone_mode else (1 if value != 0 else 0)
 	if _mask[index] == normalized:
 		return false
 	_mask[index] = normalized
@@ -76,8 +94,16 @@ func paint_at(point: Vector2, value: int) -> bool:
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index in [MOUSE_BUTTON_LEFT,MOUSE_BUTTON_RIGHT]:
+		if tone_mode and event.button_index == MOUSE_BUTTON_RIGHT:
+			if event.pressed:
+				var cell := _cell_at(event.position)
+				if cell.x >= 0: tone_picked.emit(_mask[cell.x + cell.y * pattern_size.x])
+				accept_event()
+			return
+		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed: stroke_started.emit()
+		if event.button_index == MOUSE_BUTTON_LEFT and not event.pressed: stroke_finished.emit()
 		_painting = event.pressed
-		_paint_value = 0 if event.button_index == MOUSE_BUTTON_RIGHT else (1 if drawing else 0)
+		_paint_value = current_tone if tone_mode else (0 if event.button_index == MOUSE_BUTTON_RIGHT else (1 if drawing else 0))
 		if event.pressed:
 			paint_at(event.position,_paint_value)
 			accept_event()
@@ -95,5 +121,9 @@ func _draw() -> void:
 		for x in pattern_size.x:
 			var rect := Rect2(origin+Vector2(x,y)*side,Vector2.ONE*side)
 			var filled := _mask[x+y*pattern_size.x] != 0
-			draw_rect(rect,Color("d98b2b") if filled else Color("18232d"),true)
-			draw_rect(rect,Color("f0b24f") if filled else Color("344655"),false,1.0)
+			if tone_mode:
+				draw_rect(rect,tone_colors[clampi(_mask[x+y*pattern_size.x], 0, 2)],true)
+				draw_rect(rect,Color(0.08, 0.1, 0.11, 0.3),false,1.0)
+			else:
+				draw_rect(rect,Color("d98b2b") if filled else Color("18232d"),true)
+				draw_rect(rect,Color("f0b24f") if filled else Color("344655"),false,1.0)

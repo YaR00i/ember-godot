@@ -29,7 +29,7 @@ window/stretch/mode="canvas_items"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/godot_mcp/plugin.cfg", "res://addons/ember_import/plugin.cfg", "res://addons/ember_surface_canvas/plugin.cfg")
+enabled=PackedStringArray("res://addons/ember_import/plugin.cfg", "res://addons/ember_surface_canvas/plugin.cfg", "res://addons/godot_mcp/plugin.cfg")
 
 [ember]
 

@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="EmberCompactTerrainPattern" format=4 uid="uid://c8b4e3w3pl7qr"]
+
+[ext_resource type="Script" uid="uid://cppd3ubj2tvoo" path="res://scripts/ember_compact_terrain_pattern.gd" id="1_mh72y"]
+
+[resource]
+script = ExtResource("1_mh72y")
+role_id = "grass"
+base_color = Color(0.33568537, 0.746875, 0.17971681, 1)
+light_color = Color(0.56932133, 0.89375, 0.14244142, 1)
+shadow_color = Color(0.35808814, 0.58125, 0.11080079, 1)
+pixels = PackedByteArray("AAAAAAAAAQEBAQAAAAAAAAAAAQEAAAEBAQEAAAAAAAAAAAEBAQEBAQEBAAEBAAAAAAAAAAEBAQEBAQABAQAAAAAAAAAAAAEBAAAAAAICAAAAAAAAAAABAQAAAAACAgAAAAAAAAAAAAACAgICAgIAAAAAAAAAAAAAAgICAgICAAACAgAAAAAAAAAAAAAAAAAAAgIAAgIAAAAAAAAAAAAAAAICAgICAAAAAAABAQAAAAACAgICAAAAAAAAAQEAAgIAAAACAgAAAAABAQEBAAICAAAAAgIAAAAAAQEBAQAAAAAAAAAAAAAAAQEBAAAAAAAAAAAAAAAAAAEBAQAAAAAAAA==")
+gloss = 0.12
+sheen = 0.08
+pixel_relief = 0.09

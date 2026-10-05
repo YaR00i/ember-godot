@@ -1,0 +1,68 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/world_canvas.gd" id="1_world"]
+[ext_resource type="Script" path="res://scripts/ember_map_loader.gd" id="2_map"]
+[ext_resource type="Resource" path="res://content/world_terrains/new_landscape4.res" id="3_terrain"]
+[ext_resource type="Script" path="res://scripts/ember_region.gd" id="4_region"]
+
+[sub_resource type="Environment" id="Environment_study"]
+background_mode = 1
+background_color = Color(0.43, 0.57, 0.6, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.66, 0.74, 0.83, 1)
+ambient_light_energy = 0.11
+reflected_light_source = 2
+tonemap_mode = 2
+ssao_enabled = true
+ssao_radius = 1.5
+ssao_intensity = 1.0
+
+[node name="CompactTerrainLightingStudy" type="Node3D"]
+script = ExtResource("1_world")
+sandbox_storage_root = "user://ember-compact-lighting-study"
+map_id = "compact_terrain_lighting_study"
+
+[node name="Map" type="Node3D" parent="."]
+script = ExtResource("2_map")
+map_id = "compact_terrain_lighting_study"
+hydrate_legacy_regions = false
+compact_terrain = ExtResource("3_terrain")
+authored_size_blocks = Vector2i(48, 48)
+camera_distance = 200.0
+camera_polar = 0.88
+camera_yaw = 0.35
+camera_look_height = 34.0
+camera_far = 2400.0
+
+[node name="Look" type="Node3D" parent="Map"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="Map/Look"]
+environment = SubResource("Environment_study")
+
+[node name="Sun" type="DirectionalLight3D" parent="Map/Look"]
+transform = Transform3D(0.8660254, 0.42402405, -0.26495963, 0, 0.52991927, 0.8480481, 0.5, -0.73443115, 0.45892355, 0, 0, 0)
+light_color = Color(1, 0.91, 0.76, 1)
+light_energy = 0.55
+light_angular_distance = 1.1
+shadow_enabled = true
+directional_shadow_max_distance = 800.0
+directional_shadow_blend_splits = true
+
+[node name="Terrain" type="Node3D" parent="Map"]
+
+[node name="Props" type="Node3D" parent="Map"]
+
+[node name="Regions" type="Node3D" parent="Map"]
+
+[node name="PlayerStart" type="Area3D" parent="Map/Regions"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 384, 34, 384)
+collision_layer = 0
+collision_mask = 0
+monitoring = false
+monitorable = false
+script = ExtResource("4_region")
+region_id = "compact_terrain_lighting_study_start"
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="Gate" type="Label" parent="CanvasLayer"]

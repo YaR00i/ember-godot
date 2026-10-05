@@ -1,0 +1,109 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/world_canvas.gd" id="1_8cgxx"]
+[ext_resource type="Script" path="res://scripts/ember_map_loader.gd" id="2_lwapf"]
+[ext_resource type="Resource" path="res://content/world_terrains/compact_waterfall_study.res" id="3_igr3m"]
+[ext_resource type="Material" path="res://materials/ember_compact_sky_reflection_study.tres" id="4_s8j7i"]
+[ext_resource type="Script" path="res://scripts/ember_region.gd" id="5_rdkro"]
+[ext_resource type="Script" path="res://scripts/prototypes/ember_compact_planar_reflection_study.gd" id="6_eyu2a"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_study"]
+sky_top_color = Color(0.21, 0.52, 0.82, 1)
+sky_horizon_color = Color(0.64, 0.84, 0.96, 1)
+ground_bottom_color = Color(0.2, 0.36, 0.56, 1)
+ground_horizon_color = Color(0.7, 0.85, 0.96, 1)
+sun_angle_max = 10.0
+
+[sub_resource type="Sky" id="Sky_study"]
+sky_material = SubResource("ProceduralSkyMaterial_study")
+
+[sub_resource type="Environment" id="Environment_study"]
+background_mode = 1
+background_color = Color(0.55, 0.77, 0.88, 1)
+sky = SubResource("Sky_study")
+ambient_light_source = 3
+ambient_light_color = Color(0.16079101, 0.47639987, 0.578125, 1)
+ambient_light_sky_contribution = 0.42
+ambient_light_energy = 0.0
+reflected_light_source = 2
+tonemap_mode = 2
+tonemap_exposure = 0.9
+adjustment_enabled = true
+adjustment_contrast = 0.87
+adjustment_saturation = 1.08
+
+[node name="CompactWaterfallStudy" type="Node3D" unique_id=1078461090]
+script = ExtResource("1_8cgxx")
+sandbox_storage_root = "user://ember-compact-waterfall-study"
+map_id = "compact_waterfall_study"
+
+[node name="Map" type="Node3D" parent="." unique_id=1174298907]
+script = ExtResource("2_lwapf")
+map_id = "compact_waterfall_study"
+hydrate_legacy_regions = false
+compact_terrain = ExtResource("3_igr3m")
+compact_water_visual_material = ExtResource("4_s8j7i")
+compact_water_mesh_step = 2
+compact_water_volume_sides = true
+authored_size_blocks = Vector2i(8, 12)
+camera_distance = 200.0
+camera_polar = 0.88
+camera_yaw = 0.35
+camera_look_height = 34.0
+camera_far = 2400.0
+
+[node name="Look" type="Node3D" parent="Map" unique_id=1131450946]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="Map/Look" unique_id=1235998031]
+environment = SubResource("Environment_study")
+
+[node name="Sun" type="DirectionalLight3D" parent="Map/Look" unique_id=962061877]
+transform = Transform3D(0.8660254, 0.42402405, -0.26495963, 0, 0.52991927, 0.8480481, 0.5, -0.73443115, 0.45892355, 0, 0, 0)
+light_color = Color(1, 0.9983594, 0.7375, 1)
+light_energy = 0.25
+light_angular_distance = 0.8
+shadow_enabled = true
+directional_shadow_max_distance = 800.0
+
+[node name="Terrain" type="Node3D" parent="Map" unique_id=547269038]
+
+[node name="Props" type="Node3D" parent="Map" unique_id=1297112678]
+
+[node name="Regions" type="Node3D" parent="Map" unique_id=488064453]
+
+[node name="PlayerStart" type="Area3D" parent="Map/Regions" unique_id=278804416]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 22, 74, 150)
+collision_layer = 0
+collision_mask = 0
+monitoring = false
+monitorable = false
+script = ExtResource("5_rdkro")
+region_id = "compact_waterfall_study_start"
+map_id = "compact_waterfall_study"
+kind = "player_start"
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=779995488]
+
+[node name="Gate" type="Label" parent="CanvasLayer" unique_id=131982856]
+text = "EMBER · WATERFALL STUDY"
+
+[node name="PlanarReflection" type="Node" parent="." unique_id=107909946]
+script = ExtResource("6_eyu2a")
+sky_roughness = 0.18
+wave_height_voxels = 1.1
+river_flow_speed = 1.0
+shore_foam_strength = 0.48
+shore_foam_width_voxels = 1.4
+shore_foam_sharpness = 1.0
+river_crest_whiteness = 0.12
+river_wave_spacing_blocks = 5.0
+river_arc_opening = 0.4
+river_crest_sharpness = 0.99
+river_foam_variation = 1.0
+water_level_offset_voxels = -0.35
+water_glint_strength = 0.32
+ripple_cell_scale = 1.1
+ripple_morph_strength = 0.75
+ripple_morph_speed = 0.6
+sea_swash_height = 0.0
+local_bob_strength = 0.35

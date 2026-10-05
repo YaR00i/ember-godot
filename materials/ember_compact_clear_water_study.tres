@@ -1,0 +1,16 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://shaders/ember_compact_clear_water_study.gdshader" id="1_clear"]
+
+[resource]
+render_priority = 1
+shader = ExtResource("1_clear")
+shader_parameter/shallow_color = Color(0.12, 0.72, 0.78, 1)
+shader_parameter/deep_color = Color(0.025, 0.34, 0.66, 1)
+shader_parameter/absorption_per_block = Vector3(1.55, 0.75, 0.32)
+shader_parameter/deep_start_blocks = 0.2
+shader_parameter/deep_end_blocks = 2.35
+shader_parameter/wave_height_voxels = 1.25
+shader_parameter/wave_speed = 0.42
+shader_parameter/refraction_strength = 0.007
+shader_parameter/preview_time = -1.0

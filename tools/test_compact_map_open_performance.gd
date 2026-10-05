@@ -12,6 +12,7 @@ func _run() -> void:
 	var creation := Creation.new()
 	creation.scene_directory = DIRECTORY.path_join("scenes")
 	creation.terrain_directory = DIRECTORY.path_join("world_terrains")
+	creation.map_id = "flat_open_test"
 	_cleanup(creation)
 	var started := Time.get_ticks_usec()
 	if not creation.prepare_sections("flat_open_test", 4, 4, 8):
@@ -75,9 +76,8 @@ func _run() -> void:
 	await physics_frame
 	var ray := PhysicsRayQueryParameters3D.create(Vector3(355.5, 100, 355.5), Vector3(355.5, -10, 355.5))
 	var hit := root.world_3d.direct_space_state.intersect_ray(ray)
-	var heights := map.compact_terrain.heights
-	heights[0] = map.compact_terrain.height_limit + 1
-	map.compact_terrain.heights = heights
+	var corrupt := map.compact_terrain.sections[Vector2i.ZERO] as EmberTerrainPilotResource
+	corrupt.heights[0] = map.compact_terrain.height_limit + 1
 	var invalid_warnings := map._get_configuration_warnings()
 	map.queue_free()
 	await process_frame

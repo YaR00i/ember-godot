@@ -2,12 +2,13 @@
 class_name EmberWaterContact3D
 extends Node3D
 ## Derived footprint ripple. The target owns only radius/foot offset; water
-## presence and exact plane height stay owned by EmberVoxelSurfaceProjection.
+## presence and exact plane height stay owned by the active water projection.
 
 const SurfaceMaterials := preload("res://scripts/ember_voxel_surface_materials.gd")
 const WAKE_MESH_FPS := 15.0
 const MASK_SIZE := 12
 const MASK_INTERVAL := 0.10
+const SURFACE_ARC_SPACING_BLOCKS := 0.45
 
 @export_range(0.05, 1.5, 0.01) var radius_blocks := 0.30
 @export_range(-2.0, 2.0, 0.01) var feet_offset_blocks := 0.0
@@ -19,6 +20,7 @@ const MASK_INTERVAL := 0.10
 @export_range(0.05, 0.30, 0.01) var wake_sample_spacing_blocks := 0.11
 @export_range(0.2, 2.0, 0.05) var wake_lifetime_seconds := 1.10
 @export_range(0.4, 1.2, 0.05) var wake_lane_offset_scale := 0.78
+@export var static_surface_foam_footprint := false
 
 var _visual: MeshInstance3D
 var _wake_visual: MeshInstance3D
@@ -38,8 +40,12 @@ var _moved_this_frame := false
 var _wake_origin := Vector3.ZERO
 var _wake_origin_initialized := false
 var _wake_samples: Array[Dictionary] = []
+var _surface_arc_origin := Vector3.ZERO
+var _surface_arc_initialized := false
 var _wake_redraw_accumulator := 0.0
 var _contact_material: ShaderMaterial
+var _surface_integrated := false
+var _contact_active := false
 var _water_mask: ImageTexture
 var _contact_mask_image: Image
 var _mask_elapsed := MASK_INTERVAL
@@ -53,7 +59,7 @@ var _mask_projection: Node3D
 func _ready() -> void:
 	get_tree().node_added.connect(_on_projection_tree_changed)
 	get_tree().node_removed.connect(_on_projection_tree_changed)
-	_target = get_parent_node_3d()
+	_target = get_parent() as Node3D
 	if is_instance_valid(_target):
 		_last_target_position = _target.global_position
 		_motion_initialized = true
@@ -75,7 +81,7 @@ func sample_motion(delta: float) -> void:
 	## combat preview nodes and teleported props without reading a second motion
 	## contract. Only horizontal motion contributes to the wake.
 	if not is_instance_valid(_target):
-		_target = get_parent_node_3d()
+		_target = get_parent() as Node3D
 	if not is_instance_valid(_target):
 		return
 	var current := _target.global_position
@@ -105,9 +111,20 @@ func sample_motion(delta: float) -> void:
 	_apply_motion_visual()
 
 
+func reset_motion_tracking() -> void:
+	# A caller restoring a trial transform can start a fresh position sample
+	# without interpreting that restoration as motion. Existing arcs still age.
+	_motion_initialized = false
+	_motion_strength = 0.0
+	_moved_this_frame = false
+	_wake_origin_initialized = false
+	_surface_arc_initialized = false
+	_apply_motion_visual()
+
+
 func refresh_now() -> void:
 	if not is_instance_valid(_target):
-		_target = get_parent_node_3d()
+		_target = get_parent() as Node3D
 	if not is_instance_valid(_target):
 		_set_contact_visible(false)
 		return
@@ -141,7 +158,57 @@ func refresh_now() -> void:
 
 
 func is_contact_visible() -> bool:
-	return is_instance_valid(_visual) and _visual.visible
+	return _contact_active
+
+
+func set_surface_integrated(enabled: bool) -> void:
+	# The opt-in study paints a footprint on its moving water mesh. Other maps
+	# retain this component's ordinary ripple and wake presentation.
+	_surface_integrated = enabled
+	if is_instance_valid(_visual):
+		_visual.visible = _contact_active and not _surface_integrated
+
+
+func foam_footprint_shape(water_y: float) -> Dictionary:
+	# Simple prop meshes can expose their actual waterline section to the
+	# surface study. No footprint is inferred from the ripple radius.
+	if not is_instance_valid(_target):
+		_target = get_parent() as Node3D
+	if not is_instance_valid(_target):
+		return {}
+	for child in _target.get_children():
+		var visual := child as MeshInstance3D
+		if visual == null or visual.mesh == null:
+			continue
+		var scale := visual.global_transform.basis.get_scale()
+		var center := visual.global_position
+		if visual.mesh is BoxMesh:
+			var box := visual.mesh as BoxMesh
+			var half := box.size * scale * 0.5
+			if water_y < center.y - half.y - 0.1 or water_y > center.y + half.y + 0.1:
+				continue
+			var axis := visual.global_transform.basis.x
+			return {"kind": "box", "center": Vector2(center.x, center.z),
+				"half": Vector2(half.x, half.z),
+				"angle": atan2(axis.z, axis.x)}
+		if visual.mesh is CylinderMesh:
+			var cylinder := visual.mesh as CylinderMesh
+			var half_height := cylinder.height * scale.y * 0.5
+			if water_y < center.y - half_height - 0.1 or water_y > center.y + half_height + 0.1:
+				continue
+			return {"kind": "circle", "center": Vector2(center.x, center.z),
+				"radius": cylinder.bottom_radius * maxf(scale.x, scale.z)}
+	return {}
+
+
+static func footprint_signed_distance(point: Vector2, footprint: Dictionary) -> float:
+	var relative: Vector2 = point - footprint["center"]
+	if footprint["kind"] == "circle":
+		return relative.length() - float(footprint["radius"])
+	var local := relative.rotated(-float(footprint["angle"]))
+	var outside: Vector2 = local.abs() - footprint["half"]
+	return Vector2(maxf(outside.x, 0.0), maxf(outside.y, 0.0)).length() \
+		+ minf(maxf(outside.x, outside.y), 0.0)
 
 
 func motion_strength() -> float:
@@ -287,10 +354,11 @@ func _apply_motion_visual() -> void:
 
 
 func _set_contact_visible(next_visible: bool) -> void:
+	_contact_active = next_visible
 	if not next_visible:
 		_wake_origin_initialized = false
 	if is_instance_valid(_visual):
-		_visual.visible = next_visible
+		_visual.visible = next_visible and not _surface_integrated
 
 
 func wake_sample_count() -> int:
@@ -301,6 +369,7 @@ func _record_wake_sample(water_position: Vector3, block_world_size: float) -> vo
 	if not _wake_origin_initialized:
 		_wake_origin = water_position
 		_wake_origin_initialized = true
+		_surface_arc_initialized = false
 		return
 	if not _moved_this_frame or _motion_strength < 0.08:
 		return
@@ -316,6 +385,7 @@ func _record_wake_sample(water_position: Vector3, block_world_size: float) -> vo
 		or absf(water_position.y - _wake_origin.y) > block_world_size * 0.05
 	):
 		_wake_samples.clear()
+		_surface_arc_initialized = false
 		_wake_origin = water_position
 		return
 	if distance < spacing:
@@ -324,10 +394,16 @@ func _record_wake_sample(water_position: Vector3, block_world_size: float) -> vo
 	while distance >= spacing:
 		_wake_origin += forward3 * spacing
 		_wake_origin.y = water_position.y + block_world_size * 0.003
+		var surface_arc := not _surface_arc_initialized or _wake_origin.distance_to(_surface_arc_origin) >= SURFACE_ARC_SPACING_BLOCKS * block_world_size
+		if surface_arc:
+			_surface_arc_origin = _wake_origin
+			_surface_arc_initialized = true
 		_wake_samples.append({
 			"position": _wake_origin,
 			"forward": Vector2(forward3.x, forward3.z),
 			"age": 0.0,
+			"strength": _motion_strength,
+			"surface_arc": surface_arc,
 			"block_size": block_world_size,
 		})
 		horizontal = Vector3(
@@ -366,6 +442,7 @@ func _advance_wake(delta: float) -> void:
 	):
 		_wake_samples.pop_front()
 	if _wake_samples.is_empty():
+		_surface_arc_initialized = false
 		if had_samples or _wake_visual.visible:
 			_rebuild_wake_mesh()
 		_wake_redraw_accumulator = 0.0
@@ -381,6 +458,9 @@ func _rebuild_wake_mesh() -> void:
 	if not is_instance_valid(_wake_mesh) or not is_instance_valid(_wake_visual):
 		return
 	_wake_mesh.clear_surfaces()
+	if _surface_integrated:
+		_wake_visual.visible = false
+		return
 	if _wake_samples.is_empty():
 		_wake_visual.visible = false
 		return
@@ -410,6 +490,26 @@ func _rebuild_wake_mesh() -> void:
 		_wake_mesh.surface_end()
 	_wake_visual.global_transform = Transform3D.IDENTITY
 	_wake_visual.visible = has_geometry
+
+
+func surface_wake_samples(limit := 12) -> Array[Dictionary]:
+	# Derived motion history has one owner. The study consumes it on the moving
+	# surface instead of building a second emitter or flat overlay.
+	var result: Array[Dictionary] = []
+	if limit <= 0: return result
+	for index in range(_wake_samples.size() - 1, -1, -1):
+		var sample: Dictionary = _wake_samples[index]
+		# Decide spacing once at birth. Reselecting from the newest sample each
+		# frame moved already visible arcs between nearby emission positions.
+		if not bool(sample.get("surface_arc", false)):
+			continue
+		var entry := sample.duplicate()
+		entry["life"] = clampf(1.0 - float(sample["age"]) / maxf(wake_lifetime_seconds, 0.01), 0.0, 1.0)
+		entry["radius"] = radius_blocks
+		result.append(entry)
+		if result.size() >= limit:
+			break
+	return result
 
 
 func _wake_quad_on_water(

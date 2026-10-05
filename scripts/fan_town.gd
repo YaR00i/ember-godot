@@ -112,6 +112,7 @@ func _spawn_player(ts: float) -> void:
 			_arrival_guard_region = occupied
 	else:
 		player.position = _map.spawn_world() + Vector3(0.0, 6.0, 0.0)
+	player.position = _map.safe_spawn_world(player.position)
 	add_child(player)
 	_player = player
 	if progress:

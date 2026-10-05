@@ -31,6 +31,11 @@ func _run() -> void:
 	source.column_material_overrides[west] = {2: 3}
 	source.heights[east] = 20
 	source.top_materials[east] = 4
+	var flow_blocks_x := source.width / TerrainResource.CELLS_PER_BLOCK
+	var flow_blocks_z := source.depth / TerrainResource.CELLS_PER_BLOCK
+	source.water_flow.resize(flow_blocks_x * flow_blocks_z)
+	source.water_flow[0] = Vector2(-0.2, -0.8)
+	source.water_flow[flow_blocks_x - 1] = Vector2(0.3, -0.6)
 	assert(source.validation_errors().is_empty())
 	var cells := Creation.SECTION_BLOCKS * TerrainResource.CELLS_PER_BLOCK
 	for direction in Extension.DIRECTIONS:
@@ -38,6 +43,8 @@ func _run() -> void:
 		assert(next != null and next.validation_errors().is_empty())
 		assert(next.width == source.width + (cells if direction in ["west", "east"] else 0))
 		assert(next.depth == source.depth + (cells if direction in ["north", "south"] else 0))
+		assert(next.palette_surface_roles == source.palette_surface_roles)
+		assert(next.palette_material_ids == source.palette_material_ids)
 		var dx := cells if direction == "west" else 0
 		var dz := cells if direction == "north" else 0
 		for point in [Vector2i(0, 12), Vector2i(source.width - 1, 12), Vector2i(42, 86)]:
@@ -47,6 +54,7 @@ func _run() -> void:
 			assert(next.top_materials[new_index] == source.top_materials[old_index])
 			assert(next.water_levels[new_index] == source.water_levels[old_index])
 			assert(next.water_materials[new_index] == source.water_materials[old_index])
+			assert(next.flow_at_cell(point.x + dx, point.y + dz) == source.flow_at_cell(point.x, point.y))
 		assert(next.column_material_overrides[next.column_index(dx, 12 + dz)] == {2: 3})
 		if direction == "west":
 			assert(next.heights[next.column_index(0, 12)] == 12)
@@ -57,6 +65,9 @@ func _run() -> void:
 		var reopened := ResourceLoader.load(DRAFT, "", ResourceLoader.CACHE_MODE_IGNORE) as TerrainResource
 		assert(reopened != null and reopened.validation_errors().is_empty())
 		assert(reopened.heights == next.heights and reopened.water_levels == next.water_levels)
+		assert(reopened.palette_surface_roles == source.palette_surface_roles)
+		assert(reopened.palette_material_ids == source.palette_material_ids)
+		assert(reopened.water_flow == next.water_flow)
 		var flat: TerrainResource = Extension.expanded(source, direction, Extension.MODE_FLAT)
 		assert(flat != null and flat.validation_errors().is_empty())
 		var seam_x := cells - 1 if direction == "west" else source.width if direction == "east" else 12
@@ -74,6 +85,10 @@ func _run() -> void:
 		assert(flat.heights[far_index] == 8)
 		assert(flat.water_levels[far_index] == 0)
 		assert(flat.column_material_overrides.size() <= next.column_material_overrides.size())
+		assert(flat.flow_at_cell(dx, 12 + dz) == source.flow_at_cell(0, 12))
+		if direction == "west":
+			assert(flat.flow_at_cell(cells - 8, 12).length() > 0.0)
+			assert(flat.flow_at_cell(8, 12) == Vector2.ZERO)
 	var wet_edge := source.working_copy()
 	for z in wet_edge.depth:
 		var wet_index := wet_edge.column_index(0, z)
@@ -94,6 +109,7 @@ func _run() -> void:
 		group.name = name
 		map.add_child(group)
 	var editor := WorldEditor.new()
+	editor.sessions.recovery_directory = "user://compact_map_extension_test/recovery"
 	root.add_child(editor)
 	var dialog := ExtensionDialog.new()
 	root.add_child(dialog)
@@ -153,6 +169,7 @@ func _run() -> void:
 	var saved_map := saved_scene.get_node("Map") as EmberMapLoader
 	var history := UndoRedo.new()
 	var sessions := Sessions.new()
+	sessions.recovery_directory = "user://compact_map_extension_test/saved_recovery"
 	sessions.configure(history, func() -> int:
 		var updated := PackedScene.new()
 		var pack_error := updated.pack(saved_scene)
@@ -161,10 +178,44 @@ func _run() -> void:
 	editor.sessions = sessions
 	var saved_entry := sessions.open_map(saved_map, saved_scene)
 	assert(not saved_entry.is_empty(), sessions.error)
+	var initial_hash := FileAccess.get_sha256(save_creation.terrain_path())
+	saved_map.authored_size_blocks = Vector2i(48, 24)
+	assert(editor.commit_compact_extent_repair(saved_map, saved_entry, saved_scene).is_empty())
+	assert(saved_map.authored_size_blocks == Vector2i(24, 24))
+	assert(not sessions.dirty(saved_entry) and FileAccess.get_sha256(save_creation.terrain_path()) == initial_hash)
+	history.undo()
+	assert(saved_map.authored_size_blocks == Vector2i(48, 24))
+	history.redo()
+	assert(saved_map.authored_size_blocks == Vector2i(24, 24))
 	var saved_grown: TerrainResource = Extension.expanded(saved_entry.resource, "north")
 	var group_positions := {}
 	for name in ["Terrain", "Props", "Regions"]:
 		group_positions[name] = Extension.scene_shift("north", saved_map.imported_tile_size)
+	editor._apply_compact_extension(saved_map, saved_entry, saved_grown, Vector2i(24, 48), group_positions)
+	saved_map.get_node("Props").position.x += 17.0
+	sessions.discard(saved_scene)
+	assert(saved_map.authored_size_blocks == Vector2i(24, 24), "Discard left expanded scene metadata over restored terrain")
+	assert((saved_map.get_node("Regions") as Node3D).position == Vector3.ZERO, "Discard left the north extension anchor shift")
+	assert(saved_map.get_node("Props").position == Vector3(17, 0, 0), "Discard removed an independent scene transform")
+	assert(saved_entry.resource.depth == 384)
+	saved_map.get_node("Props").position = Vector3.ZERO
+	editor._apply_compact_extension(saved_map, saved_entry, saved_grown, Vector2i(24, 48), group_positions)
+	sessions.write_recovery()
+	sessions.discard(saved_scene)
+	var manifest := ConfigFile.new()
+	var manifest_path := sessions.recovery_directory.path_join("manifest.cfg")
+	assert(manifest.load(manifest_path) == OK)
+	var recovered_key: String = manifest.get_sections()[0]
+	var valid_layout: Dictionary = manifest.get_value(recovered_key, "compact_layout")
+	manifest.set_value(recovered_key, "compact_layout", {"positions": "bad"})
+	assert(manifest.save(manifest_path) == OK)
+	assert(sessions.restore_recovery(saved_scene) == 0 and saved_map.authored_size_blocks == Vector2i(24, 24), "invalid layout mutated the scene")
+	manifest.set_value(recovered_key, "compact_layout", valid_layout)
+	assert(manifest.save(manifest_path) == OK)
+	assert(sessions.restore_recovery(saved_scene) == 1, sessions.error)
+	assert(saved_map.authored_size_blocks == Vector2i(24, 48) and saved_map.get_node("Regions").position.z == 384)
+	sessions.discard(saved_scene)
+	assert(saved_map.authored_size_blocks == Vector2i(24, 24) and saved_map.get_node("Regions").position == Vector3.ZERO)
 	editor._apply_compact_extension(saved_map, saved_entry, saved_grown, Vector2i(24, 48), group_positions)
 	assert(sessions.save_all(saved_scene), sessions.error)
 	var reopened_scene := ResourceLoader.load(save_creation.scene_path(), "PackedScene", ResourceLoader.CACHE_MODE_IGNORE) as PackedScene

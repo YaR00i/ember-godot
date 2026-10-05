@@ -3,6 +3,7 @@ extends SceneTree
 ## a safe trail mode and a bounded lively formation mode.
 
 const Followers := preload("res://scripts/ember_party_followers.gd")
+const HeroScale := preload("res://scripts/ember_exploration_hero_scale.gd")
 const SANDBOX_SCENE := preload("res://scenes/agent_sandbox.tscn")
 
 
@@ -29,6 +30,11 @@ func _run_and_quit() -> void:
 	if player == null or followers == null or toggle == null:
 		errors.append("exploration scene lost leader/followers/toggle wiring")
 	else:
+		var player_shape := (player.get_node_or_null("Shape") as CollisionShape3D).shape as CapsuleShape3D
+		if player_shape == null or not is_equal_approx(player_shape.height, HeroScale.height("protagonist", player.tile_size)):
+			errors.append("leader collision is not 1.8 authored blocks high")
+		elif not is_equal_approx(player_shape.radius, HeroScale.collision_radius(player.tile_size)):
+			errors.append("leader lost its accepted stepping footprint")
 		var initial: Dictionary = followers.view_state()
 		if int(initial.get("count", 0)) != 3:
 			errors.append("persistent four-person party did not project three companions")
@@ -39,6 +45,10 @@ func _run_and_quit() -> void:
 			var label := follower.get_node_or_null("Status") as Label3D if follower != null else null
 			if follower == null or label == null or not label.text.contains("HP"):
 				errors.append("%s has no visible exploration body/status" % hero_id)
+			else:
+				var body := follower.get_node_or_null("Body") as MeshInstance3D
+				if body == null or not is_equal_approx((body.mesh as CapsuleMesh).height, HeroScale.height(hero_id, player.tile_size)):
+					errors.append("%s follower has wrong block scale" % hero_id)
 		var formation_targets := [followers.target_for(0), followers.target_for(1), followers.target_for(2)]
 		if formation_targets[0].distance_to(formation_targets[1]) < player.tile_size * 0.5:
 			errors.append("formation did not spread companions around the leader trail")
@@ -71,6 +81,8 @@ func _run_and_quit() -> void:
 		var mira_follower := followers.get_node_or_null("PartyFollower_mira") as Node3D
 		if player.controlled_hero_id != "mira" or progress.exploration_leader_id != "mira":
 			errors.append("Tab did not switch the live exploration leader to Mira")
+		elif not is_equal_approx(player_shape.height, HeroScale.height("mira", player.tile_size)):
+			errors.append("Mira leader collision did not become 1.5 blocks high")
 		elif protagonist_follower == null or not protagonist_follower.visible or mira_follower == null or mira_follower.visible:
 			errors.append("Tab did not exchange the leader and follower models")
 		elif not str(player.call("_health_text")).begins_with("Мира"):

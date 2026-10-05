@@ -22,6 +22,8 @@ const EmberBattlefieldActions = preload("res://addons/ember_import/ember_battlef
 const EmberBattlefieldPainter = preload("res://addons/ember_import/ember_battlefield_3d_painter.gd")
 const EmberWorldSurfaceSelectorScript = preload("res://addons/ember_import/ember_world_surface_selector.gd")
 const WorldEditor = preload("res://addons/ember_import/ember_world_editor.gd")
+const WaterPreviewDebugger = preload("res://addons/ember_import/ember_water_preview_debugger.gd")
+var _water_preview_debugger: EditorDebuggerPlugin
 var _world_editor: Node
 var _world_editor_toolbar: Control
 var _world_editor_sidebar: Control
@@ -293,6 +295,9 @@ func _enter_tree() -> void:
 	_world_editor = WorldEditor.new()
 	add_child(_world_editor)
 	_world_editor.configure(self,get_undo_redo())
+	_water_preview_debugger = WaterPreviewDebugger.new()
+	_water_preview_debugger.apply_settings = _apply_water_preview_settings
+	add_debugger_plugin(_water_preview_debugger)
 	_world_editor_toolbar = _world_editor.build_toolbar()
 	var new_compact_map := Button.new()
 	new_compact_map.text = "+ Карта"
@@ -303,7 +308,7 @@ func _enter_tree() -> void:
 	var extend_compact_map := Button.new()
 	extend_compact_map.text = "+ Участок"
 	extend_compact_map.icon = get_editor_interface().get_editor_theme().get_icon("Add", "EditorIcons")
-	extend_compact_map.tooltip_text = "Добавить участок 24×24 блока к открытой компактной карте."
+	extend_compact_map.tooltip_text = "Выбрать новые участки прямо в 3D, затем настроить рельеф и воду. Щелчок — один участок, протягивание — несколько."
 	extend_compact_map.pressed.connect(_extend_compact_map)
 	_world_editor_toolbar.add_child(extend_compact_map)
 	add_control_to_container(EditorPlugin.CONTAINER_SPATIAL_EDITOR_MENU,_world_editor_toolbar)
@@ -356,7 +361,16 @@ func _set_world_editor_dock_active(value: bool) -> void:
 	_world_editor_dock_added = value
 
 
+func _apply_water_preview_settings(scene_path: String, node_path: NodePath, values: Dictionary, sun_values := {}) -> Dictionary:
+	if not is_instance_valid(_world_editor) or not is_instance_valid(_world_editor.look_panel):
+		return {"ok": false, "message": "Откройте исходную сцену воды в редакторе."}
+	return _world_editor.look_panel.apply_runtime_water(scene_path, node_path, values, sun_values)
+
+
 func _exit_tree() -> void:
+	if _water_preview_debugger != null:
+		remove_debugger_plugin(_water_preview_debugger)
+		_water_preview_debugger = null
 	if is_instance_valid(_compact_map_dialog):
 		_compact_map_dialog.free()
 	_compact_map_dialog = null
@@ -975,6 +989,10 @@ func _apply_changes() -> void:
 	if is_instance_valid(_compact_extension_dialog) and is_instance_valid(_world_editor):
 		_world_editor.clear_compact_extension_preview()
 		_compact_extension_dialog.call("show_error", "Предпросмотр закрыт перед сохранением. Выберите сторону ещё раз.")
+	if is_instance_valid(_world_editor) and is_instance_valid(_world_editor._generation_dialog):
+		_world_editor.clear_terrain_generation_preview()
+		if _world_editor._generation_dialog.visible:
+			_world_editor._generation_dialog.set_pending("Предпросмотр закрыт перед сохранением. Обновите его для применения.")
 
 func _save_external_data() -> void:
 	# Godot is still inside _save_scene here; recursive save_scene is forbidden.
@@ -1257,6 +1275,10 @@ func _new_compact_map() -> void:
 
 
 func _extend_compact_map() -> void:
+	_world_editor.begin_section_selection()
+
+
+func _extend_compact_map_by_address() -> void:
 	var root := EditorInterface.get_edited_scene_root()
 	var map := root.find_child("Map", true, false) as EmberMapLoader if root != null else null
 	if map == null or map.compact_terrain == null:
@@ -1271,11 +1293,19 @@ func _extend_compact_map() -> void:
 	if not _world_editor.is_connected("compact_extension_preview_ready", Callable(self, "_on_compact_extension_preview_ready")):
 		_world_editor.connect("compact_extension_preview_ready", Callable(self, "_on_compact_extension_preview_ready"))
 	dialog.connect("preview_requested", func(direction: String, mode: String) -> void:
-		var error: String = _world_editor.preview_compact_extension(direction, mode)
-		if not error.is_empty(): dialog.call("show_error", error)
+		var error: String = _world_editor.preview_compact_extension(direction, mode, dialog.call("section_index"), dialog.call("section_address"))
+		if not error.is_empty():
+			var draft: Dictionary = _world_editor.sessions.open_map(map, root)
+			var mismatch: bool = not draft.is_empty() and map.authored_size_blocks != Vector2i(draft.resource.width / 16, draft.resource.depth / 16)
+			dialog.call("show_error", error, mismatch)
+	)
+	dialog.connect("extent_repair_requested", func() -> void:
+		var error: String = _world_editor.repair_compact_map_extent()
+		if not error.is_empty(): dialog.call("show_error", error, true)
+		else: dialog.call("open_for", map)
 	)
 	dialog.connect("requested", func(direction: String, mode: String) -> void:
-		var error: String = _world_editor.extend_compact_map(direction, mode)
+		var error: String = _world_editor.extend_compact_map(direction, mode, dialog.call("section_index"), dialog.call("section_address"))
 		if not error.is_empty():
 			dialog.call("show_error", error)
 			return

@@ -7,6 +7,7 @@ extends Node3D
 signal mode_changed(mode: String, label: String)
 
 const PartyState := preload("res://scripts/ember_party_state.gd")
+const HeroScale := preload("res://scripts/ember_exploration_hero_scale.gd")
 
 const MODE_TRAIN := "train"
 const MODE_FORMATION := "formation"
@@ -177,8 +178,8 @@ func _build_followers() -> void:
 		var mesh := MeshInstance3D.new()
 		mesh.name = "Body"
 		var capsule := CapsuleMesh.new()
-		capsule.radius = 2.15 * scale_factor
-		capsule.height = 10.5 * scale_factor
+		capsule.radius = HeroScale.radius(hero_id, tile_size)
+		capsule.height = HeroScale.height(hero_id, tile_size)
 		mesh.mesh = capsule
 		mesh.position.y = capsule.height * 0.5
 		var material := StandardMaterial3D.new()
@@ -191,8 +192,8 @@ func _build_followers() -> void:
 		var facing := MeshInstance3D.new()
 		facing.name = "Facing"
 		var marker := SphereMesh.new()
-		marker.radius = 0.48 * scale_factor
-		marker.height = 0.96 * scale_factor
+		marker.radius = capsule.radius * 0.21
+		marker.height = capsule.radius * 0.42
 		facing.mesh = marker
 		facing.position = Vector3(0.0, capsule.height * 0.66, capsule.radius * 0.93)
 		var face_material := StandardMaterial3D.new()

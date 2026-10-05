@@ -7,6 +7,8 @@ const Sessions = preload("res://addons/ember_import/ember_world_edit_sessions.gd
 const Brush = preload("res://addons/ember_import/ember_compact_terrain_brush.gd")
 const BrushMath = preload("res://scripts/prototypes/ember_terrain_pilot_brush_math.gd")
 const WorldEditor = preload("res://addons/ember_import/ember_world_editor.gd")
+const Materials = preload("res://scripts/ember_voxel_surface_materials.gd")
+const Pattern = preload("res://scripts/ember_compact_terrain_pattern.gd")
 const DIRECTORY := "user://compact_map_creation_test"
 
 
@@ -31,6 +33,18 @@ func _run() -> void:
 	assert(preview.validation_errors().is_empty())
 	assert(preview.heights[0] == 12 and preview.top_materials[0] == 2)
 	assert(preview.base_materials[0] == 1 and preview.cap_depths[0] == 3)
+	assert(preview.surface_role_for_palette(1) == "soil" and preview.surface_role_for_palette(2) == "grass")
+	assert(preview.surface_role_for_palette(3) == "sand" and preview.surface_role_for_palette(4) == "stone")
+	var invalid_roles := preview.working_copy()
+	invalid_roles.palette_surface_roles[2] = "unknown"
+	assert(not invalid_roles.validation_errors().is_empty())
+	invalid_roles.palette_surface_roles = PackedStringArray(["", "grass"])
+	assert(not invalid_roles.validation_errors().is_empty())
+	var invalid_variant := preview.working_copy()
+	invalid_variant.palette_material_ids[2] = "stone"
+	assert(not invalid_variant.validation_errors().is_empty())
+	invalid_variant.palette_material_ids[2] = "grass_missing"
+	assert(not invalid_variant.validation_errors().is_empty())
 	assert(preview.water_levels[0] == 0)
 	var path := creation.commit()
 	assert(not path.is_empty(), creation.error)
@@ -45,7 +59,8 @@ func _run() -> void:
 	assert(saved_map.visual_surface == null and saved_map.compact_terrain != null)
 	assert(saved_map.authored_size_blocks == Vector2i(8, 10))
 	assert(saved_map.compact_terrain.resource_path == creation.terrain_path())
-	assert(saved_map.compact_terrain.heights == preview.heights)
+	assert(saved_map.compact_terrain.is_sectioned())
+	assert(saved_map.compact_terrain.dense_window(Rect2i(0, 0, preview.width, preview.depth)).heights == preview.heights)
 	assert(saved_map.get_node_or_null("Regions/PlayerStart") != null)
 	assert(scene.get_node_or_null("CanvasLayer/Gate") != null)
 	var scene_hash := FileAccess.get_sha256(path)
@@ -81,8 +96,23 @@ func _run() -> void:
 	assert(projection != null)
 	while projection.pending_tile_count() > 0:
 		await process_frame
+	var ground_mesh := (projection._tiles[Vector2i.ZERO] as Node3D).get_node("Ground").mesh as ArrayMesh
+	var ground_colors := ground_mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR] as PackedColorArray
+	assert(is_equal_approx(ground_colors[0].a, 2.0 / 255.0))
+	var has_soil_side := false
+	for color in ground_colors:
+		if is_equal_approx(color.a, 1.0 / 255.0):
+			has_soil_side = true
+			break
+	assert(has_soil_side)
+	var ground_material := ground_mesh.surface_get_material(0) as ShaderMaterial
+	assert(ground_material.shader.resource_path == "res://shaders/ember_compact_terrain_textured.gdshader")
+	assert((ground_material.get_shader_parameter("pattern_atlas") as Texture2D).get_size() == Vector2(16, 4096))
+	var role_lookup := ground_material.get_shader_parameter("role_lookup") as ImageTexture
+	assert(int(round(role_lookup.get_image().get_pixel(2, 0).r * 255.0)) == 1)
 	var floor_sample := map.surface_floor_sample(Vector3(64.5, 0, 80.5))
 	assert(floor_sample.solid and is_equal_approx(floor_sample.position.y, 12.0))
+	assert(floor_sample.material_role == "grass" and floor_sample.palette_index == 2)
 	await physics_frame
 	await physics_frame
 	var ray := PhysicsRayQueryParameters3D.create(Vector3(64.5, 100, 80.5), Vector3(64.5, -10, 80.5))
@@ -90,6 +120,7 @@ func _run() -> void:
 	assert(not hit.is_empty() and is_equal_approx(hit.position.y, 12.0))
 	var editor_history := UndoRedo.new()
 	var editor := WorldEditor.new()
+	editor.sessions.recovery_directory = DIRECTORY.path_join("editor_recovery")
 	scene.add_child(editor)
 	editor.configure(null, editor_history)
 	editor.build_toolbar()
@@ -123,6 +154,79 @@ func _run() -> void:
 	editor._category_changed(1)
 	assert(editor.terrain_edit_scale.visible and editor.brush_shape.visible and is_equal_approx(editor.radius.min_value,0.5))
 	assert(not editor.terrain_height_step.visible)
+	assert(editor.surface_role_choice.visible and editor.palette.get_item_text(1).contains("Трава"))
+	assert(editor.material_pattern_button.visible and not editor.material_pattern_button.disabled)
+	assert(editor.surface_role_choice.tooltip_text.contains("Смысл материала"))
+	var grass_pattern := Materials.load_compact_terrain_pattern("grass") as Pattern
+	var pattern_tile_count := projection.built_tile_count()
+	editor._on_material_pattern_saved(grass_pattern, "grass")
+	var live_atlas := ground_material.get_shader_parameter("pattern_atlas") as Texture2D
+	# Atlas alpha stores relief height, whereas exported artwork is opaque.
+	assert(live_atlas != null and live_atlas.get_image().get_pixel(0, 2 * 16).to_html(false) == grass_pattern.to_image().get_pixel(0, 0).to_html(false))
+	assert(projection.built_tile_count() == pattern_tile_count and projection.pending_tile_count() == 0)
+	editor.palette.select(1)
+	editor._refresh_palette_swatch()
+	editor._add_compact_material_slot()
+	assert(editor.entry.resource.palette.size() == 7)
+	assert(editor.entry.resource.material_id_for_palette(6) == "grass")
+	editor_history.undo()
+	assert(editor.entry.resource.palette.size() == 6)
+	editor_history.redo()
+	assert(editor.entry.resource.palette.size() == 7)
+	assert(projection.open_document(editor.entry.resource))
+	while projection.pending_tile_count() > 0: await process_frame
+	var variant_tile_count := projection.built_tile_count()
+	assert(editor.set_compact_surface_material(6, "grass", "grass_autumn"))
+	assert(editor.entry.resource.material_id_for_palette(6) == "grass_autumn")
+	editor_history.undo()
+	assert(editor.entry.resource.material_id_for_palette(6) == "grass")
+	editor_history.redo()
+	assert(editor.entry.resource.material_id_for_palette(6) == "grass_autumn")
+	assert(projection.open_document(editor.entry.resource))
+	assert(projection.pending_tile_count() == 0 and projection.built_tile_count() == variant_tile_count)
+	var autumn := Materials.load_compact_terrain_variant("grass_autumn") as Pattern
+	var autumn_atlas := (ground_material.get_shader_parameter("pattern_atlas") as Texture2D).get_image()
+	assert(autumn_atlas.get_pixel(0, 6 * 16).to_html(false) == autumn.to_image().get_pixel(0, 0).to_html(false))
+	assert(autumn_atlas.get_pixel(0, 2 * 16) != autumn_atlas.get_pixel(0, 6 * 16))
+	var existing_ground := (projection._tiles[Vector2i.ZERO] as Node3D).get_node("Ground") as MeshInstance3D
+	var existing_mesh := existing_ground.mesh
+	assert(editor.set_compact_surface_material(6, "grass", "grass_relief"))
+	assert(projection.open_document(editor.entry.resource))
+	assert((ground_material.get_shader_parameter("role_lookup") as Texture2D).get_image().get_pixel(6, 0).g > 0.0)
+	editor_history.undo()
+	assert(editor.entry.resource.material_id_for_palette(6) == "grass_autumn")
+	editor_history.redo()
+	assert(editor.entry.resource.material_id_for_palette(6) == "grass_relief")
+	editor._on_material_pattern_saved(Materials.load_compact_terrain_variant("grass_relief"), "grass_relief")
+	assert(projection.pending_tile_count() == 0 and projection.built_tile_count() == variant_tile_count)
+	assert(existing_ground.mesh == existing_mesh)
+	assert(editor.set_compact_surface_role(2, "stone"))
+	assert(editor.entry.resource.surface_role_for_palette(2) == "stone" and editor.sessions.dirty(editor.entry))
+	assert(projection.open_document(editor.entry.resource))
+	assert(int(round((ground_material.get_shader_parameter("role_lookup") as ImageTexture).get_image().get_pixel(2, 0).r * 255.0)) == 1)
+	assert(editor.palette.get_item_text(1).contains("Камень"))
+	editor_history.undo()
+	assert(editor.entry.resource.surface_role_for_palette(2) == "grass")
+	assert(projection.open_document(editor.entry.resource))
+	assert(int(round((ground_material.get_shader_parameter("role_lookup") as ImageTexture).get_image().get_pixel(2, 0).r * 255.0)) == 1)
+	editor_history.redo()
+	assert(editor.entry.resource.surface_role_for_palette(2) == "stone")
+	assert(projection.open_document(editor.entry.resource))
+	assert(int(round((ground_material.get_shader_parameter("role_lookup") as ImageTexture).get_image().get_pixel(2, 0).r * 255.0)) == 1)
+	editor.sessions.save_scene = func() -> int: return OK
+	assert(editor.sessions.save_all(scene), editor.sessions.error)
+	var saved_roles := ResourceLoader.load(creation.terrain_path(), "", ResourceLoader.CACHE_MODE_IGNORE) as TerrainResource
+	assert(saved_roles.surface_role_for_palette(2) == "stone" and saved_roles.dense_window(Rect2i(0, 0, preview.width, preview.depth)).heights == preview.heights)
+	assert(saved_roles.material_id_for_palette(6) == "grass_relief")
+	var candidate := saved_roles.working_copy()
+	candidate.palette_surface_roles[2] = "grass"
+	candidate.palette_material_ids[2] = "grass"
+	while projection.pending_tile_count() > 0: await process_frame
+	var built_before := projection.built_tile_count()
+	assert(projection.open_document(candidate))
+	assert(projection.pending_tile_count() == 0 and projection.built_tile_count() == built_before)
+	assert(projection.floor_surface_sample(Vector3(64.5, 0, 80.5)).material_role == "grass")
+	assert(projection.open_document(saved_roles))
 	editor._category_changed(2)
 	assert(editor.terrain_edit_scale.visible and editor.brush_shape.visible and is_equal_approx(editor.radius.min_value,0.5))
 	assert(not editor.terrain_height_step.visible)
@@ -147,6 +251,9 @@ func _run() -> void:
 	assert(editor._forward_compact(undo_key) == EditorPlugin.AFTER_GUI_INPUT_PASS)
 	assert(Input.get_mouse_button_mask() & (MOUSE_BUTTON_MASK_LEFT | MOUSE_BUTTON_MASK_RIGHT | MOUSE_BUTTON_MASK_MIDDLE) == 0)
 	editor.sessions.discard(scene)
+	assert(editor.entry.resource.surface_role_for_palette(2) == "stone")
+	editor_history.undo()
+	assert(editor.entry.resource.surface_role_for_palette(2) == "stone")
 	editor.toolbar.free()
 	editor.sidebar.free()
 	editor.inspector_panel.free()
@@ -156,24 +263,25 @@ func _run() -> void:
 	editor_history.free()
 	var undo := UndoRedo.new()
 	var sessions := Sessions.new()
+	sessions.recovery_directory = DIRECTORY.path_join("recovery")
 	sessions.configure(undo, func() -> int: return OK)
 	var entry := sessions.open_map(map, scene)
 	assert(not entry.is_empty() and entry.get("compact", false))
 	var brush := Brush.new()
 	brush.configure(entry, undo, map)
 	var index: int = entry.resource.column_index(64, 80)
-	var original: int = entry.resource.heights[index]
+	var original: int = entry.resource.column_value("heights", index)
 	assert(brush.begin("raise", 0.0625, 2, 2, 0, 16, 0, 1, 0))
 	brush.stamp(Vector2i(64, 80))
 	brush.end()
-	assert(entry.resource.heights[index] > original)
+	assert(entry.resource.column_value("heights", index) > original)
 	undo.undo()
-	assert(entry.resource.heights[index] == original)
+	assert(entry.resource.column_value("heights", index) == original)
 	undo.redo()
-	assert(entry.resource.heights[index] > original)
+	assert(entry.resource.column_value("heights", index) > original)
 	assert(sessions.save_all(scene), sessions.error)
 	var saved := ResourceLoader.load(creation.terrain_path(), "", ResourceLoader.CACHE_MODE_IGNORE) as TerrainResource
-	assert(saved.heights[index] > original)
+	assert(saved.column_value("heights", index) > original)
 	sessions.discard(scene)
 	undo.clear_history()
 	undo.free()

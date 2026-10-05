@@ -48,8 +48,59 @@ func _initialize() -> void:
 	if not _verify_grouped_seam():
 		quit(1)
 		return
-	print("TERRAIN_MESH_RECTANGLES ground=ok water=ok detail=ok grouped_8=ok seam=ok collision_source=ok")
+	if not _verify_coalesced_sides():
+		quit(1)
+		return
+	print("TERRAIN_MESH_RECTANGLES ground=ok water=ok detail=ok grouped_8=ok seam=ok collision_source=ok side_runs=ok")
 	quit()
+
+
+func _verify_coalesced_sides() -> bool:
+	var source := Terrain.new()
+	source.width = 16
+	source.depth = 16
+	source.height_limit = 32
+	source.palette = PackedColorArray([Color.TRANSPARENT, Color.GREEN, Color.SADDLE_BROWN, Color.DEEP_SKY_BLUE, Color.YELLOW])
+	for channel in ["heights", "top_materials", "base_materials", "cap_depths", "water_levels", "water_materials"]:
+		var data: Variant = source.get(channel)
+		data.resize(256)
+		source.set(channel, data)
+	source.heights.fill(8)
+	source.top_materials.fill(1)
+	source.base_materials.fill(2)
+	source.cap_depths.fill(2)
+	var editable: Dictionary = MeshBuilder.build_tile(source, 0, 0, 16)
+	if editable.collision_faces.size() != 774:
+		return _fail("default editor build unexpectedly coalesced ground sides")
+	var generated: Dictionary = MeshBuilder.build_tile(source, 0, 0, 16, 0, false, PackedVector4Array(), {}, true)
+	# One top rectangle and two material bands on each of four walls.
+	if generated.collision_faces.size() != 54:
+		return _fail("flat two-material plateau kept redundant side strips: %d vertices" % generated.collision_faces.size())
+	var sectioned := source.sectioned_copy()
+	for runtime in [false, true]:
+		var addressed: Dictionary = MeshBuilder.build_tile(sectioned, 0, 0, 16, 0, false, PackedVector4Array(), {}, runtime)
+		if addressed.collision_faces != (generated.collision_faces if runtime else editable.collision_faces):
+			return _fail("section window lost the editor/runtime geometry policy")
+	for direction in 4:
+		for offset in 16:
+			var x := 0 if direction == 0 else 15 if direction == 1 else offset
+			var z := offset if direction < 2 else 0 if direction == 2 else 15
+			for y in 8:
+				var hits := _sample_side(generated.terrain, x, z, y, direction)
+				if hits.is_empty(): return _fail("coalesced plateau omitted a wall")
+				for color in hits:
+					if not _matches_ground(color, source, 1 if y >= 6 else 2): return _fail("coalesced plateau changed a material band")
+	# Material breaks, a different cap height, a hole in the run, and one
+	# exceptional voxel must remain exact after a later authoring edit.
+	for z in 16:
+		for x in 16:
+			var index := x + z * 16
+			if x >= 8:
+				source.base_materials[index] = 4
+				source.cap_depths[index] = 3
+			if x == 7: source.heights[index] = 2
+	source.column_material_overrides[7 * 16] = {3: 4}
+	return _verify_mesh(source)
 
 
 func _verify_grouped_surface() -> bool:
@@ -127,13 +178,22 @@ func _verify_grouped_seam() -> bool:
 
 
 func _verify_mesh(source: Terrain) -> bool:
+	return _verify_mesh_mode(source, false) and _verify_mesh_mode(source, true)
+
+
+func _verify_mesh_mode(source: Terrain, coalesce: bool) -> bool:
 	if not source.validation_errors().is_empty():
 		return _fail("invalid terrain fixture")
-	var generated: Dictionary = MeshBuilder.build_tile(source, 0, 0, 16)
+	var generated: Dictionary = MeshBuilder.build_tile(source, 0, 0, 16, 0, false, PackedVector4Array(), {}, coalesce)
 	if generated.uniform_dry:
 		return _fail("expected the mixed terrain path")
 	var ground := generated.terrain as ArrayMesh
 	var water := generated.water as ArrayMesh
+	if coalesce:
+		var editable: Dictionary = MeshBuilder.build_tile(source, 0, 0, 16)
+		if water.get_surface_count() != editable.water.get_surface_count(): return _fail("runtime ground policy changed water surfaces")
+		for surface in water.get_surface_count():
+			if water.surface_get_arrays(surface) != editable.water.surface_get_arrays(surface): return _fail("runtime ground policy changed water arrays")
 	if generated.collision_faces != ground.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
 		return _fail("collision and visual terrain have different faces")
 	for z in source.depth:
@@ -145,7 +205,7 @@ func _verify_mesh(source: Terrain) -> bool:
 				if top.is_empty():
 					return _fail("missing ground at %s" % point)
 				for face in top:
-					if not is_equal_approx(face.height, float(source.heights[index])) or not (face.color as Color).is_equal_approx(source.palette[source.top_materials[index]]):
+					if not is_equal_approx(face.height, float(source.heights[index])) or not _matches_ground(face.color, source, source.top_materials[index]):
 						return _fail("wrong ground height or colour at %s" % point)
 				var wet := source.water_levels[index] > source.heights[index] and source.water_materials[index] > 0
 				var surface := _sample_horizontal(water, point)
@@ -166,9 +226,16 @@ func _verify_mesh(source: Terrain) -> bool:
 					var cap_start := maxi(0, source.heights[index] - source.cap_depths[index])
 					var material: int = int((source.column_material_overrides[index] as Dictionary).get(y, source.top_materials[index] if y >= cap_start else source.base_materials[index])) if source.column_material_overrides.has(index) else int(source.top_materials[index] if y >= cap_start else source.base_materials[index])
 					for color in hits:
-						if not (color as Color).is_equal_approx(source.palette[material]):
+						if not _matches_ground(color, source, material):
 							return _fail("wrong side colour at (%d,%d,%d), direction %d" % [x, y, z, direction])
 	return true
+
+
+func _matches_ground(color: Color, source: Terrain, material: int) -> bool:
+	# Current ground alpha is the semantic palette slot, not palette opacity.
+	if not is_equal_approx(color.a, float(material) / 255.0): return false
+	color.a = source.palette[material].a
+	return color.is_equal_approx(source.palette[material])
 
 
 func _fail(message: String) -> bool:

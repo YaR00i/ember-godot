@@ -3,14 +3,13 @@ extends CharacterBody3D
 ## Exploration controller: collision-checked smooth stepping over low obstacles.
 ## WASD is projected through the follow-camera yaw, matching JOI explore play.
 
-const RADIUS_VOXELS := 2.5
-const HEIGHT_VOXELS := 12.0
 const STEP_VOXELS := 4.0
 const SPEED_BLOCKS := 3.0
 const STEP_SECONDS := 0.16
 const ACTION_MESSAGE_MS := 1400
 const WaterContact := preload("res://scripts/ember_water_contact_3d.gd")
 const PartyState := preload("res://scripts/ember_party_state.gd")
+const HeroScale := preload("res://scripts/ember_exploration_hero_scale.gd")
 
 signal respawn_requested
 
@@ -34,6 +33,8 @@ var _respawn_grace_frames := 0
 var _visual_material: StandardMaterial3D
 var _facing_material: StandardMaterial3D
 var _status_label: Label3D
+var _body_radius := 0.0
+var _applied_hero_scale := ""
 var _step_active := false
 var _step_top := 0.0
 var _step_direction := Vector3.ZERO
@@ -43,8 +44,11 @@ var _step_elapsed := 0.0
 func _ready() -> void:
 	_ensure_actions()
 	var vw := tile_size / 16.0
-	var radius := RADIUS_VOXELS * vw
-	var height := HEIGHT_VOXELS * vw
+	var radius := HeroScale.collision_radius(tile_size)
+	var visual_radius := HeroScale.radius(PartyState.LEADER_ID, tile_size)
+	var height := HeroScale.height(PartyState.LEADER_ID, tile_size)
+	_body_radius = radius
+	_applied_hero_scale = PartyState.LEADER_ID
 	collision_layer = 2
 	collision_mask = 1
 	floor_snap_length = STEP_VOXELS * vw
@@ -59,7 +63,7 @@ func _ready() -> void:
 	var mesh := MeshInstance3D.new()
 	mesh.name = "Viz"
 	var vis := CapsuleMesh.new()
-	vis.radius = radius
+	vis.radius = visual_radius
 	vis.height = cap.height
 	mesh.mesh = vis
 	mesh.position.y = cap.height * 0.5
@@ -71,10 +75,10 @@ func _ready() -> void:
 	var facing := MeshInstance3D.new()
 	facing.name = "Facing"
 	var marker := SphereMesh.new()
-	marker.radius = 0.52 * vw
-	marker.height = 1.04 * vw
+	marker.radius = visual_radius * 0.21
+	marker.height = visual_radius * 0.42
 	facing.mesh = marker
-	facing.position = Vector3(0.0, cap.height * 0.66, radius * 0.93)
+	facing.position = Vector3(0.0, cap.height * 0.66, visual_radius * 0.93)
 	_facing_material = StandardMaterial3D.new()
 	_facing_material.albedo_color = Color("fff2d8")
 	_facing_material.emission_enabled = true
@@ -243,7 +247,7 @@ func _try_start_step(motion: Vector3) -> void:
 		return
 	var raised := global_transform
 	raised.origin += up
-	var radius := RADIUS_VOXELS * tile_size / 16.0
+	var radius := _body_radius
 	var forward := motion.normalized() * maxf(motion.length(), radius + clearance * 2.0)
 	if test_move(raised, forward):
 		return
@@ -355,7 +359,39 @@ func _on_exploration_leader_changed(hero_id: String) -> void:
 	_refresh_active_visual()
 
 
+func _apply_hero_scale() -> void:
+	if _applied_hero_scale == controlled_hero_id:
+		return
+	var height := HeroScale.height(controlled_hero_id, tile_size)
+	var radius := HeroScale.collision_radius(tile_size)
+	var visual_radius := HeroScale.radius(controlled_hero_id, tile_size)
+	var shape_node := get_node_or_null("Shape") as CollisionShape3D
+	var visual := get_node_or_null("Viz") as MeshInstance3D
+	var facing := get_node_or_null("Facing") as MeshInstance3D
+	if shape_node == null or visual == null or facing == null:
+		return
+	var capsule := shape_node.shape as CapsuleShape3D
+	var mesh := visual.mesh as CapsuleMesh
+	var marker := facing.mesh as SphereMesh
+	if capsule == null or mesh == null or marker == null:
+		return
+	capsule.radius = radius
+	capsule.height = height
+	shape_node.position.y = height * 0.5
+	mesh.radius = visual_radius
+	mesh.height = height
+	visual.position.y = height * 0.5
+	marker.radius = visual_radius * 0.21
+	marker.height = visual_radius * 0.42
+	facing.position = Vector3(0.0, height * 0.66, visual_radius * 0.93)
+	if _status_label != null:
+		_status_label.position.y = height + 2.3 * tile_size / 16.0
+	_body_radius = radius
+	_applied_hero_scale = controlled_hero_id
+
+
 func _refresh_active_visual() -> void:
+	_apply_hero_scale()
 	var state := _progress()
 	var view := state.party_member_view(controlled_hero_id) if state != null else {}
 	var definition := PartyState.unit_definition(controlled_hero_id)
