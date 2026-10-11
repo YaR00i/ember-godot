@@ -23,6 +23,31 @@
 воды этой пробой не заменены. Цвет и прозрачная глубина понравились пользователю;
 это не приёмка всей анимации, editor-потока или переноса на другие карты.
 
+## Озеро и русло из плана областей
+
+«План областей… → + Озеро» создаёт локальную котловину со своим уровнем через
+прежние terrain channels/WaterRegions. Общий renderer и настройки воды сохранены;
+planner/provenance владельцы и пределы — World Authoring → «World Layout».
+Явный preview локальной композиции с нынешним study shader готовит производные
+поля candidate в фоне и связывает региональные материалы, поэтому новый берег
+не использует поле прежней сухой земли. Cancel освобождает временный worker;
+неявных jobs от числового input и записи воды в gameplay recipe нет.
+Native/F6 с озером 5 м и морем 2 м проверяют геометрию, отдельные уровни,
+закрытый wet component, shader fields и береговой материал; авторский вид OPEN.
+Общие planar reflection/refraction/underwater planes ещё используют основной
+уровень пробы: полный вид этих специальных эффектов на разных высотах не принят.
+«+ Река» соединяет два водоёма через сухую землю: уровень на мокрых концах
+остаётся исходным, между выходом/входом поверхность спускается по линии.
+Касательный поток с ослаблением у берегов записывается в прежний `water_flow`;
+WaterRegions/river phase/shader и кэши читают готовый источник после Apply.
+Перенос/off/delete восстанавливают исходные flow и остальные каналы через общий
+local patch; визуальная анимация остаётся GPU shader, runtime не исполняет planner.
+Targeted/native exact preview=Apply, новые уровни рецепта, fresh disk/Save/Discard,
+F6 с lake 5 м → river 3,3125 м → sea 2 м и PCK с сохранённым flow PASS.
+Форма/анимация на авторской карте OPEN. Произвольный высотный профиль, третья
+вода на линии, развилки, перелив и вертикальный водопад не входят; лимиты и
+реальный authoring owner — World Authoring → «World Layout».
+
 ## Действующий путь пробы
 
 Региональная подготовка реализована (2026-10-04) в прежнем controller/
@@ -44,6 +69,20 @@ renderer, физической поверхности или сохраняем�
 физика читает текущую поверхность без readback, а не историю влажности.
 Новая правка/Undo отменяет старый worker; close ждёт остановки с проверками
 отмены внутри обходов. Удаление owner освобождает GPU handles.
+
+Диагностика системного GPU-сбоя (2026-10-08): Windows зафиксировал NVIDIA TDR
+при editor→F6 после длинного river preview-cycle; авторская игра/монитор тоже
+пострадали. Мониторы восстановились после перезапуска. По отдельному согласованию
+короткий 48×48 м запуск с одной сценой и 30 FPS прошёл без нового TDR; это не
+доказательство устранения исходного сбоя. QA layout содержал 65 открытых сцен,
+теперь оставлена одна; исходный layout сохранён в диагностической копии.
+Preview `clear_preview` закрывает worker/сбрасывает owner; Sea освобождает GPU
+через PREDELETE, а `Regions.close()` только отменяет/завершает worker. Study при
+`_exit_tree` оставляет ссылку на Regions: если объект сцены сохраняется редактором,
+поля могут оставаться удержанными до удаления/замены owner. Это пункт проверки
+lifetime/budget, а не доказанный источник TDR или подтверждённая утечка.
+GPU-шаги далее согласовывать отдельно; длинный preview→F6/удержание неактивных
+сцен и исходный триггер OPEN. Метрики/артефакты/сценарий — test plan → «Дорога/тропа».
 
 Подготовка начинается вместе со сборкой земли. Пока идёт расчёт, ранее
 подготовленная вода остаётся доступной. Загрузки текстур/создание материалов
@@ -98,7 +137,7 @@ SceneTree не ставится на паузу; фоновые jobs и animatio
 Экран показывает этап без выдуманного процента, Esc завершает пробу; при
 отсутствующих/неподдерживаемых данных доступ к игре не открывается. Экран
 появляется после входа сцены в дерево, не заменяет загрузку файлов/старт Godot.
-Авторские Resources/.tscn, renderer и сюжетный `fan_town.gd` не меняются;
+Авторские Resources/.tscn, renderer и логика общего `ember_explore_scene.gd` не меняются;
 в 3D runtime-экран не создаётся. Карта без water controller ждёт только землю.
 
 Регрессия сначала воспроизвела раннее появление игрока. Native/headless
@@ -166,15 +205,130 @@ GPU около 2,80 мс в обоих вариантах, кадр 4,91→4,87 
 1,9 мс не изменился, их счётчик подготовки не вырос. QA artifact:
 `qa_selection/water_distance_result.json` в том же Temp checkout. Это замер
 на RTX 5070 в standalone native probe, не слабый ПК/512 м или обещание FPS.
-Простое скрытие mesh не отключает `advance()` всех Sea полей; остановка дальних
-полей требует отдельного решения о физическом clock и GPU-истории. Disk cache
-должен ускорять повторный старт, иметь version/content key, проверку/пересборку
-и не хранить покадровую историю; это отдельный контракт по правилам производных
-данных в World Authoring Architecture.
+Простое скрытие mesh не отключает `advance()` всех Sea полей. Реализованная
+runtime-частота ниже сокращает обработку дальнего набега; полная остановка
+регионов и streaming остаются отдельным решением. Производные disk caches
+ускоряют повторную подготовку и не сохраняют покадровую GPU-историю.
+
+### Runtime-частота морского набега
+
+Продолжен существующий путь Regions → Sea Swash → главный RenderingDevice.
+В игре core региона на расстоянии до 48 м от камеры **или** Player сохраняет
+20 Гц; переход вдаль имеет запас 8 м и снижает полное GPU-обновление до 5 Гц.
+Полоса 8 source cells по обе стороны core-границы остаётся на 20 Гц: высота,
+пена и мокрый след на стыке не расходятся с соседним подробным участком.
+GPU использует дополнительные компактные records только для этой полосы.
+Она готовится вместе со статическими records; её buffer создаётся один раз
+при первом дальнем обновлении. Remesh, новые workers, authored schema и UI
+не добавлены. Native editor не включает policy и не готовит эти border buffers.
+
+CPU-clock/query history всех регионов остаётся текущим, без GPU readback.
+Региональный запрос surface/sample немедленно публикует текущую GPU-высоту
+один раз на simulation time и защищает core на 2 с. Настройка набега, сброс
+времени, frozen preview и отсутствие наблюдателей возвращают полный путь.
+Вдали история внутри core интегрируется с шагом до 0,2 с, а при возвращении
+продолжается из сохранённой пены/влажности; пропущенные промежуточные кадры
+не воспроизводятся. Полное засыпание намеренно не реализовано: clamp dt=0,25 с
+и история набега требуют отдельного решения для длительных пропусков.
+
+Targeted scheduling проверяет 81 near/full против 21 far/full + 60 seam-only,
+точный physical clock, немедленный query, expiry/hysteresis, смену параметров,
+reset и fallback. Native Forward+ readback проверил 3159 сравнений высоты,
+пены/age и wetness: seam совпадает с 20 Гц, far interior — с эталоном 5 Гц.
+Обработанные records в этой fixture 7 403 520 → 2 119 980 (−71,4%);
+прежние 702 GPU parity/history/migration/release сравнения также PASS.
+Native editor brush/Undo/Redo/Discard/Save/Reopen PASS: activity выключена,
+runtime border records/buffers и LOD jobs отсутствуют. Настоящий F6 World Canvas
+проверил startup barrier, защиту Player при удалённой камере и переключение
+frozen/live preview. Артефакты: `qa_activity_editor.log`, `activity_editor.png`,
+`qa_selection/activity_play_result.json` (Forward+ / ok=true / far_regions=5).
+
+Большая native проба 192×120 м / 40 регионов с настоящим controller,
+floor/reflection viewports и shader effects: 13 near / 27 far. За 3 с полных
+dispatches 2400 → 1185, плюс 1080 коротких seam dispatches; число команд
+снизилось лишь на 5,6%, обработанных records 65 323 920 → 35 146 380 (−46,2%).
+Дополнительные GPU border buffers 1,28 MiB. Geometry неизменна: 2 062 362
+примитива в обеих дальних пробах. CPU regional update median 1,98…1,99 →
+2,03…2,05 мс; основной viewport GPU 4,19/4,35 → 5,04/4,22 мс, устойчивого
+выигрыша кадра **не доказано**. Кадр ограничен 60 FPS в этой cadence-пробе;
+это сокращение GPU cells, не обещание FPS и не оптимизация общего scene render.
+При приближении near 16 / far 24, текущий набег возвращается без remesh.
+Артефакты: `qa_selection/activity_native.json`, `activity_{off0,on0,approach}.png`,
+`qa_activity_native.log`, `qa_activity_gpu.log` в прежнем disposable QA checkout.
+
+Авторская F6-проверка плавности дальнего набега/возвращения камеры, мокрого
+песка и стыков остаётся OPEN; слабое устройство, экспорт и заполненные 256–512 м
+не проверены. Срез не снижает стоимость общего shader, floor pass или загрузки.
+
+### Стоимость рисования поверхности и передача параметров
+
+Диагностика render (2026-10-06), та же 192×120 м / 40-region fixture,
+1600×900 / Forward+ / RTX 5070, отдельный native QA: controller и shader time
+заморожены одинаково, FPS cap выключен. Основной viewport GPU 4,03…4,22 мс;
+при диагностическом скрытии только Water layer 1,11…1,12 мс. Примитивы
+2 062 362 → 263 062. При сохранении прежнего vertex shader, параметров и
+water geometry, но замене fragment простым цветом основной GPU 2,14 мс;
+возврат оригинального fragment 4,22 мс. Самый заметный найденный GPU расход —
+рисование поверхности воды, существенная доля связана с fragment-путём,
+оставшаяся — также с geometry/vertex/draw submission. Floor viewport около
+0,45…0,48 мс; planar scene reflection в defaults выключена (scene_reflection=0).
+Простой fragment и скрытие Water использовались только для диагностики.
+Эти разницы не складываются в точные проценты/общий FPS; simple-fragment
+probe создаёт временные материалы и не является оптимизацией. Артефакты:
+`qa_selection/activity_render_breakdown.json`, `activity_render_fragment.json`,
+`qa_render_fragment.log`.
+
+Согласованный срез реализован в прежнем `ember_compact_sky_reflection_study.gdshader`,
+controller и Regions. Fragment переиспользует base wave height для береговой и
+объектной пены (без wake displacement); crest height использует ту же phase.
+Опциональное planar reflection с нулевым весом и недоступная floor camera не
+читаются; uniform-zero glint/width/reaction не считают нулевой вклад. Vertex,
+геометрия, физическая поверхность, эффекты/их настройки и scene format прежние.
+Пропуск foam web по истёкшему age исключён: `fwidth` требует соседних пикселей
+и иначе меняет сглаживание ещё видимой пены. Шумовые узоры не заменены.
+
+Controller отправляет изменённые contact shapes/wakes и reflection matrix;
+Regions хранит независимые snapshots отправленных параметров water/ground.
+Неизменный broadcast завершается до обхода участков. Bind/commit сбрасывает
+broadcast cache; новый/reused material сверяется со своей копией common values.
+Mutable packed arrays копируются: обновление age на месте не скрывает изменение.
+Это transient transport state, не запекание эффектов и не второй owner данных.
+
+Native A/B: та же 192×120 м / 40 regions / 1600×900 / RTX 5070, одна geometry,
+одни материалы/параметры, unlimited FPS; time воды, дна и shaft pinned 7.
+Две пары по 120 кадров после warmup: near main GPU 2,456 → 2,317…2,366 мс,
+editor-optics 2,481…2,498 → 2,324…2,350 мс; near full frame
+3,038…3,056 → 2,913…2,983 мс. Wide GPU 4,161…4,407 → 4,137…4,251 мс,
+full frame одной пары прежний 4,904 мс: большого/стабильного общего FPS gain
+это не доказывает. Ground/water primitive counts и floor pass прежние.
+После прогрева wide/underwater PNG полностью совпали; near/editor-optics/wake
+1 пиксель из 1 440 000 отличается на 1/255. Reflection повтор: 7 пикселей на
+1/255, original/original — 6; первый reflection A/B ещё имел transient 2/255.
+Функциональная/визуальная эквивалентность подтверждена в пределах этих проб,
+не является доказательством для любого GPU/авторского набора настроек.
+Stationary contact upload: native 40-region fixture, 5 batches × 600 вызовов,
+прежний controller и его unconditional regional transport 70,45…70,50 мкс/вызов;
+текущий 9,30…9,38 мкс, 0 повторных regional writes. Это около 87% этой малой
+CPU-операции, не ускорение всего кадра. Артефакты disposable QA:
+`water_cost_compare.json`, `water_cost_pixels.json`, `water_parameter_transport.log`.
+
+`test_compact_water_parameter_updates.gd` проверяет unchanged/aging arrays,
+independent regions, ground, rebind/new region и direct base edits. Regions,
+activity, swash и river/contact regressions PASS. Native detail-distance и sun
+(1600×900), editor brush/Undo/Redo/Discard/contact-rebind/Save/Reopen/F6 PASS.
+QA сохраняет отдельный файл и проверяет новый scene root после Reopen;
+завершающий `water_cost_editor_unique.log` не содержит engine/script errors.
+Первые QA повторы выявили конфликт сохранённой вкладки и DLL shadow-copy;
+они устранены только в disposable harness, production save/extension не менялись.
+Сценарии — MIGRATION_TEST_PLAN. Ручная оценка ближней/дальней
+воды, набега/следа, обводок, отражений после Save/F6 остаётся OPEN; слабый ПК,
+экспорт и 256–512 м не проверены. Shared compute scheduling, occlusion и
+полное sleep/streaming остаются следующими отдельными решениями.
 
 Согласованный постоянный кэш берегов реализован (2026-10-05) в прежнем
 `ember_compact_water_regions.gd`/SeaSwash. Чистый storage helper
-`ember_compact_water_cache.gd` сохраняет records набега и байты shore R8/height RF
+`ember_compact_water_cache.gd` сохраняет локальные компоненты воды/группы перепадов,
+records набега и байты shore R8/height RF
 в `user://ember-water-region-cache`; память прежнего `_cache` и текущая GPU-история
 не заменены. `restore_static()` восстанавливает slots/производные таблицы через
 тот же `_prepare_records`, создаёт свежие state/foam age и сохраняет обычный upload/
@@ -186,7 +340,13 @@ height limit и содержимому heights/water_levels/water_materials/wate
 Дополнительно учитываются морские flags и digest labels участвующих компонентов:
 течение за краем halo может изменить labels соседнего компонента даже при тех же
 flags. Instance ID остаётся только быстрым ключом RAM reuse, не disk identity.
-При изменении статической береговой математики/классификации повышать Cache.VERSION.
+Локальные labels/groups/spills имеют отдельный COMPONENT_VERSION: ключ включает
+адрес участка и fingerprints существующих/отсутствующих соседей в пределах 16 cells.
+Palette-only правка не меняет ключ; новый сосед/flow инвалидирует только зависимые
+участки. При изменении локальной классификации повышать COMPONENT_VERSION,
+при изменении статических береговых fields — Cache.VERSION. Старые coast entries
+остаются совместимы. Проверяются dimensions, типы/ranges labels, наличие групп
+и bounds перепадов; повреждённый payload заменяется обычным расчётом.
 Style/light/camera/динамические параметры волны не инвалидируют статический кэш.
 
 Файл имеет magic/version, ограниченный распакованный размер, SHA256 сжатого Zstd
@@ -196,28 +356,61 @@ payload и проверку типов/размеров изображений/r
 прежний cancellable worker, устаревшая версия не публикуется. После job старые
 готовые записи удаляются сверх 256 MiB; каждая запись ограничена 32 MiB.
 Первый запуск/новые зависимости требуют расчёта; кэш не сокращает стоимость кадра,
-resident RAM/VRAM, сборки mesh/collision или GPU upload. Глобальная классификация
-связности/flow/phase продолжают расчёт; это не streaming и не общий bake мира.
+resident RAM/VRAM, сборки mesh/collision или GPU upload. Локальный flood fill
+восстанавливается с диска; глобальная связь море/озёра и flow/phase продолжают
+расчёт, поэтому открытие далёкого русла остаётся корректным. Это не streaming
+и не общий bake мира. Новых worker/brush jobs нет: тот же cancellable worker
+читает/сохраняет производные данные после подготовки/правки.
+
+`tools/prepare_compact_water_cache.gd` явно готовит этот же кэш без запуска игры:
+`--headless --path . --script res://tools/prepare_compact_water_cache.gd --
+--source=res://scenes/<сохранённая-карта>.tscn`. Допустим также Terrain .tres/.res.
+Сцена не входит в tree, нет remesh/physics/GPU upload; используется существующий
+CPU producer. Авторские файлы не записываются. Default — прежний user cache,
+изолированный `--cache=user://ember-tests/...` нужен только проверкам. Invalid source,
+путь вне cache/test namespace и I/O error завершают инструмент с ошибкой.
+Этот CLI готовит local cache. Общий `prepare_terrain_geometry_cache.gd --bundle`
+пакует также water/component files через прежний transport; native exported PCK
+с пустыми user caches 256 м дал 121/121 hits и 0 builds. Шаги/owners/лимиты —
+Terrain Authoring → runtime geometry cache. Release `.exe`/другой ПК OPEN.
 
 Native Forward+ RTX 5070, 1600×900, guarded Temp fixture 192×120 м / 40 участков
 (два повторённых экземпляра текущего рельефа), отдельные cold/warm процессы:
 полный старт 63,50→23,77 с, worker 54,69→8,19 с, disk hits 0→40, coast build
 48,14→0 с. Чтение 0,102 с, первый write 0,147 с, сжатые записи 3,31 MB;
-warm components около 5,65 с, restore 1,61 с. Первичная geometry queue всё ещё
+До component-cache среза warm components занимали около 5,65 с, restore 1,61 с.
+Первичная geometry queue всё ещё
 занимает 20,3…21,5 с; основной оставшийся расход запуска — geometry, а не disk I/O.
 Сырой худший промежуток startup-кадра около 0,67 с в обоих вариантах этим срезом
 не закрыт. QA artifacts: `qa_selection/cache_startup_{large-cold,large-warm}.json`
 и PNG в guarded Temp checkout. Контроль повторён после уточнения mask dependency.
 Это не приёмка заполненных 256–512 м или слабого ПК.
 
+Текущий 256 м native WorldCanvas-контроль с готовыми geometry/coast caches:
+121 local builds → 121 component hits/0 builds, components 11,19 → 2,10–2,13 с,
+water worker 15,71 → 5,49–5,52 с. Полный startup barrier 20,79 → 17,05–17,36 с,
+герой/камера и ходьба после загрузки проверены. Переподготовка CPU-only читает
+121 coast fields без пересчёта; недостающие component entries добавляют 54 839 bytes.
+Geometry/GPU publication остаются основным ограничением, RAM/VRAM не снижены.
+Методика, I/O выброс отдельного render прогона и артефакты — Terrain Authoring →
+«Проба заполненного острова 256 м». Первый empty-cache startup и shipping bake
+этим сравнением не закрываются.
+
 `test_compact_water_cache.gd` проверяет fresh Resource/Save/Reopen, точные fields/
-query, palette-only reuse, локальную правку/Undo, дальнюю связь моря и соседний
-flow, reset history, corruption/version/missing/I-O fallback, cancellation и quota.
-Native cache parity и прежние 702 GPU сравнения прошли. Авторская проверка
-повторного запуска своей карты остаётся OPEN. Guarded native editor выполнил
-расширение, Undo/Redo, Discard, Save/Reopen и F6: reopen/runtime получили 36 disk
-hits без coast build, runtime проверил воду в 29 регионах. Повторный F6 отдельной
-20-region пробы получил 20 hits и стабильную камеру без ранних player/HUD.
+query/labels/spills, palette-only reuse, локальную правку/Undo, дальнюю связь моря,
+соседний flow, sparse envelope/new neighbour и минимальный перепад 4 cells, reset history,
+corruption/version/missing/I-O fallback, cancellation и quota. Fresh warm Resource
+не делает локальных component builds. `test_prepare_compact_water_cache.gd`
+проверяет оба source routes, готовность кэша, неизменность исходников и ошибки CLI/I/O.
+Расширенный cache suite прошёл headless и native Forward+; региональная seam/query
+и WorldCanvas startup/camera/input/cancellation regressions также PASS.
+Guarded native editor прошёл brush/Undo/Redo/Discard/Save/Reopen/F6: fresh reopen
+20 component hits/0 builds, локальная правка перестроила 9 зависимых компонентов,
+Undo/Redo/Discard вернули 9 disk hits без новых builds. Runtime LOD/activity не
+попали в editor path; F6 проверил готовую воду/игрока/камеру. Логи дополнения:
+`qa_selection/component_cache_{native,editor}.{log,err}` в прежней guarded QA.
+Прежние 702 GPU сравнения остаются действующим gate. Авторский повторный F6
+своей карты, берег/пена/мокрый след после правки/Undo остаются OPEN.
 Полный `editor_test_compact_water_regions.gd` завершился FAIL только по cold
 timing gate: 112,74 мс сырой промежуток / 105,84 мс после объявленного sleep
 превысили порог 100 мс при ещё 666 pending tiles; причина этого пика не изолирована.

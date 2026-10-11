@@ -47,7 +47,8 @@
 В Godot уже закреплено:
 
 - `.tscn` владеет экземплярами props, transform и вложенным `Interact`;
-- `.vox + .json` в JOI владеют формой, палитрой и asset metadata;
+- native `EmberVoxelModelResource` в `content/voxel_models/*.tres` владеет формой,
+  палитрой и asset metadata; старые `.vox/.json` — исторический import input;
 - generated mesh/prefab, `Mesh`, `Collision`, `Omni`, `ShadowBody` — производный cache;
 - terrain и regions пока импортируются односторонне;
 - полный reimport разрушителен и подтверждается отдельно.
@@ -143,7 +144,8 @@ Effective range       36.8 Godot    Derived · tile size 16
 
 Используем три категории, не смешивая их:
 
-- `Asset` — `.vox/.json`; редактируется через официальный JOI deep-link;
+- `Asset` — resolved source: native Godot Resource редактируется в мастерской;
+  `.vox/.json` показываются только как исторический legacy input до retirement;
 - `Scene` — `.tscn`; редактируется с Undo/Redo;
 - `Derived` — generated/runtime; только для чтения, с указанием формулы/owner.
 
@@ -159,6 +161,14 @@ Effective range       36.8 Godot    Derived · tile size 16
 - краткий preview без копии редактора: тип сцены/action list, число шагов, первая реплика; для shop — число listings;
 - кнопка `Открыть источник`;
 - target region фильтруется выбранной target map.
+
+Действующая map/region граница (2026-10-10): список берётся из native scene
+dependencies, точки входа — из сохранённого SceneState `.tscn`, без JOI map JSON.
+Inspector target map/region проверяет сохранённые данные, а локальный trigger —
+текущий MapLoader, включая несохранённые и вложенные регионы. Один runtime
+`find_region` обслуживает binding и spawn. Список карт не загружает меши всей
+библиотеки; схема сохранённых регионов появляется при выборе точки входа и не
+изображает рельеф. Ручной picker/Save/Reopen/Undo gate пока открыт.
 
 Inspector не редактирует граф диалога и ассортимент магазина. Он только назначает и проверяет reference.
 
@@ -517,7 +527,7 @@ Inspector показывает проблему там, где автор её �
 - `▶ Превью сцены` открывает отдельное окно, но использует текущий in-memory dialogue draft: Save для preview не нужен.
 - Клик по GraphNode меняет preview-кадр; поля внутри ноды и постановки обновляют его сразу. Навигация preview следует только canonical `next/options[].next` и имеет локальные Back/Restart без gameplay mutation.
 - `EmberVnSceneState` — общий pure owner stage-проекции для editor и `EmberDialogueSession`: default background, fallback actor и inheritance состава перед choice повторяют прежний JOI `sceneStage.ts` contract.
-- `EmberVnAssets` только читает прежние registry/path. Он не импортирует и не копирует арты в Godot, не создаёт второй каталог; missing path остаётся видимой диагностикой.
+- `EmberVnAssets` читает native Resources и импортирует изображения по I2.26/I2.28, не создаёт второй каталог; missing path остаётся видимой диагностикой.
 - `use: talk/shop_intro` показывает текст/выбор без VN stage, как прежний `ScenePlayer`. Произвольные `.tscn` не входят в Ember scene JSON preview: для них owner — штатный Godot viewport и F6.
 
 ### I2.24 — visual asset/character picker
@@ -593,7 +603,7 @@ Godot 4.7.2 завершал editor native `0xc0000005` внутри SVG loader:
 
 ### I2.26 — Godot-native VN backgrounds
 
-По прямому запросу владельца новый фон больше не авторится через JOI `arts/registry.json`. `EmberVnBackground` — один `.tres` на ассет с устойчивым ID, display name, `res://` image path, kind и tags; изображение хранится отдельно в `res://assets/vn_backgrounds/`. `EmberVnAssets` объединяет native Resources и legacy registry, причём `.tres` имеет приоритет, а JSON остаётся только compatibility input. UI не получает второго resolver: picker и live preview используют тот же каталог. Импорт через FileDialog копирует файл и создаёт Resource, выбор ID участвует в local draft Undo/Redo, но отмена не удаляет общий library asset. Dialogue JSON здесь намеренно не заменён: это отдельный будущий schema → editor → runtime → serialization срез.
+По прямому запросу владельца новый фон больше не авторится через JOI `arts/registry.json`. `EmberVnBackground` — один `.tres` на ассет с устойчивым ID, display name, `res://` image path, kind и tags; изображение хранится отдельно в `res://assets/vn_backgrounds/`. `EmberVnAssets` читает только native Resources; старые arts/portrait registries и relative JOI paths удалены. UI не получает второго resolver: picker и live preview используют тот же каталог. Импорт через FileDialog копирует файл и создаёт Resource, выбор ID участвует в local draft Undo/Redo, но отмена не удаляет общий library asset. Dialogue documents native-only по I2.29; asset lookup также native-only. Два исходных фона сохранены, historical арты не импортировались.
 
 ### I2.27 — inherited scene background
 
@@ -601,35 +611,35 @@ Godot 4.7.2 завершал editor native `0xc0000005` внутри SVG loader:
 
 ### I2.28 — VN layer contract и Godot-native portraits
 
-Preview использует фиксированные semantic layers: background ниже stage, actor `z` ограничен actor-layer, dialogue panel выше всех портретов. Это presentation contract, а не новое поле сцены. Для ассетов `EmberVnPortrait` хранит один native `speaker_id + portrait_key + image_path` Resource на эмоцию; изображения лежат в `res://assets/vn_portraits/<speaker>/`. `EmberVnAssets` остаётся единственным resolver и объединяет native `.tres` с legacy portrait registry, native identity имеет приоритет. Импорт `+ Арт` создаёт общий library asset, а выбор эмоции меняет прежнюю строку `portraitKey` одной draft Undo/Redo operation.
+Preview использует фиксированные semantic layers: background ниже stage, actor `z` ограничен actor-layer, dialogue panel выше всех портретов. Это presentation contract, а не новое поле сцены. Для ассетов `EmberVnPortrait` хранит один native `speaker_id + portrait_key + image_path` Resource на эмоцию; изображения лежат в `res://assets/vn_portraits/<speaker>/`. `EmberVnAssets` остаётся единственным resolver и читает native `.tres/remap`; старый portrait registry больше не используется, missing saved IDs сохраняются в picker как предупреждения. Импорт `+ Арт` создаёт общий library asset, а выбор эмоции меняет прежнюю строку `portraitKey` одной draft Undo/Redo operation.
 
 ### I2.29 — Godot-native dialogue documents
 
-`EmberDialogueCatalog` становится единственным read owner для editor/runtime/pickers: сначала ищет `EmberDialogueResource` в `res://content/dialogues/`, затем использует прежний JOI `scenes/<id>.json` как legacy fallback. Сам graph document не переводится в новую параллельную schema — Resource lossless хранит тот же Dictionary с `steps`, edges, stage, layout и неизвестными полями.
+`EmberDialogueCatalog` — единственный native-only owner editor/runtime/pickers: `EmberDialogueResource` в `res://content/dialogues/`, без JOI scenes/<id>.json. Resource lossless хранит прежний graph Dictionary с steps/edges/stage/layout/неизвестными полями; native/remap lookup и IDs проверены в binary PCK.
 
-Миграция только явная и по одной сцене. Ember Graph показывает текущий owner и кнопку `Перенести в .tres`; операция создаёт native Resource, не переписывая и не удаляя legacy JSON. После этого canonical save пишет только `.tres`, а native-first runtime видит тот же документ. Undo восстанавливает полный снимок обоих owners, поэтому отмена миграции удаляет Resource и возвращает исходный JSON; Redo повторяет перенос. Новые диалоги сразу native. Массовый importer не вводится, чтобы каждая VN-сцена проходила preview/save/reopen/runtime acceptance отдельно.
+Ember Graph показывает native owner/source; obsolete migration UI/forwarding удалены. Create/save/delete и Undo/Redo работают только с Resource, snapshot содержит ID/native document. Старые snapshot legacy/legacy_text поля не читаются и не записываются. Исторические диалоги не импортировались. Card projection/typed choice/convergence и защита complex stage document сохранены; Graph authoring и VN asset rendering остаются прежними owners. Tests выполняются через run_story_tests.py, ручной UI/VN render gate OPEN.
 
 ### I2.30 — Godot-native action-chain documents
 
-`EmberActionCatalog` становится единственным read owner для action editor, reference pickers, validation и runtime executor. Native `EmberActionResource` хранит прежний lossless `id/nameRu/steps` Dictionary в `res://content/action_scripts/`; JOI `scripts/<id>.json` остаётся fallback до явной миграции. Новой action schema или второго executor нет.
+`EmberActionCatalog` — единственный native-only resolver editor/runtime/script picker. `EmberActionResource` lossless хранит прежний action Dictionary в `res://content/action_scripts/`; JOI scripts/<id>.json не читается. Action schema/executor не менялись; missing IDs не получают fallback.
 
-Ember Graph показывает owner и запускает одну Editor Undo/Redo миграцию. После неё save пишет только Resource, старый JSON не меняется. Snapshot включает native document, legacy document и исходный legacy text, поэтому Undo восстанавливает не только семантику, но и байты JSON без formatter diff. Создание/удаление action document вместе с scene-owned Interact binding использует тот же snapshot-aware mutation path. Новые цепочки native с первого сохранения; массовая конверсия отсутствует.
+Ember Graph показывает native owner и сохраняет через общий Store/EmberObjectInspectorActions. Snapshot ID/native; Save/delete/Undo/Redo не трогают legacy JSON и не раскрывают его после Undo create. Scene-owned Interact binding, quest copy-on-write/orphan removal и их общая Undo transaction сохранены. Create/edit/Queue/card/binding gates проверяются на нейтральных native fixtures через run_story_tests.py; исторические action Resources не переносились.
 
 ### I2.31 — Godot-native shop documents
 
-`EmberShopCatalog` — единственная native-first граница для editor и runtime: `res://content/shops/<id>.tres` имеет приоритет, общий JOI `shops/catalog.json` остаётся read-only fallback. Новой listing schema и второго owner экономики нет.
+`EmberShopCatalog` — единственная native-only граница editor/runtime: `res://content/shops/<id>.tres`, Resource/remap lookup и native IDs. JOI shops/catalog.json больше не читается, missing IDs не получают fallback. Listing schema и владельцы экономики/сохранений сохранены. Исторический native village_kiosk пока остаётся с retired сценами; импорт других старых магазинов не выполнялся.
 
-`EmberShopEditor` встроен в canonical шаг `open_shop`: название, item picker, buy/sell price, finite/infinite stock, reorder и delete. Legacy owner блокирует Save до явной per-shop миграции. `EmberObjectInspectorActions` проводит save/migrate одной Editor Undo/Redo operation; snapshot содержит только native override, поэтому Undo возвращает legacy-only owner и никогда не переписывает общий каталог. Новые магазины сразу native. `test_shop_resource.gd` проверяет UI projection, runtime/economy parity, legacy-byte safety и полный Undo/Redo.
+`EmberShopEditor` встроен в canonical шаг `open_shop`: название, item picker, buy/sell price, finite/infinite stock, reorder и delete. Legacy migration UI и forwarding удалены. `EmberObjectInspectorActions` проводит create/save одной Editor Undo/Redo operation; snapshot содержит native document, Undo создания удаляет Resource и не раскрывает fallback. Cancel не пишет draft. `test_shop_resource.gd` и `test_shop_persistence.gd` запускаются через `python tools/run_shop_tests.py` в guarded disposable проекте: UI/create/edit/reorder/delete/discard/validation/Undo/Redo, runtime prices, buy/sell/finite/infinite stock/save reopen, missing/poisoned JSON и binary PCK. Ручной UI/Forward+ gate OPEN.
 
 ### I2.32 — Godot-native item documents
 
-`EmberItemCatalog` заменяет прямое чтение `items[]` единым native-first resolver для shop, inventory, equipment, consumable и economy. `EmberItemResource` lossless хранит прежний item Dictionary в `res://content/items/<id>.tres`; legacy `items/catalog.json` остаётся read-only fallback и продолжает владеть общей pixel-icon библиотекой.
+`EmberItemCatalog` — единый native-only resolver для shop, inventory, equipment, consumable, economy и иконок. `EmberItemResource` lossless хранит прежний item Dictionary в `res://content/items/<id>.tres`; `EmberItemIconResource` хранит прежний pixel Dictionary (palette + rows) в `res://content/item_icons/<id>.tres`. Сейчас доступны семь актуальных items и шесть используемых icons; old items/catalog.json не читается. Resource/remap lookup и enumeration проверены в binary PCK.
 
-`EmberItemEditor` вложен в строку `EmberShopEditor` и редактирует существующие поля без новой schema: identity/name, kind/slot/rarity/stack/useIn/iconId, atk/def/hpRestore, sell rules, tags и notes. Legacy owner блокирует Save до явной миграции; новый предмет сразу native. Save/migrate проходят через общий `EmberObjectInspectorActions` и Editor Undo/Redo. `test_item_resource.gd` проверяет UI, owner switch, inventory/use/economy parity и неизменность legacy bytes.
+`EmberItemEditor` вложен в строку `EmberShopEditor` и редактирует существующие поля без новой schema: identity/name, kind/slot/rarity/stack/useIn/iconId, atk/def/hpRestore, sell rules, tags и notes. Все предметы native; legacy migration UI и forwarding удалены. Create/save проходят через общий `EmberObjectInspectorActions` и Editor Undo/Redo, Cancel не записывает данные. `test_item_resource.gd` запускается только через `python tools/run_item_resource_test.py` в guarded disposable проекте: create/edit/Undo/Redo/reopen, validation, runtime/economy, missing/poisoned JSON и неизменность shared source SHA.
 
 ### I2.33 — shared visual ID library
 
-`EmberVisualLibraryPicker` является общей плиточной проекцией canonical catalogs, а не новым owner. Первый срез использует `EmberItemVisuals`: legacy `palette + rows` декодируется в nearest-neighbor preview, item editor выбирает `iconId`, а shop listing выбирает `itemId` из одного searchable `ItemList`. Compact OptionButton сохраняется как fallback; изображения не добавляются в его PopupMenu из-за прежнего native-crash Godot 4.7.2. Контракт и очередность VN/voxel/map адаптеров описаны в `docs/EMBER_VISUAL_LIBRARY_DESIGN.md`; `test_visual_library.gd` закрепляет image decode, stable IDs и editor projection.
+`EmberVisualLibraryPicker` является общей плиточной проекцией canonical catalogs, а не новым owner. Первый срез использует `EmberItemVisuals`: native icon Resource с прежним `palette + rows` декодируется в nearest-neighbor preview, item editor выбирает `iconId`, а shop listing выбирает `itemId` из одного searchable `ItemList`. Compact OptionButton сохраняется как fallback; изображения не добавляются в его PopupMenu из-за прежнего native-crash Godot 4.7.2. Контракт и очередность VN/voxel/map адаптеров описаны в `docs/EMBER_VISUAL_LIBRARY_DESIGN.md`; `test_visual_library.gd` закрепляет image decode, stable IDs и editor projection.
 
 ### I2.34 — VN visual libraries
 

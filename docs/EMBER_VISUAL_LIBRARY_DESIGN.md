@@ -16,19 +16,19 @@
 
 ## Реализованный вертикальный срез
 
-- `EmberItemCatalog` по-прежнему владеет native-first item definitions и read-only legacy pixel-icon definitions.
-- `EmberItemVisuals` декодирует `palette + rows` в `Image`, масштабирует только nearest-neighbor и кэширует editor textures. Новых icon-файлов и нового registry нет.
+- `EmberItemCatalog` владеет native-only item definitions и pixel-icon Resources в content/items и content/item_icons; старый JSON не читается.
+- `EmberItemVisuals` декодирует `palette + rows` в `Image`, масштабирует только nearest-neighbor и кэширует editor textures. Исходные palette/rows сохраняются в native icon Resources; второго registry или renderer нет.
 - `EmberVisualLibraryPicker` показывает плитки 56×56, локализованное имя, ID, tooltip и поиск. Двойной клик/Enter или кнопка `Выбрать` возвращает только ID.
 - `EmberItemEditor` показывает выбранную иконку рядом с прежним compact picker и открывает `Библиотека…`.
 - каждая строка `EmberShopEditor` показывает иконку/локализованное имя предмета и открывает общую `БИБЛИОТЕКУ ПРЕДМЕТОВ`.
-- `EmberVoxelVisuals` проецирует native-first `EmberVoxelCatalog`. Перенесённые модели читаются из `content/voxel_models/*.tres`; ещё не перенесённые `.json/.vox` явно помечаются очередью legacy import. Один main-thread `SubViewport` размером 128×128 рендерит готовый PackedScene либо transient instance из того же resolved source. Текстуры кэшируются только в памяти по prefab/source mtime. `◇` означает лишь отсутствие собранного prefab.
+- `EmberVoxelVisuals` проецирует native-only `EmberVoxelCatalog`. Модели читаются из `content/voxel_models/*.tres/.res` и export remaps; historical `.json/.vox` доступны только явному importer/migration report и не попадают на полку. Один main-thread `SubViewport` размером 128×128 рендерит готовый PackedScene либо transient instance из того же resolved source. Текстуры кэшируются только в памяти по prefab/source mtime. `◇` означает лишь отсутствие собранного prefab.
 - выбор voxel-плитки создаёт один scene-owned instance в `Map/Props` с новым `placement_id`, обычным transform-gizmo и Editor Undo/Redo. Каталог не получает нового registry, а UI не запускает массовую пересборку prefabs.
 - headless не создаёт GPU texture, но тестирует исходный `Image`, catalog IDs и ItemList contract.
 - `EmberMapVisuals` строит производную 96×96 схему карты через общий `EmberTileMesher.surface_grid()`: это та же top-surface проекция, которую использует runtime mesh. Цвета берутся из canonical tileset, voxel props помечаются точками, выбранный region — золотой рамкой. Door form и action `change_map` открывают общий picker кнопкой `▦`, сохраняя только прежние `targetMapId/targetRegionId`.
 
 ## Порядок расширения
 
-1. **Реализовано:** VN background и portrait используют тот же picker, а texture берут из существующего `EmberVnAssets.art_thumbnail/portrait_thumbnail`. Сохранение и импорт Resource не менялись. Пустая плитка background означает наследование scene default, а не новый ID; expressions фильтруются выбранным speaker. Native-first lookup считается успешным только для непустой записи с путём, иначе resolver продолжает поиск в legacy portrait registry.
+1. **Реализовано:** VN background и portrait используют тот же picker, а texture берут из существующего `EmberVnAssets.art_thumbnail/portrait_thumbnail`. Сохранение и импорт Resource не менялись. Пустая плитка background означает наследование scene default, а не новый ID; expressions фильтруются выбранным speaker. Native-only lookup использует Godot Resources и res:// image paths, включая импортированные texture remaps в PCK. Legacy registries и relative JOI paths больше не читаются; missing текущий ID остаётся warning entry без автоматической замены.
 2. **Реализовано:** voxel props перечисляют все существующие model IDs. Штатный preview не прошёл ручной gate; отдельный `EditorResourcePreviewGenerator` также не выбран, поскольку его callbacks выполняются в worker thread. Один transient main-thread `SubViewport` инстанцирует PackedScene или вызывает тот же prefab mesher без save, кадрирует только `Mesh`, отключает authored lights и рендерит очередь по одному объекту. Это preview-adapter того же prefab contract, не второй renderer/runtime/importer.
 3. **Реализовано:** карты и special locations используют CPU-схему canonical map JSON, а не запуск scene/screenshot. Texture живёт только в memory cache по mtime карты и не входит в `.tscn`/JSON schema; gameplay map/region IDs остаются прежними. При появлении полноценного native map owner адаптер должен перейти на общий resolver, а не создать второй каталог.
 4. Персонажи и экипировка вне VN: portraits/item icons приходят из уже существующих resolvers. Нельзя создавать отдельный список только для конкретного editor card.

@@ -20,13 +20,21 @@ Ember — проект 3D-игры с исследованием мира, ди�
 боем, вместе с нативными инструментами создания контента в Godot. Технические
 инструменты и лаборатории уже работают в коде; завершённая каноническая стартовая
 глава этим не подтверждается. Игровой канон принадлежит GDD, а не реализации.
-`project.godot` запускает `scenes/fan_town.tscn`; есть sandbox, интерьеры,
+`project.godot` запускает `scenes/landscape_compact.tscn`; старые sandbox, интерьеры,
 `combat_lab` и отдельные terrain/water study-сцены. Это разные уровни готовности.
 
 ### Реализованные системы и владельцы
 
 - Карта: `.tscn` владеет композицией, объектами и интерактивными областями;
   `scripts/ember_map_loader.gd` подключает Surface либо compact terrain и проекции.
+  `EmberInteractionContent` читает каталог по native dependencies и saved
+  map/region metadata через SceneState, включая instances/inheritance и transforms
+  под `Regions`. Запуск узлов/JOI JSON для reference query не нужен. Метаданные
+  отделены от live Resources, cache сверяет SHA сцен и зависимостей. Inspector
+  target references проверяет сохранённую сцену; локальные несохранённые triggers,
+  interaction binding и spawn используют общий `EmberMapLoader.find_region`.
+  `EmberMapVisuals` показывает лёгкий список карт, затем схему сохранённых регионов
+  выбранной карты; это не изображение рельефа. Нового persisted owner/schema нет.
 - Воксельные объекты: `scripts/ember_voxel_model_resource.gd` — исходные данные;
   sculpt model/actions/workspace в `addons/ember_import/` — редактирование,
   генерация и Undo. Меш и физика производны от исходного Resource.
@@ -35,7 +43,8 @@ Ember — проект 3D-игры с исследованием мира, ди�
   `ember_world_editor.gd` маршрутизирует кисти и создание/расширение карты;
   `ember_world_edit_sessions.gd` владеет черновиком, Save и Discard.
 - Материалы: `scripts/ember_compact_terrain_pattern.gd` — паттерн 16×16,
-  три цвета и параметры поверхности; редактор — compact material pattern dialog.
+  три цвета и параметры поверхности; редактор — compact material component:
+  параметры в `Ember · Мир`, сетка в нижней панели «Рисунок земли».
 - Вода: compact terrain хранит наличие/уровень/поток, scene/material — вид;
   `ember_compact_planar_reflection_study.gd`, `ember_compact_river_phase.gd`,
   `ember_water_contact_3d.gd` строят пробный рендер и контакт. World Look panel
@@ -64,9 +73,14 @@ Ember — проект 3D-игры с исследованием мира, ди�
   Resource, без плотных корневых каналов. Потоковая загрузка ещё не реализована.
 - Runtime save v2 — JSON в `user://ember-save-v2`, три ручных слота и autosave.
   Legacy JOI JSON пока остаётся совместимостью, не новым каноническим форматом.
-- Найдены 92 voxel `.tres`, 2 dialogue, 13 action, 1 quest, 6 item, 1 shop
+- Текущий native inventory: 93 voxel `.tres`, 2 dialogue, 2 combat action,
+  0 quest, 7 item, 0 shop
   и один encounter (`colored_crossing_demo`). Это инвентарь файлов, не доказательство
   валидности, полноты миграции или готовности главы; бойцы/действия — отдельные Resources.
+- Вступление боя принадлежит `colored_crossing_intro.tres`, затем action
+  `colored_crossing_start` запускает тот же `colored_crossing_demo`. Старый
+  sandbox dialogue ID выведен; Resource UID и прежний `new_flag=true` сохранены.
+  Текст/переходы/UI publication/save проверены; ручной диалог → бой OPEN.
 - Полный Layout/planner дорог, рек и поселений пока относится к архитектурному
   плану. Генераторы объектов и работающие кисти не означают, что он уже готов.
 - Ближайший шаг — авторская проба адресной основы/рельефа и контракт разметки;
@@ -78,13 +92,17 @@ Ember — проект 3D-игры с исследованием мира, ди�
 
 ### Фактическая legacy-граница
 
-Запрет новых JOI-зависимостей действует. Однако целевое «только importer» ещё
-не достигнуто: EmberPack при пустом pack_path ищет sibling JOI; runtime catalogs
-имеют fallback, а fan_town вызывает hydration legacy regions/cutaway через loader.
-Editor dialogue/action stores также сохраняют существующие legacy-записи в JSON
-до явной миграции. Полный выход требует G4/G5 из JOI Exit Plan; его нельзя считать
-закрытым по наличию native Resources. Старое описание baseline ниже читать вместе
-с этим уточнением и актуальным тематическим документом.
+Запрет новых JOI-зависимостей действует. Runtime item/icon/shop/action/dialogue/VN
+и voxel catalogs native-only; exploration startup не делает map JSON reimport,
+region/footprint hydration или legacy roof build. Native сценам old pack не нужен
+для этих paths. EmberPack при пустом pack_path всё ещё ищет sibling JOI для явных
+offline import/migration tools. Активные editor open/selection/Canvas/rebuild/
+diagnostics не читают pack; UI reimport/legacy links/migration batches удалены.
+Missing native source не запускает импорт и не меняет готовый объект. Старые
+load_map/EmberPack helpers и offline migration APIs ещё физически существуют;
+export boundary, retired references и physical G4/G5 требуют отдельной сверки. Retired контент не переносится целиком.
+Текущий статус/архив — JOI Exit Plan и NOW; old baseline ниже не заменяет их.
+
 
 ## Неподвижные технические границы
 
@@ -113,6 +131,30 @@ Editor dialogue/action stores также сохраняют существующ
 
 - `scripts/ember_voxel_model_resource.gd` — canonical palette, voxels, groups,
   water/fill и voxel schema.
+- `EmberVoxelCatalog` — native-only runtime/полка: content/voxel_models .tres/.res
+  и export remaps; metadata enumeration не раскрывает geometry channels.
+  `EmberVoxelPrefab` source/mesh/body/grid paths больше не читают JOI JSON/VOX;
+  native mesher/physics/material contract прежний. Источников 93: один необходимый
+  Причалу crate_stack импортирован с exact visual/collision parity, прежние 92 и
+  все authored prefabs/maps не изменены. Binary Resource/remap preview/PCK PASS.
+  `EmberVoxelLegacyImporter` держит явную import inventory/source signatures;
+  migration report и Store используют её отдельно от runtime catalog. Старый
+  material label нормализуется в preflight тем же способом, что в importer;
+  новый renderer/schema не добавляется. Explicit import Undo восстанавливает
+  exact prior derived files при удалении созданного native source; native source
+  restore продолжает rebuild. Queue/batch/forced interruption и shelf gates PASS.
+  ObjectSession/SceneRefresh читают только native sources; открытие отсутствующего
+  source возвращает понятный отказ без изменения prefab. Store.owner native-only;
+  legacy eligibility существует лишь в explicit can_import_legacy API/offline tools.
+  Plugin Surface opening и WorldSurfaceSelector используют map-owned Resource;
+  hydration flags не включают JSON fallback. ContentMigrationReport теперь native
+  inventory; Dashboard сохраняет filters/search/attention и user diagnostic export,
+  убирает city batch/preflight/import controls. Shelf/ToolsDock/plugin убрали old
+  import/reimport links, callbacks и confirmation; geometry/serialization owners
+  прежние. run_native_editor_tests.py: save/discard/Undo/Redo/missing source/native
+  rebuild/selector/report/UI PASS, four negative controls и working refusal PASS.
+  Scene-refresh regression и disposable editor/import с обоими Ember plugins PASS;
+  native story/voxel/PCK gates также PASS. Ручной Forward+ и полный G4/G5 OPEN.
 - `addons/ember_import/ember_voxel_sculpt_model.gd` — чистая editor-модель.
 - `addons/ember_import/ember_voxel_sculpt_actions.gd` — mutations и Undo.
 - `scripts/ember_voxel_surface_mesher.gd` — visual mesh projection.
@@ -156,8 +198,15 @@ Editor dialogue/action stores также сохраняют существующ
   дальний уровень с динамическим error floor 8 source units, пределом span 1m
   patch и глубиной >1m. Editor не ставит jobs и не обращается к geometry disk cache.
   `ember_terrain_geometry_cache.gd` — runtime derived owner точных arrays/collision
-  и отдельного LOD payload. Projection читает/сохраняет near tile в прежнем бюджете,
-  общий MeshLOD worker загружает/сохраняет индексы и ограничивает файлы 512 MiB.
+  и отдельного LOD payload. Projection передаёт CPU snapshot/до 32 near requests
+  в тот же worker: GeometryCache.prepare_batch считает keys, читает и проверяет
+  массивы; мягкий предел 64 MiB плюс одна запись до 16 MiB. Main публикует meshes/
+  physics, cold build/write остаются там. Worker также готовит LOD/trim 512 MiB.
+  Следующая near пачка не начинается до освобождения результатов; persistent
+  section payloads snapshot не мутируются, dense channels копируются на revision.
+  Request serial защищает coalesced columns/swash/sheet; pending не исчезает до
+  publication, cancel/close/resize join освобождает snapshot/results. Нельзя
+  переносить этот путь в editor/brush. Thread-start fallback синхронный.
   Content key: VERSION/Godot, tile+3×3 neighbours, palette/origin, policy,
   swash/sheet. При изменении mesher/topology/LOD math повышать GeometryCache.VERSION.
   `ember_derived_data_cache.gd` — общий атомарный Zstd/checksum transport;
@@ -168,6 +217,35 @@ Editor dialogue/action stores также сохраняют существующ
   в content-addressed cache. Profile geometry_cache_* и *_lod_cache_hits/misses
   разделяют hash/read/write/LOD I-O/trim и derivation CPU. WorldCanvas barrier
   включает cache jobs, physics и publication; camera/editor brush не вызывают I/O.
+  Cache read также отдаёт проверенные ground_arrays/water_arrays; cold write
+  отдаёт те же CPU arrays сериализации. Projection направляет их в существующий
+  MeshLOD worker вместо повторного surface_get_arrays. Packed buffers COW-shared,
+  после job освобождаются, постоянного CPU array cache в tiles нет. Cache-disabled
+  fallback прежний; disk schema/VERSION, LOD math, near/physics и editor не менялись.
+  Profile geometry_cache_decode/validate/upload_us разделяет near read;
+  runtime_lod_array_readbacks/readback_us считает только fallback извлечение для LOD.
+  geometry_prepare_* считает jobs/batches/stale/max_tiles/max_bytes/failures;
+  key/read timings теперь CPU worker, mesh_us — основной build/publication.
+  `tools/prepare_terrain_geometry_cache.gd` — explicit headless CLI saved compact
+  scene/Resource → существующие water/geometry/LOD caches. Scene вне дерева, policy
+  наследуется из единственного MapLoader либо задаётся для Terrain Resource.
+  Regions CPU producer готовит swash/sheet; тот же TerrainPilotMesh в dummy storage
+  собирает по одному tile без GPU/physics Nodes. Base и final coastal варианты,
+  exact arrays/collision и LOD keys совпадают с runtime, VERSION/schema/math прежние.
+  Source не записывается, editor/F6 автоматически команду не вызывают. Финальный
+  trim проверяет полноту geometry/LOD files. `--bundle=res://build/terrain-prepared`
+  сохраняет только использованные geometry/LOD/water keys; Regions отдаёт ephemeral
+  cache_keys, не Resource/schema. `ember_terrain_prepared_bundle.gd` владеет build
+  manifest/checksums/ограниченными файлами одной compact-карты. EmberImportPlugin
+  регистрирует TerrainCacheExport: валидный bundle → add_file под res://ember-prepared;
+  invalid → warning/skip, обычная runtime сборка остаётся. Generated directory ignored.
+  DerivedDataCache читает local, затем packaged при transport miss; owner validation
+  прежняя. Geometry near/LOD и WaterCache задают packaged roots только для своих
+  canonical user directories; editor_hint и custom fixtures не читают shipped data.
+  Запись/trim остаются user-only, cold/semantic-invalid fallback прежний. Новая карта/
+  версия/policy меняет content key, не требует manifest lookup или копирования в user.
+  Native exported PCK/empty user caches/256 м barrier+walk проверены; release template
+  binary, другой ПК и агрегирование нескольких карт остаются отдельными gates.
   Тот же TerrainPilotMesh имеет opt-in optimize_water_mesh: Triangles.mesh
   индексирует water arrays через SurfaceTool без перестановки triangles. Нормали,
   COLOR.a depth, UV-маркеры walls/swash/sheet и исходная геометрия сохраняются.
@@ -180,6 +258,10 @@ Editor dialogue/action stores также сохраняют существующ
   Замеры и водный ручной gate — Water Rendering.
   Замеры и ручной gate —
   Terrain Authoring → «Производительность и границы доказательств».
+  `tools/benchmark_compact_world_scale.gd` — отдельная заполненная 256 м fixture
+  через прежний sampler/Resource, native cold/warm/controllers/occlusion A/B;
+  не runtime owner. Замеры/ограничения — Terrain Authoring → «Проба заполненного
+  острова 256 м». Occluders остаются диагностическими, production policy нет.
   renderer и механика остаются прежними. Необязательный `palette_surface_roles` хранит смысловую роль
   слота палитры (`soil`, `grass`, `sand`, `stone`); пустой массив старой карты
   означает неизвестную роль, не миграцию по цвету. Нативный 3D-редактор меняет
@@ -283,12 +365,19 @@ Editor dialogue/action stores также сохраняют существующ
   не пишется на диск; source Resources, физика и renderer прежние. При изменении
   статической береговой математики повышать Cache.VERSION. Диагностика регионов
   разделяет disk hits/I-O, components, coast build, restore и общий worker.
+  Regions также сохраняет local labels/groups/spills: отдельный COMPONENT_VERSION,
+  section address/content-neighbours key, bounded payload validation. Глобальный
+  ocean graph остаётся свежим; RAM identity и coast keys не заменены. Статистика
+  component_disk_hits/component_builds отделяет восстановление от flood fill.
+  `tools/prepare_compact_water_cache.gd` вызывает тот же CPU worker для сохранённой
+  карты/Terrain вне tree: только user derived cache, без GPU/геометрии/source writes.
+  Это явная локальная подготовка, не shipping bake или новый editor job.
   Ограничения, замеры и gates — Water Rendering → «Действующий путь пробы».
   Runtime старт пробных World Canvas продолжает `world_canvas.gd`: экран ждёт
   native projection/physics и `startup_preparation_status()` controller, затем
   создаёт героев, вызывает `initialize_startup_camera()` и открывает управление.
   Фоновые jobs не останавливаются; в 3D экран отсутствует. Ни новый глобальный
-  loader, ни смена сюжетного `fan_town.gd` этим срезом не введены.
+  loader, ни смена логики общего `ember_explore_scene.gd` этим срезом не введены.
   Дистанции водной microdetail принадлежат тому же controller (`water_detail_begin_m`,
   `water_detail_end_m`) и общей WATER_VALUES: panel/Undo/F6 snapshot → common
   региональные uniforms → camera-distance branch прежнего shader. Mesh, query,
@@ -306,6 +395,23 @@ Editor dialogue/action stores также сохраняют существующ
   исторический query ограничен по клеткам/времени, headless остаётся CPU reference.
   Ground shader показывает тот же локальный высыхающий след. GPU handles
   освобождаются при замене/удалении owner, frozen preview не повторяет dispatch.
+  Runtime activity продолжает того же Regions owner: core distance до камеры
+  или Player 48 м, hysteresis 8 м; near GPU 20 Гц, far interior 5 Гц, обе стороны
+  seam-полосы 8 cells — 20 Гц. Swash хранит отдельный last-full GPU clock;
+  GPU bridge использует один shader и дополнительный compact border uniform set,
+  counters full/border/processed_records. CPU-query clock остаётся 20 Гц;
+  query promote публикует текущее поле без повторного шага истории и держит core
+  2 с. Settings/reset/frozen/no-observers — full fallback. Editor policy/border
+  buffers исключены; cache key, terrain Resource, geometry и physics owners прежние.
+  Полное sleep/streaming не введены. Замеры и ограничения — Water Rendering
+  → «Runtime-частота морского набега».
+  Water shader переиспользует base wave height/crest phase и пропускает только
+  нулевые optional/uniform вклады; derivative-dependent foam web сохраняется.
+  Controller/Regions передают только изменённые параметры. Regional snapshots
+  независимы, packed arrays копируются, bind/commit сбрасывает broadcast cache;
+  новые materials и aging wakes получают актуальные значения. Это transient
+  transport, не Resource schema/cache эффектов. Замеры/ограничения — Water
+  Rendering → «Стоимость рисования поверхности и передача параметров».
   Десять sea/sand exports принадлежат тому же controller/UI/F6 snapshot; авторские
   terrain каналы, коллизия земли и column revision этим путём не меняются.
   Тот же sea leaf хранит RF age texture пены после входящего фронта; shader
@@ -382,14 +488,98 @@ Editor dialogue/action stores также сохраняют существующ
   Для schema 2 baseline/Undo держат неизменные версии только затронутых
   payloads; live stamp копирует эти участки, включая корректную толщину cap.
   Cancel/Undo восстанавливают все каналы участка, а не только его высоту.
+- `scripts/ember_terrain_plan_resource.gd` — scene-owned authoring plan v1–v8,
+  metadata Map `_ember_terrain_plan`, Rect2i в метрах + name/id/generator parameters.
+  `ember_terrain_plan_dialog.gd` (VBoxContainer) и WorldEditor используют прежнее
+  3D-выделение и существующий dock `Ember · Мир`;
+  WorldEditSessions держит baseline/dirty/Save/Discard/recovery и не публикует
+  terrain при metadata-only Save. `ember_terrain_cache_export.gd` удаляет plan
+  metadata из export scene, сохраняя исходную `.tscn`. Генерация по плану —
+  прежний exact candidate/Undo; изменение плана инвалидирует preview.
+  v1/missing-version области остаются областями полного генератора; v2 хранит
+  plateau kind, enabled и локальные before/after/protected patches. v3 добавляет
+  lake kind с water_m/depth_m/shore_m, before tops/bases/waters/colors/side paint
+  и ожидаемое течение по игровым блокам. v2 patches читаются без миграции на open;
+  явный edit/Apply обновляет private copy. v4 добавляет river kind, points_m,
+  width/depth/shore/flow и before_flows; upgrade v3 сохраняет original lake channels.
+  v5 добавляет mountain kind, height_m/summit_m/slope_m без новых patch channels;
+  upgrade v4 сохраняет original before_flows. Гора использует общий radial
+  smoothstep по эллипсу, абсолютную отметку вершины и raise-only height blend.
+  Ширина вершины + два склона не больше меньшей стороны bounds; input сухой,
+  покрытие/вода/flow не пишутся. Исходные более высокие колонки сохраняются.
+  v6 добавляет road kind, points_m/width_m/edge_m/grade_percent без новых patches.
+  v7 добавляет grove kind и object_layers (member ID/slot, expected pose/parent/
+  name/content signature, protection/tombstones), читает v1–v6 без миграции на open.
+  v8 добавляет placement kind/clearance_m и общий набор native model_ids;
+  v1–v7 не мигрируют при чтении, selected grove обновляется явным edit/Apply.
+  Единственный `ember_grove_planner.gd` расширен на обычные native props без
+  обязательного recipe; каталог — прежний `EmberVoxelCatalog`, visual entries —
+  `EmberVoxelVisuals`, UI фильтрует ready/native. Base voxel bounds/transform circle — pure
+  `ember_voxel_placement_math.gd`; private job spatial grid 4 м учитывает старые
+  и новые props. Метаданные/снимки/IDs прежние; API/filename grove оставлены для
+  совместимости, второй planner не добавлен. Legacy grove seed/math сохранены.
+  `ember_grove_planner.gd` владеет editor-only placement/provenance; math —
+  прежний leaf `ember_terrain_plan_math.gd`. Используются сохранённые large_tree
+  recipes/native prefabs и `EmberSceneAuthoring.make_model_instance`, обычные
+  scene props с общей геометрией/физикой. `ember_grove_preview.gd` — derived view;
+  WorldEditor использует общий generation-context/dock/host, одну Undo-команду.
+  Sessions держит member snapshot/Discard/recovery и saved pose baseline;
+  export customizer убирает plan/member/group metadata, не props. Terrain channels
+  и runtime generation не добавлены. Лимиты и OPEN gates — World Authoring / роща.
+  Старые схемы не мигрируют на open; upgrade v4/v5 сохраняет original flow.
+  Curve2D/samples — private derived cache, не новый scene owner. translated
+  переносит точки/границы и before/expected flow keys. Lake не пишет flow;
+  river берёт уровни через общий восстановленный источник + предыдущие влияния,
+  вырезает русло и пишет касательный поток в существующий water_flow.
+  Ручные изменения колонки защищают и её общий block-flow. Финализация flow
+  идёт один раз на плитку; равномерный нулевой поток нормализуется в empty array.
+  Math —
+  `ember_terrain_plan_math.gd`, job — `ember_terrain_plan_composition.gd`.
+  WorldEditor атомарно применяет candidate + provenance через прежние sessions;
+  generation-context composition объединяет plateau/lake/river/mountain/road, UI fields остаются
+  в прежнем dock/host. Job пишет те же terrain channels, legacy Terrain schema 2
+  не меняется. Лимит retained следа — прежние 256 плиток 4×4 м; river job
+  берёт swept corridor вместо полного bbox, endpoint preparation также бюджетирована.
+  WorldEditor маршрутизирует click/Enter/Backspace/Esc и перенамечивание пути
+  через общий host; compose без selected id сохраняет прежний выбор области.
+  `_path_points/_path_hover/_path_draw_cache`, `_forward_plan_path` и
+  `_finish_plan_path` — один transient input/overlay для river/road. Чистые
+  path_curve/error/sample/bounds принадлежат прежнему Math; river compatibility
+  entrypoints делегируют туда. Road job бюджетированно проецирует предыдущие
+  влияния на baseline, выводит end ground levels/grade, пишет blended height,
+  soil top в core и сбрасывает side overrides в своём следе. Water/flow не пишутся.
+  Wet/no-ground path, grade above limit, hidden-water undercut и missing soil
+  отклоняются; точные source/expected каналы остаются в прежнем local patch.
+  `ember_compact_map_extension_preview.gd.show_area(..., prepare_water)` для
+  локальной композиции в нынешнем study shader создаёт частные WaterRegions
+  exact candidate, материал каждой региональной плитки и cancellable worker.
+  Shader/mesher/cache владельцы прежние; этот job запускается только по Preview,
+  источнику/сессии и runtime план не передаётся. Step budget полей/mesh — 3/4 мс;
+  большие shader-пробы и несколько уровней planar/underwater требуют своих gates.
+  TerrainResource/Sections.validation_errors optional local_sections проверяет
+  payload затронутых участков, все headers остаются проверяемыми; default без
+  subset сохраняет полную проверку. Limits/гейты — World Layout / Terrain Authoring.
 - `scripts/prototypes/ember_terrain_generation_math.gd` — чистый deterministic
-  sampler острова/холмов/ridged/приближения эрозии и прежнего creation coast.
+  sampler острова/холмов/ridged/приближения эрозии, игровой суши (`plains`) и
+  прежнего creation coast. Plains использует jittered опорные участки, постоянную
+  внутреннюю высоту и smoothstep по ближайшей грани Voronoi; минимум соседних
+  биссектрис сохраняет непрерывность при смене конкурирующих опор внутри ячейки.
+  `_sites` — производный кэш текущего sampler/job, не второй owner или runtime cache.
+  Опциональные flat_fraction/flat_size_m/micro_m/flat_transition_m принадлежат
+  словарю параметров scene-owned области; PLAINS_DEFAULTS добавляются только
+  новому профилю, старый DEFAULTS/индексы/высоты сохранены. На экспортируемую
+  физическую землю рецепт не влияет после Apply; gameplay не запускает generator.
   `addons/ember_import/ember_compact_terrain_generation.gd` — bounded job до
   96×96 м, неизменный вход, private sectioned candidate, группы 8×8/шаг высоты 4,
   плавный край с прежней землёй; cancel не пишет source. Лимит высот увеличивает
   только metadata headers; неизменная геометрия не перестраивается из-за ceiling.
-  `ember_compact_terrain_generation_dialog.gd` маршрутизирует параметры и явный
-  preview; `ember_world_editor.gd` использует прежний edit_region и sessions,
+  Для plains ceiling учитывает micro_m, а сухие площадки получают прежнюю траву.
+  Полная генерация заменяет выбранные каналы; защита ручных правок остаётся
+  owner локальной композиции плато. Resource/plan version не изменены.
+  `ember_compact_terrain_generation_dialog.gd` (VBoxContainer) маршрутизирует
+  параметры и явный preview в том же dock; четыре plains controls видны только
+  этому профилю, скрыты в plateau. Pinned Apply/cancel принадлежат UI,
+  закрывает их только WorldEditor после успеха; `ember_world_editor.gd` использует прежний edit_region и sessions,
   проверяет stale version и применяет exact candidate одной Undo-командой.
   «+ Участок» запускает в том же WorldEditor signed 3D selection по 24 м;
   `ember_compact_section_selection.gd` — pure address/budget/rebase leaf.
@@ -404,6 +594,13 @@ Editor dialogue/action stores также сохраняют существующ
   `EmberMapLoader.safe_spawn_world` разрешает высоту входа по прежней физической
   поверхности при подъёме земли, сохраняя авторский маркер. FanTown применяет
   её также к сохранённой позиции; намеренно поднятый старт не опускается.
+- `ember_compact_map_dialog.gd` — VBoxContainer с подготовленным Creation source,
+  pinned preview/Create/Cancel. `plugin.gd` размещает его в прежнем `Ember · Мир`;
+  WorldEditor держит transient creation-page mode, блокирует authoring input и
+  возвращает прежнюю страницу. Dock доступен без active editing/Map. Plugin
+  временно скрывает и возвращает исходную видимость остальных 3D toolbars;
+  Cancel/смена сцены освобождают candidate, не пишут старую карту. API Create —
+  прежний `EmberCompactMapCreation`, существующие files защищены до и при commit.
 - `addons/ember_import/ember_compact_map_creation.gd` и
   `ember_compact_map_extension.gd` — создание плоской карты по участкам
   24×24 блока и обратимое добавление к части края/всему краю/свободному адресу
@@ -459,6 +656,74 @@ Editor dialogue/action stores также сохраняют существующ
   Панель «Материалы» использует прежний Undo/Redo; все look-поля сохраняются
   в `.tscn`, не в terrain Resource. Проба/ручные gates — тематический документ
   земли; runtime-панель пробы меняет те же owners без собственной сериализации.
+  Объекты: optional `EmberVoxelModelResource.material.object_surface` v1 хранит
+  default/overrides palette ролей stone/bark/foliage/crystal/ice/glass/legacy; schema 6
+  сохранена. `ember_voxel_material_profiles.gd` — чистый владелец enum/preset/
+  validation/remap, без RGB inference. VoxMesher переносит Vector4(role,roughness,
+  F0,grain) в ARRAY_CUSTOM0/RGBA_FLOAT; padded regions, SurfaceMesher и session
+  ProjectionCache сохраняют поток/формат. Cache key учитывает параметры, signature
+  получает object-surface-v2-light-finish только у opt-in моделей; legacy mesh не инвалидируются
+  глобальным bump. Существующие генераторы записывают роли, stamp/merge учитывают
+  их при dedup цветов и переносят в прежний property transaction/Resource.
+  `ember_voxel_surface_light.gdshaderinc` использует общий material-light leaf;
+  старые toon/transparent shaders читают роль, дают GGX specular/IBL и статическую
+  role-specific normal/roughness с derivative fade; bark local-Y fibres, foliage
+  roughness0.68/F0.028. Активный diffuse не повторяет ALBEDO, общий чистый BRDF leaf
+  нормирует /PI; specular учитывает SPECULAR_AMOUNT. Без роли/compare-off diorama
+  сохранён, direct-specular отсутствует;
+  прежние COLOR/alpha/flat geometry/collision сохранены. Количество surfaces не растёт.
+  Трава/грунт: прежний EmberCompactTerrainPattern хранит optional micro_relief,
+  micro_size_m, micro_roughness с validation/default strengths0. SurfaceMaterials
+  кодирует grass1/soil2 в B role_lookup и добавляет RGBAF detail_lookup256×1;
+  обновление только на назначение/Save. Terrain shader вызывает один чистый leaf
+  ember_terrain_surface_detail.gdshaderinc: static quantized groups/grains,
+  три height samples, view-normalized basis, roughness variation/derivative fade.
+  Local positions/16 дают logical metre scale, без runtime CPU/remesh/новых граней.
+  Та же MaterialPatternDialog draft/history/Save/Cancel/variant routing сохраняет
+  три поля; controls недоступны для stone/sand. Отдельные grass_surface/soil_surface
+  сохраняют прежние artwork/палитру. ground_material_study — один Map, внешний
+  compact Resource8×8м и presentation-only F/G/L/ПКМ; форма/collision общие.
+  grass_painted — отдельный прежний TerrainPattern с новым top/side artwork и
+  более крупной/мягкой micro-фактурой, без новых полей/shader math. Builder --painted
+  создаёт отдельный ground_grass_painted_study на той же геометрии/свете и тех же
+  грунтовых ID; общий native driver выбирает study path/variant через QA env.
+  Independent surface artwork в прежнем TerrainPattern: optional top/side
+  relief/roughness arrays16×16 уровней0/1/2, pattern_size_m(default4) и
+  roughness_variation(default0). Empty relief наследует color heights, empty
+  roughness нейтральна; sides наследуют top. Factory пишет height в alpha прежних
+  atlases, добавляет два R8 roughness atlas(128KiB) и RGBAF surface_lookup4KiB.
+  independent_surface_enabled defaultfalse защищает старые baked materials;
+  set_roles включает после upload. Roughness side selector отделён от color/height
+  side flags. Shader normals/roughness/derivative fade не создают geometry/physics.
+  Та же editor grid маршрутизирует color/relief/roughness, per-layer/face Undo,
+  grayscale PNG и Save; channel transient. grass_impasto/soil_grain и
+  ground_finish_study отдельные, legacy не мигрируются, geometry общей пробы точная.
+  Результат, доказательства и manual gates — Terrain Authoring / материалы.
+  Optional object_surface.optics v1 хранит прежние strength/clarity/body/IOR/
+  thickness/cloud/colors и finish (legacy или ice_clean/ice_natural/crystal_clean/
+  crystal_rough), surface roughness/detail, cloud blur/opacity, absorption,
+  crack strength/scale/width и bubble strength/scale. Profiles — единый owner
+  defaults/presets/validation; explicit fields перекрывают профиль; schema6 прежняя.
+  HTML strings factory превращает в source_color. Rock provider назначает природные
+  профили новым crystal/ice; прежние sources не переписываются, same-family regen
+  сохраняет авторские параметры. Prefab.refractive_material хранит resolved source
+  params/role в metadata, один shader без новых граней/surfaces/recollision.
+  Signature object-optics-v3-reference-finishes добавляется только opt-in.
+  Surface-optics leaf: view-space refraction/depth/Beer-Lambert, общий BRDF, static
+  local field/seed. Cloud blur/opacity отделены от поверхности. Три ограниченных
+  fracture sheets + jittered bubbles на двух фиксированных внутренних пробах,
+  derivative AA, без TIME/texture/raymarch/Voronoi27. Watershader не меняется;
+  отдельного viewport/камеры нет. Thickness — приближение, screen capture не
+  содержит других прозрачных поверхностей. Base material compatibility сохраняет
+  optical settings; несовместимые stamp/merge отклоняются до изменения source.
+  ember_object_material_study.gd — scene-owned Inspector/light/uniform overrides,
+  не второй renderer. Source params остаются исходной основой, mesh metadata
+  сохраняет optical material при Save-off/Reopen/Enable. Профили и простой probe
+  меняют material/uniform, не geometry/source/collision. Шесть baked примеров в
+  scenes/object_material_study.tscn; neutral light, три presets + optional SSAO.
+  effective_light выводит preset offset/scale из сохранённой дневной основы, без
+  мутации manual controls. Runtime 1/2/3/Space/G/O/R/C/F сравнивает без записи.
+  Gates/ограничения — Terrain Authoring / «Материалы и рабочий интерфейс».
   Правая панель `ember_world_look_panel.gd` внутри «Редактировать мир» меняет
   Sun и Environment сцены через Undo/Redo: силу и тон света, мягкость и
   включение тени, свет/тон окружения, экспозицию, контраст и насыщенность.
@@ -482,6 +747,13 @@ Editor dialogue/action stores также сохраняют существующ
   в view space; заполнение бокового света использует геометрическую нормаль,
   не зависит от поворота камеры. Старые варианты сохраняют прежнюю отделку.
   Один общий паттерн меняет все карты, где он выбран.
+  `ember_compact_material_pattern_dialog.gd` теперь VBoxContainer, хранит один
+  draft/history/opened_path/hash и два UI controls. Plugin регистрирует grid
+  в прежнем bottom-panel API, parameters_panel принадлежит прежнему правому dock;
+  общий component освобождает history/parameters при shutdown. WorldEditor
+  хранит transient material mode и weak map + slot/expected ID для назначения
+  нового варианта; смена scene не переадресует этот слот. Dirty switch решается
+  inline; сворачивание не равно Cancel, файл меняется только Save/новым вариантом.
   `EmberCompactTerrainPattern` валидирует их; `ember_voxel_surface_materials.gd`
   создаёт из них ImageTexture с nearest sampling. Редактор меняет черновик
   клеток/тонов через существующую сетку `ember_voxel_pattern_editor.gd`,
@@ -564,15 +836,95 @@ generation, placement, publication и scene-authoring пути.
 
 ### Exploration, interactions и content
 
+- `scripts/ember_explore_scene.gd` — общий scene play controller: player, party,
+  UI и переходы. `world_canvas.gd`/`test_pier.gd` добавляют свой bootstrap/storage,
+  но не второй gameplay owner. Перенесён из fan_town без изменения body/UID;
+  старые города пока используют тот же controller до content retirement.
+- Inspector использует resolved native source owner: `.tres` показывает как
+  Godot Resource, Asset tooltip направляет в мастерскую; legacy остаётся явно
+  историческим источником до retirement. Snapshot read-only, native label gate
+  проходит с недоступным pack path. Map/region validation ещё требует native среза.
 - `scripts/ember_map_loader.gd` — загрузка карты и native Surface.
 - `scripts/ember_interact.gd`, `scripts/ember_interact_rules.gd`,
   `scripts/ember_interaction_ui.gd` — scene-owned interactions.
-- `scripts/ember_action_script.gd` + `content/action_scripts/` —
-  canonical action chains.
-- `scripts/ember_dialogue_resource.gd` — dialogue data.
+  Общие talk/shop/action/launch/quest проверки теперь используют native fixtures
+  через `tools/run_interaction_tests.py`, без city/story fixtures. Editor store
+  writers в этих tests ограничены disposable проектом; production owners/schema
+  не менялись в interaction cleanup. Native/source/save gates PASS; item/shop
+  readers больше не требуют compatibility JSON, полный G4/G5 этим не закрыт.
+- `scripts/ember_region.gd` — chest prompt/activate и производный ChestVisual;
+  opened keys/inventory сохраняет общий ExploreState. Общий ExploreScene вызывает
+  `MapLoader.refresh_region_runtime`: только native bindings/visuals всех Regions,
+  включая вложенные; JSON никогда не дополняет их saved свойства при startup.
+  ExploreScene не вызывает load_map для пустой сцены; footprint использует saved
+  extent/import stats, ZERO при десериализации не запускает JSON lookup. Явный
+  старый load_map helper сохранён для tools; editor reimport UI удалён. Старые
+  hydration flags не меняют runtime behavior.
+  `refresh_cutaway_runtime` связывает saved Cutaways volumes, включая вложенные,
+  не создаёт roofs из JSON и не удаляет authored nodes. EmberCutawayVolume на
+  _ready восстанавливает transient Roof reference; repeated binding idempotent,
+  reveal/fade/transparency/structural shadow прежние. Saved/reopen и four negative
+  controls PASS; ручной Forward+ остаётся OPEN.
+  Сохранённый progress выбирает open visual при reload, serialized closed visual
+  заменяется, reused model учитывает block size. Headless gate PASS; Forward+ OPEN.
+- `EmberActionCatalog`/`EmberActionResource` и `EmberDialogueCatalog`/
+  `EmberDialogueResource` — native-only story documents. Runtime executor
+  `ember_action_script.gd` и `EmberDialogueSession` прежние; graph/step schema
+  не менялись. IDs/owner/read, Store write/delete и snapshot/restore работают
+  только с .tres/remap. JSON read/write/delete/restore и migration UI удалены.
+  `run_story_tests.py`: guarded create/edit/delete/Undo, simple dialogue cards,
+  scene/action/quest binding/clone/orphan и binary PCK PASS. Snapshot ID/native,
+  old legacy snapshot fields игнорируются без записи. Остались 2 combat actions/
+  2 dialogues; две unused цепочки sbx_bush_se_actions/_2 с retired map targets
+  побайтно архивированы и выведены из активного каталога. Report отвязан от
+  исторических VoxelBatches. Static incoming reference scan, фактическая загрузка
+  2 native combat actions и editor/save regressions PASS. 11 city-only tools/tests
+  с UID и offline batch definitions выведены в checked supplemental ZIP.
+  run_mixed_editor_tests.py: 10 Inspector/Graph/picker/scene/sculpt/physics gates
+  используют guarded synthetic native scenes/models/story/VN; Undo/Redo,
+  source SHA, save/reopen, branch ports/clipboard, actors/cache и routes PASS.
+  General assertions сохранены; selector/physics ожидают нынешний native-only
+  контракт. Остальные perf/shapes/diorama/prefab/Python теперь используют
+  те же guarded native owners: 15 mixed gates + Python static PASS. Large
+  profile сохраняет 24x24/16/32, dry/wet и object context; CPU PASS, длинные
+  visible A/B OPEN. Actual disposable Forward+ shape editor create/paint/grow/
+  save/reopen/callback/unload PASS; native diorama pixel safety PASS. Prefab
+  UID/cache/transparency/placement invariants PASS. Python VOX input генерируется,
+  Native VoxParser/VoxMesher/import Resource parity PASS; historical assertions
+  archived. Семь old scenes выведены после refreshed archive SHA/CRC
+  (998 files); остальные 704 author data files неизменны. Metadata/models/
+  prefab/materials сохранены, shared barrel/crate_stack нужны Причалу. Static
+  restoration guard + startup/editor/save/transition regressions PASS. Exclusive
+  ресурсы сверить отдельно; author F5/Load и полный physical G4/G5 OPEN.
+- `EmberVnAssets` — один native-only background/portrait resolver; descriptors
+  content/vn_backgrounds и content/vn_portraits, images assets/vn_*. JOI registry
+  reads и relative pack paths удалены. res:// сохраняется для PCK, metadata reload
+  игнорирует stale Resource cache. CPU image bytes и imported Texture2D remaps
+  используют прежний preview owner; render layers/draft Undo/schema не менялись.
+  run_vn_asset_tests.py: guarded import/reopen, unique IDs, picker/missing IDs,
+  poison/missing JOI, binary descriptors + imported-texture PCK PASS. Два фона
+  сохранены, native portraits пусты; historical art не импортировался.
+  Ручные VN/Graph image/input, Undo/Redo и Ctrl+S/reopen gates остаются OPEN.
 - `scripts/ember_quest_resource.gd` — quest data.
-- `scripts/ember_item_resource.gd` — item data.
-- `scripts/ember_shop_resource.gd` — shop data.
+- `scripts/ember_item_catalog.gd` — единый native-only resolver предметов/иконок;
+  `EmberItemResource` в content/items и `EmberItemIconResource` в content/item_icons
+  сохраняют исходные Dictionaries. Семь current items/шесть icons, без чтения
+  items/catalog.json. Missing IDs дают empty, native/remap Resources работают
+  и в PCK. ItemVisuals остаётся единственной pixel projection. ItemStore/editor/
+  Inspector сохраняют validation/Undo/Redo; legacy migration route удалён.
+  `run_item_resource_test.py`: editor/runtime, poison/missing JSON и binary PCK PASS.
+- `scripts/ember_shop_catalog.gd`/`EmberShopResource` — native-only shop data и
+  resolver; definition/IDs/owner не читают shops/catalog.json. Resource/remap
+  lookup работает в binary PCK. ShopStore/ShopEditor/Inspector сохраняют validation,
+  create/edit/discard/Undo/Redo; obsolete migration route удалён.
+  `run_shop_tests.py`: neutral shop fixtures, цены/stock/buy/sell/save и PCK PASS.
+  Listing/save schema и Economy/ExploreState не менялись; persisted stock даже
+  retired shop IDs сохраняется. Village_kiosk/sandbox_notice_quest и 9 city-only
+  action Resources выведены в checked archive, вместе с двумя retired Surfaces.
+  Native actual-catalog/save gate PASS: flags/stock/unknown items не теряются,
+  retired quest/shop не отображаются, current battle queue и shared models прежние.
+  Graph lifecycle gate использует neutral fixtures; frame/focus/orphan checks PASS.
+  Старый sandbox dialogue остаётся referenced текущим combat start; не удалялся. Вывод данных — JOI Exit Plan; ручной Forward+ OPEN.
 - `addons/ember_import/ember_graph_workspace.gd` — общий content-authoring workspace;
   специализированные панели не получают собственный runtime state.
 
@@ -582,14 +934,50 @@ generation, placement, publication и scene-authoring пути.
   партии, общей сумки, флагов и прогресса.
 - `scripts/ember_party_state.gd` — чистая нормализация, derived stats, XP/level-up;
   самостоятельно ничего не сохраняет.
+- Inventory/equipment, health/consumables, party followers и defeat/respawn gates
+  запускаются через `tools/run_party_tests.py`: saved native карта, current native
+  consumables и synthetic equipment в guarded disposable проекте. Старые города/
+  предметы/модели не нужны; реальные State/UI/Player/Followers owners и save v2
+  сохранены. Item/save schema не менялась; item compatibility JSON больше не нужен.
+  Party/save v2 также включён в runner на neutral equipment. Headless/negative
+  controls PASS, ручной Forward+ OPEN.
 - `scripts/ember_combat_transition.gd` — guarded world → combat → world transaction.
 
 Save v2:
+- `EmberMapTransition.saved_destination` владеет маршрутом retired/missing saves
+  к landscape_compact. `_saved_spawn_at_entry` — только session flag существующего
+  ExploreState; consume возвращает null, и ExploreScene использует native вход.
+  Старые XYZ не переносятся, native saved XYZ сохраняются. V1 сначала конвертируется
+  с исходной локацией, затем разрешается в памяти; source/backup не переписываются.
+  Menu валидирует сцену в detached State, принимает прогресс до удаления уходящей
+  сцены и откатывает его при ошибке перехода. Native save destination QA PASS;
+  Forward+ F5/Save/Load OPEN. Формат save не менялся.
 - три ручных слота + отдельный autosave;
+- `has_pending_spawn_restore()` читает существующий load/restore flag без новой
+  schema/state. Пока новый player не потребил loaded spawn, уходящий ExploreScene
+  не делает exit autosave: иначе прежняя позиция затирала pending restore/autosave.
+  Обычный departure без pending restore сохраняется как прежде. Native pause-menu
+  same-map reload/cross-map load gate PASS; ручной Forward+ остаётся OPEN;
+- JSON сначала полностью пишется/проверяется в соседнем временном файле;
+  прежний слот остаётся в `.previous` до публикации нового. Ошибка не обновляет
+  remembered progress и не посылает `saved`; при неудачном rollback копия остаётся
+  для восстановления при load/metadata. Это recoverable replace, не обещание
+  атомарного Windows rename или защиты от отключения питания;
 - сохраняет persistent данные всех четырёх героев;
-- derived stats пересчитываются;
+- derived stats пересчитываются; неизвестная retired saved экипировка возвращается
+  в сумку без применения выдуманного stackMax=99. Её ID/count сохраняются при
+  повторном load/save, но retired item не получает активной definition. V1 с
+  явным valid maxHp не читает stage JSON, HP ratio сохраняется; schema не менялась;
+- Layout экипировки теперь weapon/armor/shoes/accessory1/accessory2 в прежнем
+  envelope v2. Единственный import_saved у EmberEquipment переводит body/accessory;
+  head/arena_weapon/unknown slots возвращаются в сумку через Party normalize и
+  Explore owner без stack truncation. Повторная нормализация не выдаёт вещи снова.
+  Load не пишет source; перед explicit Save старого layout сохраняется exact
+  equipment_migration_backups/<filename>-<SHA>.json. Неудачная/повреждённая копия
+  блокирует перезапись исходника. Архивы не участвуют в automatic recovery/delete.
 - миграция старого save сначала создаёт recovery backup;
 - удаление save также оставляет recovery-копию.
+- удаление охватывает остаточную `.previous`, чтобы слот не восстановился снова.
 
 Активный состав 1–4 хранится через существующий Explore/save owner,
 а не отдельную party-систему. Battle получает process-local копии и возвращает
@@ -613,6 +1001,130 @@ Save v2:
   authoring contracts в `content/combat/`.
 
 ## Текущее состояние editor и world authoring
+
+### Общие игровые системы · единая библиотека, draft и общие операции
+
+- `ember_game_systems_catalog.gd` — editor-only read projection существующих
+  item/combat catalogs и Battlefield Resources; не новый runtime catalog/schema.
+- `ember_game_systems_workspace.gd` — общий browser/search/detail/links/commands.
+  Один раздел item с фильтрами; route equipment — alias item + equipment filter,
+  не второй экран/каталог. Create учитывает тип фильтра, Save сменившего тип
+  предмета снимает несовпадающий фильтр. Dirty filter guard сохранён. В draft
+  список скрыт, «К библиотеке» возвращает список/фильтры. Отсутствующая связь не открывает
+  другую запись; пустой поиск очищает actionable selection.
+- `ember_game_systems_session.gd` — один detached draft, local field Undo/Redo,
+  validation, file SHA/live source conflict и stable ID guard. Publication/Delete
+  snapshots фиксируются в EditorUndoRedoManager GLOBAL_HISTORY: контекст именно
+  RefCounted, а не built-in Resource, чтобы история не привязалась к сцене.
+- `ember_game_systems_store.gd` — publication adapter к существующим typed
+  Resources/ItemStore; не runtime owner/schema. clone использует Godot
+  duplicate_deep(INTERNAL): встроенные rows/arrays независимы, external refs общие.
+  Save сохраняет UID, Undo/Redo восстанавливают точные bytes; CACHE_MODE_REPLACE
+  обновляет published resource, catalog refresh — derived lookup. Delete сохраняет
+  backup в user://ember-editor-resource-backups и проверяет прямые refs/quoted IDs.
+- `ember_game_systems_draft_editor.gd` — нативные controls по существующей metadata;
+  предметы используют публичный setup_document/document_changed прежнего
+  EmberItemEditor. SpinBox подключается один раз без его внутреннего LineEdit.
+  Toolbar закреплён сверху. Клетки/
+  размеры поля сохраняются и редактируются прежним painter, не сырым новым UI.
+  Status/effect формы показывают behavior summary; восемь operation-specific
+  групп скрывают неактивные поля без потери значений. Status ID — native picker,
+  remove/spread IDs — checklists, включая сохранённые отсутствующие IDs.
+  Action form показывает `EmberCombatActionResource.behavior_summary` и русские
+  параметры; lift/force/duo fields скрыты лишь когда не нужны и имеют neutral
+  значения. Сохранённые несовместимые значения доступны для correction, validation
+  прежняя. `requirements_text` — информационная строка, не script/condition owner.
+  Effect steps — ordered shared Resource refs с descriptions и duplicate guard;
+  Unit action_ids — ordered named picker, missing IDs доступны для удаления.
+  Old queued form игнорирует session.changed чужого draft; publisher/Undo owners
+  прежние. UI не меняет Resource schema, боевую математику или authored loadouts.
+  Unit/AI/Loot/Encounter формы и карточки читают behavior_summary существующих
+  Resources. ИИ задаётся stable ID; loot/field/arena — прежними shared refs.
+  Каталожные pickers сохраняют текущие external/inline refs и missing IDs;
+  continuation picker использует прежние native action-script IDs.
+  Один ordered ID list ведёт action assignment и rosters; сторона фильтруется
+  только в предложениях, сохранённое не удаляется молча. Повтор Unit ID запрещён
+  существующей validation; points/order принадлежат Encounter/Battlefield.
+  Loot rows: item picker + chance/min/max SpinBox, copy-on-edit внутренней строки;
+  numeric history объединяется по row/key, не затрагивая shared table source.
+  Encounter validation допускает только два существующих outcome enums.
+  Unit/AI/result/save owners и распределение XP/loot не менялись.
+- `ember_game_systems_lab_launcher.gd` — editor process adapter: saved native
+  Encounter path → OS.create_process прежнего combat_lab.tscn, без project settings
+  или author writes. Одно отслеживаемое окно, 1600×900/30 FPS, отдельный log.
+  Workspace не запускает dirty draft; preflight валидирует saved record, runtime
+  повторяет проверку. Marker EMBER_LIBRARY_LAB_READY подтверждает consumed ID.
+  `EmberCombatTransition` парсит единственный --ember-library-encounter=res://...
+  под native encounters root; normal transition/finish в test mode запрещены.
+  `ExploreState._ready` до чтения saves отключает persistence/restore и назначает
+  process-private paths; Lab не берёт party/inventory/strategy из игрового save.
+  `_library_test` — process/UI context, не Resource/save schema. Same Lab/resolver/
+  Result считают бой/награду. Test outcome предлагает Retry/Close, скрывает Load,
+  не применяет counters/XP/items/scripts и не возвращается на карту. Нормальный
+  игровой режим сохраняет переход/поражение/reward path. Общая Lab 3D сцена
+  проецирует выбранное Battlefield; декоративный arena_scene не подставляется.
+- `ember_game_systems_library_check.gd` — read-only SceneTree utility: raw saved
+  .tres paths из Store.SPECS + icon/story_action identities, fresh Resource loads.
+  ID namespaces раздельны; дубли не схлопываются каталогом. Existing Resource/
+  ItemStore validators владеют правилами; enum options берутся из metadata.
+  Проверяются recursive file dependencies и активные ID links; wrong nested
+  action effect type отсекается до validator. Иконки/story bodies не валидируются
+  полностью. Хеши исходных файлов позволяют заметить их изменение при чтении;
+  это не атомарный snapshot всего каталога. Нет author writes или auto repair.
+  `ember_game_systems_check_service.gd` запускает отдельный headless процесс,
+  poll/timeout/report identity/log completeness; SCRIPT ERROR не считается clean.
+  JSON/log — user://ember-library-check. Cancel останавливает только свой PID.
+  `--ember-library-check=` входит в isolated_editor_process guard Transition/
+  ExploreState до save restore. MCP Runtime для этого флага пропускает shared
+  ready/IPC регистрацию; normal gameplay и Lab MCP path этим не отключаются.
+  `ember_game_systems_check_panel.gd` — native report/search/detail/repeat, saved
+  scope и stale reminder. Exact path → прежний Inspector route или FileSystemDock;
+  ID alias не используется, dirty draft блокирует переход. Workspace не reloads
+  live catalogs при проверке. Current saved library: 71 records / 0 issues;
+  malformed fixtures и native navigation QA проверены, user/narrow/125% OPEN.
+- `EmberCombatStatusResource` владеет default_duration/reapply/max_duration,
+  power_bonus/outgoing_damage_percent/incoming_damage_percent/remove_on_damage.
+  Neutral defaults сохраняют baseline. `StatusRules` исполняет общий повтор,
+  множители и снятие; DamageRules и единственный CombatPrototype вызывают их.
+  Runtime snapshot остаётся ID → remaining turns, decay в конце своего действия.
+  Apply effect duration 0 использует default до сокращения устойчивостью.
+  Authored apply/remove соблюдает порядок шагов; старое потребление guard
+  сохраняет baseline. Commit отклоняет новый preview при смене statusRulesHash;
+  StateSchema/apply validation блокируют некорректную native definition.
+  Power относится к damaging action, outgoing — scaled direct damage; incoming
+  применяется к итоговому damage перед guard. Особые реакции пяти ID прежние;
+  periodic damage, independent stacks и новые elemental semantics не реализованы.
+- `ember_item_editor.gd` — формы семи типов с русскими labels, native icon picker,
+  экипировочными max HP/MP/allowedHeroIds и использованием HP/MP/revive/range/delay.
+  Неактивные значения и extension metadata сохраняются. Текущие типы включают
+  shoes; legacy weapon_arena/head читаются, но не экипируются. Body armor читает
+  прежний native Resource без перезаписи, explicit Save нормализует slot в armor.
+  Отрицательные HP/MP-бонусы допустимы. Неизвестные hero IDs сохраняются.
+  `ember_item_store.gd` нормализует существующие optional keys и проверяет
+  экипируемость armor/положительный combatDelay; runtime owner/schema не добавлены.
+- `ember_equipment_preview.gd` — editor-only выбор героя/уровня, пяти исходных
+  слотов и accessory target; до/после считает через Party.derived_stats и
+  Equipment.equip. До использует published definitions, после — подставленный
+  draft, без записи в Resource/Explore. Комплект сворачивается; контекст держит
+  DraftEditor, переживает field Undo/Redo и не попадает в item serialization.
+- `ember_equipment.gd` владеет пятью слотами, slots_for_item, import_saved и
+  возвратом owned instances без loot cap. ArenaAtk — compatibility projection
+  того же weapon atk. Party разрешает аксессуары всем; обувь/оружие/броня
+  используют прежний allowedHeroIds. Inventory UI даёт explicit accessory1/2
+  или первый свободный (иначе 1); перенос исходных slots принят пользователем.
+- `ember_graph_workspace.gd` монтирует kind `systems`; dirty draft защищён при
+  Home/graph navigation/search/module/selection. Double-click открывает draft.
+  Старые browser/Inspector/form/Lab routes доступны отдельно; combat Create/Copy
+  ведут в common draft, Save старого combat browser использует общий publisher.
+- `plugin.gd` добавляет Tool menu «Ember: Игровые системы»; reload/unload сохранён.
+  Новый layout принадлежит прежним Equipment/Party/
+  Explore owners. MOVE/JUMP/knockback/wet modifiers обуви ещё не реализованы.
+- Native CRUD/identity/ref/UID/conflict, item type/hidden values/filter guards,
+  signed bonuses/hero restrictions через PartyState и расходник через прежний
+  preview/commit + items/PCK/Graph regressions и real
+  Forward+ draft fields/Save/reopen/global Undo/plugin lifecycle PASS;
+  новые status rules/ordered chain/stale guard и related combat gates PASS;
+  авторская оценка удобства OPEN. Этапы — Product Plan → «Игровые системы редактора».
 
 Surface Canvas уже покрывает основной voxel workflow:
 - palette и picker;
@@ -646,6 +1158,91 @@ Object/world workshop использует существующие owners дл�
 - object placement brush;
 - генеративных environment-объектов;
 - relief/coast/water инструментов.
+
+`addons/ember_import/ember_world_panel_host.gd` — единственный owner lifecycle
+перенесённых панелей map/material/objects/placement/shape/duplicate/merge/split/conversion. WorldEditor
+регистрирует routes после создания controls; host хранит active_id, pending/cancel
+callbacks, предыдущий workspace и toolbar visibility. Mode queries в WorldEditor —
+вычисляемые views, не отдельное состояние. `can_leave_panel()` — общий guard;
+registry скрывает прежние страницы. WorldEditor только представляет page/preview
+в dock/bottom-panel API; инструменты сохраняют свои сессии, расчёт и commit.
+Input routing в plugin использует host.blocks_viewport_tools(): numeric focus не
+перехватывается, камера PASS, material history проходит через прежний controller,
+object brush остаётся в прежнем 3D path. Scene-bound callbacks очищают контекст,
+material.persist_scene сохраняет независимый dirty файл. Map.is_dirty() сравнивает
+параметры с исходными и учитывает подготовленный source; новых Resource полей нет.
+При plugin shutdown routes освобождаются до controls. Новые UI-срезы подключать
+регистрацией, без копирования lifecycle/guards/toolbars и без второго owner данных.
+
+Параметры scene object brush принадлежат прежнему `ember_voxel_object_brush.gd`.
+`plugin.gd::_open_object_brush_settings` маршрутизирует в WorldEditor/dock без
+AcceptDialog. `WorldEditor.object_parameters` — один набор controls: в активном
+мире находится в Tools, вне мира временно в `_object_brush_workspace`; значения
+синхронизируются из кисти без signals. Sidebar mode не включает `WorldEditor.active`
+и не перехватывает placement input. Stop/Esc/scene change возвращают controls и
+прежнюю видимость toolbars. Параметры остаются editor-only; форматы источника,
+scene-instance ownership, prefab/physics/один Undo за мазок не менялись.
+
+Точная расстановка сохраняет `ember_voxel_placement_session.gd` и чистый
+`ember_voxel_placement_math.gd`. Прежний `ember_voxel_placement_dialog.gd` теперь
+VBoxContainer с `parameters_panel` и нижним SubViewport; один `_planned_world`,
+session и набор derived target/context копий. `plugin.gd::_place_voxel_selection`
+повторно показывает тот же bound session, plugin регистрирует нижнюю «Расстановка»,
+WorldEditor представляет `_placement_workspace`, lifecycle/guard принадлежат host.
+Apply выбирает исходный target, session commit хранит transform в `.tscn` одной
+Undo action; scene switch/Cancel очищают session/context, другой selected node не
+перенаправляет Apply. Bottom collapse не сбрасывает план, UPDATE_WHEN_VISIBLE
+останавливает скрытый viewport. Форматы моделей/prefab/мировой физики прежние.
+
+«+ Форма» сохраняет `ember_voxel_shape_creation.gd`/`ember_voxel_shapes.gd` и
+existing model store. `ember_voxel_shape_dialog.gd` — VBox controller; параметры
+и SubViewport отделяются методом `use_dock_layout`, plugin регистрирует нижнюю
+«Новая форма», WorldEditor маршрутизирует `_shape_workspace`. Один candidate
+prepared→commit, поля лишь инвалидируют его, Cancel/scene change очищают root/parent/
+preview refs. Create сохраняет native assets, одну scene action и прежний Canvas path.
+Legacy callers/fixtures наследуют те же fields/preview и получают ограниченный
+ConfirmationDialog через modal adapter; `get_ok_button`/`canceled` совместимы.
+До popup preview остаётся в прежнем scroll box для legacy camera/input path; при
+удалении wrapper сразу скрывается, чтобы не удерживать exclusive child window.
+Controller/renderer/model-owner не дублируются. Source/prefab overrides — только fixtures.
+
+Дублирование сохраняет `ember_voxel_scene_assembly.gd` и проверки
+`ember_voxel_placement_session.gd`. Прежний `ember_voxel_duplicate_dialog.gd` теперь
+VBox controller с `parameters_panel` и нижним SubViewport (UPDATE_WHEN_VISIBLE).
+`plugin.gd::_scene_assembly_command(4)` повторно показывает bound session; WorldEditor
+представляет `_duplicate_workspace`, host вызывает прежние guard/cancel при смене. Prepare
+меняет derived poses/mesh copies, commit сохраняет экземпляры `.tscn` одной action.
+После успеха сохраняется прежний `_last_duplicate_step`; command 5 по-прежнему
+создаёт одну копию текущего selected prop. Источники/Assets/schema/physics не менялись.
+
+Склейка/разбор сохраняют `ember_voxel_merge_session.gd`/`ember_voxel_merge.gd`:
+математика, validation, публикация native assets и один Undo прежние. Один
+`ember_voxel_merge_dialog.gd` служит обоим режимам; `use_dock_layout()` отделяет
+параметры/preview от прежнего shape controller. `_merge_workspace`/нижняя «Склейка»
+зарегистрированы в общем host без нового mode flag. Controls создаются один раз,
+`open_merge` привязывает selection/scene/mode; `matches_context` сохраняет session
+при повторе команды. Checkbox/primary input лишь инвалидирует dock candidate,
+prepare явный; view-only orientation/orbit не меняют session, UPDATE_WHEN_VISIBLE.
+Plugin `can_commit` callback сохраняет Canvas dirty guard и при nonmodal Apply;
+source/hierarchy/physics stale проверяет прежний session. Cancel освобождает
+session/selection/root/undo/preview, controller остаётся для повторного открытия.
+Legacy modal вызов используется только старым API/fixtures, второго renderer нет.
+Большой prepare/commit остаётся синхронным; source/prefab overrides только fixtures.
+
+Split/conversion используют тот же host и наследуемый shape controller, без
+дополнительных mode flags. `pin_preview_action()` закрепляет подготовку для
+merge/split/conversion; старый modal API остаётся только для compatibility.
+`ember_voxel_split_dialog.gd` создаёт controls один раз, хранит bound weak target;
+input убирает splitter/preview, явный prepare вызывает прежний `ember_voxel_object_split`.
+Текущие границы/каналы/physics и одна Undo/asset publication не менялись.
+`ember_voxel_conversion_dialog.gd` сохраняет bound primitive, единственный compare
+control и прежний `ember_voxel_primitive_conversion`: fit, material/physics/stale
+validation, original replacement и Canvas owner прежние. Density input масштабирует
+XYZ через прежнее правило и инвалидирует оба preview; смена типа требует reopen.
+`plugin.gd::_voxel_canvas_is_clean` — общий nonmodal prepare/Apply guard трёх операций.
+Cancel/commit/scene change освобождают source/root/undo/candidates; controllers
+переиспользуются, preview UPDATE_WHEN_VISIBLE. Collision alignment — прежняя отдельная
+ConfirmationDialog/Undo; большие prepare/commit синхронны. Resource/schema не менялись.
 
 Отдельный `scenes/world_canvas.tscn` и
 `content/world_surfaces/world_canvas_surface.tres` дают проверочную
@@ -756,6 +1353,18 @@ battle snapshot.
 ## Migration / legacy
 
 Migration dashboard и dry-run должны оставаться read-only до успешного parity.
+Mutation gates queue/batch запускает `tools/run_voxel_migration_tests.py` в
+отдельных временных проектах с синтетическими JSON/VOX fixtures. Прямой запуск
+этих двух GDScript-тестов в рабочем проекте блокируется до записи; механизм
+миграции и его owners прежние. Подробные проверки — Migration gates в test plan.
+Migration dock открывает постоянную полку через `voxel_library_requested`;
+неиспользуемый старый popup и его сигнал placement удалены. Добавлением владеют
+object-library `place_requested` → plugin → SceneAuthoring; Inspector refresh
+и открытие native Resource в dock сохранены. Gates — «Нижняя полка объектов 3D».
+Старый неиспользуемый tree-object dialog удалён; plugin продолжает создавать
+GenerationPanel. Совместимость classic и текущих recipe, exact preview/save,
+параметры и layout проверяют generation_session/workshop_generator_save и
+large_tree_object; действующие генераторы/Creation и версии данных сохранены.
 
 На текущем checkpoint остаётся значимый legacy-хвост:
 - native voxel Resources существенно меньше legacy-моделей;
