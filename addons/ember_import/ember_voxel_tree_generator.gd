@@ -122,6 +122,7 @@ static func build(
 	var source: EmberVoxelModelResource = built.source
 	source.tags = PackedStringArray(["stamp", "generated", "tree"])
 	source.material = material.duplicate(true)
+	preload("res://scripts/ember_voxel_material_profiles.gd").assign(source.material, "bark", {"2": "foliage"})
 	source.palette = PackedColorArray([
 		Color.TRANSPARENT, settings.trunk_color, settings.foliage_color,
 	])

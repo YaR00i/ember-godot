@@ -1,8 +1,7 @@
 @tool
 class_name EmberDialogueStore
 extends RefCounted
-## Canonical dialogue projection/writer. Native Godot Resources are preferred;
-## legacy JOI scenes/*.json remain a compatibility source until migrated.
+## Canonical native-only dialogue projection/writer; schema stays unchanged.
 
 const ActionStore = preload("res://addons/ember_import/ember_action_script_store.gd")
 const GraphModel = preload("res://addons/ember_import/ember_dialogue_graph_model.gd")
@@ -23,11 +22,7 @@ static func owner(dialogue_id: String) -> String:
 
 
 static func source_path(dialogue_id: String) -> String:
-	return (
-		Catalog.native_path(dialogue_id)
-		if owner(dialogue_id) == "native"
-		else EmberPack.scene_path(dialogue_id)
-	)
+	return Catalog.native_path(dialogue_id) if owner(dialogue_id) == "native" else ""
 
 
 static func snapshot(dialogue_id: String) -> Dictionary:
@@ -36,13 +31,6 @@ static func snapshot(dialogue_id: String) -> Dictionary:
 
 static func restore_snapshot(snapshot_value: Dictionary) -> int:
 	return Catalog.restore(snapshot_value)
-
-
-static func migrate_to_native(dialogue_id: String) -> int:
-	var current := document(dialogue_id)
-	if current.is_empty():
-		return ERR_DOES_NOT_EXIST
-	return Catalog.write_native(current)
 
 
 static func exists(dialogue_id: String) -> bool:
@@ -247,21 +235,13 @@ static func write_graph_document(document_value: Dictionary) -> int:
 
 
 static func _write_canonical(document_value: Dictionary) -> int:
-	var dialogue_id := str(document_value.get("id", ""))
-	# Existing legacy scenes keep their owner until the explicit migration
-	# action. New documents and already migrated scenes are native Resources.
-	return (
-		Catalog.write_legacy(document_value)
-		if owner(dialogue_id) == "legacy"
-		else Catalog.write_native(document_value)
-	)
+	return Catalog.write_native(document_value)
 
 
 static func delete_document(dialogue_id: String) -> int:
 	if not ActionStore.valid_id(dialogue_id):
 		return ERR_INVALID_PARAMETER
-	var native_error := Catalog.delete_native(dialogue_id)
-	return native_error if native_error != OK else Catalog.delete_legacy(dialogue_id)
+	return Catalog.delete_native(dialogue_id)
 
 
 static func _dialogue_step(step_id: String, value: Dictionary, next_id: String) -> Dictionary:

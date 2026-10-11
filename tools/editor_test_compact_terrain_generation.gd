@@ -27,17 +27,17 @@ func ready_tiles(projection: EmberTerrainPilotProjection) -> void:
 	check(projection.pending_tile_count() == 0, "tile timeout")
 
 
-func ready_dialog(dialog: ConfirmationDialog) -> void:
+func ready_dialog(dialog: Control) -> void:
 	var deadline := Time.get_ticks_msec() + 60000
-	while dialog.get_ok_button().disabled and Time.get_ticks_msec() < deadline: await frames(1)
-	check(not dialog.get_ok_button().disabled, "preview timeout: " + dialog._status.text)
+	while dialog.get_apply_button().disabled and Time.get_ticks_msec() < deadline: await frames(1)
+	check(not dialog.get_apply_button().disabled, "preview timeout: " + dialog._status.text)
 
 
-func capture(name: String, dialog: ConfirmationDialog = null) -> void:
+func capture(name: String, dialog: Control = null) -> void:
 	await frames(5)
 	await RenderingServer.frame_post_draw
 	EditorInterface.get_base_control().get_viewport().get_texture().get_image().save_png("res://qa_generation/" + name + ".png")
-	if dialog != null and dialog.visible: dialog.get_texture().get_image().save_png("res://qa_generation/dialog.png")
+	if dialog != null and dialog.visible: dialog.get_viewport().get_texture().get_image().save_png("res://qa_generation/dialog.png")
 
 
 func _run() -> void:
@@ -78,7 +78,7 @@ func _run() -> void:
 	_camera.make_current()
 	world.edit_region = Rect2i(0, 0, 48, 48)
 	world._open_terrain_generation()
-	var dialog: ConfirmationDialog = world._generation_dialog
+	var dialog: Control = world._generation_panel
 	check(dialog.visible and world._generation_context.area == world.edit_region, "existing selection not used")
 	var original_hash := FileAccess.get_sha256(map.compact_terrain.resource_path)
 	dialog._preview_button.pressed.emit()
@@ -100,7 +100,7 @@ func _run() -> void:
 	var preview := world._generation_preview as Node3D
 	var mesh := preview.get_node("PreviewTile_6_6").get_child(0, true) as MeshInstance3D
 	var points: PackedVector3Array = mesh.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
-	dialog.get_ok_button().pressed.emit()
+	dialog.get_apply_button().pressed.emit()
 	check(not dialog.visible, "successful native confirmation did not close the dialog")
 	dialog.hide()
 	await ready_tiles(projection)
@@ -151,58 +151,25 @@ func _run() -> void:
 	get_tree().quit(0 if errors.is_empty() else 1)
 
 
+func check_dock(world: Node, panel: Control) -> void:
+	check(panel.is_visible_in_tree() and panel.get_class() == "VBoxContainer", "terrain UI must be a visible dock control")
+	check(world.inspector_panel.is_ancestor_of(panel), "terrain panel outside existing inspector dock")
+	var host := EditorInterface.get_base_control().get_global_rect()
+	print("DOCK_LAYOUT host=",host," panel=",panel.get_global_rect()," min=",panel.get_combined_minimum_size()," inspector=",world.inspector_panel.get_global_rect()," scale=",EditorInterface.get_editor_scale())
+	check(host.encloses(panel.get_global_rect()), "dock outside editor bounds")
+	check(panel.get_combined_minimum_size().x <= world.inspector_panel.size.x, "dock horizontal overflow")
+	if panel == world._generation_panel:
+		check(panel.get_global_rect().encloses(panel.get_apply_button().get_global_rect()), "apply outside dock")
+		panel._scroll.scroll_vertical = 10000
+		await frames(5)
+		check(panel.get_apply_button().is_visible_in_tree(), "apply disappeared while scrolling")
+		panel._scroll.scroll_vertical = 0
+
 func _dialog_regression() -> void:
 	await frames(20)
-	var source_job := Creation.new()
-	check(source_job.prepare_sections("dialog_bounds_fixture", 2, 2, 12), source_job.error)
-	var probe_map := EmberMapLoader.new()
-	probe_map.authored_size_blocks = Vector2i(72, 48)
-	probe_map.compact_terrain = source_job.source
-	var probe_world := preload("res://addons/ember_import/ember_world_editor.gd").new()
-	probe_world.map = probe_map
-	probe_world.entry = {"compact": true, "resource": source_job.source}
-	probe_world._open_terrain_generation()
-	check(probe_world._generation_context.area == Rect2i(0, 0, 48, 48), "default area follows scene metadata instead of actual terrain")
-	probe_world._generation_dialog.hide()
-	probe_world._generation_dialog.queue_free()
-	probe_world.free()
-	probe_map.free()
-	var dialog := preload("res://addons/ember_import/ember_compact_terrain_generation_dialog.gd").new()
-	EditorInterface.get_base_control().add_child(dialog)
-	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
-	for dimensions in [Vector2i(1600, 900), Vector2i(1280, 720)]:
-		DisplayServer.window_set_size(dimensions)
-		await frames(10)
-		dialog.open_for(Rect2i(0, 0, 48, 48))
-		await frames(15)
-		print("GENERATOR_DIALOG_PROBE opened=", dialog.size, " host=", EditorInterface.get_base_control().size, " scale=", EditorInterface.get_editor_scale())
-		dialog.set_pending("Область выходит за границу карты.")
-		await frames(15)
-		var host := EditorInterface.get_base_control().size
-		check(dialog.size.y <= mini(800, int(host.y * 0.85)), "dialog exceeds bounded editor height: " + str(dialog.size))
-		check(dialog.size.x <= int(host.x * 0.9), "dialog exceeds editor width")
-		check(dialog._preview_button.position.y + dialog._preview_button.size.y < dialog.size.y, "preview outside dialog")
-		await RenderingServer.frame_post_draw
-		dialog.get_texture().get_image().save_png("res://qa_generation/dialog_%dx%d.png" % [dimensions.x, dimensions.y])
-		dialog.hide()
-	dialog.queue_free()
-	# Audit the neighbouring authoring windows without applying any operation.
-	var map_dialog := preload("res://addons/ember_import/ember_compact_map_dialog.gd").new()
-	EditorInterface.get_base_control().add_child(map_dialog)
-	map_dialog.open_for()
-	await frames(15)
-	print("GENERATOR_NEIGHBOUR_AUDIT map=", map_dialog.size, " minimum=", map_dialog.get_contents_minimum_size())
-	map_dialog.hide()
-	map_dialog.queue_free()
-	var section_dialog := preload("res://addons/ember_import/ember_compact_map_extension_dialog.gd").new()
-	EditorInterface.get_base_control().add_child(section_dialog)
-	var section_map := EmberMapLoader.new()
-	section_map.authored_size_blocks = Vector2i(48, 48)
-	section_dialog.open_for(section_map)
-	await frames(15)
-	print("GENERATOR_NEIGHBOUR_AUDIT section=", section_dialog.size, " minimum=", section_dialog.get_contents_minimum_size())
-	section_dialog.hide()
-	section_dialog.queue_free()
-	section_map.free()
-	print("GENERATOR_DIALOG_REGRESSION ", "PASS" if errors.is_empty() else "FAIL", " errors=", errors)
+	var importer := get_parent().get_node_or_null("EmberImportPlugin")
+	if importer == null: check(false, "importer missing"); get_tree().quit(1); return
+	# The full native plan/composition probes cover routing and save/undo.
+	check(not importer._world_editor.inspector_panel is Window, "dock uses a window")
+	print("GENERATOR_DOCK_REGRESSION ", "PASS" if errors.is_empty() else "FAIL", " errors=", errors)
 	get_tree().quit(0 if errors.is_empty() else 1)

@@ -19,6 +19,8 @@ var _strategy_signature := ""
 var _feedback := ""
 var _view: Dictionary = {}
 var _item_definitions: Dictionary = {}
+var _accessory_slot := ""
+var _accessory_target: OptionButton
 var _title: Label
 var _stats: Label
 var _equipment: Label
@@ -114,7 +116,9 @@ func confirm() -> void:
 			_feedback = "У предмета нет действия"
 			_refresh()
 			return
-		result = progress_state.equip_item_for_member(_hero_id(), str(row.get("itemId", "")))
+		var item: Dictionary = _item_definitions.get(str(row.get("itemId", "")), {})
+		var target := _accessory_slot if str(item.get("kind", "")) == "accessory" else ""
+		result = progress_state.equip_item_for_member(_hero_id(), str(row.get("itemId", "")), target)
 	_feedback = "Готово" if bool(result.get("ok", false)) else EmberEquipment.failure_ru(str(result.get("reason", "")))
 	_refresh()
 
@@ -166,7 +170,7 @@ func _refresh() -> void:
 	_bag_index = clampi(_bag_index, 0, maxi(0, rows.size() - 1))
 	_slot_index = clampi(_slot_index, 0, EmberEquipment.SLOTS.size() - 1)
 	_title.text = "ИНВЕНТАРЬ · %s" % str(_view.get("nameRu", _hero_id()))
-	_stats.text = "Ур. %d · XP %d  ·  HP %d/%d  ·  MP %d/%d  ·  atk %d  ·  def %d  ·  арена %d" % [
+	_stats.text = "Ур. %d · XP %d  ·  HP %d/%d  ·  MP %d/%d  ·  atk %d  ·  def %d" % [
 		int(_view.get("level", 1)),
 		int(_view.get("xp", 0)),
 		roundi(float(_view.get("hp", 0.0))),
@@ -175,7 +179,6 @@ func _refresh() -> void:
 		roundi(float(_view.get("maxMp", 0.0))),
 		int(_view.get("atk", 4)),
 		int(_view.get("def", 0)),
-		int(_view.get("arenaAtk", 4)),
 	]
 	var party_views := progress_state.party_view()
 	for index in _hero_buttons.size():
@@ -303,10 +306,12 @@ func _refresh_bag(rows: Array) -> void:
 
 func _refresh_detail(rows: Array) -> void:
 	var text := _feedback
+	_accessory_target.visible = false
 	if _mode == MODE_EQUIPMENT:
 		text = "F — снять предмет из выбранного слота" if text.is_empty() else text
 	elif not rows.is_empty():
 		var row: Dictionary = rows[_bag_index]
+		_accessory_target.visible = str(row.get("kind", "")) == "accessory"
 		var stats: Array[String] = []
 		if int(row.get("atk", 0)) != 0:
 			stats.append("atk %d" % int(row.get("atk", 0)))
@@ -399,7 +404,12 @@ func _build_panel() -> void:
 	backdrop.add_child(margin)
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 12)
-	margin.add_child(column)
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var scroll := ScrollContainer.new()
+	scroll.name = "InventoryContentScroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	margin.add_child(scroll)
+	scroll.add_child(column)
 	_title = Label.new()
 	_title.text = "ИНВЕНТАРЬ"
 	_title.add_theme_font_size_override("font_size", 30)
@@ -430,6 +440,7 @@ func _build_panel() -> void:
 		_hero_buttons.append(hero_button)
 	_stats = Label.new()
 	_stats.add_theme_font_size_override("font_size", 18)
+	_stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(_stats)
 	var columns := HBoxContainer.new()
 	columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -437,10 +448,12 @@ func _build_panel() -> void:
 	column.add_child(columns)
 	_equipment = Label.new()
 	_equipment.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_equipment.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_equipment.add_theme_font_size_override("font_size", 18)
 	columns.add_child(_equipment)
 	_bag = Label.new()
 	_bag.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_bag.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_bag.add_theme_font_size_override("font_size", 18)
 	columns.add_child(_bag)
 	var strategy_panel := VBoxContainer.new()
@@ -480,10 +493,20 @@ func _build_panel() -> void:
 	_detail = Label.new()
 	_detail.add_theme_font_size_override("font_size", 17)
 	_detail.add_theme_color_override("font_color", Color(0.88, 0.91, 1.0))
+	_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(_detail)
+	_accessory_target = OptionButton.new()
+	_accessory_target.name = "InventoryAccessoryTarget"
+	_accessory_target.tooltip_text = "Автоматически: первый свободный слот, а если оба заняты — замена аксессуара 1. Можно явно выбрать замену первого или второго."
+	for entry in [["", "Аксессуар: первый свободный слот"], ["accessory1", "Заменить аксессуар 1"], ["accessory2", "Заменить аксессуар 2"]]:
+		_accessory_target.add_item(entry[1])
+		_accessory_target.set_item_metadata(_accessory_target.item_count - 1, entry[0])
+	_accessory_target.item_selected.connect(func(index: int) -> void: _accessory_slot = str(_accessory_target.get_item_metadata(index)))
+	column.add_child(_accessory_target)
 	_help = Label.new()
 	_help.add_theme_font_size_override("font_size", 15)
 	_help.add_theme_color_override("font_color", Color(0.68, 0.66, 0.72))
+	_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(_help)
 
 

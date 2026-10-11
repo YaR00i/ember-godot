@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="EmberItemResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_item_resource.gd" id="1_source"]
+
+[resource]
+script = ExtResource("1_source")
+item_id = "coin"
+definition = {
+  "id": "coin",
+  "name": "Coin",
+  "nameRu": "Монета",
+  "kind": "material",
+  "slot": "none",
+  "rarity": "common",
+  "stackMax": 99,
+  "useIn": "both",
+  "tags": [
+    "currency",
+    "village"
+  ],
+  "iconId": "coin",
+  "notesRu": "Мелочь похоронного бюро. Позже — цена в лавке."
+}

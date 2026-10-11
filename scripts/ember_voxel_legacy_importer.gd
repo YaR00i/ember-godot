@@ -7,6 +7,37 @@ extends RefCounted
 const NATIVE_DIR := "res://content/voxel_models"
 
 
+static func definitions() -> Dictionary:
+	## Explicit migration inventory, never the object shelf/runtime catalog.
+	var result := {}
+	var directory := EmberPack.pack_root().path_join("voxels/models")
+	if not DirAccess.dir_exists_absolute(directory): return result
+	for filename in DirAccess.get_files_at(directory):
+		if not filename.ends_with(".json"): continue
+		var raw: Variant = EmberPack.parse_json_file(directory.path_join(filename))
+		if typeof(raw) != TYPE_DICTIONARY: continue
+		var definition := (raw as Dictionary).duplicate(true)
+		var id := str(definition.get("id", filename.get_basename())).strip_edges()
+		if id.is_empty(): continue
+		definition.id = id
+		definition["_owner"] = "legacy_import"
+		result[id] = definition
+	return result
+
+
+static func source_paths(model_id: String) -> Dictionary:
+	var json_path := EmberPack.model_json_path(model_id)
+	if not FileAccess.file_exists(json_path): return {"json": "", "vox": ""}
+	var raw: Variant = EmberPack.parse_json_file(json_path)
+	var definition: Dictionary = raw if typeof(raw) == TYPE_DICTIONARY else {}
+	return {"json": json_path, "vox": _legacy_vox_path(model_id, definition)}
+
+
+static func source_signature(model_id: String) -> String:
+	var paths := source_paths(model_id)
+	return _source_hash(paths.json, paths.vox) if not str(paths.json).is_empty() else ""
+
+
 static func destination_path(model_id: String) -> String:
 	return "%s/%s.tres" % [NATIVE_DIR, model_id.strip_edges()]
 

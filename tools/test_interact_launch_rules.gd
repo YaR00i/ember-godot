@@ -1,4 +1,7 @@
 extends SceneTree
+
+const Content = preload("res://tools/fixtures/ember_interaction_test_fixture.gd")
+var _setup: Dictionary = {}
 ## Conditions and one-shot routing reuse EmberInteract, typed explore flags and
 ## the existing action sequencer. No condition data is written into JOI JSON.
 
@@ -8,6 +11,10 @@ const FALLBACK_ID := "ember_test_launch_fallback"
 
 
 func _init() -> void:
+	_setup = Content.prepare(self)
+	if _setup.refused:
+		quit.call_deferred(2)
+		return
 	_run_and_quit.call_deferred()
 
 
@@ -17,6 +24,9 @@ func _run_and_quit() -> void:
 
 func _run() -> int:
 	var errors: Array[String] = []
+	if _setup.error != OK or not _setup.progress_isolated:
+		printerr("FAIL interaction fixture/progress setup")
+		return 1
 	var old_primary := Store.document(PRIMARY_ID)
 	var old_fallback := Store.document(FALLBACK_ID)
 	_write_fixtures(errors)
@@ -25,6 +35,7 @@ func _run() -> int:
 	await _test_runtime_contract(errors)
 	_restore_fixture(PRIMARY_ID, old_primary)
 	_restore_fixture(FALLBACK_ID, old_fallback)
+	Content.verify_sources(_setup, errors)
 	if not errors.is_empty():
 		printerr("FAIL interact launch rules")
 		for error in errors:
@@ -90,7 +101,7 @@ func _test_pure_contract(errors: Array[String]) -> void:
 	)
 	if bool(wrong_status.get("primary", true)) or str(wrong_status.get("scriptId", "")) != FALLBACK_ID:
 		errors.append("typed string condition did not route a mismatched quest status")
-	if EmberSceneAuthoring.suggested_completion_flag("fan-town", "Trigger 4") != "fan_town_trigger_4_used":
+	if EmberSceneAuthoring.suggested_completion_flag("fixture-map", "Trigger 4") != "fixture_map_trigger_4_used":
 		errors.append("suggested completion flag is not stable/safe")
 
 
@@ -99,8 +110,8 @@ func _test_editor_contract(errors: Array[String]) -> void:
 	editor.setup(
 		EmberSceneAuthoring.normalized_interact_values({"kind": "trigger", "script_id": PRIMARY_ID}),
 		false,
-		"agent_sandbox",
-		"agent_sandbox_trigger_1_used",
+		"fixture_map",
+		"fixture_map_trigger_1_used",
 	)
 	var condition := editor.find_child("Field_condition_flag_id", true, false) as LineEdit
 	var expected_row := editor.find_child("FieldRow_condition_value", true, false) as Control
@@ -129,14 +140,15 @@ func _test_editor_contract(errors: Array[String]) -> void:
 			errors.append("launch condition has no quest flag reference picker")
 		once.button_pressed = true
 		once.toggled.emit(true)
-		if completion.text != "agent_sandbox_trigger_1_used":
+		if completion.text != "fixture_map_trigger_1_used":
 			errors.append("one-shot did not suggest a stable completion flag")
 	editor.free()
 
 
 func _test_runtime_contract(errors: Array[String]) -> void:
 	var state := EmberExploreState.new()
-	state.persistence_enabled = false
+	state.storage_root = str(_setup.directory).path_join("launch-progress")
+	state.persistence_enabled = true
 	state.restore_enabled = false
 	state.reset_new_game()
 	var ui := EmberInteractionUi.new()
@@ -167,6 +179,11 @@ func _test_runtime_contract(errors: Array[String]) -> void:
 		errors.append("successful primary did not persist one-shot completion")
 	if interact.runtime_available(state.flags):
 		errors.append("completed one-shot remained runtime-available")
+	var reopened := EmberExploreState.new()
+	reopened.storage_root = state.storage_root
+	if not reopened.load_autosave() or reopened.flags.get("launch_used") != true or interact.runtime_available(reopened.flags):
+		errors.append("one-shot completion did not survive save reopen")
+	reopened.free()
 	var typed_interact := EmberSceneAuthoring.make_interact({
 		"kind": "trigger",
 		"script_id": PRIMARY_ID,
@@ -180,7 +197,7 @@ func _test_runtime_contract(errors: Array[String]) -> void:
 	typed_interact.free()
 
 	state.flags.erase("launch_used")
-	interact.script_id = "sandbox_guard_talk"
+	interact.script_id = "interaction_guard"
 	interact.condition_flag_id = ""
 	interact.fallback_script_id = ""
 	ui.activate(interact)

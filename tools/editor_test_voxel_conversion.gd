@@ -1,6 +1,5 @@
 @tool
 extends EditorPlugin
-const Dialog = preload("res://addons/ember_import/ember_voxel_conversion_dialog.gd")
 var errors: Array[String] = []
 func _enter_tree() -> void:
 	_run.call_deferred()
@@ -30,20 +29,19 @@ func _run() -> void:
 	var collider := parent.get_node("Collision")
 	EditorInterface.get_selection().clear()
 	EditorInterface.get_selection().add_node(parent)
-	get_parent().get_node("EmberImportPlugin").call("_convert_voxel_form")
+	var importer := get_parent().get_node("EmberImportPlugin")
+	importer.call("_convert_voxel_form")
 	await frames(20)
-	var dialog: ConfirmationDialog
-	for child in EditorInterface.get_base_control().get_children():
-		if child is Dialog:
-			dialog = child
-	check(dialog != null,"toolbar did not open conversion")
+	var dialog: Control = importer._world_editor.conversion_panel
+	check(dialog != null and importer._world_editor._panel_host.is_active("conversion"),"toolbar did not open conversion dock")
 	if dialog == null:
 		get_tree().quit(1)
 		return
+	dialog._prepare_button.pressed.emit()
 	check(not dialog.get_ok_button().disabled,"preview invalid: " + dialog._status.text)
-	await capture("preview",dialog)
+	await capture("preview")
 	dialog._show_original.button_pressed = true
-	await capture("original",dialog)
+	await capture("original")
 	dialog._show_original.button_pressed = false
 	dialog._commit()
 	await frames(30)

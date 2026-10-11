@@ -1,6 +1,11 @@
 // Surface light only. GGX / correlated Smith visibility / Schlick Fresnel.
 // Reference: https://google.github.io/filament/main/filament.html#materialsystem/standardmodel
 // Godot LIGHT_COLOR contains PI; both BRDF lobes account for it here.
+float ember_surface_diffuse(float nl, float fresnel) {
+	// ALBEDO is applied by Godot after the custom light function.
+	return max(nl, 0.0) * (1.0 - fresnel) / PI;
+}
+
 float ember_surface_fresnel(float view_half, float f0) {
 	float edge = 1.0 - clamp(view_half, 0.0, 1.0);
 	return f0 + (1.0 - f0) * edge * edge * edge * edge * edge;

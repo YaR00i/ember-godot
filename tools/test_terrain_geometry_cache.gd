@@ -39,12 +39,15 @@ func project(source: Terrain, path := "", enabled := true, fields: WaterFields =
 	if fields != null:
 		projection.set_waterfall(fields)
 		projection.set_sea_swash(fields)
+	await settle(projection)
+	return projection
+
+func settle(projection: TerrainProjection) -> void:
 	var deadline := Time.get_ticks_msec() + 20000
 	while projection.pending_tile_count() > 0 or projection.pending_runtime_lod_count() > 0:
 		assert(Time.get_ticks_msec() < deadline)
 		await process_frame
 	assert(not projection.is_processing())
-	return projection
 
 func snapshot(projection: TerrainProjection) -> Dictionary:
 	var result := {}
@@ -62,6 +65,9 @@ func run() -> void:
 	assert(cold_profile.geometry_cache_hits == 0 and cold_profile.geometry_cache_misses == 8)
 	assert(cold_profile.ground_lod_tiles > 0 and cold_profile.water_lod_tiles > 0)
 	assert(cold_profile.geometry_cache_failures == 0)
+	assert(cold_profile.runtime_lod_array_readbacks == 0, "cold LOD must reuse the serialization arrays")
+	assert(cold_profile.get("geometry_prepare_jobs", 0) == 8,
+		"runtime geometry keys/read/validation must run in the bounded CPU worker")
 	var geometry_key: String = cold._geometry_keys[Vector2i.ZERO]
 	cold.free()
 	var resource_path := directory.path_join("fixture.tres")
@@ -70,6 +76,10 @@ func run() -> void:
 	var warm := await project(reopened)
 	var warm_profile := warm.profile_snapshot()
 	assert(warm_profile.geometry_cache_hits == 8 and warm_profile.geometry_cache_misses == 0)
+	assert(warm_profile.get("runtime_lod_array_readbacks", -1) == 0,
+		"warm cached arrays must reach LOD without a redundant mesh readback")
+	assert(warm_profile.geometry_prepare_max_tiles <= Cache.PREPARE_TILES)
+	assert(warm_profile.geometry_prepare_max_bytes < Cache.PREPARE_BYTES + 16 * 1024 * 1024)
 	assert(warm_profile.ground_lod_cache_hits == warm_profile.ground_lod_jobs and warm_profile.water_lod_cache_hits == warm_profile.water_lod_jobs)
 	assert(warm_profile.ground_lod_cpu_us == 0 and warm_profile.water_lod_cpu_us == 0)
 	assert(snapshot(warm) == baseline and reopened.same_terrain_data(original))
@@ -88,6 +98,7 @@ func run() -> void:
 	var changed := await project(edited)
 	assert(changed.profile_snapshot().geometry_cache_misses == 4 and changed.profile_snapshot().geometry_cache_hits == 4, "local edit invalidated distant tiles")
 	var exact := await project(edited, "", false)
+	assert(exact.profile_snapshot().runtime_lod_array_readbacks > 0, "cache-disabled fallback must remain available")
 	assert(snapshot(changed) == snapshot(exact))
 	changed.free(); exact.free()
 	var undo := await project(original)
@@ -129,6 +140,19 @@ func run() -> void:
 	var warm_fields := await project(original, "", true, fields)
 	assert(warm_fields.profile_snapshot().geometry_cache_hits == 8 and snapshot(warm_fields) == field_geometry)
 	warm_fields.free()
+	# Real curved waterfall normals/UV markers also survive direct array handoff.
+	var fall_source: Terrain = preload("res://tools/build_compact_waterfall_study.gd").fixture()
+	var fall := preload("res://scripts/prototypes/ember_compact_waterfall.gd").new()
+	fall.build(fall_source, true)
+	assert(not fall.tiles.is_empty())
+	var fall_fields := WaterFields.new(); fall_fields.tiles = fall.tiles
+	fall_source = fall_source.sectioned_copy()
+	var fall_cold := await project(fall_source, "", true, fall_fields)
+	var fall_geometry := snapshot(fall_cold); fall_cold.free()
+	var fall_warm := await project(fall_source.working_copy(), "", true, fall_fields)
+	assert(fall_warm.profile_snapshot().runtime_lod_array_readbacks == 0)
+	assert(snapshot(fall_warm) == fall_geometry, "curved waterfall changed after cache reload")
+	fall_warm.free()
 	# Growing the envelope only changes dependencies near its former edge.
 	var grown := original.dense_window(Rect2i(0, 0, 320, 128)).sectioned_copy()
 	assert(grown.validation_errors().is_empty())
@@ -157,13 +181,74 @@ func run() -> void:
 		assert(Time.get_ticks_msec() < deadline)
 		await process_frame
 	closing.free()
-	for name in DirAccess.get_files_at(cancel_path): assert(not name.ends_with(".tmp"))
+	if DirAccess.dir_exists_absolute(cancel_path):
+		for name in DirAccess.get_files_at(cancel_path): assert(not name.ends_with(".tmp"))
 	var recovered := await project(original, cancel_path)
 	assert(snapshot(recovered) == baseline and recovered.profile_snapshot().geometry_cache_failures == 0)
 	recovered.free()
+	# The same bounded worker handles more than one batch; exact geometry and
+	# physics still match the cache-disabled path, including empty addressed land.
+	var wide := original.dense_window(Rect2i(0, 0, 512, 320)).sectioned_copy()
+	var batched := await project(wide, directory.path_join("batches"))
+	assert(batched.profile_snapshot().geometry_prepare_batches >= 2)
+	assert(batched.profile_snapshot().geometry_prepare_max_tiles <= Cache.PREPARE_TILES)
+	var wide_exact := await project(wide, "", false)
+	assert(snapshot(batched) == snapshot(wide_exact))
+	batched.free(); wide_exact.free()
+	# Growth can preserve previously queued addresses. After cancellation they
+	# must receive fresh reads, rather than waiting forever on erased requests.
+	var growing := TerrainProjection.new()
+	growing.runtime_geometry_cache_directory = directory.path_join("batches")
+	growing.water_mesh_step = 8; growing.water_volume_sides = true
+	root.add_child(growing); assert(growing.open_document(wide))
+	growing.set_process(false); growing._process(0)
+	var wide_grown := wide.dense_window(Rect2i(0, 0, 704, 320)).sectioned_copy()
+	assert(growing.open_resized_document(wide_grown, wide, "east", 192))
+	await settle(growing)
+	var grown_exact := await project(wide_grown, "", false)
+	assert(snapshot(growing) == snapshot(grown_exact), "growth lost previously pending tiles")
+	growing.free(); grown_exact.free()
+	# Coalesced requests must invalidate an in-flight snapshot too. Force the
+	# worker start before changing both the persistent columns and water fields.
+	var racing := TerrainProjection.new()
+	racing.runtime_geometry_cache_directory = directory
+	racing.water_mesh_step = 8; racing.water_volume_sides = true
+	root.add_child(racing)
+	assert(racing.open_document(original))
+	racing.set_process(false); racing._process(0)
+	assert(racing._mesh_lod_thread.is_started() and racing.built_tile_count() == 0)
+	racing.apply_columns(PackedInt32Array([index]), PackedInt32Array([height]), PackedByteArray([1]), PackedInt32Array([128]), PackedByteArray([3]))
+	racing.set_sea_swash(fields); racing.set_waterfall(fields)
+	await settle(racing)
+	assert(racing.profile_snapshot().geometry_prepare_stale > 0)
+	var racing_exact := await project(edited, "", false, fields)
+	assert(snapshot(racing) == snapshot(racing_exact), "old terrain/water arrays were published after a newer request")
+	racing.free(); racing_exact.free()
+	# Replacement joins the worker and discards unpublished arrays before a
+	# fresh document can reuse tile addresses.
+	var replacing := TerrainProjection.new()
+	replacing.runtime_geometry_cache_directory = directory
+	replacing.water_mesh_step = 8; replacing.water_volume_sides = true
+	root.add_child(replacing); assert(replacing.open_document(original))
+	replacing.set_process(false); replacing._process(0)
+	assert(replacing._mesh_lod_thread.is_started())
+	assert(replacing.open_document(edited))
+	await settle(replacing)
+	var replacing_exact := await project(edited, "", false)
+	assert(snapshot(replacing) == snapshot(replacing_exact))
+	replacing.free(); replacing_exact.free()
+	# Thread-start fallback uses the same exact synchronous cache path.
+	var sync_fallback := TerrainProjection.new()
+	sync_fallback.runtime_geometry_cache_directory = directory
+	sync_fallback.water_mesh_step = 8; sync_fallback.water_volume_sides = true
+	root.add_child(sync_fallback); assert(sync_fallback.open_document(original))
+	sync_fallback._geometry_prepare_disabled = true
+	await settle(sync_fallback)
+	assert(sync_fallback.profile_snapshot().geometry_prepare_jobs == 0 and snapshot(sync_fallback) == baseline)
+	sync_fallback.free()
 	# The transport budget only removes its own derived-file extension.
 	store.trim(0)
 	assert(FileAccess.file_exists(resource_path) and FileAccess.get_file_as_string(blocked) == "sentinel")
-	assert(DirAccess.get_files_at(directory).size() == 2)
-	print("GEOMETRY_CACHE PASS fresh-resource/warm/near/LOD/physics/local-edit/Undo/growth/water-fields/corrupt/version/malformed/I-O/budget/camera/cancel cold=", cold_profile, " warm=", warm_profile)
+	for name in DirAccess.get_files_at(directory): assert(not name.ends_with(".edc") and not name.ends_with(".tmp"))
+	print("GEOMETRY_CACHE PASS fresh-resource/warm/near/LOD/physics/local-edit/Undo/growth/water-fields/corrupt/version/malformed/I-O/budget/camera/cancel/bounded-worker/stale/replace/sync-fallback cold=", cold_profile, " warm=", warm_profile)
 	quit()

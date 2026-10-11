@@ -16,6 +16,9 @@ const StatusPanel := preload("res://addons/ember_import/ember_combat_status_insp
 const EffectPanel := preload("res://addons/ember_import/ember_combat_effect_inspector_panel.gd")
 const ActionPanel := preload("res://addons/ember_import/ember_combat_action_inspector_panel.gd")
 const UnitPanel := preload("res://addons/ember_import/ember_combat_unit_inspector_panel.gd")
+const CommonSession = preload("res://addons/ember_import/ember_game_systems_session.gd")
+const CommonStore = preload("res://addons/ember_import/ember_game_systems_store.gd")
+signal draft_requested(module: String, source: Resource)
 
 const KINDS := ["status", "effect", "action", "unit"]
 const ROOTS := {
@@ -786,9 +789,10 @@ func _save_resource(resource: Resource) -> void:
 		_status.text = "Не сохранено: исправьте ошибки проверки.\n• %s" % "\n• ".join(errors)
 		_status.modulate = Color("ff8d78")
 		return
-	var error := ResourceSaver.save(resource, resource.resource_path)
-	if error != OK:
-		_status.text = "Не удалось сохранить %s: %s" % [resource.resource_path, error_string(error)]
+	var publication := CommonSession.new()
+	publication.configure(_undo_redo)
+	if not publication.publish_current(_kind, resource):
+		_status.text = publication.last_error
 		_status.modulate = Color("ff8d78")
 		return
 	StatusCatalog.refresh()
@@ -801,6 +805,9 @@ func _save_resource(resource: Resource) -> void:
 
 
 func _open_create_dialog(duplicate_selected: bool) -> void:
+	if not draft_requested.get_connections().is_empty():
+		draft_requested.emit(_kind, _selected_resource() if duplicate_selected else null)
+		return
 	_duplicate_source = _selected_resource() if duplicate_selected else null
 	_create_dialog.title = "Дублировать боевой Resource" if _duplicate_source != null else "Новый боевой Resource"
 	_create_dialog.ok_button_text = "Создать копию" if _duplicate_source != null else "Создать .tres"
@@ -830,7 +837,7 @@ func _create_resource() -> void:
 		_status.text = "Не создано: файл %s уже существует." % path
 		_status.modulate = Color("ff8d78")
 		return
-	var resource := _duplicate_source.duplicate(false) as Resource if _duplicate_source != null else _blank_resource()
+	var resource := CommonStore.clone(_duplicate_source) if _duplicate_source != null else _blank_resource()
 	if resource == null:
 		_status.text = "Не удалось создать Resource."
 		_status.modulate = Color("ff8d78")
@@ -841,7 +848,7 @@ func _create_resource() -> void:
 	resource.set("display_name", display_name)
 	if _kind == "unit" and _duplicate_source == null:
 		resource.set("team", _create_team.selected)
-	var error := ResourceSaver.save(resource, path, ResourceSaver.FLAG_CHANGE_PATH)
+	var error := CommonStore.write(_kind, resource, path)
 	if error != OK:
 		_status.text = "Не удалось сохранить %s: %s" % [path, error_string(error)]
 		_status.modulate = Color("ff8d78")

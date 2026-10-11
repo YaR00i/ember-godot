@@ -406,18 +406,6 @@ func save_dialogue_graph(document: Dictionary, root_override: Node = null) -> bo
 	return true
 
 
-func migrate_dialogue(dialogue_id: String, root_override: Node = null) -> bool:
-	var root := root_override if root_override != null else EditorInterface.get_edited_scene_root()
-	if root == null or _undo_redo == null or DialogueStore.owner(dialogue_id) != "legacy":
-		return false
-	var previous_snapshot := DialogueStore.snapshot(dialogue_id)
-	_create_action("Перенести Ember диалог в Godot Resource", root)
-	_add_do_method("_migrate_dialogue", [dialogue_id])
-	_add_undo_method("_restore_dialogue", [previous_snapshot])
-	_commit_action()
-	return true
-
-
 func save_action_script(document: Dictionary, root_override: Node = null) -> bool:
 	var root := root_override if root_override != null else EditorInterface.get_edited_scene_root()
 	if root == null or _undo_redo == null:
@@ -436,40 +424,14 @@ func save_action_script(document: Dictionary, root_override: Node = null) -> boo
 	return true
 
 
-func migrate_action_script(script_id: String, root_override: Node = null) -> bool:
-	var root := root_override if root_override != null else EditorInterface.get_edited_scene_root()
-	if root == null or _undo_redo == null or ActionScriptStore.owner(script_id) != "legacy":
-		return false
-	var previous_snapshot := ActionScriptStore.snapshot(script_id)
-	_create_action("Перенести Ember цепочку в Godot Resource", root)
-	_add_do_method("_migrate_action_script", [script_id])
-	_add_undo_method("_restore_chain", [previous_snapshot])
-	_commit_action()
-	return true
-
-
 func save_shop(document: Dictionary, root_override: Node = null) -> bool:
 	var root := root_override if root_override != null else EditorInterface.get_edited_scene_root()
 	if root == null or _undo_redo == null or not ShopStore.validation_errors(document).is_empty():
 		return false
 	var shop_id := str(document.get("id", ""))
-	if ShopStore.owner(shop_id) == "legacy":
-		return false
 	var previous_snapshot := ShopStore.snapshot(shop_id)
 	_create_action("Сохранить Ember магазин", root)
 	_add_do_method("_write_shop", [document.duplicate(true)])
-	_add_undo_method("_restore_shop", [previous_snapshot])
-	_commit_action()
-	return true
-
-
-func migrate_shop(shop_id: String, root_override: Node = null) -> bool:
-	var root := root_override if root_override != null else EditorInterface.get_edited_scene_root()
-	if root == null or _undo_redo == null or ShopStore.owner(shop_id) != "legacy":
-		return false
-	var previous_snapshot := ShopStore.snapshot(shop_id)
-	_create_action("Перенести Ember магазин в Godot Resource", root)
-	_add_do_method("_migrate_shop", [shop_id])
 	_add_undo_method("_restore_shop", [previous_snapshot])
 	_commit_action()
 	return true
@@ -480,8 +442,6 @@ func save_item(document: Dictionary, root_override: Node = null) -> bool:
 	if root == null or _undo_redo == null or not ItemStore.validation_errors(document).is_empty():
 		return false
 	var item_id := str(document.get("id", ""))
-	if ItemStore.owner(item_id) == "legacy":
-		return false
 	var previous_snapshot := ItemStore.snapshot(item_id)
 	_create_action("Сохранить Ember предмет", root)
 	_add_do_method("_write_item", [document.duplicate(true)])
@@ -490,21 +450,9 @@ func save_item(document: Dictionary, root_override: Node = null) -> bool:
 	return true
 
 
-func migrate_item(item_id: String, root_override: Node = null) -> bool:
-	var root := root_override if root_override != null else EditorInterface.get_edited_scene_root()
-	if root == null or _undo_redo == null or ItemStore.owner(item_id) != "legacy":
-		return false
-	var previous_snapshot := ItemStore.snapshot(item_id)
-	_create_action("Перенести Ember предмет в Godot Resource", root)
-	_add_do_method("_migrate_item", [item_id])
-	_add_undo_method("_restore_item", [previous_snapshot])
-	_commit_action()
-	return true
-
-
 func migrate_voxel_model(model_id: String, root_override: Node = null) -> bool:
 	var root := root_override if root_override != null else EditorInterface.get_edited_scene_root()
-	if root == null or _undo_redo == null or VoxelModelStore.owner(model_id) != "legacy_import":
+	if root == null or _undo_redo == null or not VoxelModelStore.can_import_legacy(model_id):
 		return false
 	var previous_snapshot := VoxelModelStore.snapshot(model_id)
 	_create_action("Перенести Ember voxel-модель в Godot Resource", root)
@@ -520,7 +468,7 @@ func migrate_voxel_models(model_ids: Array[String], root_override: Node = null) 
 		return false
 	var snapshots: Array[Dictionary] = []
 	for model_id in model_ids:
-		if VoxelModelStore.owner(model_id) != "legacy_import":
+		if not VoxelModelStore.can_import_legacy(model_id):
 			return false
 		snapshots.append(VoxelModelStore.snapshot(model_id))
 	_create_action("Перенести %d Ember voxel-моделей в Godot Resources" % model_ids.size(), root)
@@ -805,26 +753,10 @@ func _restore_chain(previous_snapshot: Dictionary) -> void:
 	_refresh_filesystem()
 
 
-func _migrate_action_script(script_id: String) -> void:
-	var error := ActionScriptStore.migrate_to_native(script_id)
-	if error != OK:
-		push_error("Ember Inspector: action-chain migration failed (%s)." % error)
-		return
-	_refresh_filesystem()
-
-
 func _write_shop(document: Dictionary) -> void:
 	var error := ShopStore.write_document(document)
 	if error != OK:
 		push_error("Ember Inspector: shop write failed (%s)." % error)
-		return
-	_refresh_filesystem()
-
-
-func _migrate_shop(shop_id: String) -> void:
-	var error := ShopStore.migrate_to_native(shop_id)
-	if error != OK:
-		push_error("Ember Inspector: shop migration failed (%s)." % error)
 		return
 	_refresh_filesystem()
 
@@ -841,14 +773,6 @@ func _write_item(document: Dictionary) -> void:
 	var error := ItemStore.write_document(document)
 	if error != OK:
 		push_error("Ember Inspector: item write failed (%s)." % error)
-		return
-	_refresh_filesystem()
-
-
-func _migrate_item(item_id: String) -> void:
-	var error := ItemStore.migrate_to_native(item_id)
-	if error != OK:
-		push_error("Ember Inspector: item migration failed (%s)." % error)
 		return
 	_refresh_filesystem()
 
@@ -927,14 +851,6 @@ func _write_dialogue_graph(document: Dictionary) -> void:
 	var error := DialogueStore.write_graph_document(document)
 	if error != OK:
 		push_error("Ember Inspector: dialogue graph write failed (%s)." % error)
-		return
-	_refresh_filesystem()
-
-
-func _migrate_dialogue(dialogue_id: String) -> void:
-	var error := DialogueStore.migrate_to_native(dialogue_id)
-	if error != OK:
-		push_error("Ember Inspector: dialogue migration failed (%s)." % error)
 		return
 	_refresh_filesystem()
 

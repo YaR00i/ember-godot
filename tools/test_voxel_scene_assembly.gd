@@ -156,29 +156,36 @@ func _run() -> void:
 	# UI is tested through actual signals; Cancel never creates scene nodes.
 	var dialog := Dialog.new()
 	root.add_child(dialog)
+	var dock := VBoxContainer.new(); dock.size = Vector2(302,600)
+	var theme := Theme.new(); theme.default_font_size = 20; dock.theme = theme; root.add_child(dock)
+	dock.add_child(dialog.parameters_panel)
 	check(dialog.open_for(source, scene, undo, creation.source_directory), "dialog open")
 	var node_count := parent.get_child_count()
 	dialog._axes[0].value = 23
 	dialog._count.value = 4
 	check(dialog.operation.positions.size() == 4, "UI count signal")
 	check(parent.get_child_count() == node_count, "UI preview mutated scene")
+	for frame in 5: await process_frame
+	check(dialog.parameters_panel.get_combined_minimum_size().x <= 302,"copy dock width overflow")
+	check(dock.get_global_rect().encloses(dialog.get_create_button().get_global_rect()),"copy footer outside dock")
 	if "--capture" in OS.get_cmdline_user_args():
 		root.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
 		root.content_scale_size = Vector2i.ZERO
 		root.size = Vector2i(1280, 720)
-		dialog.popup_centered(Vector2i(620, 600))
+		dock.position = Vector2(958,20); dock.size = Vector2(302,680)
+		dialog.position = Vector2(20,440); dialog.size = Vector2(918,260)
 		for frame in 12:
 			await process_frame
 		RenderingServer.force_draw(false)
 		print("COPY_LAYOUT ", dialog.position, " / ", dialog.size, " container ", dialog.find_child("CopyPreview", true, false).size)
-		check(dialog.position.y + dialog.size.y <= root.size.y, "dialog exceeds 720p")
-		check(dialog.size.x <= root.size.x, "dialog exceeds viewport width")
+		check(root.get_visible_rect().encloses(dialog.get_global_rect()) and root.get_visible_rect().encloses(dock.get_global_rect()),"copy panels exceed 720p")
 		check(dialog._preview.get_child_count() == 7, "preview missing row visuals/camera/light")
 		var path := "user://voxel-copies-preview-%d.png" % OS.get_process_id()
 		root.get_texture().get_image().save_png(path)
 		print("COPY_PREVIEW ", ProjectSettings.globalize_path(path))
 		root.size = Vector2i(1600, 900)
-		dialog.popup_centered(Vector2i(620, 600))
+		dock.position = Vector2(1278,20); dock.size = Vector2(302,860)
+		dialog.position = Vector2(20,620); dialog.size = Vector2(1238,260)
 		for frame in 12:
 			await process_frame
 		check(dialog.position.y + dialog.size.y <= root.size.y, "dialog exceeds 900p")
@@ -186,8 +193,9 @@ func _run() -> void:
 		path = "user://voxel-copies-preview-900-%d.png" % OS.get_process_id()
 		root.get_texture().get_image().save_png(path)
 		print("COPY_PREVIEW_900 ", ProjectSettings.globalize_path(path))
-	dialog.hide()
+	dialog.cancel_edit()
 	dialog.free()
+	dock.free()
 	check(parent.get_child_count() == node_count, "Cancel mutated scene")
 	_finish(scene, undo)
 

@@ -22,18 +22,18 @@ func ready_tiles(projection: EmberTerrainPilotProjection) -> void:
 	while projection.pending_tile_count() > 0 and Time.get_ticks_msec() < deadline: await frames(1)
 	check(projection.pending_tile_count() == 0, "tile timeout")
 
-func ready_dialog(dialog: ConfirmationDialog) -> void:
+func ready_dialog(dialog: Control) -> void:
 	var deadline := Time.get_ticks_msec() + 60000
-	while dialog.get_ok_button().disabled and Time.get_ticks_msec() < deadline: await frames(1)
-	check(not dialog.get_ok_button().disabled, "preview timeout: " + dialog._status.text)
+	while dialog.get_apply_button().disabled and Time.get_ticks_msec() < deadline: await frames(1)
+	check(not dialog.get_apply_button().disabled, "preview timeout: " + dialog._status.text)
 
 func capture(name: String) -> void:
 	await frames(6)
 	await RenderingServer.frame_post_draw
 	EditorInterface.get_base_control().get_viewport().get_texture().get_image().save_png("res://qa_selection/" + name + ".png")
 	var world: Node = get_parent().get_node("EmberImportPlugin")._world_editor
-	if is_instance_valid(world._generation_dialog) and world._generation_dialog.visible:
-		world._generation_dialog.get_texture().get_image().save_png("res://qa_selection/" + name + "_dialog.png")
+	if is_instance_valid(world._generation_panel) and world._generation_panel.visible:
+		world._generation_panel.get_viewport().get_texture().get_image().save_png("res://qa_selection/" + name + "_dialog.png")
 
 func drag(world: Node, start: Vector2i, finish: Vector2i) -> void:
 	var projection: Node3D = world.map._visual_surface_projection
@@ -112,9 +112,9 @@ func _run() -> void:
 	check(world._section_controls.global_position.x + world._section_controls.size.x <= EditorInterface.get_base_control().size.x, "selection actions leave the small window")
 	await capture("selection_small")
 	world._section_next.pressed.emit()
-	var dialog: ConfirmationDialog = world._generation_dialog
+	var dialog: Control = world._generation_panel
 	check(dialog.visible and dialog._back_button.visible and world._generation_context.addition, "parameters not connected to selection")
-	check(dialog.size.x <= 550 and dialog.size.y <= 600, "oversized dialog")
+	check(world.inspector_panel.is_ancestor_of(dialog) and dialog.get_combined_minimum_size().x <= world.inspector_panel.size.x, "parameters outside dock or horizontal overflow")
 	await capture("parameters_small")
 	dialog._back_button.pressed.emit()
 	await frames(3)
@@ -128,7 +128,7 @@ func _run() -> void:
 	drag(world, Vector2i(-1, -1), Vector2i.ZERO)
 	check(world._section_rect == Rect2i(-1, -1, 2, 2), "negative address selection")
 	key(world, KEY_ENTER)
-	dialog = world._generation_dialog
+	dialog = world._generation_panel
 	dialog._preview_button.pressed.emit()
 	await ready_dialog(dialog)
 	check(world._generation_context.selection.keys.size() == 3, "preview changed occupied sections")
@@ -141,7 +141,7 @@ func _run() -> void:
 	var clean_saved := (load(SCENE) as PackedScene).instantiate()
 	check(clean_saved.get_node("Map").position == Vector3.ZERO, "native Save packed temporary preview origin")
 	clean_saved.free()
-	check(world._generation_preview == null and dialog.get_ok_button().disabled, "Save did not invalidate preview")
+	check(world._generation_preview == null and dialog.get_apply_button().disabled, "Save did not invalidate preview")
 	dialog._preview_button.pressed.emit()
 	await ready_dialog(dialog)
 	world.save_all()
@@ -149,7 +149,7 @@ func _run() -> void:
 	clean_saved = (load(SCENE) as PackedScene).instantiate()
 	check(clean_saved.get_node("Map").position == Vector3.ZERO, "toolbar Save packed temporary preview origin")
 	clean_saved.free()
-	check(world._generation_preview == null and dialog.get_ok_button().disabled, "toolbar Save left preview")
+	check(world._generation_preview == null and dialog.get_apply_button().disabled, "toolbar Save left preview")
 	dialog.hide()
 	await frames(3)
 	check(map.position == Vector3.ZERO and world._generation_preview == null, "cancel retained origin shift")
@@ -165,8 +165,8 @@ func _run() -> void:
 		var stale_version: Terrain = world._generation_context.version.duplicate(false)
 		stale_version.width += 16
 		world._generation_context.version = stale_version
-		dialog.get_ok_button().pressed.emit()
-		check(dialog.visible and dialog.get_ok_button().disabled and dialog._status.text.contains("изменилась"), "rejected confirmation hid the reason")
+		dialog.get_apply_button().pressed.emit()
+		check(dialog.visible and dialog.get_apply_button().disabled and dialog._status.text.contains("изменилась"), "rejected confirmation hid the reason")
 		check(world.sessions.open_map(map, scene).resource.sections.size() == 4, "rejected confirmation changed terrain")
 		dialog._preview_button.pressed.emit()
 		await ready_dialog(dialog)
@@ -174,7 +174,7 @@ func _run() -> void:
 	var preview_tile := world._generation_preview.get_node("PreviewTile_1_1").get_child(0, true) as MeshInstance3D
 	var points: PackedVector3Array = preview_tile.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
 	var shown_position := preview_tile.global_position
-	dialog.get_ok_button().pressed.emit()
+	dialog.get_apply_button().pressed.emit()
 	check(not dialog.visible, "successful confirmation left dialog open")
 	dialog.hide()
 	if "--confirm-button-regression" in OS.get_cmdline_user_args():
@@ -207,7 +207,7 @@ func _run() -> void:
 	key(world, KEY_ENTER)
 	dialog._preview_button.pressed.emit()
 	await ready_dialog(dialog)
-	dialog.get_ok_button().pressed.emit()
+	dialog.get_apply_button().pressed.emit()
 	dialog.hide()
 	await ready_tiles(projection)
 	var playback := Node.new()
@@ -248,11 +248,11 @@ func _verify_section_budget(world: Node, importer: Node, map: EmberMapLoader, sc
 	importer._extend_compact_map()
 	drag(world, Vector2i(2, 0), Vector2i(2, 0))
 	world._section_next.pressed.emit()
-	var dialog: ConfirmationDialog = world._generation_dialog
+	var dialog: Control = world._generation_panel
 	check(dialog.visible, "first addition did not open parameters")
 	dialog._preview_button.pressed.emit()
 	await ready_dialog(dialog)
-	dialog.get_ok_button().pressed.emit()
+	dialog.get_apply_button().pressed.emit()
 	await ready_tiles(map._visual_surface_projection)
 	check(world.enabled.button_pressed and not dialog.visible, "Apply left edit mode or kept parameters")
 	importer._extend_compact_map()

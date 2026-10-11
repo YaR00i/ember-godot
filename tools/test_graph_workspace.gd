@@ -1,4 +1,5 @@
 extends SceneTree
+const MixedFixture = preload("res://tools/fixtures/ember_mixed_editor_test_fixture.gd")
 ## Full-size editor graph smoke: canonical action/dialogue documents become native
 ## GraphNodes without changing their schema, while existing safe editors remain.
 
@@ -23,6 +24,9 @@ var _requested_action_save: Dictionary = {}
 
 
 func _init() -> void:
+	if not MixedFixture.prepare(self):
+		quit(2)
+		return
 	root.size = Vector2i(1280, 720)
 	_run_and_quit.call_deferred()
 
@@ -81,6 +85,7 @@ func _run() -> int:
 	workspace_host.free()
 	_restore_fixture(old_document)
 	_restore_dialogue_fixture(old_dialogue)
+	MixedFixture.verify_sources(errors)
 	if not errors.is_empty():
 		printerr("FAIL graph workspace")
 		for error in errors:
@@ -241,8 +246,10 @@ func _test_voxel_surface_entry(errors: Array[String], workspace: EmberGraphWorks
 		or not current_sidebar.is_ancestor_of(region_button)
 	):
 		errors.append("Voxel Surface edit-region controls left the resizable sidebar")
-	if tool.item_count != 8:
-		errors.append("Voxel Surface compact rail should expose 8 families, got %d" % tool.item_count)
+	if tool.item_count != 9:
+		errors.append("Voxel Surface compact rail should expose 9 families, got %d" % tool.item_count)
+	if SculptModel.TOOL_GRAB not in tool_ids:
+		errors.append("Voxel Surface compact rail lost the soft grab family")
 	if SculptModel.TOOL_ADD not in tool_ids or SculptModel.TOOL_RAISE not in tool_ids:
 		errors.append("Voxel Surface compact rail lost volume or relief family")
 	if SculptModel.TOOL_LEVEL not in tool_ids:
@@ -321,8 +328,8 @@ func _test_voxel_surface_entry(errors: Array[String], workspace: EmberGraphWorks
 	if strengths != [1, 2, 4, 8]:
 		errors.append("Voxel Surface smoothing strengths are incomplete: %s" % strengths)
 	var owner_surface := SculptModel.make_world_surface(
-		"agent_sandbox",
-		"Agent Sandbox",
+		"editor_fixture_b",
+		"Editor fixture",
 		{
 			"width": 1,
 			"depth": 1,
@@ -335,7 +342,7 @@ func _test_voxel_surface_entry(errors: Array[String], workspace: EmberGraphWorks
 	var play_owner := workspace.find_child("PlayVoxelSurfaceOwner", true, false) as Button
 	if (
 		play_owner == null or not play_owner.visible
-		or sculpt.call("_owner_scene_path") != "res://scenes/agent_sandbox.tscn"
+		or sculpt.call("_owner_scene_path") != "res://scenes/editor_fixture_b.tscn"
 	):
 		errors.append("world Surface did not expose its exact owner-scene Play action")
 	sculpt.open_pilot()
@@ -369,11 +376,11 @@ func _test_loot_library(errors: Array[String], workspace: EmberGraphWorkspace) -
 
 
 func _test_quest_event_authoring(errors: Array[String], workspace: EmberGraphWorkspace) -> void:
-	var start_token := QuestStore.event_token("sandbox_notice_quest", "start")
+	var start_token := QuestStore.event_token("interaction_quest", "start")
 	var objective_token := QuestStore.event_token(
-		"sandbox_notice_quest", "objective", "read_notice"
+		"interaction_quest", "objective", "read"
 	)
-	workspace.open_resource("action", "sandbox_chain")
+	workspace.open_resource("action", "interaction_chain")
 	if workspace.find_child("GraphAddQuestEvent", true, false) == null:
 		errors.append("Ember Graph toolbar has no guided quest-event action")
 	var before_action: Dictionary = workspace.get("_action_draft")
@@ -384,11 +391,11 @@ func _test_quest_event_authoring(errors: Array[String], workspace: EmberGraphWor
 	var action_event: Dictionary = action_steps[-1] if not action_steps.is_empty() else {}
 	if action_steps.size() != before_action_count + 1:
 		errors.append("action graph quest preset did not add one local draft node")
-	elif action_event.get("type", "") != "set_flag" or action_event.get("flag", "") != "sandbox_notice_status" or action_event.get("value") != "active":
+	elif action_event.get("type", "") != "set_flag" or action_event.get("flag", "") != "interaction_quest_status" or action_event.get("value") != "active":
 		errors.append("action graph quest start did not compile to canonical set_flag")
 	(workspace.find_child("GraphDraftUndo", true, false) as Button).pressed.emit()
 
-	workspace.open_resource("dialogue", "sandbox_notice_talk")
+	workspace.open_resource("dialogue", "interaction_notice_talk")
 	var before_dialogue: Dictionary = workspace.get("_dialogue_draft")
 	var before_dialogue_count := (before_dialogue.get("steps", []) as Array).size()
 	workspace.call("_apply_quest_event", objective_token)
@@ -397,7 +404,7 @@ func _test_quest_event_authoring(errors: Array[String], workspace: EmberGraphWor
 	var dialogue_event: Dictionary = dialogue_steps[-1] if not dialogue_steps.is_empty() else {}
 	if dialogue_steps.size() != before_dialogue_count + 1:
 		errors.append("dialogue graph quest preset did not add one local draft node")
-	elif dialogue_event.get("type", "") != "set_flag" or dialogue_event.get("flag", "") != "sandbox_notice_read" or dialogue_event.get("value") != true:
+	elif dialogue_event.get("type", "") != "set_flag" or dialogue_event.get("flag", "") != "interaction_quest_read" or dialogue_event.get("value") != true:
 		errors.append("dialogue branch objective did not compile to canonical set_flag")
 	else:
 		var step_id := str(dialogue_event.get("id", ""))
@@ -413,7 +420,7 @@ func _test_quest_graph(errors: Array[String], workspace: EmberGraphWorkspace) ->
 		"nameRu": "Осиротевшее событие Quest Flow",
 		"steps": [{
 			"type": "set_flag",
-			"flag": "sandbox_notice_read",
+			"flag": "interaction_quest_read",
 			"value": true,
 		}],
 	})
@@ -425,8 +432,8 @@ func _test_quest_graph(errors: Array[String], workspace: EmberGraphWorkspace) ->
 	var scene_interact := EmberInteract.new()
 	scene_interact.name = "Interact"
 	scene_interact.kind = "quest_marker"
-	scene_interact.quest_id = "sandbox_notice_quest"
-	scene_interact.script_id = "sandbox_notice"
+	scene_interact.quest_id = "interaction_quest"
+	scene_interact.script_id = "interaction_notice"
 	scene_prop.add_child(scene_interact)
 	var unbound_prop := EmberVoxelProp.new()
 	unbound_prop.name = "UnboundQuestProp"
@@ -442,7 +449,7 @@ func _test_quest_graph(errors: Array[String], workspace: EmberGraphWorkspace) ->
 		workspace.quest_event_unbind_requested.connect(_capture_quest_event_unbind)
 	if not workspace.quest_event_remove_requested.is_connected(_capture_quest_event_remove):
 		workspace.quest_event_remove_requested.connect(_capture_quest_event_remove)
-	workspace.open_resource("quest", "sandbox_notice_quest")
+	workspace.open_resource("quest", "interaction_quest")
 	var graph := workspace.find_child("EmberGraphEdit", true, false) as GraphEdit
 	var kind := workspace.find_child("GraphKind", true, false) as OptionButton
 	var resource := workspace.find_child("GraphResource", true, false) as OptionButton
@@ -464,7 +471,7 @@ func _test_quest_graph(errors: Array[String], workspace: EmberGraphWorkspace) ->
 		baseline_scene_edges += ((scene_usage as Dictionary).get("eventIds", []) as Array).size()
 	if _selected_metadata(kind) != "quest":
 		errors.append("quest resources have no first-class Ember Graph mode")
-	if _selected_metadata(resource) != "sandbox_notice_quest":
+	if _selected_metadata(resource) != "interaction_quest":
 		errors.append("quest selector did not expose the authored quest Resource")
 	if (
 		graph == null
@@ -500,7 +507,7 @@ func _test_quest_graph(errors: Array[String], workspace: EmberGraphWorkspace) ->
 				"usage": focused_usages += 1
 				"scene_candidate": focused_candidate = true
 		if (
-			str(workspace.get("_quest_focus_target")) != "read_notice"
+			str(workspace.get("_quest_focus_target")) != "read"
 			or focused_objectives != 1
 			or focused_usages == 0
 			or not focused_candidate
@@ -512,7 +519,7 @@ func _test_quest_graph(errors: Array[String], workspace: EmberGraphWorkspace) ->
 		var overview_button := workspace.find_child("GraphQuestOverview", true, false) as Button
 		if overview_button == null or not overview_button.visible:
 			errors.append("focused quest subgraph has no visible breadcrumb back to overview")
-		elif not str((workspace.find_child("GraphQuestFocusLabel", true, false) as Label).text).contains("Прочитать"):
+		elif not str((workspace.find_child("GraphQuestFocusLabel", true, false) as Label).text).contains("Первая цель"):
 			errors.append("focused quest subgraph has no readable breadcrumb label")
 		else:
 			overview_button.pressed.emit()
@@ -520,8 +527,8 @@ func _test_quest_graph(errors: Array[String], workspace: EmberGraphWorkspace) ->
 				errors.append("quest overview camera was lost after returning from a focused subgraph")
 			var mode_states: Dictionary = workspace.get("_view_states")
 			if (
-				not mode_states.has("quest:sandbox_notice_quest:overview")
-				or not mode_states.has("quest:sandbox_notice_quest:focus:read_notice")
+				not mode_states.has("quest:interaction_quest:overview")
+				or not mode_states.has("quest:interaction_quest:focus:read")
 			):
 				errors.append("quest overview and focused subgraph do not keep separate view state")
 	var all_links := workspace.find_child("GraphQuestAllLinks", true, false) as Button
@@ -615,7 +622,7 @@ func _test_quest_graph(errors: Array[String], workspace: EmberGraphWorkspace) ->
 	var saved_view_states: Dictionary = (workspace.get("_view_states") as Dictionary).duplicate(true)
 	var synthetic_positions := {
 		"quest_root": Vector2(10.0, 20.0),
-		"objective:read_notice": Vector2(30.0, 40.0),
+		"objective:read": Vector2(30.0, 40.0),
 		"action:derived:event": Vector2(50.0, 60.0),
 	}
 	workspace.set("_view_states", {
@@ -656,10 +663,10 @@ func _test_quest_graph(errors: Array[String], workspace: EmberGraphWorkspace) ->
 		if str(_requested_bind_path) != "UnboundQuestProp":
 			errors.append("guided quest binding did not emit the selected authoring owner path")
 		elif _requested_bind_token != QuestStore.event_token(
-			"sandbox_notice_quest", "objective", "read_notice"
+			"interaction_quest", "objective", "read"
 		):
 			errors.append("guided quest binding emitted the wrong objective event token")
-		elif str(_requested_bind_quest.get("id", "")) != "sandbox_notice_quest":
+		elif str(_requested_bind_quest.get("id", "")) != "interaction_quest":
 			errors.append("guided quest binding did not include the current quest draft")
 	if scene_candidate != null:
 		_requested_bind_path = NodePath("")
@@ -672,7 +679,7 @@ func _test_quest_graph(errors: Array[String], workspace: EmberGraphWorkspace) ->
 		if str(_requested_bind_path) != "UnboundQuestProp":
 			errors.append("green drag-to-bind lost the selected scene owner")
 		elif _requested_bind_token != QuestStore.event_token(
-			"sandbox_notice_quest", "objective", "read_notice"
+			"interaction_quest", "objective", "read"
 		):
 			errors.append("green drag-to-bind emitted the wrong objective event")
 		_requested_bind_token = ""
@@ -682,7 +689,7 @@ func _test_quest_graph(errors: Array[String], workspace: EmberGraphWorkspace) ->
 			StringName("quest_root"), 2,
 		)
 		if _requested_bind_token != QuestStore.event_token(
-			"sandbox_notice_quest", "complete"
+			"interaction_quest", "complete"
 		):
 			errors.append("root completion drag port emitted the wrong quest event")
 	var original_title := str((workspace.get("_quest_draft") as Dictionary).get("titleRu", ""))
@@ -857,32 +864,29 @@ func _test_split_layout(errors: Array[String], workspace: EmberGraphWorkspace) -
 
 
 func _test_primary_action_save(errors: Array[String], workspace: EmberGraphWorkspace) -> void:
-	workspace.open_resource("action", "sandbox_chain")
+	workspace.open_resource("action", "interaction_chain")
 	_requested_action_save = {}
 	var save := workspace.find_child("SaveDialogueGraph", true, false) as Button
 	if save == null or save.disabled:
 		errors.append("stable document row did not expose a valid action Save")
 		return
 	save.pressed.emit()
-	if str(_requested_action_save.get("id", "")) != "sandbox_chain":
+	if str(_requested_action_save.get("id", "")) != "interaction_chain":
 		errors.append("primary document Save did not route the current action draft")
 
 
 func _test_action_graph(errors: Array[String], workspace: EmberGraphWorkspace) -> void:
-	workspace.open_resource("action", "sandbox_chain")
+	workspace.open_resource("action", "interaction_chain")
 	var storage_owner := workspace.find_child("ActionStorageOwner", true, false) as Label
-	var migrate_resource := workspace.find_child("MigrateActionResource", true, false) as Button
-	if storage_owner == null or migrate_resource == null:
-		errors.append("action chain did not expose its canonical storage owner/migration action")
-	elif ActionStore.owner("sandbox_chain") == "legacy" and migrate_resource.disabled:
-		errors.append("legacy action chain did not expose explicit migration to a Godot Resource")
-	elif ActionStore.owner("sandbox_chain") == "native" and not migrate_resource.disabled:
-		errors.append("already-native action chain still exposed a destructive migration action")
+	if storage_owner == null or storage_owner.text != "Источник: Godot Resource":
+		errors.append("action did not expose its native storage owner")
+	if workspace.find_child("MigrateActionResource", true, false) != null:
+		errors.append("action still exposed obsolete migration UI")
 	var graph := workspace.find_child("EmberGraphEdit", true, false) as GraphEdit
 	var nodes := _graph_nodes(graph)
 	var initial_count := nodes.size()
 	if graph == null or nodes.size() < 4:
-		errors.append("sandbox_chain did not render as action nodes")
+		errors.append("interaction_chain did not render as action nodes")
 	elif graph.connections.size() != nodes.size() - 1:
 		errors.append("linear action graph did not connect consecutive steps")
 	elif not graph.minimap_enabled or not graph.show_arrange_button:
@@ -905,9 +909,9 @@ func _test_action_graph(errors: Array[String], workspace: EmberGraphWorkspace) -
 			linked.pressed.emit()
 			var kind := workspace.find_child("GraphKind", true, false) as OptionButton
 			var resource := workspace.find_child("GraphResource", true, false) as OptionButton
-			if _selected_metadata(kind) != "dialogue" or _selected_metadata(resource) != "sandbox_notice_talk":
+			if _selected_metadata(kind) != "dialogue" or _selected_metadata(resource) != "interaction_notice_talk":
 				errors.append("linked-dialogue navigation did not switch graph resources")
-	workspace.open_resource("action", "sandbox_chain")
+	workspace.open_resource("action", "interaction_chain")
 	graph = workspace.find_child("EmberGraphEdit", true, false) as GraphEdit
 	var add_type := workspace.find_child("GraphAddActionType", true, false) as OptionButton
 	_select_option(add_type, "wait")
@@ -938,7 +942,7 @@ func _test_action_graph(errors: Array[String], workspace: EmberGraphWorkspace) -
 
 
 func _test_node_palette(errors: Array[String], workspace: EmberGraphWorkspace) -> void:
-	workspace.open_resource("dialogue", "sandbox_branch")
+	workspace.open_resource("dialogue", "interaction_branch")
 	var graph := workspace.find_child("EmberGraphEdit", true, false) as GraphEdit
 	workspace.call("_on_graph_popup_request", Vector2(500.0, 300.0))
 	var search := workspace.find_child("GraphNodePaletteSearch", true, false) as LineEdit
@@ -985,7 +989,7 @@ func _test_node_palette(errors: Array[String], workspace: EmberGraphWorkspace) -
 	if str(inserted_flag.get("next", "")) != "end":
 		errors.append("connection-from-empty did not wire created dialogue node to target")
 	(workspace.find_child("GraphDraftUndo", true, false) as Button).pressed.emit()
-	workspace.open_resource("action", "sandbox_chain")
+	workspace.open_resource("action", "interaction_chain")
 	graph = workspace.find_child("EmberGraphEdit", true, false) as GraphEdit
 	var initial_action_count := _graph_nodes(graph).size()
 	workspace.call("_on_connection_to_empty", _graph_nodes(graph)[0].name, 0, Vector2(420.0, 260.0))
@@ -998,7 +1002,7 @@ func _test_node_palette(errors: Array[String], workspace: EmberGraphWorkspace) -
 
 
 func _test_action_duplicate(errors: Array[String], workspace: EmberGraphWorkspace) -> void:
-	workspace.open_resource("action", "sandbox_chain")
+	workspace.open_resource("action", "interaction_chain")
 	var graph := workspace.find_child("EmberGraphEdit", true, false) as GraphEdit
 	var nodes := _graph_nodes(graph)
 	var initial_count := nodes.size()
@@ -1064,10 +1068,10 @@ func _test_action_clipboard(errors: Array[String], workspace: EmberGraphWorkspac
 
 
 func _test_dialogue_graph(errors: Array[String], workspace: EmberGraphWorkspace) -> void:
-	workspace.open_resource("dialogue", "sandbox_branch")
+	workspace.open_resource("dialogue", "interaction_branch")
 	var graph := workspace.find_child("EmberGraphEdit", true, false) as GraphEdit
 	if _graph_nodes(graph).size() != 4:
-		errors.append("sandbox_branch did not render all four graph steps")
+		errors.append("interaction_branch did not render all four graph steps")
 	elif graph.connections.size() != 4:
 		errors.append("choice graph did not render both branch and convergence edges")
 	if workspace.find_child("DialogueEditor", true, false) == null:
@@ -1151,7 +1155,7 @@ func _test_dialogue_graph(errors: Array[String], workspace: EmberGraphWorkspace)
 
 
 func _test_complex_read_only(errors: Array[String], workspace: EmberGraphWorkspace) -> void:
-	workspace.open_resource("dialogue", "hu_tao_clear_demo")
+	workspace.open_resource("dialogue", "editor_vn")
 	var graph := workspace.find_child("EmberGraphEdit", true, false) as GraphEdit
 	if _graph_nodes(graph).is_empty():
 		errors.append("complex VN scene disappeared instead of rendering read-only")
@@ -1159,7 +1163,7 @@ func _test_complex_read_only(errors: Array[String], workspace: EmberGraphWorkspa
 		errors.append("complex VN graph did not preserve the explicit read-only guard")
 	if workspace.find_child("SaveDialogue", true, false) != null:
 		errors.append("complex VN graph exposed a destructive save button")
-	var document := DialogueStore.document("hu_tao_clear_demo")
+	var document := DialogueStore.document("editor_vn")
 	var swapped := DialogueGraphModel.replace_edge(document, "choice", 0, "fluster_reply")
 	swapped = DialogueGraphModel.replace_edge(swapped, "choice", 1, "brave_reply")
 	var intro: Dictionary = DialogueGraphModel.steps_by_id(swapped).get("intro", {})
@@ -1175,7 +1179,7 @@ func _test_complex_read_only(errors: Array[String], workspace: EmberGraphWorkspa
 
 
 func _test_inline_dialogue_fields(errors: Array[String], workspace: EmberGraphWorkspace) -> void:
-	workspace.open_resource("dialogue", "sandbox_branch")
+	workspace.open_resource("dialogue", "interaction_branch")
 	var overview_name := workspace.find_child("DialogueName", true, false) as LineEdit
 	if overview_name != null and overview_name.editable:
 		errors.append("right dialogue overview remained editable beside inline node fields")
@@ -1222,9 +1226,9 @@ func _test_inline_dialogue_fields(errors: Array[String], workspace: EmberGraphWo
 	if flag_input == null or flag_library == null:
 		errors.append("set_flag node did not expose the quest flag reference library")
 	else:
-		workspace.call("_apply_inline_quest_flag", "sandbox_notice_read", flag_id, flag_input)
+		workspace.call("_apply_inline_quest_flag", "interaction_quest_read", flag_id, flag_input)
 		var picked_flag: Dictionary = DialogueGraphModel.steps_by_id(workspace.get("_dialogue_draft")).get(flag_id, {})
-		if str(picked_flag.get("flag", "")) != "sandbox_notice_read":
+		if str(picked_flag.get("flag", "")) != "interaction_quest_read":
 			errors.append("quest flag library updated the wrong graph field")
 		(workspace.find_child("GraphDraftUndo", true, false) as Button).pressed.emit()
 		picked_flag = DialogueGraphModel.steps_by_id(workspace.get("_dialogue_draft")).get(flag_id, {})
@@ -1248,22 +1252,19 @@ func _test_inline_dialogue_fields(errors: Array[String], workspace: EmberGraphWo
 
 
 func _test_vn_properties(errors: Array[String], workspace: EmberGraphWorkspace) -> void:
-	workspace.open_resource("dialogue", "hu_tao_clear_demo")
+	workspace.open_resource("dialogue", "editor_vn")
 	var storage_owner := workspace.find_child("DialogueStorageOwner", true, false) as Label
-	var migrate_resource := workspace.find_child("MigrateDialogueResource", true, false) as Button
-	if storage_owner == null or migrate_resource == null:
-		errors.append("dialogue scene did not expose its canonical storage owner/migration action")
-	elif DialogueStore.owner("hu_tao_clear_demo") == "legacy" and migrate_resource.disabled:
-		errors.append("legacy dialogue did not expose explicit migration to a Godot Resource")
-	elif DialogueStore.owner("hu_tao_clear_demo") == "native" and not migrate_resource.disabled:
-		errors.append("already-native dialogue still exposed a destructive migration action")
+	if storage_owner == null or storage_owner.text != "Источник: Godot Resource":
+		errors.append("dialogue did not expose its native storage owner")
+	if workspace.find_child("MigrateDialogueResource", true, false) != null:
+		errors.append("dialogue still exposed obsolete migration UI")
 	var default_bg := workspace.find_child("DialogueDefaultBgArtId", true, false) as OptionButton
 	var default_bg_preview := workspace.find_child(
 		"DialogueDefaultBgArtId_preview", true, false
 	) as TextureRect
 	if default_bg == null or _selected_metadata(default_bg).is_empty():
 		errors.append("VN scene did not expose canonical defaultBgArtId")
-	elif _option_has_metadata(default_bg, "hu_tao_bunny_tease"):
+	elif _option_has_metadata(default_bg, "editor_speaker_expression_a"):
 		errors.append("background picker leaked portrait-kind arts into its choices")
 	if default_bg_preview == null:
 		errors.append("VN background picker lost its safe adjacent visual preview")
@@ -1330,7 +1331,7 @@ func _test_vn_properties(errors: Array[String], workspace: EmberGraphWorkspace) 
 		errors.append("dialogue node did not expose its background override picker")
 	elif _selected_metadata(bg).is_empty() and not bg.get_item_text(0).contains("Фон сцены"):
 		errors.append("dialogue node did not explain its inherited scene background")
-	if _selected_metadata(speaker) != "hu_tao" or _selected_metadata(portrait) != "bunny_tease":
+	if _selected_metadata(speaker) != "editor_speaker" or _selected_metadata(portrait) != "expression_a":
 		errors.append("dialogue identity did not resolve speaker/portrait registries")
 	if speaker_preview == null or portrait_preview == null:
 		errors.append("dialogue identity picker lost its safe adjacent visual previews")
@@ -1341,11 +1342,11 @@ func _test_vn_properties(errors: Array[String], workspace: EmberGraphWorkspace) 
 	if intro.find_child("Inline_intro_portraitKey_import", true, false) == null:
 		errors.append("dialogue identity did not expose native portrait import")
 	else:
-		_select_option(portrait, "bunny_shy")
+		_select_option(portrait, "expression_b")
 		portrait.item_selected.emit(portrait.selected)
 		var identity_step: Dictionary = DialogueGraphModel.steps_by_id(workspace.get("_dialogue_draft")).get("intro", {})
 		var identity_actors: Array = identity_step.get("actors", [])
-		if str(identity_step.get("portraitKey", "")) != "bunny_shy" or str((identity_actors[0] as Dictionary).get("portraitKey", "")) != "bunny_shy":
+		if str(identity_step.get("portraitKey", "")) != "expression_b" or str((identity_actors[0] as Dictionary).get("portraitKey", "")) != "expression_b":
 			errors.append("portrait picker did not synchronize dialogue and primary actor identity")
 		(workspace.find_child("GraphDraftUndo", true, false) as Button).pressed.emit()
 		graph = workspace.find_child("EmberGraphEdit", true, false) as GraphEdit
@@ -1358,7 +1359,7 @@ func _test_vn_properties(errors: Array[String], workspace: EmberGraphWorkspace) 
 	actor_toggle.toggled.emit(true)
 	var actor_speaker := intro.find_child("InlineActor_intro_speaker", true, false) as OptionButton
 	var actor_portrait := intro.find_child("InlineActor_intro_portraitKey", true, false) as OptionButton
-	if _selected_metadata(actor_speaker) != "hu_tao" or _selected_metadata(actor_portrait) != "bunny_tease":
+	if _selected_metadata(actor_speaker) != "editor_speaker" or _selected_metadata(actor_portrait) != "expression_a":
 		errors.append("staged actor identity did not use portrait picker controls")
 	var actor_x := intro.find_child("InlineActor_intro_x", true, false) as SpinBox
 	if actor_x == null:
@@ -1380,7 +1381,7 @@ func _test_vn_properties(errors: Array[String], workspace: EmberGraphWorkspace) 
 		actors = step.get("actors", [])
 		if actors.is_empty() or not is_equal_approx(float((actors[0] as Dictionary).get("x", 0.0)), 50.0):
 			errors.append("Undo did not restore staged actor position")
-	workspace.open_resource("dialogue", "sandbox_branch")
+	workspace.open_resource("dialogue", "interaction_branch")
 	graph = workspace.find_child("EmberGraphEdit", true, false) as GraphEdit
 	var agent := _node_for_step(graph, "agent_r")
 	actor_toggle = agent.find_child("InlineActorToggle_agent_r", true, false) as Button
@@ -1404,7 +1405,7 @@ func _test_vn_properties(errors: Array[String], workspace: EmberGraphWorkspace) 
 
 
 func _test_live_vn_preview(errors: Array[String], workspace: EmberGraphWorkspace) -> void:
-	workspace.open_resource("dialogue", "hu_tao_clear_demo")
+	workspace.open_resource("dialogue", "editor_vn")
 	var open := workspace.find_child("OpenVnPreview", true, false) as Button
 	if open == null or open.disabled:
 		errors.append("dialogue workspace did not expose live scene preview")
@@ -1422,17 +1423,17 @@ func _test_live_vn_preview(errors: Array[String], workspace: EmberGraphWorkspace
 		errors.append("VN portraits can cover the dialogue text layer")
 	if preview.get("_assets") != workspace.get("_vn_assets"):
 		errors.append("picker and live preview do not share one decoded-image cache")
-	var document := DialogueStore.document("hu_tao_clear_demo")
-	document["defaultBgArtId"] = "hu_tao_clear_placeholder"
+	var document := DialogueStore.document("editor_vn")
+	document["defaultBgArtId"] = "editor_background"
 	document = DialogueGraphModel.set_step_field(document, "intro", "bgArtId", "")
 	preview.set_document(document, "intro")
 	var state := preview.view_state()
 	if str(state.get("kind", "")) != "dialogue" or int(state.get("actorCount", 0)) != 1:
 		errors.append("VN preview did not render the selected dialogue actor state")
-	if str(state.get("bgArtId", "")) != "hu_tao_clear_placeholder":
+	if str(state.get("bgArtId", "")) != "editor_background":
 		errors.append("empty node bgArtId did not inherit defaultBgArtId in shared scene state")
 	var assets := EmberVnAssets.new()
-	if not FileAccess.file_exists(assets.art_path("hu_tao_clear_placeholder")):
+	if not FileAccess.file_exists(assets.art_path("editor_background")):
 		errors.append("VN preview could not resolve a valid pack art registry path")
 	preview.advance()
 	state = preview.view_state()
@@ -1444,7 +1445,7 @@ func _test_live_vn_preview(errors: Array[String], workspace: EmberGraphWorkspace
 	preview.back()
 	if preview.current_step_id() != "choice":
 		errors.append("VN preview history did not restore the previous node")
-	workspace.open_resource("dialogue", "sandbox_branch")
+	workspace.open_resource("dialogue", "interaction_branch")
 	preview = workspace.find_child("EmberVnPreview", true, false) as EmberVnPreview
 	state = preview.view_state()
 	if str(state.get("kind", "")) != "choice" or int(state.get("actorCount", -1)) != 0:
@@ -1459,7 +1460,7 @@ func _test_live_vn_preview(errors: Array[String], workspace: EmberGraphWorkspace
 
 
 func _test_dialogue_groups(errors: Array[String], workspace: EmberGraphWorkspace) -> void:
-	workspace.open_resource("dialogue", "sandbox_branch")
+	workspace.open_resource("dialogue", "interaction_branch")
 	var graph := workspace.find_child("EmberGraphEdit", true, false) as GraphEdit
 	var agent := _node_for_step(graph, "agent_r")
 	var walk := _node_for_step(graph, "walk_r")
@@ -1562,8 +1563,9 @@ func _test_dialogue_groups(errors: Array[String], workspace: EmberGraphWorkspace
 
 
 func _test_dialogue_duplicate(errors: Array[String], workspace: EmberGraphWorkspace) -> void:
-	workspace.open_resource("dialogue", "sandbox_branch")
+	workspace.open_resource("dialogue", "interaction_branch")
 	var graph := workspace.find_child("EmberGraphEdit", true, false) as GraphEdit
+	var source_choice_position := _node_for_step(graph, "ask").position_offset
 	for step_id in ["ask", "agent_r", "walk_r"]:
 		_node_for_step(graph, step_id).selected = true
 	workspace.call("_on_node_selected", _node_for_step(graph, "walk_r"))
@@ -1589,7 +1591,7 @@ func _test_dialogue_duplicate(errors: Array[String], workspace: EmberGraphWorksp
 		errors.append("dialogue duplicate changed shared external continuation")
 	var layout: Dictionary = draft.get("editorLayout", {})
 	var copied_position: Dictionary = layout.get(str(choice_copy.get("id", "")), {})
-	if not is_equal_approx(float(copied_position.get("x", 0.0)), 100.0):
+	if not Vector2(float(copied_position.get("x", 0.0)), float(copied_position.get("y", 0.0))).is_equal_approx(source_choice_position + Vector2(60.0, 60.0)):
 		errors.append("dialogue duplicate did not offset copied editorLayout")
 	graph = workspace.find_child("EmberGraphEdit", true, false) as GraphEdit
 	var selected_copies := 0
@@ -1604,7 +1606,7 @@ func _test_dialogue_duplicate(errors: Array[String], workspace: EmberGraphWorksp
 
 
 func _test_dialogue_clipboard(errors: Array[String], workspace: EmberGraphWorkspace) -> void:
-	workspace.open_resource("dialogue", "sandbox_branch")
+	workspace.open_resource("dialogue", "interaction_branch")
 	var graph := workspace.find_child("EmberGraphEdit", true, false) as GraphEdit
 	for step_id in ["ask", "agent_r", "walk_r"]:
 		_node_for_step(graph, step_id).selected = true
@@ -1644,7 +1646,7 @@ func _test_dialogue_clipboard(errors: Array[String], workspace: EmberGraphWorksp
 		"steps": [{"id": "root", "type": "end"}],
 	}
 	var single_payload := DialogueGraphModel.copy_steps(
-		DialogueStore.document("sandbox_branch"), ["agent_r"]
+		DialogueStore.document("interaction_branch"), ["agent_r"]
 	)
 	var cross_resource := DialogueGraphModel.paste_steps(
 		destination, single_payload, Vector2(100.0, 100.0)
@@ -1655,7 +1657,7 @@ func _test_dialogue_clipboard(errors: Array[String], workspace: EmberGraphWorksp
 
 
 func _test_node_diagnostics(errors: Array[String], workspace: EmberGraphWorkspace) -> void:
-	workspace.open_resource("dialogue", "sandbox_branch")
+	workspace.open_resource("dialogue", "interaction_branch")
 	var graph := workspace.find_child("EmberGraphEdit", true, false) as GraphEdit
 	var choice := _node_for_step(graph, "ask")
 	workspace.call("_on_disconnection_request", choice.name, 0, StringName(), 0)
@@ -1686,7 +1688,7 @@ func _test_node_diagnostics(errors: Array[String], workspace: EmberGraphWorkspac
 	choice = _node_for_step(graph, "ask")
 	if choice.find_child("NodeDiagnosticBadge", true, false) != null:
 		errors.append("node diagnostic badge remained after repairing the graph")
-	workspace.open_resource("action", "sandbox_chain")
+	workspace.open_resource("action", "interaction_chain")
 	var action_document: Dictionary = workspace.get("_action_draft")
 	var action_steps: Array = action_document.get("steps", []).duplicate(true)
 	var invalid_step: Dictionary = (action_steps[0] as Dictionary).duplicate(true)
@@ -1700,32 +1702,32 @@ func _test_node_diagnostics(errors: Array[String], workspace: EmberGraphWorkspac
 
 
 func _test_unsaved_draft_guard(errors: Array[String], workspace: EmberGraphWorkspace) -> void:
-	workspace.open_resource("dialogue", "sandbox_branch")
+	workspace.open_resource("dialogue", "interaction_branch")
 	var changed := DialogueGraphModel.add_step(
 		workspace.get("_dialogue_draft"), "dialogue", Vector2(900.0, 500.0)
 	)
 	workspace.call("_push_dialogue_draft", changed)
-	workspace.call("_request_navigation", "dialogue", "sandbox_notice_talk", false)
-	if str(workspace.get("_current_id")) != "sandbox_branch":
+	workspace.call("_request_navigation", "dialogue", "interaction_notice_talk", false)
+	if str(workspace.get("_current_id")) != "interaction_branch":
 		errors.append("unsaved draft guard allowed resource navigation before confirmation")
 	if (workspace.get("_pending_navigation") as Dictionary).is_empty():
 		errors.append("unsaved draft guard did not remember the requested destination")
 	var resource := workspace.find_child("GraphResource", true, false) as OptionButton
-	if _selected_metadata(resource) != "sandbox_branch":
+	if _selected_metadata(resource) != "interaction_branch":
 		errors.append("unsaved draft guard did not restore the visible resource selector")
 	workspace.call("_cancel_discard_navigation")
-	if str(workspace.get("_current_id")) != "sandbox_branch" or not workspace.call("_has_unsaved_draft"):
+	if str(workspace.get("_current_id")) != "interaction_branch" or not workspace.call("_has_unsaved_draft"):
 		errors.append("canceling discard did not keep the current dirty draft")
-	workspace.call("_request_navigation", "dialogue", "sandbox_notice_talk", false)
+	workspace.call("_request_navigation", "dialogue", "interaction_notice_talk", false)
 	workspace.call("_confirm_discard_navigation")
-	if str(workspace.get("_current_id")) != "sandbox_notice_talk":
+	if str(workspace.get("_current_id")) != "interaction_notice_talk":
 		errors.append("confirmed discard did not open the pending graph resource")
 	if not (workspace.get("_pending_navigation") as Dictionary).is_empty():
 		errors.append("confirmed discard left stale navigation state")
 
 
 func _test_dialogue_node_authoring(errors: Array[String], workspace: EmberGraphWorkspace) -> void:
-	workspace.open_resource("dialogue", "sandbox_branch")
+	workspace.open_resource("dialogue", "interaction_branch")
 	var graph := workspace.find_child("EmberGraphEdit", true, false) as GraphEdit
 	var initial_count := _graph_nodes(graph).size()
 	graph.zoom = 1.25
@@ -1790,7 +1792,7 @@ func _test_standalone_action_save(errors: Array[String]) -> void:
 		"id": TEMP_SCRIPT_ID,
 		"nameRu": "Graph workspace smoke",
 		"steps": [
-			{"type": "talk", "dialogueId": "sandbox_guard_talk"},
+			{"type": "talk", "dialogueId": "interaction_guard"},
 			{"type": "set_flag", "flag": "graph_smoke_done", "value": true},
 		],
 	}
@@ -1815,7 +1817,7 @@ func _test_standalone_dialogue_graph_save(errors: Array[String]) -> void:
 	var actions := EmberObjectInspectorActions.new()
 	actions.configure(history)
 	var context := Node.new()
-	var document := DialogueStore.document("sandbox_branch")
+	var document := DialogueStore.document("interaction_branch")
 	document["id"] = TEMP_DIALOGUE_ID
 	document["nameRu"] = "Graph dialogue smoke"
 	document = DialogueGraphModel.add_group(document, "Saved frame", ["agent_r", "walk_r"])

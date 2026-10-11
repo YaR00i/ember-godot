@@ -1,22 +1,17 @@
 """Axis contract: MagicaVoxel Z-up → Ember/Godot Y-up, ember(x,y,z) = vox(x,z,y).
 
-Mirrors joi-conductor src/game/voxel/vox/voxFile.ts + emberVoxCodec.ts.
+Synthetic VOX input plus current native Godot/static contracts; no historical pack.
 Run from anywhere: python tools/test_vox_axes.py
 """
 from __future__ import annotations
 
-import json
-import math
 import struct
+import tempfile
+import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-JOI_PACK = ROOT.parent / "joi-conductor" / "content" / "ember"
-LANTERN_VOX = JOI_PACK / "voxels" / "models" / "vox_fan_lantern_paper.vox"
-LANTERN_JSON = JOI_PACK / "voxels" / "models" / "vox_fan_lantern_paper.json"
-MAP_JSON = JOI_PACK / "maps" / "fan_town.json"
-
 
 def parse_vox(path: Path) -> dict:
     data = path.read_bytes()
@@ -69,102 +64,33 @@ def ember_size(sx: int, sy: int, sz: int) -> tuple[int, int, int]:
     return (sx, sz, sy)
 
 
+def fixture_axis_checks(errors: list[str]) -> None:
+    def chunk(tag: bytes, payload: bytes) -> bytes:
+        return tag + struct.pack("<ii", len(payload), 0) + payload
+    cells = [(1, 2, 9, 5), (2, 6, 10, 1)]
+    children = chunk(b"SIZE", struct.pack("<iii", 3, 7, 11)) + chunk(b"XYZI", struct.pack("<i", len(cells)) + b"".join(bytes(cell) for cell in cells))
+    data = b"VOX " + struct.pack("<i", 150) + b"MAIN" + struct.pack("<ii", 0, len(children)) + children
+    with tempfile.TemporaryDirectory(prefix="ember-axis-fixture-") as temporary:
+        path = Path(temporary) / "asymmetric.vox"
+        path.write_bytes(data)
+        model = parse_vox(path)
+    if model["size"] != (3, 7, 11) or model["voxels"] != cells:
+        errors.append("synthetic VOX parser lost size, axes, cells or palette indices")
+    if ember_size(*model["size"]) != (3, 11, 7): errors.append("asymmetric VOX size axis conversion failed")
+    expected = [(1, 9, 2), (2, 10, 6)]
+    if [vox_to_ember(*cell[:3]) for cell in model["voxels"]] != expected: errors.append("asymmetric VOX occupied cell conversion failed")
+    print("ok generated asymmetric VOX dimensions/cells/palette and Z-up -> Y-up")
+
+
+def shader_source(path: Path) -> str:
+    text = path.read_text(encoding="utf-8")
+    text = re.sub(r'#include "res://([^"]+)"', lambda m: shader_source(ROOT / m[1]), text)
+    return re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.S)
+
+
 def main() -> int:
     errors: list[str] = []
-    if not LANTERN_VOX.is_file():
-        print(f"SKIP vox file missing: {LANTERN_VOX}")
-        return 0
-    model = parse_vox(LANTERN_VOX)
-    sx, sy, sz = model["size"]
-    es = ember_size(sx, sy, sz)
-    if es[0] != sx or es[1] != sz or es[2] != sy:
-        errors.append(f"ember_size mismatch {es} from vox {(sx, sy, sz)}")
-    sample = model["voxels"][0]
-    ex, ey, ez = vox_to_ember(*sample[:3])
-    if (ex, ey, ez) != (sample[0], sample[2], sample[1]):
-        errors.append(f"axis map wrong for {sample} -> {(ex, ey, ez)}")
-    if ey > es[1] or ez > es[2]:
-        errors.append(f"ember voxel out of ember size {es}")
-    print(
-        f"ok vox {LANTERN_VOX.name}: vox_size={(sx, sy, sz)} "
-        f"ember_size={es} voxels={len(model['voxels'])}"
-    )
-
-    prefab = json.loads(LANTERN_JSON.read_text(encoding="utf-8"))
-    inner = prefab.get("model") or {}
-    if inner.get("emissiveCastsLight") is not True:
-        errors.append("lantern json missing emissiveCastsLight")
-    if inner.get("emissiveLightShadows") is not True:
-        errors.append("lantern json missing emissiveLightShadows")
-    em = inner.get("emissive") or []
-    hv = int(inner.get("heightVoxels") or 26)
-    n = 16 * hv * 16
-    if len(em) != n:
-        errors.append(f"paper lantern emissive len {len(em)} != grid {n}")
-    glow = sum(1 for v in em if int(v or 0) > 0)
-    if glow < 8:
-        errors.append(f"paper lantern expected window glow voxels, got {glow}")
-    print(f"ok lantern json range={inner.get('emissiveLightRange')} glow={glow}")
-
-    stone_json = JOI_PACK / "voxels" / "models" / "vox_fan_lantern_stone.json"
-    stone = json.loads(stone_json.read_text(encoding="utf-8"))
-    sm = stone.get("model") or {}
-    sem = sm.get("emissive") or []
-    shy = int(sm.get("heightVoxels") or 24)
-    sn = 16 * shy * 16
-    sx = sz = 16
-    w = cx = cy = cz = 0.0
-    skip = 0
-    for y in range(shy):
-        for z in range(sz):
-            for x in range(sx):
-                i = x + z * sx + y * sx * sz
-                amt = int(sem[i] or 0) if i < len(sem) else 0
-                if amt <= 0:
-                    continue
-                skip += 1
-                ww = amt / 255.0
-                w += ww
-                cx += (x + 0.5) * ww
-                cy += (y + 0.5) * ww
-                cz += (z + 0.5) * ww
-    if skip != 16:
-        errors.append(f"stone lantern window voxels {skip}, expected 16")
-    if w <= 0:
-        errors.append("stone lantern missing emissive centroid")
-    else:
-        cy /= w
-        if abs(cy - 14.0) > 0.6:
-            errors.append(f"stone lantern light should sit in the chamber y~14, got {cy}")
-        if sm.get("emissiveSuppressHostShadow") is True:
-            errors.append("stone lantern must cast host umbra (no emissiveSuppressHostShadow)")
-        print(f"ok stone lantern chamber y={cy:.2f} window_skip={skip}")
-
-    town = json.loads(MAP_JSON.read_text(encoding="utf-8"))
-    if town.get("id") != "fan_town":
-        errors.append("fan_town id mismatch")
-    props = town.get("voxelProps") or []
-    lanterns = [p for p in props if str(p.get("modelId", "")).startswith("vox_fan_lantern")]
-    if len(lanterns) < 3:
-        errors.append(f"expected several lanterns, got {len(lanterns)}")
-    print(f"ok fan_town voxelProps={len(props)} lanterns={len(lanterns)}")
-
-    doors = [
-        p
-        for p in props
-        if isinstance(p.get("interactivity"), dict)
-        and p["interactivity"].get("kind") == "door"
-    ]
-    if len(doors) < 4:
-        errors.append(f"fan_town expected 4 doors, got {len(doors)}")
-    else:
-        print(f"ok fan_town doors={len(doors)}")
-    starts = [r for r in (town.get("regions") or []) if r.get("kind") == "player_start"]
-    if not starts:
-        errors.append("fan_town missing player_start")
-    else:
-        print(f"ok fan_town player_start={starts[0].get('id')}")
-
+    fixture_axis_checks(errors)
     prefab_gd = ROOT / "scripts" / "ember_voxel_prefab.gd"
     text = prefab_gd.read_text(encoding="utf-8")
     if "res://prefabs/voxels" not in text:
@@ -185,7 +111,7 @@ def main() -> int:
     loader_text = loader_gd.read_text(encoding="utf-8")
     if "GEN_EDIT_STATE_INSTANCE" not in loader_text:
         errors.append("map loader must instance prefabs with GEN_EDIT_STATE_INSTANCE")
-    shader = (ROOT / "shaders" / "ember_voxel_toon.gdshader").read_text(encoding="utf-8")
+    shader = shader_source(ROOT / "shaders" / "ember_voxel_toon.gdshader")
     shader_code = shader.split("void light()", 1)[0]
     if "LIGHT_VERTEX =" in shader_code:
         errors.append("toon shader must keep Godot's default view-space LIGHT_VERTEX (world round-trip causes moire)")
@@ -193,7 +119,7 @@ def main() -> int:
         print("ok toon shader keeps default view-space LIGHT_VERTEX")
     if "LIGHT_IS_DIRECTIONAL" not in shader or "smoothstep" not in shader:
         errors.append("toon light() must soften directional ATTENUATION (shadow acne on voxel roofs)")
-    if "local_light_softness" not in shader or "soft_ramp" not in shader:
+    if "local_light_softness" not in shader or "smoothstep(0.0, 0.72, ndotl)" not in shader or "mix(hard, soft, local_softness)" not in shader:
         errors.append("local point lights need a smooth N.L ramp (toon quantization creates concentric rings)")
     if "voxel_snap" in shader or "voxel_size" in shader:
         errors.append("Godot toon shader must not carry the Three-only light probe snap")
@@ -252,21 +178,17 @@ def main() -> int:
     dock_text = dock_gd.read_text(encoding="utf-8") if dock_gd.is_file() else ""
     for contract in (
         "get_selected_nodes",
-        "EmberVoxelPrefab.ensure_saved",
-        "Legacy .vox · диагностика",
-        "Legacy .json · диагностика",
-        "Показать в папке",
+        "ember_voxel_scene_refresh.gd",
+                "Показать в папке",
         "Дублировать безопасно",
         "Открыть модель в Godot",
-        "_placement_snapshot",
-        "_scene_file_hash",
         "validate_packed",
     ):
         if contract not in dock_text:
             errors.append(f"Ember migration dock missing {contract}")
     plugin_text = (ROOT / "addons" / "ember_import" / "plugin.gd").read_text(encoding="utf-8")
-    if "ConfirmationDialog" not in plugin_text or "Reimport map from pack…" not in plugin_text:
-        errors.append("destructive full-map reimport must require confirmation")
+    if "Reimport map from pack…" in plugin_text:
+        errors.append("native editor revived destructive legacy map reimport")
     inspector_model_path = ROOT / "addons" / "ember_import" / "ember_object_inspector_model.gd"
     inspector_model_text = inspector_model_path.read_text(encoding="utf-8") if inspector_model_path.is_file() else ""
     for contract in ("func snapshot", "Asset", "Scene", "Derived", "EmberInteractionContent.resolve"):
@@ -281,7 +203,7 @@ def main() -> int:
         errors.append("object Inspector must have symmetric editor lifecycle")
     if "add_control_to_bottom_panel" not in plugin_text or "remove_control_from_bottom_panel" not in plugin_text:
         errors.append("migration workflow dock must use the bottom panel and leave native Inspector visible")
-    if 'name = "EmberMigrationWorkflow"' not in plugin_text or '"Ember Migration"' not in plugin_text:
+    if 'name = "EmberMigrationWorkflow"' not in plugin_text or '"Ember · Сервис"' not in plugin_text:
         errors.append("migration workflow needs a new stable layout key distinct from legacy right dock Ember")
     if "DOCK_SLOT_RIGHT_BL" in plugin_text:
         errors.append("migration workflow dock must not squeeze the native Inspector right slot")
@@ -336,12 +258,12 @@ def main() -> int:
             errors.append(f"headless targeted-rebuild smoke missing {contract}")
     scene_roundtrip = ROOT / "tools" / "test_scene_edit_roundtrip.gd"
     roundtrip_text = scene_roundtrip.read_text(encoding="utf-8") if scene_roundtrip.is_file() else ""
-    for contract in ("move + rotate + Interact", "source .tscn and JOI map JSON preserved"):
+    for contract in ("move + rotate + Interact", "source .tscn and native source preserved"):
         if contract not in roundtrip_text:
             errors.append(f"scene authoring roundtrip smoke missing {contract}")
     inspector_actions_test = ROOT / "tools" / "test_object_inspector_actions.gd"
     inspector_actions_test_text = inspector_actions_test.read_text(encoding="utf-8") if inspector_actions_test.is_file() else ""
-    for contract in ("Undo/Redo", "save/reopen", "source .tscn and JOI map JSON unchanged"):
+    for contract in ("Undo/Redo", "save/reopen", "source .tscn and native source unchanged"):
         if contract not in inspector_actions_test_text:
             errors.append(f"object Inspector actions smoke missing {contract}")
 
@@ -355,16 +277,9 @@ def main() -> int:
         errors.append("EmberRegion transition trigger runtime is not wired")
     if "region_world" not in loader_text:
         errors.append("map loader cannot resolve targetRegionId for player spawn")
-    interior_scene = ROOT / "scenes" / "agent_sandbox_interior.tscn"
-    if not interior_scene.is_file() or 'map_id = "agent_sandbox_interior"' not in interior_scene.read_text(encoding="utf-8"):
-        errors.append("agent_sandbox_interior play scene is missing")
-    for fan_interior in ("fan_town_inn", "fan_town_mage", "fan_town_smith", "fan_town_house"):
-        fan_interior_scene = ROOT / "scenes" / f"{fan_interior}.tscn"
-        if not fan_interior_scene.is_file() or f'map_id = "{fan_interior}"' not in fan_interior_scene.read_text(encoding="utf-8"):
-            errors.append(f"{fan_interior} play scene is missing")
     transition_smoke = ROOT / "tools" / "test_map_transition.gd"
     transition_smoke_text = transition_smoke.read_text(encoding="utf-8") if transition_smoke.is_file() else ""
-    for contract in ("door -> interior:start", "exit -> sandbox:cabin_enter"):
+    for contract in ("door -> nested entry", "exit -> matching return routes"):
         if contract not in transition_smoke_text:
             errors.append(f"map transition smoke missing {contract}")
     camera_movement_path = ROOT / "scripts" / "ember_camera_movement.gd"
@@ -418,7 +333,7 @@ def main() -> int:
 
     equipment_path = ROOT / "scripts" / "ember_equipment.gd"
     equipment_text = equipment_path.read_text(encoding="utf-8") if equipment_path.is_file() else ""
-    for contract in ("weapon_arena", "arena_weapon", "EmberEconomy.grant_items", "combat_stats", "use_item", "hpRestore", "canUse"):
+    for contract in ("accessory1", "accessory2", "shoes", "import_saved", "combat_stats", "use_item", "hpRestore", "canUse"):
         if contract not in equipment_text:
             errors.append(f"inventory/equipment leaf contract missing {contract}")
     inventory_ui_path = ROOT / "scripts" / "ember_inventory_ui.gd"
@@ -435,7 +350,7 @@ def main() -> int:
             errors.append(f"health/save owner missing {contract}")
     health_smoke = ROOT / "tools" / "test_health_consumables.gd"
     health_smoke_text = health_smoke.read_text(encoding="utf-8") if health_smoke.is_file() else ""
-    for contract in ("armor damage -> hpRestore clamp", "save v2 stores current HP only", "agent_sandbox H probe"):
+    for contract in ("armor damage -> hpRestore clamp", "save v2 stores current HP only", "native H probe"):
         if contract not in health_smoke_text:
             errors.append(f"health/consumables headless smoke missing {contract}")
     talk_shop_smoke = ROOT / "tools" / "test_talk_shop.gd"
@@ -461,103 +376,10 @@ def main() -> int:
     if not debanding_off:
         errors.append("voxel look must leave ordered debanding off (its dither pattern is visible)")
 
-    def moon_energy(sun, fill, night, scale=1.25):
-        n = max(0.0, min(1.0, night))
-        return max(0.5, (1.05 + n * 0.35) * max(0.4, sun) * (0.45 + fill) * scale)
-
-    fan_moon = moon_energy(1.41, 0.23, 0.92, 1.25)
-    if abs(fan_moon - 1.644) > 0.02:
-        errors.append(f"fan_town moon energy expected ~1.64 got {fan_moon}")
-    else:
-        print(f"ok fan_town moon energy={fan_moon:.3f}")
-    town_scene = ROOT / "scenes" / "fan_town.tscn"
-    town_text = town_scene.read_text(encoding="utf-8")
-    if "moon_energy_scale = 0.37" in town_text:
-        errors.append("fan_town.tscn moon_energy_scale still 0.37 (kills moonlight)")
-    if "directional_shadow_max_distance = 520" not in town_text:
-        errors.append("fan_town.tscn missing directional_shadow_max_distance")
-    else:
-        print("ok fan_town.tscn moon scale and shadow distance")
-
-    inst_count = town_text.count("instance=ExtResource")
-    if inst_count < 100:
-        errors.append(f"fan_town.tscn expected prefab instances, got {inst_count}")
-    else:
-        print(f"ok fan_town.tscn prefab instances={inst_count}")
-    if town_text.count('name="Interact"') < 4:
-        errors.append("fan_town.tscn missing door Interact nodes")
-    else:
-        print("ok fan_town.tscn door Interact")
-    lantern_prefab = ROOT / "prefabs" / "voxels" / "vox_fan_lantern_stone.tscn"
-    if not lantern_prefab.is_file():
-        errors.append("missing packed lantern prefab")
-    else:
-        lp = lantern_prefab.read_text(encoding="utf-8")
-        if 'name="Omni"' not in lp:
-            errors.append("lantern prefab missing Omni child")
-        else:
-            print("ok lantern prefab Omni child")
-    sandbox_scene = ROOT / "scenes" / "agent_sandbox.tscn"
-    sandbox_text = sandbox_scene.read_text(encoding="utf-8")
-    if sandbox_text.count("instance=ExtResource") < 8:
-        errors.append("agent_sandbox.tscn expected prefab instances")
-    else:
-        print("ok agent_sandbox.tscn prefab instances")
-    interact_gd = (ROOT / "scripts" / "ember_interact.gd").read_text(encoding="utf-8")
-    for kind in ("door", "talk", "shop", "trigger"):
-        if f'"{kind}"' not in interact_gd:
-            errors.append(f"EmberInteract missing kind {kind}")
-    sandbox = JOI_PACK / "maps" / "agent_sandbox.json"
-    if not sandbox.is_file():
-        errors.append("agent_sandbox map missing for Godot play scene")
-    else:
-        print("ok agent_sandbox map for scenes/agent_sandbox.tscn")
-
-    layers = {str(layer.get("name")): layer.get("data") or [] for layer in town.get("layers") or []}
-    height = layers.get("height") or []
-    walls = sum(1 for v in height if int(v or 0) > 0)
-    ground = layers.get("ground_z0") or layers.get("ground") or []
-    floors = sum(1 for v in ground if int(v or 0) > 0)
-    if walls < 8 or floors < 32:
-        errors.append(f"expected terrain columns, height>0={walls} ground={floors}")
-    print(f"ok fan_town terrain height_cells={walls} ground_cells={floors}")
-
-    pine_json = JOI_PACK / "voxels" / "models" / "vox_fan_pine.json"
-    pine_vox = JOI_PACK / "voxels" / "models" / "vox_fan_pine.vox"
-    pine = json.loads(pine_json.read_text(encoding="utf-8"))
-    pine_voxels = (pine.get("model") or {}).get("voxels") or []
-    pine_occ = sum(1 for v in pine_voxels if int(v or 0) > 0)
-    if pine_vox.is_file():
-        print(f"ok pine has .vox and json voxels={pine_occ}")
-    elif pine_occ < 32:
-        errors.append(f"pine json should mesh without .vox, occupied={pine_occ}")
-    else:
-        print(f"ok pine json-only occupied={pine_occ} (no .vox)")
-
-    # Tangent-plane voxel snap lives in JOI Three (`voxelLightSnap.ts`).
-    # Godot Forward+ must not grid-snap LIGHT_VERTEX — cell centers acne on floors.
-    def snap(world, normal, vs=1.0):
-        nlen = math.sqrt(sum(c * c for c in normal)) or 1.0
-        en = [c / nlen for c in normal]
-        n_abs = [abs(c) for c in en]
-        n_max = max(n_abs)
-        keep = [1.0 if a >= n_max - 1e-4 else 0.0 for a in n_abs]
-        p = [w - n * (vs * 0.02) for w, n in zip(world, en)]
-        grid = [(math.floor(c / vs) + 0.5) * vs for c in p]
-        return [g if k < 0.5 else w for g, k, w in zip(grid, keep, world)]
-
-    s = snap((10.3, 4.0, 20.7), (0.0, 1.0, 0.0), 1.0)
-    if abs(s[0] - 10.5) > 1e-6 or abs(s[1] - 4.0) > 1e-6 or abs(s[2] - 20.5) > 1e-6:
-        errors.append(f"voxel snap floor expected (10.5, 4, 20.5) got {s}")
-    else:
-        print("ok voxel light snap floor keeps Y, quantizes XZ")
-
     if errors:
-        print("FAIL")
-        for err in errors:
-            print(" -", err)
+        for error in errors: print("FAIL", error)
         return 1
-    print("PASS ember-godot pack contract")
+    print("PASS native Ember axis/static contracts; historical content absent")
     return 0
 
 

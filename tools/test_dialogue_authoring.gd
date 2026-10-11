@@ -1,7 +1,10 @@
 extends SceneTree
 ## Editor-first dialogue contract: the Inspector card UI projects the existing
 ## dialogue graph, writes its canonical owner through Undo/Redo, and runtime
-## resolves the same native-or-legacy document.
+## resolves the same native document.
+
+const Fixture = preload("res://tools/fixtures/ember_story_test_fixture.gd")
+var _setup: Dictionary
 
 const TEMP_DIALOGUE_ID := "ember_test_dialogue_authoring"
 const Store = preload("res://addons/ember_import/ember_dialogue_store.gd")
@@ -10,11 +13,22 @@ const ActionChainEditor = preload("res://addons/ember_import/ember_action_chain_
 
 
 func _init() -> void:
+	_setup = Fixture.prepare(self)
+	if _setup.refused:
+		quit.call_deferred(2)
+		return
+	_run_and_quit.call_deferred()
+
+
+func _run_and_quit() -> void:
 	quit(_run())
 
 
 func _run() -> int:
 	var errors: Array[String] = []
+	if _setup.error != OK or not _setup.progress_isolated:
+		printerr("FAIL native dialogue authoring fixture")
+		return 1
 	var old_document := Store.document(TEMP_DIALOGUE_ID)
 	Store.delete_document(TEMP_DIALOGUE_ID)
 	_test_projection(errors)
@@ -22,6 +36,7 @@ func _run() -> int:
 	_test_roundtrip_and_history(errors, document)
 	_test_editor_bridge(errors, document)
 	_restore_fixture(old_document)
+	Fixture.verify_sources(_setup, errors)
 	if not errors.is_empty():
 		printerr("FAIL dialogue authoring")
 		for error in errors:
@@ -36,21 +51,21 @@ func _run() -> int:
 
 
 func _test_projection(errors: Array[String]) -> void:
-	var guard := Store.projection(Store.document("sandbox_guard_talk"))
+	var guard := Store.projection(Store.document(Fixture.Content.GUARD))
 	var guard_cards: Array = guard.get("cards", [])
 	if not bool(guard.get("ok", false)) or guard_cards.size() != 3:
-		errors.append("three-line sandbox dialogue did not project to three cards")
-	var branch := Store.projection(Store.document("sandbox_branch"))
+		errors.append("three-line native dialogue did not project to three cards")
+	var branch := Store.projection(Store.document(Fixture.Content.BRANCH))
 	var branch_cards: Array = branch.get("cards", [])
 	if not bool(branch.get("ok", false)) or branch_cards.size() != 1:
-		errors.append("simple sandbox choice did not project to one card")
+		errors.append("simple native choice did not project to one card")
 	elif (branch_cards[0] as Dictionary).get("options", []).size() != 2:
 		errors.append("choice projection lost an option")
-	var complex := Store.projection(Store.document("hu_tao_clear_demo"))
+	var complex := Store.projection(Store.document(Fixture.Content.VN))
 	if bool(complex.get("ok", false)):
 		errors.append("complex staged scene was not protected from the simple editor")
 	var blocked := DialogueEditor.new() as EmberDialogueEditor
-	blocked.setup("hu_tao_clear_demo", "unused")
+	blocked.setup(Fixture.Content.VN, "unused")
 	if blocked.find_child("DialogueUnsupported", true, false) == null:
 		errors.append("unsupported dialogue UI did not explain its read-only state")
 	if blocked.find_child("SaveDialogue", true, false) != null:
@@ -160,7 +175,7 @@ func _test_editor_bridge(errors: Array[String], document: Dictionary) -> void:
 	var chain := ActionChainEditor.new() as EmberActionChainEditor
 	root.add_child(chain)
 	chain.setup("", "test_chain")
-	chain.call("_add_step", {"type": "talk", "dialogueId": "sandbox_branch"})
+	chain.call("_add_step", {"type": "talk", "dialogueId": Fixture.Content.BRANCH})
 	var edit := chain.find_child("EditDialogue", true, false) as Button
 	if edit == null:
 		errors.append("talk step did not expose dialogue authoring")

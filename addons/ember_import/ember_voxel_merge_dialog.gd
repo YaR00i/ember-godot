@@ -18,15 +18,13 @@ var _orbiting := false
 var _separating := false
 var source_directory := EmberVoxelCatalog.NATIVE_DIR
 var prefab_directory := EmberVoxelPrefab.PREFAB_DIR
+var can_commit := Callable()
+var _dock_layout := false
+var _view_controls: HBoxContainer
 
-func open_merge(selection: Array, scene: Node, undo: Object, separating := false) -> void:
-	_root = scene
-	_undo = undo
-	_selection = selection.duplicate()
-	_separating = separating
-	title = "Разобрать текущую склейку" if separating else "Склеить voxel-детали"
-	size = Vector2i(720,660)
-	get_ok_button().text = "Разобрать" if separating else "Склеить"
+func _init() -> void:
+	super._init()
+	_heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	for control in [_title,_kind,_density,_color,_large_ack]:
 		control.hide()
 	for control in _sizes:
@@ -35,43 +33,38 @@ func open_merge(selection: Array, scene: Node, undo: Object, separating := false
 	_primary.fit_to_longest_item = false
 	_primary.clip_text = true
 	_primary.tooltip_text = "При пересечении вокселей цвет и принадлежность основной детали имеют приоритет."
-	for node in selection:
-		_primary.add_item("Основная деталь: " + str(node.name))
-	_primary.visible = not separating
 	_primary.item_selected.connect(func(_index):
 		_align.set_pressed_no_signal(false)
-		if is_instance_valid(_preview):
-			_preview.free()
-		_session = null
-		get_ok_button().disabled = true
-		_status.text = "Основная деталь изменена. Обновите предпросмотр."
+		_invalidate_merge()
 	)
 	_status.get_parent().add_child(_primary)
 	_status.get_parent().move_child(_primary,0)
 	_align = CheckBox.new()
 	_align.text = "Совместить сетки"
 	_align.tooltip_text = "Основная деталь неподвижна. Остальные сдвигаются к ближайшей ячейке её сетки. Это не притягивание поверхностей; поворот и масштаб не меняются. Пока вы не нажали «Склеить», сцена не меняется."
-	_align.visible = not separating
-	_align.toggled.connect(func(_enabled: bool): _prepare())
+	_align.toggled.connect(_options_changed.unbind(1))
 	_status.get_parent().add_child(_align)
 	_status.get_parent().move_child(_align,1)
 	_bake_orientation = CheckBox.new()
 	_bake_orientation.text = "Запечь ориентацию сцены"
 	_bake_orientation.tooltip_text = "Переносит поворот сцены на 90° в сами воксели: Canvas и библиотека откроют модель в этой ориентации. Положение на карте сохраняется. Только одинаковый масштаб XYZ, без отражения, перекоса и округления угла. Выключено по умолчанию; исходные файлы не меняются."
-	_bake_orientation.visible = not separating
-	_bake_orientation.toggled.connect(func(_enabled: bool): _prepare())
+	_bake_orientation.clip_text = true
+	_bake_orientation.toggled.connect(_options_changed.unbind(1))
 	_status.get_parent().add_child(_bake_orientation)
 	_status.get_parent().move_child(_bake_orientation,2)
 	_scene_orientation = CheckBox.new()
 	_scene_orientation.text = "Ориентация как в сцене"
+	_scene_orientation.clip_text = true
 	_scene_orientation.button_pressed = true
 	_scene_orientation.tooltip_text = "Включено: поворот и пропорции как на карте. Выключено: локальные оси основной детали. Меняется только предпросмотр, не результат склейки."
 	_scene_orientation.toggled.connect(func(_enabled: bool): _update_orientation())
 	_status.get_parent().add_child(_scene_orientation)
 	_status.get_parent().move_child(_scene_orientation,3)
 	var view_controls := HBoxContainer.new()
+	_view_controls = view_controls
 	var hint := Label.new()
 	hint.text = "ЛКМ / СКМ: вращать вид · колесо: масштаб"
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	view_controls.add_child(hint)
 	var reset := Button.new()
@@ -83,7 +76,6 @@ func open_merge(selection: Array, scene: Node, undo: Object, separating := false
 	_presentation = Node3D.new()
 	_world.add_child(_presentation)
 	_preview_container = _world.get_parent().get_parent() as SubViewportContainer
-	# Keep the object visible before long alignment reports in this scroll box.
 	_status.get_parent().move_child(_preview_container,5)
 	_preview_container.mouse_filter = Control.MOUSE_FILTER_STOP
 	_preview_container.mouse_force_pass_scroll_events = false
@@ -91,9 +83,47 @@ func open_merge(selection: Array, scene: Node, undo: Object, separating := false
 	_preview_container.resized.connect(_update_camera)
 	_preview_container.mouse_exited.connect(func(): _orbiting = false)
 	_world.get_parent().handle_input_locally = false
-	_status.custom_minimum_size.x = 460
-	_prepare()
-	popup_centered()
+
+func use_dock_layout() -> void:
+	_dock_layout = true
+	super.use_dock_layout()
+	_view_controls.reparent(self)
+	pin_preview_action()
+
+func open_merge(selection: Array, scene: Node, undo: Object, separating := false) -> void:
+	_root = scene; _undo = undo; _selection = selection.duplicate(); _separating = separating
+	title = "Разобрать текущую склейку" if separating else "Склеить voxel-детали"
+	_heading.text = title
+	get_ok_button().text = "Разобрать" if separating else "Склеить"
+	_primary.clear()
+	for node in selection: _primary.add_item("Основная деталь: " + str(node.name))
+	_primary.visible = not separating; _align.visible = not separating; _bake_orientation.visible = not separating
+	_align.set_pressed_no_signal(false); _bake_orientation.set_pressed_no_signal(false)
+	_scene_orientation.set_pressed_no_signal(true)
+	_invalidate_merge(); _reset_view(); show()
+	if not _dock_layout:
+		size = Vector2(720,660); _status.custom_minimum_size.x = 460
+		_prepare(); popup_centered()
+
+func matches_context(selection: Array, scene: Node, separating: bool) -> bool:
+	return _root == scene and _separating == separating and _selection.size() == selection.size() and _selection.all(func(node): return node in selection)
+
+func is_dirty() -> bool:
+	return _root != null and not _selection.is_empty()
+
+func _options_changed() -> void:
+	if _dock_layout: _invalidate_merge()
+	else: _prepare()
+
+func _invalidate_merge() -> void:
+	if is_instance_valid(_preview): _preview.free()
+	_preview = null; _session = null; _orbiting = false
+	get_ok_button().disabled = true; _status.tooltip_text = ""
+	_status.text = "До подтверждения сцена и файлы не меняются. Обновите предпросмотр."
+
+func cancel_edit() -> void:
+	_session = null; _selection.clear(); _orbiting = false
+	super.cancel_edit()
 
 func _prepare() -> void:
 	if _primary == null:
@@ -101,6 +131,11 @@ func _prepare() -> void:
 	get_ok_button().disabled = true
 	if is_instance_valid(_preview):
 		_preview.free()
+	_preview = null; _session = null
+	if can_commit.is_valid() and not can_commit.call():
+		_status.text = "Сначала сохраните или отмените правки Canvas. Затем обновите предпросмотр."; return
+	if not is_instance_valid(_root) or _selection.any(func(node): return not is_instance_valid(node)):
+		_status.text = "Исходная сцена или детали недоступны. Отмените операцию и выберите детали заново."; return
 	var ordered := _selection.duplicate()
 	if not _separating and not ordered.is_empty():
 		var primary: Node = ordered.pop_at(_primary.selected)
@@ -240,10 +275,12 @@ func _view_input(event: InputEvent) -> void:
 
 func _commit() -> void:
 	get_ok_button().disabled = true
+	if can_commit.is_valid() and not can_commit.call():
+		_status.text = "Сначала сохраните или отмените правки Canvas. Затем обновите предпросмотр."; return
 	if _session == null or not _session.commit(_undo):
 		_status.text = _session.error if _session != null else "Обновите предпросмотр."
 		return
 	if Engine.is_editor_hint():
 		preload("res://addons/ember_import/ember_editor_filesystem.gd").request()
-	hide()
-	queue_free()
+	cancel_edit()
+	if not _dock_layout: queue_free()

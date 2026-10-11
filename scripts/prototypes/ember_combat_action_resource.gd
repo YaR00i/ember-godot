@@ -240,6 +240,17 @@ func content_signature() -> String:
 	])
 
 
+func behavior_summary() -> String:
+	var lines: Array[String] = ["%s · %s · %s. Стоимость %d MP, задержка %d, дальность %d." % [menu_group_label(), element_label(), target_label(), mp_cost, delay, range_cells],
+		"Базовое действие: %s." % effect_label()]
+	if power > 0: lines.append("Сила %d, характеристика: %s. Попадание и итоговый урон рассчитывает бой." % [power, scaling_label()])
+	if effect == Effect.LIFT_THROW: lines.append("Бросок: дальность %d, допустимый вес %d." % [throw_range_cells, max_lift_weight])
+	if effect in [Effect.DUO_PULSE, Effect.STEAM_BREACH]: lines.append("Партнёр %s: радиус %d, %d MP, задержка %d." % [partner_unit_id, partner_range_cells, partner_mp_cost, partner_delay])
+	lines.append("Общих шагов: %d. Выполняются по порядку после базового действия; настройки шагов принадлежат библиотеке эффектов." % effect_steps.size())
+	lines.append("Текст условий — подсказка игроку. Доступность проверяют цель, дальность, MP и правила выбранного действия.")
+	return "\n".join(lines)
+
+
 func _valid_id(value: String) -> bool:
 	var clean := value.strip_edges()
 	if clean.is_empty():

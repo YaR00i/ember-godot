@@ -13,26 +13,32 @@ func _run() -> void:
 	map.authored_size_blocks = Vector2i(24, 24)
 	root.add_child(map)
 	var creation := CreationDialog.new()
-	root.add_child(creation)
+	var dock := VBoxContainer.new(); dock.size = Vector2(302, 600)
+	var theme := Theme.new(); theme.default_font_size = 20; dock.theme = theme
+	root.add_child(dock); dock.add_child(creation)
 	creation.open_for()
 	await process_frame
-	assert(creation.size.x <= 600 and creation.size.y <= 620, "New-map dialog grew beyond its requested size: %s" % creation.size)
+	assert(creation.get_class() == "VBoxContainer" and creation.get_combined_minimum_size().x <= 302, "New-map dock horizontal overflow")
 	creation._id_field.text = "compact_dialog_layout_test"
 	creation._prepare()
 	await process_frame
-	assert(creation.size.x <= 600 and creation.size.y <= 620, "Preview expanded the new-map dialog: %s" % creation.size)
+	assert(creation.get_combined_minimum_size().x <= 302, "Preview expanded new-map dock")
 	creation._id_field.text = "a".repeat(48)
 	creation._prepare()
 	await process_frame
-	assert(creation.size.x <= 600 and creation.size.y <= 620, "Long valid ID expanded the new-map dialog: %s" % creation.size)
+	assert(creation.get_combined_minimum_size().x <= 302, "Long ID expanded new-map dock")
 	creation._id_field.text = "coast_dialog_layout"
 	creation._preset.select(1)
 	creation._preset_changed(1)
 	creation._prepare()
 	await process_frame
-	assert(creation.size.x <= 600 and creation.size.y <= 680, "Coast preview expanded the new-map dialog: %s" % creation.size)
+	assert(creation.get_combined_minimum_size().x <= 302, "Coast preview expanded new-map dock")
+	creation._scroll.scroll_vertical = 10000
+	for i in 4: await process_frame
+	assert(creation.get_global_rect().encloses(creation.get_create_button().get_global_rect()), "Create outside pinned footer")
+	assert(creation.get_global_rect().encloses(creation._preview_button.get_global_rect()), "Preview outside pinned footer")
 	creation.hide()
-	creation.free()
+	creation.free(); dock.free()
 	var extension := ExtensionDialog.new()
 	root.add_child(extension)
 	extension.open_for(map)

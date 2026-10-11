@@ -22,9 +22,7 @@ signal standalone_chain_remove_requested(interact: EmberInteract)
 signal standalone_bounds_save_requested(interact: EmberInteract, size: Vector3)
 signal dialogue_save_requested(document: Dictionary)
 signal shop_save_requested(document: Dictionary)
-signal shop_migrate_requested(shop_id: String)
 signal item_save_requested(document: Dictionary)
-signal item_migrate_requested(item_id: String)
 signal quest_save_requested(interact: EmberInteract, document: Dictionary)
 
 var _prop: EmberVoxelProp
@@ -450,9 +448,7 @@ func _toggle_action_chain_editor(
 		editor.connect("delete_requested", _on_action_chain_delete.bind(holder, button))
 		editor.connect("dialogue_save_requested", _on_dialogue_save)
 		editor.connect("shop_save_requested", _on_shop_save)
-		editor.connect("shop_migrate_requested", _on_shop_migrate)
 		editor.connect("item_save_requested", _on_item_save)
-		editor.connect("item_migrate_requested", _on_item_migrate)
 		holder.add_child(editor)
 		holder.visible = true
 	else:
@@ -484,16 +480,8 @@ func _on_shop_save(document: Dictionary) -> void:
 	shop_save_requested.emit(document)
 
 
-func _on_shop_migrate(shop_id: String) -> void:
-	shop_migrate_requested.emit(shop_id)
-
-
 func _on_item_save(document: Dictionary) -> void:
 	item_save_requested.emit(document)
-
-
-func _on_item_migrate(item_id: String) -> void:
-	item_migrate_requested.emit(item_id)
 
 
 func _toggle_quest_editor(
@@ -728,7 +716,10 @@ func _source_title(source: String) -> String:
 
 func _source_hint(source: String) -> String:
 	match source:
-		"Asset": return "Источник: JOI .vox/.json. Изменяется через source workflow."
+		"Asset":
+			if str(_snapshot.get("sources", {}).get("owner", "")) == "godot":
+				return "Источник: Godot Resource. Модель редактируется в мастерской объектов."
+			return "Источник: legacy .vox/.json. Исторические данные для архивирования."
 		"Scene": return "Источник: текущий .tscn. Изменения должны проходить Undo/Redo."
 		"Derived": return "Вычислено из asset/scene. Не является authoring полем."
 	return source

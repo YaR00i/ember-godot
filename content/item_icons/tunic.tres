@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="EmberItemIconResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_item_icon_resource.gd" id="1_source"]
+
+[resource]
+script = ExtResource("1_source")
+icon_id = "tunic"
+definition = {
+  "id": "tunic",
+  "nameRu": "Туника",
+  "size": 16,
+  "palette": {
+    ".": "",
+    "S": "#efe4d4",
+    "F": "#e8c8a0",
+    "M": "#c87850",
+    "P": "#8b3048",
+    "K": "#1c100c"
+  },
+  "rows": [
+    "................",
+    "....SS....SS....",
+    "...SFF....FFS...",
+    "...SFFFFFFFFS...",
+    "...SFFSSSSFFS...",
+    "...SFFFFFFFFS...",
+    "....SPPPPPPS....",
+    "....SFFFFFFS....",
+    "....SFFFFFFS....",
+    ".....SMMMMS.....",
+    "......KKKK......",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................"
+  ]
+}

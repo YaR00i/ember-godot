@@ -23,20 +23,12 @@ static func mesh_path(model_id: String, shadow := false) -> String:
 
 static func source_paths(model_id: String) -> Dictionary:
 	var native_path := EmberVoxelCatalog.native_path(model_id)
-	if FileAccess.file_exists(ProjectSettings.globalize_path(native_path)):
+	if ResourceLoader.exists(native_path):
 		return {"source": native_path, "json": native_path, "vox": "", "owner": "godot"}
-	var json_path := EmberPack.model_json_path(model_id)
-	var vox_path := ""
-	var parsed: Variant = EmberPack.parse_json_file(json_path)
-	if typeof(parsed) == TYPE_DICTIONARY:
-		var mesh_raw: Variant = (parsed as Dictionary).get("mesh", {})
-		if typeof(mesh_raw) == TYPE_DICTIONARY:
-			var rel := str((mesh_raw as Dictionary).get("file", ""))
-			if not rel.is_empty():
-				var candidate := EmberPack.pack_root().path_join(rel.replace("\\", "/"))
-				if FileAccess.file_exists(candidate):
-					vox_path = candidate
-	return {"source": json_path, "json": json_path, "vox": vox_path, "owner": "legacy_import"}
+	var binary_path := EmberVoxelCatalog.NATIVE_DIR.path_join(model_id.strip_edges() + ".res")
+	if ResourceLoader.exists(binary_path):
+		return {"source": binary_path, "json": binary_path, "vox": "", "owner": "godot"}
+	return {"source": "", "json": "", "vox": "", "owner": ""}
 
 
 static func source_signature(model_id: String) -> String:
@@ -49,6 +41,10 @@ static func source_signature(model_id: String) -> String:
 	var contract := BUILD_CONTRACT
 	if str(paths.get("owner", "")) == "godot":
 		var model := model_of(load_json(model_id))
+		if model.get("material", {}).has("object_surface"):
+			contract += ":" + preload("res://scripts/ember_voxel_material_profiles.gd").RENDER_CONTRACT
+		if preload("res://scripts/ember_voxel_material_profiles.gd").optics_parameters(model.get("material", {})).enabled:
+			contract += ":" + preload("res://scripts/ember_voxel_material_profiles.gd").OPTICS_RENDER_CONTRACT
 		if PackedByteArray(model.get("surfaceFillMaterials", [])).has(EmberVoxelSurfaceMesher.SURFACE_FILL_WATER):
 			contract += ":column-water-v1"
 	return (contract + ":" + FileAccess.get_sha256(json_path) + ":" + vox_hash).sha256_text()
@@ -62,7 +58,7 @@ static func validate_packed(model_id: String, packed: PackedScene) -> Dictionary
 	var prefab := load_json(model_id)
 	var model := model_of(prefab)
 	if prefab.is_empty():
-		errors.append("metadata .json не загружены")
+		errors.append("Native voxel Resource не загружен")
 	var root := packed.instantiate(PackedScene.GEN_EDIT_STATE_DISABLED)
 	if not root is EmberVoxelProp:
 		if root:
@@ -258,7 +254,7 @@ static func make_preview_instance(model_id: String, tile_size := 16.0) -> EmberV
 	var visual := _build_visual_mesh(model_id, prefab, vw, {})
 	if visual == null:
 		return null
-	_apply_visual_materials(visual)
+	_apply_visual_materials(visual, model.get("material", {}))
 	var size := _ember_size(model_id, prefab, visual)
 	return _make_tree(model_id, model, size, vw, tile_size, visual, null, _collision_mesh(model, vw))
 
@@ -284,7 +280,7 @@ static func prepare_resource(resource: EmberVoxelModelResource, projection_cache
 	if visual == null:
 		return null
 	_append_surface_fill_overlay(model, visual, vw)
-	_apply_visual_materials(visual)
+	_apply_visual_materials(visual, model.get("material", {}))
 	var size := resource.grid_size()
 	var body := _body_mesh(resource.model_id, definition, model, vw, size)
 	var instance := _make_tree(
@@ -305,7 +301,7 @@ static func _write_prefab(model_id: String, tile_size: float, stats: Dictionary)
 	var visual := _build_visual_mesh(model_id, prefab, vw, stats)
 	if visual == null:
 		return null
-	_apply_visual_materials(visual)
+	_apply_visual_materials(visual, model.get("material", {}))
 	var size := _ember_size(model_id, prefab, visual)
 	visual = _install_mesh_resource(visual, mesh_path(model_id, false))
 	if visual == null:
@@ -370,9 +366,22 @@ static func _copy_mesh_surfaces(target: ArrayMesh, source: ArrayMesh) -> void:
 		target.surface_set_name(surface, source.surface_get_name(surface))
 
 
-static func _apply_visual_materials(mesh: ArrayMesh) -> void:
+static func refractive_material(material: Dictionary) -> ShaderMaterial:
+	var result := ShaderMaterial.new()
+	result.shader = preload("res://shaders/ember_voxel_refractive.gdshader")
+	result.set_meta("optics_parameters",preload("res://scripts/ember_voxel_material_profiles.gd").optics_parameters(material))
+	result.set_meta("optics_role",preload("res://scripts/ember_voxel_material_profiles.gd").palette_role(material,1))
+	var optics: Dictionary = preload("res://scripts/ember_voxel_material_profiles.gd").optics_parameters(material)
+	for key in optics:
+		if key not in ["enabled","finish"]: result.set_shader_parameter("optics_"+key,Color(optics[key]) if key in ["cloud_light","cloud_deep"] else optics[key])
+	return result
+
+
+static func _apply_visual_materials(mesh: ArrayMesh, material: Dictionary = {}) -> void:
 	var opaque := voxel_material()
 	var transparent := voxel_transparent_material()
+	# An explicit source opt-in selects optics; legacy alpha and ordinary roles stay unchanged.
+	var refractive := refractive_material(material) if preload("res://scripts/ember_voxel_material_profiles.gd").optics_parameters(material).enabled else null
 	# Resolve lazily: SurfaceMaterials already uses this builder for opaque props.
 	var surface_materials = load("res://scripts/ember_voxel_surface_materials.gd")
 	for surface in mesh.get_surface_count():
@@ -381,7 +390,7 @@ static func _apply_visual_materials(mesh: ArrayMesh) -> void:
 			surface,
 			surface_materials.water_material() if channel == "water"
 			else surface_materials.foam_material() if channel == "water_foam"
-			else transparent if channel == "transparent" else opaque,
+			else refractive if refractive != null else transparent if channel == "transparent" else opaque,
 		)
 
 
@@ -427,17 +436,7 @@ static func _set_pack_owner(node: Node, scene_owner: Node) -> void:
 		_set_pack_owner(child, scene_owner)
 
 
-static func _ember_size(model_id: String, prefab: Dictionary, _visual: ArrayMesh) -> Vector3i:
-	if bool(prefab.get("_nativeGodotVoxel", false)):
-		return VoxMesher.ember_grid_size(model_of(prefab))
-	var mesh_raw: Variant = prefab.get("mesh", {})
-	var mesh_info: Dictionary = mesh_raw if typeof(mesh_raw) == TYPE_DICTIONARY else {}
-	var rel := str(mesh_info.get("file", "voxels/models/%s.vox" % model_id))
-	var vox_path := EmberPack.pack_root().path_join(rel.replace("\\", "/"))
-	if FileAccess.file_exists(vox_path):
-		var doc := VoxParser.parse_file(vox_path)
-		if not doc.is_empty():
-			return VoxMesher.ember_size(doc.models[0].size)
+static func _ember_size(_model_id: String, prefab: Dictionary, _visual: ArrayMesh) -> Vector3i:
 	return VoxMesher.ember_grid_size(model_of(prefab))
 
 
@@ -448,11 +447,6 @@ static func _build_visual_mesh(
 	stats: Dictionary,
 ) -> ArrayMesh:
 	var model := model_of(prefab)
-	var from_vox := _mesh_from_vox(model_id, prefab, model, vw)
-	if from_vox != null:
-		_append_surface_fill_overlay(model, from_vox, vw)
-		stats["vox_mesh"] = int(stats.get("vox_mesh", 0)) + 1
-		return from_vox
 	var from_json := _mesh_from_json(prefab, vw)
 	if from_json != null:
 		_append_surface_fill_overlay(model, from_json, vw)
@@ -460,29 +454,6 @@ static func _build_visual_mesh(
 		return from_json
 	stats["missing_mesh"] = int(stats.get("missing_mesh", 0)) + 1
 	return null
-
-
-static func _mesh_from_vox(
-	model_id: String,
-	prefab: Dictionary,
-	model: Dictionary,
-	vw: float,
-) -> ArrayMesh:
-	if bool(prefab.get("_nativeGodotVoxel", false)):
-		return null
-	var mesh_raw: Variant = prefab.get("mesh", {})
-	var mesh_info: Dictionary = mesh_raw if typeof(mesh_raw) == TYPE_DICTIONARY else {}
-	var rel := str(mesh_info.get("file", "voxels/models/%s.vox" % model_id))
-	var vox_path := EmberPack.pack_root().path_join(rel.replace("\\", "/"))
-	if not FileAccess.file_exists(vox_path):
-		return null
-	var doc := VoxParser.parse_file(vox_path)
-	if doc.is_empty():
-		return null
-	var mesh := VoxMesher.build_mesh(doc, vw, PackedByteArray(), VoxMesher.model_channel(model, "transparency"))
-	if mesh.get_surface_count() == 0:
-		return null
-	return mesh
 
 
 static func _mesh_from_json(prefab: Dictionary, vw: float) -> ArrayMesh:
@@ -497,8 +468,8 @@ static func _mesh_from_json(prefab: Dictionary, vw: float) -> ArrayMesh:
 
 
 static func _body_mesh(
-	model_id: String,
-	prefab: Dictionary,
+	_model_id: String,
+	_prefab: Dictionary,
 	model: Dictionary,
 	vw: float,
 	size: Vector3i,
@@ -506,19 +477,6 @@ static func _body_mesh(
 	var skip := EmberVoxelLight.skip_mask(model, size)
 	if skip.is_empty():
 		return null
-	if bool(prefab.get("_nativeGodotVoxel", false)):
-		var native_body := VoxMesher.build_from_ember_model(model, vw, skip)
-		return native_body if native_body.get_surface_count() > 0 else null
-	var mesh_raw: Variant = prefab.get("mesh", {})
-	var mesh_info: Dictionary = mesh_raw if typeof(mesh_raw) == TYPE_DICTIONARY else {}
-	var rel := str(mesh_info.get("file", "voxels/models/%s.vox" % model_id))
-	var vox_path := EmberPack.pack_root().path_join(rel.replace("\\", "/"))
-	if FileAccess.file_exists(vox_path):
-		var doc := VoxParser.parse_file(vox_path)
-		if not doc.is_empty():
-			var built := VoxMesher.build_mesh(doc, vw, skip)
-			if built.get_surface_count() > 0:
-				return built
 	var from_json := VoxMesher.build_from_ember_model(model, vw, skip)
 	if from_json.get_surface_count() > 0:
 		return from_json

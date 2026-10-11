@@ -358,8 +358,12 @@ static func _cleanup_serialization(paths: Array[String], directory: String) -> v
 
 
 static func owner(model_id: String) -> String:
-	var definition := Catalog.definition(model_id)
-	return str(definition.get("_owner", ""))
+	return Catalog.owner(model_id)
+
+
+static func can_import_legacy(model_id: String) -> bool:
+	# Explicit offline migration API only; normal owner/editor lookup is native.
+	return Catalog.owner(model_id).is_empty() and not str(Importer.source_paths(model_id).json).is_empty()
 
 
 static func snapshot(model_id: String) -> Dictionary:
@@ -371,11 +375,21 @@ static func snapshot(model_id: String) -> Dictionary:
 		var file := FileAccess.open(absolute, FileAccess.READ)
 		if file != null:
 			bytes = file.get_buffer(file.get_length())
-	return {"modelId": model_id, "path": path, "existed": existed, "bytes": bytes}
+	var result := {"modelId": model_id, "path": path, "existed": existed, "bytes": bytes}
+	if not existed:
+		# Undo of an explicit import restores exact derived files. It must never
+		# ask the native runtime builder to read the historical source again.
+		var derived: Array[Dictionary] = []
+		for derived_path in [EmberVoxelPrefab.prefab_path(model_id), EmberVoxelPrefab.mesh_path(model_id), EmberVoxelPrefab.mesh_path(model_id, true)]:
+			var present := FileAccess.file_exists(derived_path)
+			derived.append({"path": derived_path, "existed": present,
+				"bytes": FileAccess.get_file_as_bytes(derived_path) if present else PackedByteArray()})
+		result.derived = derived
+	return result
 
 
 static func migrate_to_native(model_id: String) -> int:
-	if owner(model_id) != "legacy_import":
+	if not can_import_legacy(model_id):
 		return ERR_ALREADY_EXISTS
 	var parity := Parity.inspect_model(model_id)
 	if not bool(parity.get("ok", false)):
@@ -388,7 +402,7 @@ static func migrate_batch_to_native(model_ids: Array[String]) -> int:
 	if model_ids.is_empty():
 		return ERR_INVALID_PARAMETER
 	for model_id in model_ids:
-		if owner(model_id) != "legacy_import":
+		if not can_import_legacy(model_id):
 			return ERR_ALREADY_EXISTS
 	var parity := Parity.inspect_batch(model_ids)
 	if not bool(parity.get("ok", false)):
@@ -438,6 +452,20 @@ static func restore_snapshot(value: Dictionary) -> int:
 			var remove_error := DirAccess.remove_absolute(absolute)
 			if remove_error != OK:
 				return remove_error
+		for saved in value.get("derived", []):
+			var derived_path := str(saved.get("path", ""))
+			if bool(saved.get("existed", false)):
+				DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(derived_path.get_base_dir()))
+				var file := FileAccess.open(derived_path, FileAccess.WRITE)
+				if file == null: return FileAccess.get_open_error()
+				file.store_buffer(saved.get("bytes", PackedByteArray()))
+				file.close()
+				ResourceLoader.load(derived_path, "", ResourceLoader.CACHE_MODE_REPLACE)
+			elif FileAccess.file_exists(derived_path):
+				var error := DirAccess.remove_absolute(ProjectSettings.globalize_path(derived_path))
+				if error != OK: return error
+		EmberVoxelPrefab.begin_import()
+		return OK
 	return _rebuild(model_id)
 
 

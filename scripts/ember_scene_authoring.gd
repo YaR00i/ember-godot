@@ -79,13 +79,17 @@ static func make_model_instance(
 	model_id: String,
 	local_position: Vector3,
 	reserved: Dictionary = {},
+	preferred_id: String = "",
 ) -> EmberVoxelProp:
 	if root == null or packed == null or model_id.strip_edges().is_empty():
 		return null
 	var prop := packed.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE) as EmberVoxelProp
 	if prop == null:
 		return null
-	var placement_id := next_model_placement_id(root, model_id, reserved)
+	if not preferred_id.is_empty() and not preferred_id.is_valid_identifier(): prop.free(); return null
+	# Planners can supply a validated stable slot ID, avoiding a scene traversal
+	# for every member. Ordinary one-object authoring retains its existing naming.
+	var placement_id := preferred_id if not preferred_id.is_empty() else next_model_placement_id(root, model_id, reserved)
 	prop.name = placement_id
 	prop.model_id = model_id
 	prop.placement_id = placement_id

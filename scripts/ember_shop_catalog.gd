@@ -1,7 +1,6 @@
 class_name EmberShopCatalog
 extends RefCounted
-## Shared editor/runtime shop storage. Native per-shop Resources win by ID;
-## entries in legacy shops/catalog.json remain a read-only fallback.
+## Shared native-only shop storage for editor and runtime; no legacy reads.
 
 const ShopResource = preload("res://scripts/ember_shop_resource.gd")
 const NATIVE_DIR := "res://content/shops"
@@ -11,8 +10,7 @@ static func definition(shop_id: String) -> Dictionary:
 	var clean := shop_id.strip_edges()
 	if not _valid_id(clean):
 		return {}
-	var native := native_definition(clean)
-	return native if not native.is_empty() else legacy_definition(clean)
+	return native_definition(clean)
 
 
 static func native_definition(shop_id: String) -> Dictionary:
@@ -20,7 +18,7 @@ static func native_definition(shop_id: String) -> Dictionary:
 	if not _valid_id(clean):
 		return {}
 	var path := native_path(clean)
-	if not FileAccess.file_exists(path):
+	if not ResourceLoader.exists(path):
 		return {}
 	var resource := ResourceLoader.load(
 		path, "", ResourceLoader.CACHE_MODE_IGNORE
@@ -28,49 +26,23 @@ static func native_definition(shop_id: String) -> Dictionary:
 	return resource.to_definition() if resource != null else {}
 
 
-static func legacy_definition(shop_id: String) -> Dictionary:
-	var catalog: Variant = EmberPack.parse_json_file(EmberPack.shop_catalog_path())
-	if typeof(catalog) != TYPE_DICTIONARY:
-		return {}
-	var shops: Variant = catalog.get("shops", [])
-	if typeof(shops) != TYPE_ARRAY:
-		return {}
-	for raw_shop in shops:
-		if typeof(raw_shop) == TYPE_DICTIONARY and str(raw_shop.get("id", "")) == shop_id:
-			return (raw_shop as Dictionary).duplicate(true)
-	return {}
-
-
 static func owner(shop_id: String) -> String:
 	var clean := shop_id.strip_edges()
 	if not _valid_id(clean):
 		return ""
-	if FileAccess.file_exists(native_path(clean)):
+	if ResourceLoader.exists(native_path(clean)):
 		return "native"
-	return "legacy" if not legacy_definition(clean).is_empty() else ""
+	return ""
 
 
 static func ids() -> Array[String]:
-	var known := {}
-	var absolute_native := ProjectSettings.globalize_path(NATIVE_DIR)
-	if DirAccess.dir_exists_absolute(absolute_native):
-		for filename in DirAccess.get_files_at(absolute_native):
-			if filename.get_extension().to_lower() == "tres":
-				var shop_id := filename.get_basename()
-				if _valid_id(shop_id):
-					known[shop_id] = true
-	var catalog: Variant = EmberPack.parse_json_file(EmberPack.shop_catalog_path())
-	if typeof(catalog) == TYPE_DICTIONARY:
-		var shops: Variant = catalog.get("shops", [])
-		if typeof(shops) == TYPE_ARRAY:
-			for raw_shop in shops:
-				if typeof(raw_shop) == TYPE_DICTIONARY:
-					var shop_id := str(raw_shop.get("id", "")).strip_edges()
-					if _valid_id(shop_id):
-						known[shop_id] = true
 	var result: Array[String] = []
-	for shop_id in known:
-		result.append(str(shop_id))
+	if not DirAccess.dir_exists_absolute(NATIVE_DIR): return result
+	for filename in DirAccess.get_files_at(NATIVE_DIR):
+		filename = filename.trim_suffix(".remap")
+		if filename.get_extension().to_lower() != "tres": continue
+		var shop_id := filename.get_basename()
+		if _valid_id(shop_id) and shop_id not in result: result.append(shop_id)
 	result.sort()
 	return result
 

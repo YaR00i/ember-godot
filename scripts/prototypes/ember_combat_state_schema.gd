@@ -29,6 +29,7 @@ static func validation_errors(state: Dictionary) -> Array[String]:
 	if not state.has("rngSeed"):
 		errors.append("Состояние боя: отсутствует rngSeed.")
 	var units: Dictionary = state.get("units", {})
+	var checked_statuses := {}
 	for raw_id in units:
 		var unit_id := str(raw_id)
 		if typeof(units[raw_id]) != TYPE_DICTIONARY:
@@ -47,12 +48,16 @@ static func validation_errors(state: Dictionary) -> Array[String]:
 		else:
 			for raw_status_id in unit.get("statuses", {}):
 				var status_id := str(raw_status_id)
-				if StatusCatalog.resource(status_id) == null:
+				var authored := StatusCatalog.resource(status_id)
+				if authored == null:
 					errors.append("Боец %s: неизвестный статус %s." % [unit_id, status_id])
 				elif int((unit.get("statuses", {}) as Dictionary)[raw_status_id]) <= 0:
 					errors.append("Боец %s: статус %s требует положительную длительность." % [
 						unit_id, status_id,
 					])
+				if authored != null and not checked_statuses.has(status_id):
+					checked_statuses[status_id] = true
+					for error in authored.call("validation_errors"): errors.append("Статус %s: %s" % [status_id, error])
 		if typeof(unit.get("actions", null)) != TYPE_ARRAY:
 			errors.append("Боец %s: actions должен быть Array." % unit_id)
 	if state.has("grid"):
@@ -70,6 +75,8 @@ static func result_validation_errors(resolved: Dictionary) -> Array[String]:
 	for key in RESULT_DICTIONARY_KEYS:
 		if typeof(resolved.get(key, null)) != TYPE_DICTIONARY:
 			errors.append("Результат preview: %s должен быть Dictionary." % key)
+	if resolved.has("statusRulesHash") and typeof(resolved.statusRulesHash) != TYPE_INT:
+		errors.append("Результат preview: statusRulesHash должен быть целым числом.")
 	return errors
 
 

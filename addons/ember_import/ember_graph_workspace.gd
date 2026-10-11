@@ -21,6 +21,7 @@ const VisualLibraryPicker = preload("res://addons/ember_import/ember_visual_libr
 const LootTableCatalog = preload("res://scripts/prototypes/ember_combat_loot_table_catalog.gd")
 const LootLibraryWorkspace = preload("res://addons/ember_import/ember_combat_loot_library_workspace.gd")
 const CombatContentWorkspace = preload("res://addons/ember_import/ember_combat_content_library_workspace.gd")
+const GameSystemsWorkspace = preload("res://addons/ember_import/ember_game_systems_workspace.gd")
 const VoxelSculptWorkspace = preload("res://addons/ember_import/ember_voxel_sculpt_workspace.gd")
 const CLIPBOARD_COPY := 0
 const CLIPBOARD_CUT := 1
@@ -30,14 +31,12 @@ const MIN_GRAPH_SPLIT_RATIO := 0.52
 const MAX_GRAPH_SPLIT_RATIO := 0.78
 
 signal action_save_requested(document: Dictionary)
-signal action_migrate_requested(action_id: String)
 signal dialogue_save_requested(document: Dictionary)
-signal dialogue_migrate_requested(dialogue_id: String)
 signal quest_save_requested(document: Dictionary)
 signal shop_save_requested(document: Dictionary)
-signal shop_migrate_requested(shop_id: String)
 signal item_save_requested(document: Dictionary)
-signal item_migrate_requested(item_id: String)
+signal system_resource_requested(path: String)
+signal system_file_requested(path: String)
 signal scene_node_requested(node_path: NodePath)
 signal quest_event_bind_requested(
 	scene_path: NodePath,
@@ -57,6 +56,7 @@ var _secondary_tools_button: Button
 var _secondary_tools_popup: PopupPanel
 var _loot_workspace: EmberCombatLootLibraryWorkspace
 var _combat_content_workspace: Control
+var _game_systems_workspace: Control
 var _voxel_sculpt_workspace: EmberVoxelSculptWorkspace
 var _graph: GraphEdit
 var _editor_holder: VBoxContainer
@@ -164,7 +164,7 @@ func _ready() -> void:
 func _input(event: InputEvent) -> void:
 	if not is_visible_in_tree() or not event is InputEventKey:
 		return
-	if _current_kind in ["loot", "combat_content", "voxel_sculpt"]:
+	if _current_kind in ["loot", "combat_content", "voxel_sculpt", "systems"]:
 		return
 	var key := event as InputEventKey
 	if not key.pressed or key.echo or not (key.ctrl_pressed or key.meta_pressed):
@@ -289,6 +289,11 @@ func _build() -> void:
 	document_toolbar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	document_toolbar.add_theme_constant_override("separation", 6)
 	root_box.add_child(document_toolbar)
+	var systems_button := Button.new()
+	systems_button.name = "GameSystemsHome"
+	systems_button.text = "Игровые системы"
+	systems_button.pressed.connect(open_resource.bind("systems", "systems_library"))
+	document_toolbar.add_child(systems_button)
 	var title := Label.new()
 	title.text = "EMBER GRAPH"
 	title.modulate = Color(0.96, 0.72, 0.32)
@@ -306,6 +311,8 @@ func _build() -> void:
 	_kind.set_item_metadata(3, "loot")
 	_kind.add_item("Бойцы и приёмы")
 	_kind.set_item_metadata(4, "combat_content")
+	_kind.add_item("Игровые системы")
+	_kind.set_item_metadata(5, "systems")
 	_kind.item_selected.connect(_on_kind_selected)
 	document_toolbar.add_child(_kind)
 	_resource = OptionButton.new()
@@ -583,7 +590,15 @@ func _build() -> void:
 	_combat_content_workspace = CombatContentWorkspace.new() as Control
 	_combat_content_workspace.visible = false
 	_combat_content_workspace.call("setup", _editor_interface, _editor_undo_redo)
+	_combat_content_workspace.connect("draft_requested", _open_common_content_draft)
 	root_box.add_child(_combat_content_workspace)
+	_game_systems_workspace = GameSystemsWorkspace.new()
+	_game_systems_workspace.call("configure", _editor_undo_redo)
+	_game_systems_workspace.visible = false
+	_game_systems_workspace.call("setup")
+	_game_systems_workspace.connect("editor_requested", _open_systems_editor)
+	_game_systems_workspace.connect("library_file_requested", system_file_requested.emit)
+	root_box.add_child(_game_systems_workspace)
 	_voxel_sculpt_workspace = VoxelSculptWorkspace.new() as EmberVoxelSculptWorkspace
 	_voxel_sculpt_workspace.name = "VoxelSurfaceSculptWorkspace"
 	_voxel_sculpt_workspace.visible = false
@@ -857,6 +872,8 @@ func _confirm_discard_navigation() -> void:
 	_pending_navigation = {}
 	if _current_kind == "voxel_sculpt" and _voxel_sculpt_workspace != null:
 		_voxel_sculpt_workspace.discard_changes()
+	if _current_kind == "systems" and _game_systems_workspace != null:
+		_game_systems_workspace.call("discard_changes")
 	_apply_navigation(str(pending.get("kind", "action")), str(pending.get("id", "")))
 
 
@@ -869,6 +886,8 @@ func _cancel_discard_navigation() -> void:
 		_update_dialogue_draft_status()
 	elif _current_kind == "quest":
 		_update_quest_draft_status()
+	elif _current_kind == "systems":
+		_game_systems_workspace.call("show_current_status")
 	else:
 		_update_action_draft_status()
 
@@ -890,7 +909,40 @@ func _apply_navigation(kind: String, resource_id: String) -> void:
 
 
 func _normalized_kind(kind: String) -> String:
-	return kind if kind in ["action", "dialogue", "quest", "loot", "combat_content", "voxel_sculpt"] else "action"
+	return kind if kind in ["action", "dialogue", "quest", "loot", "combat_content", "voxel_sculpt", "systems"] else "action"
+
+
+func _open_systems_editor(module: String, record: Dictionary) -> void:
+	if module in ["status", "effect", "action", "unit"]:
+		open_resource("combat_content", "combat_library")
+		_combat_content_workspace.call("_open_related", module, str(record.id))
+	elif module == "loot":
+		open_resource("loot", str(record.id))
+	elif module in ["item", "equipment"]:
+		var window := Window.new()
+		window.name = "GameSystemsItemWindow"
+		window.title = "Предмет · " + str(record.name)
+		window.size = Vector2i(760, 680)
+		window.transient = true
+		window.exclusive = true
+		var scroll := ScrollContainer.new()
+		scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		window.add_child(scroll)
+		var editor := preload("res://addons/ember_import/ember_item_editor.gd").new()
+		editor.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		scroll.add_child(editor)
+		editor.setup(str(record.id), str(record.id))
+		editor.save_requested.connect(_on_item_save)
+		editor.cancel_requested.connect(window.queue_free)
+		window.close_requested.connect(window.queue_free)
+		add_child(window)
+		window.popup_centered_clamped(Vector2i(760, 680), 0.9)
+	else:
+		system_resource_requested.emit(str(record.path))
+
+func _open_common_content_draft(module: String, source: Resource) -> void:
+	open_resource("systems", "systems_library")
+	_game_systems_workspace.call("begin_new", module, source)
 
 
 func _restore_navigation_controls() -> void:
@@ -907,6 +959,8 @@ func _has_unsaved_draft() -> bool:
 		return _voxel_sculpt_workspace != null and _voxel_sculpt_workspace.has_unsaved_changes()
 	if _current_kind == "loot":
 		return false
+	if _current_kind == "systems":
+		return _game_systems_workspace != null and bool(_game_systems_workspace.call("has_unsaved_changes"))
 	if _current_kind == "combat_content":
 		return false
 	if _current_kind == "dialogue":
@@ -1905,6 +1959,7 @@ func _update_mutation_controls() -> void:
 	var quest_mode := _current_kind == "quest"
 	var loot_mode := _current_kind == "loot"
 	var sculpt_mode := _current_kind == "voxel_sculpt"
+	var systems_mode := _current_kind == "systems"
 	if _resource != null:
 		_resource.visible = not loot_mode
 	if _arrange_button != null:
@@ -2008,6 +2063,9 @@ func _update_mutation_controls() -> void:
 	if _vn_preview_button != null:
 		_vn_preview_button.visible = dialogue_mode
 		_vn_preview_button.disabled = not dialogue_mode or _dialogue_draft.is_empty()
+	if systems_mode:
+		for control in [_resource, _arrange_button, _secondary_tools_button, _quest_event_button, _graph_delete_button, _duplicate_button, _clipboard_menu, _draft_undo_button, _draft_redo_button, _graph_save_button]:
+			if control != null: control.visible = false
 
 
 func _quest_focus_title() -> String:
@@ -2168,6 +2226,8 @@ func _refresh_resource_list(preferred: String = "") -> void:
 		ids = LootTableCatalog.ids()
 	elif _current_kind == "combat_content":
 		ids = ["combat_library"]
+	elif _current_kind == "systems":
+		ids = ["systems_library"]
 	else:
 		ids = EmberInteractionContent.action_script_ids()
 	_resource.clear()
@@ -2199,6 +2259,8 @@ func _refresh_resource_list(preferred: String = "") -> void:
 
 func _open_selected() -> void:
 	_capture_view_state()
+	if _game_systems_workspace != null:
+		_game_systems_workspace.visible = _current_kind == "systems"
 	if _resource == null or _resource.item_count == 0 or _resource.selected < 0:
 		_current_id = ""
 		_clear_graph()
@@ -2269,7 +2331,7 @@ func _open_selected() -> void:
 		_status.text = "%s · центральная библиотека · item icons, шанс и количество · Ctrl+Z через Godot" % _current_id
 		_status.modulate = Color(0.66, 0.74, 0.84)
 		return
-	if _current_kind == "combat_content":
+	if _current_kind in ["combat_content", "systems"]:
 		_action_draft = {}
 		_draft_history.clear()
 		_draft_cursor = -1
@@ -2289,10 +2351,11 @@ func _open_selected() -> void:
 		if _voxel_sculpt_workspace != null:
 			_voxel_sculpt_workspace.visible = false
 		if _combat_content_workspace != null:
-			_combat_content_workspace.visible = true
-			_combat_content_workspace.call("refresh")
+			_combat_content_workspace.visible = _current_kind == "combat_content"
+			if _current_kind == "combat_content": _combat_content_workspace.call("refresh")
+		if _current_kind == "systems": _game_systems_workspace.call("refresh")
 		_update_mutation_controls()
-		_status.text = "Единая библиотека боя · reusable effects → actions → units · canonical .tres"
+		_status.text = "Игровые системы · предметы, экипировка и бой" if _current_kind == "systems" else "Единая библиотека боя · reusable effects → actions → units · canonical .tres"
 		_status.modulate = Color(0.66, 0.74, 0.84)
 		return
 	if _graph_split != null:
@@ -3838,11 +3901,7 @@ func _populate_art_picker(picker: OptionButton, current_id: String) -> void:
 				caption,
 				art_id,
 				entry.get("path", ""),
-				(
-					"Godot Resource · редактируемый"
-					if bool(entry.get("native", false))
-					else "Legacy JSON · только чтение"
-				) if exists else "ФАЙЛ ОТСУТСТВУЕТ",
+				"Godot Resource · редактируемый" if exists else "ФАЙЛ ОТСУТСТВУЕТ",
 			],
 		)
 		if art_id == current_id:
@@ -4251,7 +4310,7 @@ func _populate_speaker_picker(picker: OptionButton, current: String) -> void:
 			picker.select(picker.item_count - 1)
 			found = true
 	if not found:
-		picker.add_item("⚠ %s · нет portrait registry" % (current if not current.is_empty() else "не выбран"))
+		picker.add_item("⚠ %s · нет native портретов" % (current if not current.is_empty() else "не выбран"))
 		picker.set_item_metadata(picker.item_count - 1, current)
 		picker.select(picker.item_count - 1)
 
@@ -4671,9 +4730,7 @@ func _build_property_editor() -> void:
 		_action_editor.save_requested.connect(_on_action_save)
 		_action_editor.dialogue_save_requested.connect(_on_dialogue_save)
 		_action_editor.shop_save_requested.connect(_on_shop_save)
-		_action_editor.shop_migrate_requested.connect(_on_shop_migrate)
 		_action_editor.item_save_requested.connect(_on_item_save)
-		_action_editor.item_migrate_requested.connect(_on_item_migrate)
 		var remove := _action_editor.find_child("DeleteActionChain", true, false) as Button
 		if remove != null:
 			remove.visible = false
@@ -4726,50 +4783,17 @@ func _add_action_script_properties() -> void:
 	title.text = "ЦЕПОЧКА ДЕЙСТВИЙ"
 	title.modulate = Color(0.78, 0.84, 1.0)
 	section.add_child(title)
-	var owner := ActionStore.owner(_current_id)
 	var source_row := HBoxContainer.new()
 	var source := Label.new()
 	source.name = "ActionStorageOwner"
-	source.text = (
-		"Источник: Godot Resource"
-		if owner == "native"
-		else "Источник: Legacy JSON"
-	)
+	source.text = "Источник: Godot Resource"
 	source.tooltip_text = ActionStore.source_path(_current_id)
 	source.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	source.modulate = Color(0.50, 0.82, 0.60) if owner == "native" else Color(0.90, 0.68, 0.36)
+	source.modulate = Color(0.50, 0.82, 0.60)
 	source_row.add_child(source)
-	var migrate := Button.new()
-	migrate.name = "MigrateActionResource"
-	migrate.text = "Уже .tres" if owner == "native" else "Перенести в .tres"
-	migrate.disabled = owner != "legacy"
-	migrate.tooltip_text = (
-		"Создаёт res://content/action_scripts/%s.tres.\n"
-		+ "Legacy JSON остаётся резервным read-only источником.\n"
-		+ "Ctrl+Z отменяет миграцию."
-	) % _current_id
-	migrate.pressed.connect(_migrate_current_action)
-	source_row.add_child(migrate)
 	section.add_child(source_row)
 	_editor_holder.add_child(section)
 	_editor_holder.add_child(HSeparator.new())
-
-
-func _migrate_current_action() -> void:
-	if _current_kind != "action" or ActionStore.owner(_current_id) != "legacy":
-		return
-	action_migrate_requested.emit(_current_id)
-	call_deferred("_finish_action_migration_ui")
-
-
-func _finish_action_migration_ui() -> void:
-	if ActionStore.owner(_current_id) != "native":
-		_status.text = "⚠ Не удалось перенести цепочку в Godot Resource"
-		_status.modulate = Color(1.0, 0.48, 0.42)
-		return
-	_build_property_editor()
-	_status.text = "Цепочка перенесена в res://content/action_scripts/%s.tres · Ctrl+Z отменит" % _current_id
-	_status.modulate = Color(0.54, 0.86, 0.62)
 
 
 func _add_dialogue_scene_properties() -> void:
@@ -4780,29 +4804,14 @@ func _add_dialogue_scene_properties() -> void:
 	title.text = "VN СЦЕНА"
 	title.modulate = Color(0.96, 0.72, 0.32)
 	section.add_child(title)
-	var owner := DialogueStore.owner(_current_id)
 	var source_row := HBoxContainer.new()
 	var source := Label.new()
 	source.name = "DialogueStorageOwner"
-	source.text = (
-		"Источник: Godot Resource"
-		if owner == "native"
-		else "Источник: Legacy JSON"
-	)
+	source.text = "Источник: Godot Resource"
 	source.tooltip_text = DialogueStore.source_path(_current_id)
 	source.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	source.modulate = Color(0.50, 0.82, 0.60) if owner == "native" else Color(0.90, 0.68, 0.36)
+	source.modulate = Color(0.50, 0.82, 0.60)
 	source_row.add_child(source)
-	var migrate := Button.new()
-	migrate.name = "MigrateDialogueResource"
-	migrate.text = "Уже .tres" if owner == "native" else "Перенести в .tres"
-	migrate.disabled = owner != "legacy"
-	migrate.tooltip_text = (
-		"Создаёт res://content/dialogues/%s.tres.\nLegacy JSON остаётся резервным read-only источником.\nCtrl+Z отменяет миграцию."
-		% _current_id
-	)
-	migrate.pressed.connect(_migrate_current_dialogue)
-	source_row.add_child(migrate)
 	section.add_child(source_row)
 	var hint := Label.new()
 	hint.text = "Фон сцены задаётся один раз и автоматически наследуется нодами. В ноде выбирайте другой фон только как исключение."
@@ -4815,7 +4824,7 @@ func _add_dialogue_scene_properties() -> void:
 	library_path.tooltip_text = (
 		"Файлы изображений: res://assets/vn_backgrounds/\n"
 		+ "Метаданные: res://content/vn_backgrounds/*.tres\n"
-		+ "Старый JOI arts/registry.json подключён только для чтения."
+		+ "Фоны и портреты читаются из native Godot Resources."
 	)
 	library_path.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	library_path.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -4869,23 +4878,6 @@ func _inherit_scene_background_all() -> void:
 		return
 	_push_dialogue_draft(changed)
 	_status.text = "Ноды наследуют единый фон сцены · ↶ вернёт индивидуальные фоны"
-	_status.modulate = Color(0.54, 0.86, 0.62)
-
-
-func _migrate_current_dialogue() -> void:
-	if _current_kind != "dialogue" or DialogueStore.owner(_current_id) != "legacy":
-		return
-	dialogue_migrate_requested.emit(_current_id)
-	call_deferred("_finish_dialogue_migration_ui")
-
-
-func _finish_dialogue_migration_ui() -> void:
-	if DialogueStore.owner(_current_id) != "native":
-		_status.text = "⚠ Не удалось перенести диалог в Godot Resource"
-		_status.modulate = Color(1.0, 0.48, 0.42)
-		return
-	_build_property_editor()
-	_status.text = "Диалог перенесён в res://content/dialogues/%s.tres · Ctrl+Z отменит" % _current_id
 	_status.modulate = Color(0.54, 0.86, 0.62)
 
 
@@ -5030,33 +5022,8 @@ func _on_shop_save(document: Dictionary) -> void:
 	shop_save_requested.emit(document)
 
 
-func _on_shop_migrate(shop_id: String) -> void:
-	shop_migrate_requested.emit(shop_id)
-
-
 func _on_item_save(document: Dictionary) -> void:
 	item_save_requested.emit(document)
-
-
-func _on_item_migrate(item_id: String) -> void:
-	item_migrate_requested.emit(item_id)
-
-
-func _dialogue_targets(step: Dictionary) -> Array[String]:
-	var result: Array[String] = []
-	if str(step.get("type", "")) == "choice":
-		var options: Variant = step.get("options", [])
-		if typeof(options) == TYPE_ARRAY:
-			for option in options:
-				if typeof(option) == TYPE_DICTIONARY:
-					var target := str(option.get("next", "")).strip_edges()
-					if not target.is_empty() and target not in result:
-						result.append(target)
-	else:
-		var target := str(step.get("next", "")).strip_edges()
-		if not target.is_empty():
-			result.append(target)
-	return result
 
 
 func _dialogue_editor_indices(document: Dictionary) -> Dictionary:

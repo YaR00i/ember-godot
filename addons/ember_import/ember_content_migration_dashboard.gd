@@ -1,18 +1,13 @@
 @tool
 class_name EmberContentMigrationDashboard
 extends PanelContainer
-## Filterable view over EmberContentMigrationReport. A bounded batch action is
-## disabled until the exact current candidates pass strict in-memory parity.
+## Read-only native content diagnostics; no historical import controls.
 
 signal refresh_requested
 signal save_requested
 signal close_requested
-signal preflight_requested(model_ids: Array[String])
-signal migrate_batch_requested(model_ids: Array[String])
 
 const Report = preload("res://addons/ember_import/ember_content_migration_report.gd")
-const VoxelBatches = preload("res://addons/ember_import/ember_voxel_migration_batches.gd")
-const ACTIVE_BATCH_ID := "fan_town_ready"
 const DOMAIN_FILTERS := [
 	{"id": "all", "label": "Все разделы"},
 	{"id": "voxel", "label": "Voxel"},
@@ -24,12 +19,9 @@ const DOMAIN_FILTERS := [
 ]
 const STATE_FILTERS := [
 	{"id": "all", "label": "Все состояния"},
-	{"id": "legacy", "label": "Осталось в legacy"},
 	{"id": "native", "label": "Уже в Godot"},
 	{"id": "attention", "label": "Требует внимания"},
 	{"id": "scene_used", "label": "Используется сценой"},
-	{"id": "sandbox_batch", "label": "Sandbox-партия"},
-	{"id": "fan_town_ready_batch", "label": "fan_town: готовые prefab"},
 ]
 
 var _report: Dictionary = {}
@@ -42,10 +34,6 @@ var _rows_summary: Label
 var _items: ItemList
 var _detail_title: Label
 var _detail: RichTextLabel
-var _preflight_status: Label
-var _preflight: Button
-var _migrate_batch: Button
-var _approved_batch_ids: Array[String] = []
 
 
 func _ready() -> void:
@@ -55,16 +43,6 @@ func _ready() -> void:
 func set_report(report: Dictionary) -> void:
 	_ensure_ui()
 	_report = report.duplicate(true)
-	_approved_batch_ids.clear()
-	_migrate_batch.disabled = true
-	var candidate_count := _active_candidate_ids().size()
-	_preflight.disabled = candidate_count == 0
-	if candidate_count == 0:
-		_preflight_status.text = "%s уже перенесена в Godot; повторный перенос не требуется." % _active_batch_label()
-		_preflight_status.modulate = Color(0.55, 0.84, 0.70)
-	else:
-		_preflight_status.text = "Dry-run ещё не выполнен; до него перенос недоступен."
-		_preflight_status.modulate = Color.WHITE
 	_refresh_rows()
 
 
@@ -78,35 +56,6 @@ func set_filter(domain_id: String, state_id: String, query := "") -> void:
 
 func visible_entries() -> Array[Dictionary]:
 	return _visible_entries.duplicate(true)
-
-
-func set_preflight(parity_report: Dictionary) -> void:
-	_ensure_ui()
-	var candidate_ids := _active_candidate_ids()
-	var reported_ids: Array[String] = []
-	for raw_entry in parity_report.get("entries", []):
-		reported_ids.append(str((raw_entry as Dictionary).get("id", "")))
-	var approved := (
-		bool(parity_report.get("ok", false))
-		and int(parity_report.get("passed", 0)) == candidate_ids.size()
-		and reported_ids == candidate_ids
-	)
-	if approved:
-		_approved_batch_ids = candidate_ids
-		_migrate_batch.disabled = false
-		_preflight_status.text = "Dry-run: %d/%d прошли за %d мс · файлы не изменены." % [
-			int(parity_report.get("passed", 0)),
-			int(parity_report.get("total", 0)),
-			int(parity_report.get("duration_ms", 0)),
-		]
-		_preflight_status.modulate = Color(0.55, 0.84, 0.70)
-	else:
-		_approved_batch_ids.clear()
-		_migrate_batch.disabled = true
-		_preflight_status.text = "Dry-run не пройден: %d ошибок. Перенос заблокирован." % int(
-			parity_report.get("failed", 0)
-		)
-		_preflight_status.modulate = Color(0.96, 0.55, 0.42)
 
 
 func _ensure_ui() -> void:
@@ -129,12 +78,12 @@ func _ensure_ui() -> void:
 	var header := HBoxContainer.new()
 	body.add_child(header)
 	var title := Label.new()
-	title.text = "МИГРАЦИЯ КОНТЕНТА · G1/G2"
+	title.text = "ДИАГНОСТИКА NATIVE-КОНТЕНТА"
 	title.add_theme_font_size_override("font_size", 19)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(title)
 	var safety_badge := Label.new()
-	safety_badge.text = "СНАЧАЛА DRY-RUN"
+	safety_badge.text = "ТОЛЬКО ЧТЕНИЕ"
 	safety_badge.modulate = Color(0.55, 0.84, 0.70)
 	header.add_child(safety_badge)
 
@@ -163,18 +112,7 @@ func _ensure_ui() -> void:
 	_search.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_search.text_changed.connect(func(_text: String) -> void: _refresh_rows())
 	filters.add_child(_search)
-	var sandbox := _button("Показать sandbox-партию", func() -> void:
-		set_filter("voxel", "sandbox_batch")
-	)
-	sandbox.name = "ShowSandboxMigrationBatch"
-	sandbox.tooltip_text = "Legacy voxel-модели, которые уже используются только в проверочных agent_sandbox сценах."
-	filters.add_child(sandbox)
-	var fan_town := _button("Показать fan_town-партию", func() -> void:
-		set_filter("voxel", "fan_town_ready_batch")
-	)
-	fan_town.name = "ShowFanTownReadyMigrationBatch"
-	fan_town.tooltip_text = "Семь scene-used моделей с уже актуальными prefab; список партии зафиксирован."
-	filters.add_child(fan_town)
+
 
 	var split := HSplitContainer.new()
 	split.name = "MigrationDashboardSplit"
@@ -210,12 +148,6 @@ func _ensure_ui() -> void:
 	_detail.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	detail_side.add_child(_detail)
 
-	_preflight_status = Label.new()
-	_preflight_status.name = "MigrationPreflightStatus"
-	_preflight_status.text = "Dry-run ещё не выполнен; до него перенос недоступен."
-	_preflight_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.add_child(_preflight_status)
-
 	var footer := HBoxContainer.new()
 	footer.add_theme_constant_override("separation", 8)
 	body.add_child(footer)
@@ -225,23 +157,6 @@ func _ensure_ui() -> void:
 	var save := _button("Сохранить JSON", func() -> void: save_requested.emit())
 	save.name = "SaveMigrationDashboardJson"
 	footer.add_child(save)
-	_preflight = _button("Проверить fan_town-партию", func() -> void:
-		preflight_requested.emit(_active_candidate_ids())
-	)
-	_preflight.name = "PreflightVoxelMigrationBatch"
-	_preflight.tooltip_text = "Сравнивает legacy и будущий Godot mesh в памяти, ничего не записывая."
-	footer.add_child(_preflight)
-	_migrate_batch = _button("Перенести проверенную партию", func() -> void:
-		if not _approved_batch_ids.is_empty():
-			migrate_batch_requested.emit(_approved_batch_ids.duplicate())
-	)
-	_migrate_batch.name = "MigrateVoxelBatch"
-	_migrate_batch.disabled = true
-	_migrate_batch.tooltip_text = "Создаёт только проверенные Resources и prefab одной операцией Ctrl+Z/Redo."
-	footer.add_child(_migrate_batch)
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	footer.add_child(spacer)
 	var reset := _button("Сбросить фильтры", func() -> void: set_filter("all", "all"))
 	reset.name = "ResetMigrationDashboardFilters"
 	footer.add_child(reset)
@@ -266,18 +181,6 @@ func _refresh_rows() -> void:
 		_items.set_item_custom_fg_color(index, _row_color(entry))
 	var all_count := Report.filtered_entries(_report).size()
 	_rows_summary.text = "%d из %d записей" % [_visible_entries.size(), all_count]
-	if _selected_id(_state_filter) == "sandbox_batch" and not _visible_entries.is_empty():
-		_rows_summary.text += (
-			" · партия уже перенесена в Godot"
-			if _sandbox_candidate_ids().is_empty()
-			else " · безопасный первый кандидат, перенос отдельно"
-		)
-	if _selected_id(_state_filter) == "fan_town_ready_batch" and not _visible_entries.is_empty():
-		_rows_summary.text += (
-			" · партия уже перенесена в Godot"
-			if _active_candidate_ids().is_empty()
-			else " · 7 готовых prefab, требуется dry-run"
-		)
 	if _visible_entries.is_empty():
 		_detail_title.text = "Ничего не найдено"
 		_detail.text = "Измените раздел, состояние или строку поиска."
@@ -373,24 +276,6 @@ func _select_option(option: OptionButton, value: String) -> void:
 			option.select(index)
 			return
 	option.select(0)
-
-
-func _sandbox_candidate_ids() -> Array[String]:
-	var result: Array[String] = []
-	for entry in Report.filtered_entries(_report, "voxel", "sandbox_pending"):
-		result.append(str(entry.get("id", "")))
-	return result
-
-
-func _active_candidate_ids() -> Array[String]:
-	var result: Array[String] = []
-	for entry in Report.filtered_entries(_report, "voxel", "%s_pending" % ACTIVE_BATCH_ID):
-		result.append(str(entry.get("id", "")))
-	return result
-
-
-func _active_batch_label() -> String:
-	return VoxelBatches.label(ACTIVE_BATCH_ID)
 
 
 func _domain_title(domain_name: String) -> String:

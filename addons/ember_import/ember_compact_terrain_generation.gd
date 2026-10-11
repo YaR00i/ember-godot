@@ -94,6 +94,8 @@ func begin(source: EmberTerrainPilotResource, area_blocks: Rect2i, parameters: D
 				error = "В области есть пустое место. Сначала добавьте недостающие участки."; candidate = null; return false
 			_addresses.append(key)
 	var needed := ceili((float(parameters.sea_m) + float(parameters.land_m) + float(parameters.relief_m)) * 4.0) * 4
+	if parameters.profile == "plains":
+		needed = ceili((float(parameters.sea_m)+float(parameters.land_m)+float(parameters.relief_m)+float(parameters.get("micro_m",Math.PLAINS_DEFAULTS.micro_m)))*4.0)*4
 	if candidate.height_limit < needed:
 		candidate.height_limit = needed
 		for key in candidate.sections:
@@ -186,7 +188,7 @@ func _generate_group() -> void:
 			var retained: float = reference.get("height", _heights[local])
 			var value := clampi(roundi(lerpf(retained, sampled, weight) / 4.0) * 4, 4, candidate.height_limit)
 			_heights[local] = value
-			_tops[local] = _sand if value <= _sea + 8 else _stone if value > _sea + 16 * 6 and _sampler.parameters.profile != "hills" else _grass
+			_tops[local] = _sand if value <= _sea + 8 else _stone if value > _sea + 16 * 6 and _sampler.parameters.profile not in ["hills","plains"] else _grass
 			_bases[local] = _stone if _tops[local] == _stone else _soil
 			_caps[local] = mini(3, value)
 			var water_level := roundi(lerpf(float(reference.get("water", _sea)), float(_sea), weight) / 4.0) * 4

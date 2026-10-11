@@ -36,11 +36,14 @@ func setup(section: Dictionary, material: Material) -> void:
 
 
 func _ready() -> void:
+	# Serialized scenes preserve the Roof child, not this transient reference.
+	if not is_instance_valid(_roof): _roof = get_node_or_null("Roof") as MeshInstance3D
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
 
 
 func set_revealed(revealed: bool, immediate := false) -> void:
+	if not is_instance_valid(_roof): return
 	if _revealed == revealed and not immediate:
 		return
 	_revealed = revealed

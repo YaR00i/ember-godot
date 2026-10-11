@@ -4,37 +4,55 @@ extends RefCounted
 ## Slope-aware ridges are an approximation inspired by de Carpentier's Swiss
 ## turbulence, not the proprietary NMS generator or hydraulic erosion.
 
-const PROFILES := ["hills", "ridges", "eroded"]
+const PROFILES := ["hills", "ridges", "eroded", "plains"]
 const DEFAULTS := {"profile": "hills", "seed": 7, "sea_m": 2.0, "land_m": 2.0,
 	"relief_m": 6.0, "feature_m": 18.0, "shore_m": 5.0, "land_fraction": 0.72}
+const PLAINS_DEFAULTS := {"flat_fraction": 0.8, "flat_size_m": 16.0,
+	"micro_m": 0.0, "flat_transition_m": 2.0}
 
 var parameters: Dictionary
 var area_m: Rect2
 var _coast: FastNoiseLite
 var _terrain: FastNoiseLite
 var _detail: FastNoiseLite
+var _sites := {} # Derived only for this sampler/job; never part of the map.
 
 
 static func parameter_error(values: Dictionary) -> String:
 	if values.get("profile", "") not in PROFILES: return "Выберите рисунок рельефа."
 	if typeof(values.get("seed")) != TYPE_INT: return "Номер рисунка должен быть целым."
-	var limits := {"sea_m": Vector2(0.5, 16), "land_m": Vector2(0.25, 8),
-		"relief_m": Vector2(0, 24), "feature_m": Vector2(2, 96),
-		"shore_m": Vector2(0.5, 24), "land_fraction": Vector2(0.3, 0.9)}
+	# Arrays retain double precision at UI endpoints such as 0.3 and 0.9.
+	var limits := {"sea_m": [0.5,16.0], "land_m": [0.25,8.0],
+		"relief_m": [0.0,24.0], "feature_m": [2.0,96.0],
+		"shore_m": [0.5,24.0], "land_fraction": [0.3,0.9]}
 	for key in limits:
 		var value = values.get(key)
 		if typeof(value) not in [TYPE_FLOAT, TYPE_INT] or not is_finite(float(value)):
 			return "Параметр %s должен быть конечным числом." % key
-		var range_value: Vector2 = limits[key]
-		if value < range_value.x or value > range_value.y: return "Параметр %s вне допустимого диапазона." % key
+		var range_value: Array = limits[key]
+		if value < range_value[0]-0.000000001 or value > range_value[1]+0.000000001: return "Параметр %s вне допустимого диапазона." % key
+	if values.profile == "plains":
+		var plains_limits := {"flat_fraction": Vector2(0,1), "flat_size_m": Vector2(8,48),
+			"micro_m": Vector2(0,1), "flat_transition_m": Vector2(0.5,12)}
+		for key in plains_limits:
+			var value: Variant = values.get(key, PLAINS_DEFAULTS[key])
+			if typeof(value) not in [TYPE_FLOAT,TYPE_INT] or not is_finite(float(value)):
+				return "Параметр %s должен быть конечным числом." % key
+			var limits_value: Vector2 = plains_limits[key]
+			if value < limits_value.x or value > limits_value.y: return "Параметр %s вне допустимого диапазона." % key
+		if values.get("flat_transition_m",PLAINS_DEFAULTS.flat_transition_m) > values.get("flat_size_m",PLAINS_DEFAULTS.flat_size_m)*0.25:
+			return "Пологий переход должен быть не шире четверти размера ровного участка."
 	return ""
 
 
 func configure(bounds_m: Rect2, values: Dictionary) -> void:
 	area_m = bounds_m
 	parameters = values.duplicate(true)
+	_sites.clear()
+	if values.profile == "plains":
+		for key in PLAINS_DEFAULTS: parameters[key] = values.get(key, PLAINS_DEFAULTS[key])
 	_coast = _noise(int(values.seed) + 101, 2)
-	_terrain = _noise(int(values.seed) + 1009, 3 if values.profile == "hills" else 1)
+	_terrain = _noise(int(values.seed) + 1009, 3 if values.profile in ["hills","plains"] else 1)
 	_detail = _noise(int(values.seed) + 2003, 2)
 
 
@@ -78,9 +96,59 @@ func height_m(point_m: Vector2) -> float:
 	var land_weight := smoothstep(0.0, shore, coast_distance)
 	var bottom_weight := smoothstep(-shore, 0.0, coast_distance)
 	var bottom_m := minf(2.0, float(parameters.sea_m) - 0.25)
+	if parameters.profile == "plains":
+		return float(parameters.sea_m) - bottom_m * (1.0 - bottom_weight) + land_weight * (
+			float(parameters.land_m) + _plains_height(point_m))
 	var form := _landform(point_m / feature)
 	return float(parameters.sea_m) - bottom_m * (1.0 - bottom_weight) + land_weight * (
 		float(parameters.land_m) + float(parameters.relief_m) * form)
+
+
+func _site(key: Vector2i) -> Dictionary:
+	if _sites.has(key): return _sites[key]
+	# Stable integer-coordinate seeds, not a global RNG or a square height texture.
+	var seed_value := int(parameters.seed)
+	var jitter := Vector2(_site_random(key,seed_value+3011),_site_random(key,seed_value+4001))-Vector2.ONE*0.5
+	var point := (Vector2(key)+Vector2.ONE*0.5+jitter*0.5)*float(parameters.flat_size_m)
+	var height := clampf(0.5+0.5*_terrain.get_noise_2dv(point/float(parameters.feature_m)),0,1)*float(parameters.relief_m)
+	var value := {"key":key,"point":point,"height":height,"flat":_site_random(key,seed_value+5003) < float(parameters.flat_fraction)}
+	_sites[key] = value
+	return value
+
+
+static func _site_random(key: Vector2i, seed_value: int) -> float:
+	return float(hash(Vector3i(key.x,key.y,seed_value)) & 0x7fffffff)/2147483648.0
+
+
+func _plains_height(point: Vector2) -> float:
+	var smooth_height := clampf(0.5+0.5*_terrain.get_noise_2dv(point/float(parameters.feature_m)),0,1)*float(parameters.relief_m)
+	var height := smooth_height
+	if float(parameters.flat_fraction) > 0:
+		var at := Vector2i((point/float(parameters.flat_size_m)).floor())
+		var nearest := {}; var closest := INF
+		for z in range(-1,2):
+			for x in range(-1,2):
+				var site := _site(at+Vector2i(x,z))
+				var distance := point.distance_squared_to(site.point)
+				if distance < closest:
+					nearest = site; closest = distance
+		if nearest.flat:
+			# The closest cell edge can belong to a site other than the second
+			# nearest. Taking the minimum of the neighbouring bisectors avoids
+			# jumps when those competitors swap order inside the same cell.
+			var edge := INF
+			var nearest_key: Vector2i = nearest.key
+			for z in range(-2,3):
+				for x in range(-2,3):
+					if x == 0 and z == 0: continue
+					var other := _site(nearest_key+Vector2i(x,z))
+					var spacing: float = nearest.point.distance_to(other.point)
+					var distance := (point.distance_squared_to(other.point)-closest)/(2.0*spacing)
+					edge = minf(edge,distance)
+			# The influence vanishes at cell boundaries from either side.
+			var weight := smoothstep(0.0,float(parameters.flat_transition_m),edge)
+			height = lerpf(smooth_height,float(nearest.height),weight)
+	return height+_detail.get_noise_2dv(point/1.5)*float(parameters.micro_m)
 
 
 func _landform(point: Vector2) -> float:

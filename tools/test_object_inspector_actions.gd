@@ -1,28 +1,32 @@
 extends SceneTree
+const MixedFixture = preload("res://tools/fixtures/ember_mixed_editor_test_fixture.gd")
 ## I2 contract: the actual Inspector action owner supports add/edit/remove,
-## Undo/Redo and save/reopen without touching source scene or JOI map JSON.
+## Undo/Redo and save/reopen without touching source scene or native model Resource.
 
-const SOURCE_SCENE := "res://scenes/fan_town.tscn"
-const SOURCE_MAP_ID := "fan_town"
+const SOURCE_SCENE := "res://scenes/editor_fixture_a.tscn"
+const SOURCE_MAP_ID := "editor_fixture_a"
 const TEMP_SCENE := "user://ember_inspector_interact_roundtrip.tscn"
 
 
 func _init() -> void:
+	if not MixedFixture.prepare(self):
+		quit(2)
+		return
 	quit(_run())
 
 
 func _run() -> int:
 	var errors: Array[String] = []
 	var scene_hash := FileAccess.get_sha256(SOURCE_SCENE)
-	var map_hash := FileAccess.get_sha256(EmberPack.map_path(SOURCE_MAP_ID))
+	var map_hash := FileAccess.get_sha256(EmberVoxelCatalog.native_path(MixedFixture.BLOCK))
 	var packed := ResourceLoader.load(SOURCE_SCENE, "", ResourceLoader.CACHE_MODE_REPLACE) as PackedScene
 	var root := packed.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE) if packed else null
 	if root == null:
-		printerr("FAIL object inspector actions: fan_town unavailable")
+		printerr("FAIL object inspector actions: editor_fixture_a unavailable")
 		return 1
-	var prop := root.get_node_or_null("Map/Props/ft_fountain") as EmberVoxelProp
+	var prop := root.get_node_or_null("Map/Props/plain_prop") as EmberVoxelProp
 	if prop == null or prop.get_node_or_null("Interact") != null:
-		errors.append("clean ft_fountain fixture unavailable")
+		errors.append("clean plain_prop fixture unavailable")
 	else:
 		var history := _test_action_history(errors, root, prop)
 		_test_save_reopen(errors, root, prop)
@@ -32,12 +36,13 @@ func _run() -> int:
 	root.free()
 
 	if FileAccess.get_sha256(SOURCE_SCENE) != scene_hash:
-		errors.append("Inspector actions changed source fan_town.tscn")
-	if FileAccess.get_sha256(EmberPack.map_path(SOURCE_MAP_ID)) != map_hash:
-		errors.append("Inspector actions changed JOI fan_town.json")
+		errors.append("Inspector actions changed source editor_fixture_a.tscn")
+	if FileAccess.get_sha256(EmberVoxelCatalog.native_path(MixedFixture.BLOCK)) != map_hash:
+		errors.append("Inspector actions changed JOI editor_fixture_a.json")
 	var temp_path := ProjectSettings.globalize_path(TEMP_SCENE)
 	if FileAccess.file_exists(temp_path):
 		DirAccess.remove_absolute(temp_path)
+	MixedFixture.verify_sources(errors)
 	if not errors.is_empty():
 		printerr("FAIL object inspector actions")
 		for error in errors:
@@ -47,7 +52,7 @@ func _run() -> int:
 	print("  add/edit/remove use one scene-owned Interact contract")
 	print("  Undo/Redo restores nodes and all authored fields")
 	print("  save/reopen preserves Interact + Shape ownership")
-	print("  source .tscn and JOI map JSON unchanged")
+	print("  source .tscn and native source unchanged")
 	return 0
 
 
@@ -57,14 +62,14 @@ func _test_action_history(errors: Array[String], root: Node, prop: EmberVoxelPro
 	actions.configure(history)
 	var talk := {
 		"kind": "talk",
-		"script_id": "sandbox_guard_talk",
+		"script_id": "interaction_guard",
 		"note": "Inspector add test",
 	}
 	if not actions.save(prop, talk, root):
 		errors.append("add action was rejected")
 		return history
 	var interact := prop.get_node_or_null("Interact") as EmberInteract
-	if interact == null or interact.kind != "talk" or interact.script_id != "sandbox_guard_talk":
+	if interact == null or interact.kind != "talk" or interact.script_id != "interaction_guard":
 		errors.append("add action did not author talk fields")
 		return history
 	var shape := interact.get_node_or_null("Shape") as CollisionShape3D
@@ -75,23 +80,23 @@ func _test_action_history(errors: Array[String], root: Node, prop: EmberVoxelPro
 		errors.append("undo add did not detach Interact")
 	history.redo()
 	interact = prop.get_node_or_null("Interact") as EmberInteract
-	if interact == null or interact.script_id != "sandbox_guard_talk":
+	if interact == null or interact.script_id != "interaction_guard":
 		errors.append("redo add did not restore Interact")
 
 	var shop := {
 		"kind": "shop",
-		"shop_id": "village_kiosk",
-		"script_id": "sandbox_shop_intro",
+		"shop_id": "interaction_shop",
+		"script_id": "interaction_shop_intro",
 		"note": "Inspector edit test",
 	}
 	actions.save(prop, shop, root)
-	if interact.kind != "shop" or interact.shop_id != "village_kiosk":
+	if interact.kind != "shop" or interact.shop_id != "interaction_shop":
 		errors.append("edit action did not apply shop fields")
 	history.undo()
-	if interact.kind != "talk" or interact.script_id != "sandbox_guard_talk":
+	if interact.kind != "talk" or interact.script_id != "interaction_guard":
 		errors.append("undo edit did not restore talk fields")
 	history.redo()
-	if interact.kind != "shop" or interact.script_id != "sandbox_shop_intro":
+	if interact.kind != "shop" or interact.script_id != "interaction_shop_intro":
 		errors.append("redo edit did not restore shop fields")
 
 	actions.remove(prop, root)
@@ -119,8 +124,8 @@ func _test_save_reopen(errors: Array[String], root: Node, prop: EmberVoxelProp) 
 	if reopened == null:
 		errors.append("temporary scene could not be reopened")
 		return
-	var saved := reopened.get_node_or_null("Map/Props/ft_fountain/Interact") as EmberInteract
-	if saved == null or saved.kind != "shop" or saved.shop_id != "village_kiosk":
+	var saved := reopened.get_node_or_null("Map/Props/plain_prop/Interact") as EmberInteract
+	if saved == null or saved.kind != "shop" or saved.shop_id != "interaction_shop":
 		errors.append("saved Interact fields did not survive reopen")
 	elif saved.get_node_or_null("Shape") == null:
 		errors.append("saved Interact Shape did not survive reopen")

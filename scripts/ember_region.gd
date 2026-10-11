@@ -1,7 +1,7 @@
 @tool
 class_name EmberRegion
 extends Area3D
-## Map region from Ember JSON (player_start / trigger / teleport / …).
+## Scene-owned map region (player_start / trigger / teleport / chest / …).
 
 @export var region_id := ""
 @export var map_id := ""
@@ -134,6 +134,9 @@ func refresh_chest_visual(tile_size: float) -> void:
 		existing.name = "ChestVisual"
 		existing.placement_id = "%s:chest" % region_id
 		add_child(existing)
+	# Serialized visuals use the prefab's canonical adapter; the map may use
+	# another block size. Apply it to reused visuals as well as fresh instances.
+	existing.configure_voxel_scale(existing.voxels_per_block, _visual_tile_size)
 	_sync_chest_visual_transform(existing)
 
 

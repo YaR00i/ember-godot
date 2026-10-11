@@ -69,6 +69,10 @@ func content_signature() -> String:
 	])
 
 
+func behavior_summary() -> String:
+	return "Строк: %d. Каждая проверяется независимо: шанс и количество от минимума до максимума.\nЛут выдаётся с побеждённых врагов после победы. Для одного результата повторный расчёт сохраняет тот же бросок; это не выбор одного предмета из списка." % entries.size()
+
+
 func _valid_id(value: String) -> bool:
 	var expression := RegEx.new()
 	return expression.compile("^[a-z0-9][a-z0-9_-]*$") == OK and expression.search(value.strip_edges()) != null

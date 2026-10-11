@@ -29,6 +29,8 @@ var flow_texture: ImageTexture
 var phase_texture: ImageTexture
 var source: Terrain
 var stats := {}
+var _sent_water := {}
+var _sent_ground := {}
 var _thread := Thread.new()
 var _mutex := Mutex.new()
 var _cancelled := false
@@ -40,6 +42,37 @@ var _candidate := {}
 var _upload_keys: Array = []
 var _upload_cursor := 0
 var cache_directory := DiskCache.ROOT # Tests may select an isolated user:// fixture.
+var _runtime_activity := false
+var _observers := PackedVector2Array()
+var _near_distance := 768.0 # 48 metres at the usual 16 source cells/metre.
+var _hysteresis := 128.0
+const QUERY_PROTECTION_SECONDS := 2.0
+
+
+func set_runtime_activity(enabled: bool, observers := PackedVector2Array(), near_distance := 768.0, hysteresis := 128.0) -> void:
+	# Never enable this policy in the native editor, including brush/preview paths.
+	_runtime_activity = enabled and not Engine.is_editor_hint() and not observers.is_empty()
+	_observers = observers
+	_near_distance = maxf(0.0, near_distance)
+	_hysteresis = maxf(0.0, hysteresis)
+
+
+func _full_rate(entry: Dictionary, seconds: float) -> bool:
+	if not _runtime_activity: return true
+	if seconds < _last_time or seconds <= float(entry.get("query_until", -1.0)): return true
+	var radius := _near_distance + (_hysteresis if entry.get("runtime_near", false) else 0.0)
+	var core: Rect2i = entry.core
+	for point in _observers:
+		var nearest := Vector2(clampf(point.x, core.position.x, core.end.x), clampf(point.y, core.position.y, core.end.y))
+		if point.distance_squared_to(nearest) <= radius * radius: return true
+	return false
+
+
+func _protect_query(entry: Dictionary) -> void:
+	if not _runtime_activity: return
+	entry.query_until = _last_time + QUERY_PROTECTION_SECONDS
+	entry.runtime_near = true
+	entry.sea.promote_gpu()
 
 
 func request(document: Terrain, revision: int) -> void:
@@ -136,6 +169,8 @@ func commit() -> void:
 				entry.sea._gpu.inherit_region(old.sea._gpu, overlap.position - old_bounds.position,
 					overlap.position - global_bounds.position, overlap.size)
 	regions = _candidate.regions
+	_sent_water.clear()
+	_sent_ground.clear()
 	source = _candidate.source
 	dry_tiles = _candidate.dry_tiles
 	stats.merge(_candidate.stats, true)
@@ -188,6 +223,8 @@ func bind(water: ShaderMaterial, ground: ShaderMaterial, origin: Vector2) -> voi
 
 
 func _bind_entry(entry: Dictionary, water: ShaderMaterial, ground: ShaderMaterial, origin: Vector2, common: Array) -> void:
+	_sent_water.clear()
+	_sent_ground.clear()
 	var created := not entry.has("water")
 	if created:
 		entry.water = water.duplicate()
@@ -212,26 +249,64 @@ func _bind_entry(entry: Dictionary, water: ShaderMaterial, ground: ShaderMateria
 	entry.water.set_shader_parameter("terrain_height_map", entry.height)
 	entry.water.set_shader_parameter("shore_distance_map", entry.shore)
 	entry.water.set_shader_parameter("sea_foam_age", entry.sea.foam_age_texture)
-	entry.parameters = common
+	# Each derived material owns its sent values. Sharing these dictionaries
+	# would let the first region's upload suppress updates in its neighbours.
+	entry.parameters = common.duplicate(true)
+	for values: Dictionary in entry.parameters:
+		for key: String in values: values[key] = _parameter_snapshot(values[key])
 
 
 func set_water_parameter(key: String, value: Variant) -> void:
+	if _sent_water.has(key) and _sent_water[key] == value: return
 	for entry: Dictionary in regions.values():
-		if entry.has("water"): entry.water.set_shader_parameter(key, value)
+		_set_parameter(entry, 0, key, value)
+	_sent_water[key] = _parameter_snapshot(value)
 
 
 func set_ground_parameter(key: String, value: Variant) -> void:
+	if _sent_ground.has(key) and _sent_ground[key] == value: return
 	for entry: Dictionary in regions.values():
-		if entry.get("ground") != null: entry.ground.set_shader_parameter(key, value)
+		_set_parameter(entry, 1, key, value)
+	_sent_ground[key] = _parameter_snapshot(value)
+
+
+func _set_parameter(entry: Dictionary, index: int, key: String, value: Variant) -> void:
+	var target: ShaderMaterial = entry.get("water" if index == 0 else "ground")
+	if target == null: return
+	var parameters: Array = entry.get("parameters", [{}, {}])
+	if parameters[index].has(key) and parameters[index][key] == value: return
+	target.set_shader_parameter(key, value)
+	# Packed arrays are mutable references in GDScript. Snapshot the payload so
+	# an in-place wake update cannot change our remembered value before upload.
+	parameters[index][key] = _parameter_snapshot(value)
+	entry.parameters = parameters
+	stats["parameter_writes"] = int(stats.get("parameter_writes", 0)) + 1
+
+
+func _parameter_snapshot(value: Variant) -> Variant:
+	if value is Array or value is Dictionary: return value.duplicate(true)
+	if typeof(value) in [TYPE_PACKED_BYTE_ARRAY, TYPE_PACKED_INT32_ARRAY,
+			TYPE_PACKED_INT64_ARRAY, TYPE_PACKED_FLOAT32_ARRAY, TYPE_PACKED_FLOAT64_ARRAY,
+			TYPE_PACKED_STRING_ARRAY, TYPE_PACKED_VECTOR2_ARRAY, TYPE_PACKED_VECTOR3_ARRAY,
+			TYPE_PACKED_COLOR_ARRAY, TYPE_PACKED_VECTOR4_ARRAY]: return value.duplicate()
+	return value
 
 
 func advance(seconds: float, height: float, period: float, reach: float, offset: float,
 		drying: float, approach := 20.0, offshore_strength := 0.65) -> void:
 	var started := Time.get_ticks_usec()
 	active_height = height
-	_last_time = seconds
+	var near_count := 0
 	for entry: Dictionary in regions.values():
-		entry.sea.advance(seconds, height, period, reach, offset, drying, approach, offshore_strength)
+		if seconds < _last_time: entry.erase("query_until")
+		var full := _full_rate(entry, seconds)
+		entry.runtime_near = full
+		if full: near_count += 1
+		entry.sea.advance(seconds, height, period, reach, offset, drying, approach, offshore_strength, full)
+	_last_time = seconds
+	stats["activity_enabled"] = _runtime_activity
+	stats["near_regions"] = near_count
+	stats["far_regions"] = regions.size() - near_count
 	update_us = Time.get_ticks_usec() - started
 
 
@@ -241,11 +316,13 @@ func _region(point: Vector2) -> Dictionary:
 
 func sample(cell: Vector2i, with_history := true) -> Dictionary:
 	var entry := _region(Vector2(cell))
+	if not entry.is_empty(): _protect_query(entry)
 	return entry.sea.sample(cell - entry.window.position, with_history) if not entry.is_empty() else {}
 
 
 func surface_height(point: Vector2) -> float:
 	var entry := _region(point)
+	if not entry.is_empty(): _protect_query(entry)
 	return entry.sea.surface_height(point - Vector2(entry.window.position)) if not entry.is_empty() else 0.0
 
 
@@ -272,8 +349,11 @@ func _build(snapshot: Terrain, previous: Dictionary) -> void:
 			part.heights, part.water_levels, part.water_materials, part.water_flow])
 	var key_us := Time.get_ticks_usec() - started
 	var components := {}
+	var cache_keys := PackedStringArray()
 	var count_built := 0
 	var count_reused := 0
+	var component_disk_hits := 0
+	var component_builds := 0
 	for key: Vector2i in world.sections:
 		if cancelled(): return
 		var dependencies := _dependencies(world, Rect2i(key * SIZE, Vector2i(SIZE, SIZE)).grow(16))
@@ -281,9 +361,25 @@ func _build(snapshot: Terrain, previous: Dictionary) -> void:
 		if not cached.is_empty() and cached.dependencies == dependencies:
 			components[key] = cached
 		else:
-			components[key] = _components(world.sections[key], key * SIZE, world)
+			var content_dependencies := []
+			for dependency: Array in dependencies:
+				content_dependencies.append([dependency[0], fingerprints.get(dependency[0], "missing")])
+			var disk_key := DiskCache.digest(["components", DiskCache.COMPONENT_VERSION, SIZE, key, content_dependencies])
+			var saved := disk.read(disk_key)
+			cache_keys.append(disk_key)
+			if _valid_components(saved, world.sections[key], key * SIZE):
+				components[key] = saved
+				component_disk_hits += 1
+			else:
+				if not saved.is_empty(): disk.invalid += 1
+				components[key] = _components(world.sections[key], key * SIZE, world)
+				if cancelled(): return
+				components[key].version = DiskCache.COMPONENT_VERSION
+				disk.write(disk_key, components[key], cancelled)
+				component_builds += 1
 			if cancelled(): return
 			components[key].dependencies = dependencies
+			components[key].disk_key = disk_key
 		# Flow just beyond a window can alter a participating section's labels.
 		# Flags alone do not describe which cells belong to each wet component.
 		if not components[key].has("mask_key"):
@@ -335,6 +431,7 @@ func _build(snapshot: Terrain, previous: Dictionary) -> void:
 			var disk_key := DiskCache.digest([DiskCache.VERSION, SIZE, HALO, core, window,
 				world.origin_y, world.height_limit, content_dependencies, _ocean_dependencies(ocean, window), mask_dependencies])
 			var saved := disk.read(disk_key)
+			cache_keys.append(disk_key)
 			phase_started = Time.get_ticks_usec()
 			var local := world.dense_window(window)
 			window_us += Time.get_ticks_usec() - phase_started
@@ -390,7 +487,7 @@ func _build(snapshot: Terrain, previous: Dictionary) -> void:
 	var common_us := Time.get_ticks_usec() - phase_started
 	disk.trim()
 	if cancelled(): return
-	_result = {"source": world, "regions": result, "dry_tiles": dry, "flow": flow_image,
+	_result = {"source": world, "regions": result, "dry_tiles": dry, "flow": flow_image, "cache_keys": cache_keys,
 		"phase": phase_image, "waterfall": fall, "ripple": ripple,
 		"cache": {"components": components, "regions": result, "ripple": ripple},
 		"stats": {"built_regions": count_built, "reused_regions": count_reused, "field_bytes": bytes,
@@ -399,6 +496,7 @@ func _build(snapshot: Terrain, previous: Dictionary) -> void:
 			"cache_read_bytes": disk.read_bytes, "cache_written_bytes": disk.written_bytes,
 			"cache_invalid": disk.invalid, "cache_failures": disk.failures, "key_us": key_us,
 			"components_us": component_us, "connectivity_us": connectivity_us, "coast_build_us": coast_build_us,
+			"component_disk_hits": component_disk_hits, "component_builds": component_builds,
 			"restore_us": restore_us, "window_us": window_us, "common_us": common_us}}
 
 
@@ -406,6 +504,41 @@ static func _valid_static(saved: Dictionary, size: Vector2i) -> bool:
 	return saved.get("records") is PackedVector4Array and saved.get("shore") is PackedByteArray \
 		and saved.get("height") is PackedByteArray and saved.shore.size() == size.x * size.y \
 		and saved.height.size() == size.x * size.y * 4 and saved.records.size() <= size.x * size.y
+
+
+func _valid_components(saved: Dictionary, part: Terrain, offset: Vector2i) -> bool:
+	if saved.get("version") != DiskCache.COMPONENT_VERSION or saved.get("width") != part.width \
+		or saved.get("depth") != part.depth or not saved.get("labels") is PackedInt32Array \
+		or not saved.get("groups") is int or not saved.get("spills") is Dictionary:
+		return false
+	var cells := part.width * part.depth
+	var groups: int = saved.groups
+	if saved.labels.size() != cells or groups < 0 or groups > cells: return false
+	var seen := PackedByteArray()
+	seen.resize(groups + 1)
+	for i in cells:
+		if i % 1024 == 0 and cancelled(): return false
+		var label: int = saved.labels[i]
+		if label < 0 or label > groups: return false
+		seen[label] = 1
+	for group in range(1, groups + 1):
+		if seen[group] == 0: return false
+	if saved.spills.size() > cells * 4: return false
+	for spill in saved.spills:
+		if not spill is Vector4i or spill.x < 0 or spill.x >= DIRECTIONS.size() \
+			or spill.w <= 0 or spill.z < spill.w + 4 or spill.z > part.height_limit:
+			return false
+		var along_x: bool = DIRECTIONS[spill.x].x != 0
+		var line_start := offset.x if along_x else offset.y
+		var line_end := line_start + (part.width if along_x else part.depth)
+		if spill.y < line_start or spill.y > line_end: return false
+		var sides = saved.spills[spill]
+		if not sides is Array or sides.is_empty() or sides.size() > cells: return false
+		var side_start := offset.y if along_x else offset.x
+		var side_end := side_start + (part.depth if along_x else part.width)
+		for side in sides:
+			if not side is int or side < side_start or side >= side_end: return false
+	return true
 
 
 static func _dependencies(world: Terrain, bounds: Rect2i) -> Array:

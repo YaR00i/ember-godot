@@ -8,6 +8,8 @@ const ObjectSession = preload("res://addons/ember_import/ember_voxel_object_sess
 const Store = preload("res://addons/ember_import/ember_voxel_model_store.gd")
 const SurfaceProjection = preload("res://scripts/ember_voxel_surface_projection.gd")
 const TerrainResource = preload("res://scripts/prototypes/ember_terrain_pilot_resource.gd")
+const TerrainPlan = preload("res://scripts/ember_terrain_plan_resource.gd")
+const Grove = preload("res://addons/ember_import/ember_grove_planner.gd")
 const FIELDS := ["schema_version","model_id","display_name","tags","voxels_per_block","size_blocks","height_voxels","palette","voxels","emissive","shine","transparency","transmittance","surface_fill_levels","surface_fill_materials","surface_fill_palette","voxel_groups","voxel_part_ids","merge_parts","collision_voxels","material","physical","emissive_casts_light","emissive_light_range","emissive_light_shadows","emissive_light_soft_rings","emissive_light_soft_shadows","emissive_strength","emissive_suppress_host_shadow","emissive_torch_flicker","emissive_light_offset","emissive_lights","imported_from","imported_source_hash"]
 const RECOVERY := "user://ember_world_drafts"
 var entries: Dictionary = {}
@@ -63,6 +65,12 @@ func open_map(map: EmberMapLoader, scene: Node) -> Dictionary:
 			return {}
 		var next := {"target": weakref(map), "scene": weakref(scene), "resource": source.working_copy(), "baseline": source.working_copy(), "path": path, "hash": FileAccess.get_sha256(path), "object_session": null, "origin": Vector3.ZERO, "scene_path": scene.scene_file_path, "target_path": str(scene.get_path_to(map)), "source_resource": source, "originals": [], "preview": null, "compact": true}
 		next.compact_layout_delta = {}
+		var plan: Variant = TerrainPlan.read(map)
+		if plan != null and (not plan is TerrainPlan or not plan.validation_errors().is_empty()):
+			error = "Повреждён план областей карты."; return {}
+		next.plan_baseline = plan.working_copy() if plan != null else null
+		next.grove_baseline = Grove.snapshot(map)
+		next.grove_pose_baseline = Grove.pose_version(map)
 		entries[_key(map)] = next
 		preview(next)
 		return next
@@ -106,7 +114,18 @@ func open_object(prop: EmberVoxelProp, scene: Node) -> Dictionary:
 	return next
 
 func dirty(entry: Dictionary) -> bool:
-	return not same_data(entry.resource,entry.baseline)
+	return not same_data(entry.resource,entry.baseline) or plan_dirty(entry) or (entry.get("compact",false) and Grove.pose_version(entry.target.get_ref()) != entry.get("grove_pose_baseline",{}))
+
+func plan_dirty(entry: Dictionary) -> bool:
+	var target: Node = entry.target.get_ref()
+	return entry.get("compact", false) and is_instance_valid(target) and not TerrainPlan.same(TerrainPlan.read(target), entry.get("plan_baseline"))
+
+func set_plan(entry: Dictionary, plan: Resource) -> void:
+	var target: Node = entry.target.get_ref()
+	if not is_instance_valid(target): return
+	if plan == null: target.remove_meta(TerrainPlan.META)
+	else: target.set_meta(TerrainPlan.META, plan)
+	changed.emit() # Metadata only: no terrain preview/remesh.
 
 func dirty_count(scene: Node = null) -> int:
 	var count := 0
@@ -193,6 +212,9 @@ func discard(scene: Node = null) -> void:
 		if scene != null and entry.scene.get_ref() != scene: continue
 		if entry.get("compact", false):
 			entry.resource = entry.baseline.working_copy()
+			var grove_error := Grove.restore_snapshot(entry.target.get_ref(),entry.scene.get_ref(),entry.get("grove_baseline"))
+			if not grove_error.is_empty(): error = grove_error
+			set_plan(entry, entry.get("plan_baseline"))
 			var target: EmberMapLoader = entry.target.get_ref()
 			var layout := compact_layout(target) if is_instance_valid(target) else {}
 			for name in entry.get("compact_layout_delta", {}):
@@ -243,7 +265,11 @@ func save_all(scene: Node, defer_scene_save := false) -> bool:
 				break
 			prepared.append({"entry":entry,"plan":plan,"old_source":Store._snapshot_file(plan.path) if FileAccess.file_exists(plan.path) else {},"old_prefab":Store._snapshot_file(plan.prefab) if FileAccess.file_exists(plan.prefab) else {},"published":false})
 		elif entry.get("compact", false):
-			prepared.append({"entry": entry, "old_source": Store._snapshot_file(entry.path), "published": false, "compact": true})
+			var plan: Variant = TerrainPlan.read(target)
+			if plan != null and (not plan is TerrainPlan or not plan.validation_errors(Vector2i(entry.resource.width / 16, entry.resource.depth / 16)).is_empty()):
+				error = "Проверьте границы и параметры плана областей."; break
+			var plan_only := same_data(entry.resource, entry.baseline)
+			prepared.append({"entry": entry, "old_source": {} if plan_only else Store._snapshot_file(entry.path), "published": false, "compact": true, "plan_only": plan_only})
 		else:
 			prepared.append({"entry":entry,"old_source":Store._snapshot_file(entry.path) if FileAccess.file_exists(entry.path) else {},"old_map_source":target.visual_surface,"old_origin":target.surface_origin,"old_physical":target.use_visual_surface_physics,"published":false})
 	last_save_profile.preflight_usec = Time.get_ticks_usec()-profile_start
@@ -251,7 +277,7 @@ func save_all(scene: Node, defer_scene_save := false) -> bool:
 	if error.is_empty():
 		for item in prepared:
 			var entry: Dictionary = item.entry
-			var result: Dictionary = (
+			var result: Dictionary = {"ok": true} if item.get("plan_only", false) else (
 				Store.install_prepared_asset(item.plan.next,item.plan.packed,item.plan.path,item.plan.prefab,true)
 				if item.has("plan") else
 				{"ok": ResourceSaver.save(entry.resource, entry.path) == OK}
@@ -304,7 +330,7 @@ func _complete_save(prepared: Array[Dictionary], scene_snapshot: Dictionary, sce
 				_restore_checked(item.old_prefab,item.plan.prefab,rollback_errors)
 				entry.object_session._apply(item.plan.old_states,{})
 			elif item.get("compact", false):
-				_restore_checked(item.old_source,entry.path,rollback_errors)
+				if not item.get("plan_only", false): _restore_checked(item.old_source,entry.path,rollback_errors)
 			else:
 				_restore_checked(item.old_source,entry.path,rollback_errors)
 				var map: EmberMapLoader = entry.target.get_ref()
@@ -324,17 +350,31 @@ func _complete_save(prepared: Array[Dictionary], scene_snapshot: Dictionary, sce
 				entry.path = item.plan.path
 				entry.object_session.accept_prepared_save(item.plan.next,item.plan.path)
 				paths.append(item.plan.prefab)
-			entry.baseline = entry.resource.working_copy() if entry.get("compact", false) else entry.resource.duplicate_model()
-			entry.hash = FileAccess.get_sha256(entry.path)
-			entry.source_resource = ResourceLoader.load(entry.path,"",ResourceLoader.CACHE_MODE_REPLACE) if entry.get("compact", false) else ResourceLoader.load(entry.path)
+			if not item.get("plan_only", false):
+				entry.baseline = entry.resource.working_copy() if entry.get("compact", false) else entry.resource.duplicate_model()
+				entry.hash = FileAccess.get_sha256(entry.path)
+				entry.source_resource = ResourceLoader.load(entry.path,"",ResourceLoader.CACHE_MODE_REPLACE) if entry.get("compact", false) else ResourceLoader.load(entry.path)
 			if entry.get("compact", false):
 				var map: EmberMapLoader = entry.target.get_ref()
 				if is_instance_valid(map):
-					map.compact_terrain = entry.source_resource
+					if not item.get("plan_only", false): map.compact_terrain = entry.source_resource
+					var plan: Variant = TerrainPlan.read(map)
+					entry.plan_baseline = plan.working_copy() if plan != null else null
 					entry.compact_layout_delta = {}
-			paths.append(entry.path)
+			if not item.get("plan_only", false): paths.append(entry.path)
+		# Ordinary node transforms can dirty a grove without changing plan data.
+		# Accept the actual saved scene as the member baseline in that case too.
+		for entry in entries.values():
+			var root_node: Node = entry.scene.get_ref(); var map_node: Node = entry.target.get_ref()
+			if entry.get("compact",false) and is_instance_valid(root_node) and root_node.scene_file_path == scene_path and is_instance_valid(map_node):
+				entry.grove_baseline = Grove.snapshot(map_node)
+				entry.grove_pose_baseline = Grove.pose_version(map_node)
 		if not paths.is_empty(): Store.asset_events.assets_published.emit(paths)
-	for entry in entries.values(): preview(entry)
+	for entry in entries.values():
+		var metadata_only := false
+		for item in prepared:
+			if item.entry == entry and item.get("plan_only", false): metadata_only = true
+		if not metadata_only: preview(entry)
 	last_save_profile.total_usec = Time.get_ticks_usec()-profile_start
 	saving = false
 	changed.emit()
@@ -358,16 +398,20 @@ func _recovery_items(copy_resources: bool) -> Array[Dictionary]:
 		var scene: Node = entry.scene.get_ref()
 		var target: Node = entry.target.get_ref()
 		var resource: Resource = entry.resource
+		var plan_only: bool = entry.get("compact", false) and same_data(entry.resource, entry.baseline)
+		var plan: Variant = TerrainPlan.read(target) if entry.get("compact", false) and is_instance_valid(target) else null
 		var layout := compact_layout(target) if entry.get("compact", false) and is_instance_valid(target) else {}
 		if entry.get("compact", false): layout.delta = entry.get("compact_layout_delta", {}).duplicate(true)
-		if copy_resources:
+		if copy_resources and not plan_only:
 			resource = (resource as TerrainResource).working_copy() if entry.get("compact", false) else (resource as EmberVoxelModelResource).duplicate_model()
-		items.append({"key": str(key), "resource": resource,
+		items.append({"key": str(key), "resource": resource, "plan_only": plan_only, "terrain_plan": plan.data() if plan != null else {},
 			"draft": recovery_directory.path_join("draft_%s.%s" % [key, "res" if entry.get("compact", false) else "tres"]),
 			"scene": scene.scene_file_path if is_instance_valid(scene) else entry.scene_path,
 			"target": str(scene.get_path_to(target)) if is_instance_valid(scene) and is_instance_valid(target) else entry.target_path,
 			"source": entry.path, "hash": entry.hash, "origin": entry.origin,
-			"compact_layout": layout})
+			"compact_layout": layout,
+			"grove_snapshot":Grove.snapshot(target) if entry.get("compact",false) and is_instance_valid(target) else null,
+			"grove_path":recovery_directory.path_join("grove_"+str(key)+".tscn")})
 	return items
 
 
@@ -379,16 +423,20 @@ static func _save_recovery_items(job: Dictionary) -> void:
 	if result == OK:
 		for item in job.items:
 			var staged_path: String = (item.draft as String).get_basename() + ".pending." + (item.draft as String).get_extension()
-			var saved := ResourceSaver.save(item.resource, staged_path)
+			var saved := OK if item.get("plan_only", false) else ResourceSaver.save(item.resource, staged_path)
 			if saved != OK:
 				result = saved
 				break
-			saved = DirAccess.rename_absolute(ProjectSettings.globalize_path(staged_path), ProjectSettings.globalize_path(item.draft))
+			if item.get("grove_snapshot") is PackedScene:
+				saved = ResourceSaver.save(item.grove_snapshot,item.grove_path)
+				if saved != OK: result = saved; break
+			saved = OK if item.get("plan_only", false) else DirAccess.rename_absolute(ProjectSettings.globalize_path(staged_path), ProjectSettings.globalize_path(item.draft))
 			if saved != OK:
 				result = saved
 				break
-			for field in ["draft", "scene", "target", "source", "hash", "origin", "compact_layout"]:
+			for field in ["draft", "scene", "target", "source", "hash", "origin", "compact_layout", "plan_only", "terrain_plan"]:
 				manifest.set_value(item.key, field, item[field])
+			if item.get("grove_snapshot") is PackedScene: manifest.set_value(item.key,"grove_path",item.grove_path)
 		if result == OK:
 			var staged_manifest := directory.path_join("manifest.pending.cfg")
 			result = manifest.save(staged_manifest)
@@ -451,9 +499,24 @@ func restore_recovery(scene: Node) -> int:
 		if target != null and entries.has(_key(target)) and dirty(entries[_key(target)]):
 			error = "Восстановление не заменило текущий несохранённый черновик. Сначала сохраните или отмените его."
 			continue
-		var draft := ResourceLoader.load(manifest.get_value(section,"draft",""),"",ResourceLoader.CACHE_MODE_IGNORE)
+		var plan_only: bool = manifest.get_value(section, "plan_only", false)
+		var draft := ResourceLoader.load(path if plan_only else manifest.get_value(section,"draft",""),"",ResourceLoader.CACHE_MODE_IGNORE)
 		if draft == null or not draft.has_method("validation_errors") or not draft.validation_errors().is_empty(): continue
+		var plan_data: Variant = manifest.get_value(section, "terrain_plan", {})
+		var recovered_plan: Resource = null
+		if manifest.has_section_key(section, "terrain_plan") and not (plan_data is Dictionary and plan_data.is_empty()):
+			recovered_plan = TerrainPlan.from_data(plan_data)
+			if recovered_plan == null or not draft is TerrainResource or not recovered_plan.validation_errors(Vector2i(draft.width / 16, draft.depth / 16)).is_empty():
+				error = "Черновик плана областей повреждён; карта не изменена."
+				continue
 		var recovered_layout: Variant = manifest.get_value(section, "compact_layout", {})
+		var recovered_grove: PackedScene
+		if manifest.has_section_key(section,"grove_path"):
+			var grove_path: String = manifest.get_value(section,"grove_path","")
+			if not grove_path.begins_with(recovery_directory+"/"):
+				error = "Снимок рощи находится вне каталога черновиков."; continue
+			recovered_grove = ResourceLoader.load(grove_path,"",ResourceLoader.CACHE_MODE_IGNORE_DEEP) as PackedScene
+			if recovered_grove == null: error = "Снимок рощи повреждён; черновик не применён."; continue
 		if draft is TerrainResource and not compact_layout_error(recovered_layout).is_empty():
 			error = compact_layout_error(recovered_layout)
 			continue
@@ -468,7 +531,11 @@ func restore_recovery(scene: Node) -> int:
 		entry.hash = manifest.get_value(section,"hash","")
 		if entry.get("compact", false):
 			if not draft is TerrainResource: continue
-			entry.resource = draft.working_copy()
+			if recovered_grove != null:
+				var grove_error := Grove.restore_snapshot(target,scene,recovered_grove)
+				if not grove_error.is_empty(): error = grove_error; continue
+			if not plan_only: entry.resource = draft.working_copy()
+			if manifest.has_section_key(section, "terrain_plan"): set_plan(entry, recovered_plan)
 			var layout: Dictionary = recovered_layout
 			restore_compact_layout(entry, layout)
 			entry.compact_layout_delta = {}
@@ -480,7 +547,7 @@ func restore_recovery(scene: Node) -> int:
 			for field in FIELDS: entry.resource.set(field,EmberVoxelModelResource.copy_authoring_value(draft.get(field)))
 		entry.origin = manifest.get_value(section,"origin",entry.origin)
 		if not entry.get("compact", false): entry.resource.notify_geometry_changed(PackedInt32Array())
-		preview(entry)
+		if not plan_only: preview(entry)
 		restored += 1
 	return restored
 

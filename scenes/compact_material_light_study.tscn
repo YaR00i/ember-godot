@@ -4,10 +4,29 @@
 [ext_resource type="Script" uid="uid://ctwn2o6mocfe2" path="res://scripts/ember_map_loader.gd" id="2_map"]
 [ext_resource type="Resource" uid="uid://b4vbpm4r0svrk" path="res://content/world_terrains/compact_material_relief_study.res" id="3_terrain"]
 [ext_resource type="Script" uid="uid://4lkb6w8l82y0" path="res://scripts/ember_region.gd" id="4_region"]
+[ext_resource type="Script" uid="uid://c4fsvngv5nsbi" path="res://scripts/ember_terrain_plan_resource.gd" id="5_860tn"]
 [ext_resource type="Material" path="res://materials/ember_compact_sky_reflection_study.tres" id="5_water"]
 [ext_resource type="Script" uid="uid://twob01f2glr7" path="res://scripts/prototypes/ember_compact_planar_reflection_study.gd" id="6_reflection"]
 [ext_resource type="Script" uid="uid://bbgclpc2g5crp" path="res://scripts/ember_water_contact_3d.gd" id="7_water_contact"]
 [ext_resource type="Script" uid="uid://bpypgerq7jftn" path="res://scripts/prototypes/ember_compact_material_light_study.gd" id="8_material_light"]
+
+[sub_resource type="Resource" id="Resource_tbvi0"]
+script = ExtResource("5_860tn")
+regions = Array[Dictionary]([{
+"bounds": Rect2i(2, 53, 92, 66),
+"id": "area_24884_118548735",
+"name": "Область 1",
+"parameters": {
+"feature_m": 18.0,
+"land_fraction": 0.72,
+"land_m": 2.0,
+"profile": "hills",
+"relief_m": 6.0,
+"sea_m": 2.0,
+"seed": 7,
+"shore_m": 5.0
+}
+}])
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_study"]
 sky_top_color = Color(0.21, 0.52, 0.82, 1)
@@ -75,6 +94,7 @@ camera_polar = 0.88
 camera_yaw = 0.35
 camera_look_height = 34.0
 camera_far = 2400.0
+metadata/_ember_terrain_plan = SubResource("Resource_tbvi0")
 
 [node name="Look" type="Node3D" parent="Map" unique_id=1131450946]
 

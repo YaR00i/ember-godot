@@ -20,9 +20,7 @@ signal cancel_requested
 signal delete_requested(script_id: String)
 signal dialogue_save_requested(document: Dictionary)
 signal shop_save_requested(document: Dictionary)
-signal shop_migrate_requested(shop_id: String)
 signal item_save_requested(document: Dictionary)
-signal item_migrate_requested(item_id: String)
 
 var _base_document: Dictionary = {}
 var _existing := false
@@ -313,9 +311,7 @@ func _toggle_shop_editor(holder: VBoxContainer, button: Button, option: OptionBu
 		var editor := ShopEditor.new() as EmberShopEditor
 		editor.setup(editable_id, ShopStore.suggested_id(source_id))
 		editor.save_requested.connect(_on_shop_save.bind(holder, button, option))
-		editor.migrate_requested.connect(shop_migrate_requested.emit)
 		editor.item_save_requested.connect(item_save_requested.emit)
-		editor.item_migrate_requested.connect(item_migrate_requested.emit)
 		editor.cancel_requested.connect(_dismiss_shop_editor.bind(holder, button))
 		holder.add_child(editor)
 		holder.visible = true

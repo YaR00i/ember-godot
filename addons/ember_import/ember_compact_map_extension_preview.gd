@@ -9,6 +9,7 @@ const MeshBuilder = preload("res://scripts/prototypes/ember_terrain_pilot_mesh.g
 const TerrainProjection = preload("res://scripts/prototypes/ember_terrain_pilot_projection.gd")
 const TerrainResource = preload("res://scripts/prototypes/ember_terrain_pilot_resource.gd")
 const Materials = preload("res://scripts/ember_voxel_surface_materials.gd")
+const WaterRegions = preload("res://scripts/prototypes/ember_compact_water_regions.gd")
 
 var _candidate: TerrainResource
 var _projection: EmberTerrainPilotProjection
@@ -19,6 +20,8 @@ var _ground_material: Material
 var _liquid_material: Material
 var _area := Rect2i()
 var _saved_hidden := {}
+var _water_fields: RefCounted
+var _water_fields_ready := false
 
 
 func show_candidate(target: EmberMapLoader, previous: TerrainResource, candidate: TerrainResource, direction: String, along := -1, address := Vector2i(-1, -1)) -> bool:
@@ -62,6 +65,15 @@ func show_candidate(target: EmberMapLoader, previous: TerrainResource, candidate
 
 
 func _process(_delta: float) -> void:
+	if _water_fields != null and not _water_fields_ready:
+		if not _water_fields.prepare(3000,_liquid_material as ShaderMaterial,_ground_material as ShaderMaterial,Vector2(_projection.global_position.x,_projection.global_position.z)): return
+		if not _water_fields.gpu_ready(): return
+		_water_fields.commit(); _water_fields_ready = true
+		for entry: Dictionary in _water_fields.regions.values():
+			entry.water.set_shader_parameter("water_flow_map",_water_fields.flow_texture)
+			entry.water.set_shader_parameter("river_phase_map",_water_fields.phase_texture)
+			entry.water.set_shader_parameter("ripple_cell_field",preload("res://scripts/prototypes/ember_compact_ripple_field.gd").texture())
+			entry.water.set_shader_parameter("ripple_field_available",1.0)
 	var started := Time.get_ticks_usec()
 	while not _pending.is_empty() and Time.get_ticks_usec() - started < 4000:
 		var key: Vector2i = _pending.pop_front()
@@ -71,14 +83,15 @@ func _process(_delta: float) -> void:
 		add_child(tile, false, Node.INTERNAL_MODE_BACK)
 		var ground := MeshInstance3D.new()
 		var ground_mesh := generated.terrain as ArrayMesh
+		var fields: Dictionary = _water_fields.regions.get(Vector2i(key.x/6,key.y/6),{}) if _water_fields_ready else {}
 		if ground_mesh.get_surface_count() > 0:
-			ground_mesh.surface_set_material(0, _ground_material)
+			ground_mesh.surface_set_material(0, fields.get("ground",_ground_material))
 		ground.mesh = ground_mesh
 		tile.add_child(ground, false, Node.INTERNAL_MODE_BACK)
 		var liquid := MeshInstance3D.new()
 		var liquid_mesh := generated.water as ArrayMesh
 		if liquid_mesh.get_surface_count() > 0:
-			liquid_mesh.surface_set_material(0, _liquid_material)
+			liquid_mesh.surface_set_material(0, fields.get("water",_liquid_material))
 		liquid.mesh = liquid_mesh
 		tile.add_child(liquid, false, Node.INTERNAL_MODE_BACK)
 	if _pending.is_empty():
@@ -86,7 +99,7 @@ func _process(_delta: float) -> void:
 		preview_built.emit()
 
 
-func show_area(target: EmberMapLoader, candidate: TerrainResource, area_cells: Rect2i, offset_sections := Vector2i.ZERO) -> bool:
+func show_area(target: EmberMapLoader, candidate: TerrainResource, area_cells: Rect2i, offset_sections := Vector2i.ZERO, only_tiles: Array[Vector2i] = [], prepare_water := false) -> bool:
 	# The same exact-candidate renderer also serves bounded terrain generation.
 	# It has no collision or saved nodes and never installs the candidate draft.
 	if target == null or candidate == null or not area_cells.has_area(): return false
@@ -95,6 +108,13 @@ func show_area(target: EmberMapLoader, candidate: TerrainResource, area_cells: R
 	_candidate = candidate
 	_ground_material = _projection._ground_material
 	_liquid_material = _projection._water_material
+	if prepare_water and _liquid_material is ShaderMaterial and (_liquid_material as ShaderMaterial).shader.resource_path.ends_with("ember_compact_sky_reflection_study.gdshader"):
+		# Reuse the same derived field builder for a private exact candidate.
+		# Only an explicit Preview starts this work; the source remains active.
+		_liquid_material = _liquid_material.duplicate()
+		_ground_material = _ground_material.duplicate()
+		(_liquid_material as ShaderMaterial).set_shader_parameter("shore_field_available",1.0)
+		_water_fields = WaterRegions.new(); _water_fields.request(candidate,0)
 	scale = _projection.scale
 	position = _projection.position
 	_saved_projection_position = _projection.position
@@ -111,7 +131,7 @@ func show_area(target: EmberMapLoader, candidate: TerrainResource, area_cells: R
 			_saved_groups.append({"node": weakref(group), "position": group.position})
 			group.position += shift
 	_area = area_cells
-	for key in candidate.tile_keys(TerrainProjection.TILE_SIZE):
+	for key in candidate.tile_keys(TerrainProjection.TILE_SIZE) if only_tiles.is_empty() else only_tiles:
 		if not Rect2i(key * TerrainProjection.TILE_SIZE, Vector2i.ONE * TerrainProjection.TILE_SIZE).intersects(_area.grow(TerrainProjection.TILE_SIZE)): continue
 		_pending.append(key)
 		var old_key: Vector2i = key - moved
@@ -147,6 +167,8 @@ func _add_border(previous: TerrainResource, candidate: TerrainResource, directio
 
 func clear_preview() -> void:
 	set_process(false)
+	if _water_fields != null: _water_fields.close(); _water_fields = null
+	_water_fields_ready = false
 	_pending.clear()
 	if is_instance_valid(_projection):
 		_projection.position = _saved_projection_position

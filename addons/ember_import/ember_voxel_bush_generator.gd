@@ -120,6 +120,7 @@ static func build(
 	var source: EmberVoxelModelResource = built.source
 	source.tags = PackedStringArray(["stamp", "generated", "bush"])
 	source.material = material.duplicate(true)
+	preload("res://scripts/ember_voxel_material_profiles.gd").assign(source.material, "foliage", {"1": "bark"})
 	source.palette = PackedColorArray([
 		Color.TRANSPARENT, settings.stem_color, settings.foliage_color,
 	])
@@ -254,6 +255,7 @@ static func _build_object(settings: Dictionary, seed: int, material: Dictionary,
 	var source: EmberVoxelModelResource = built.source
 	source.tags = PackedStringArray(["stamp", "generated", "bush"])
 	source.material = material.duplicate(true)
+	preload("res://scripts/ember_voxel_material_profiles.gd").assign(source.material, "foliage", {"1": "bark"})
 	var strength := float(settings.foliage_pattern_strength) / 100.0
 	source.palette = PackedColorArray([Color.TRANSPARENT, settings.stem_color,
 		settings.foliage_color, settings.foliage_color,

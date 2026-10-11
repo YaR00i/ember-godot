@@ -12,7 +12,7 @@ config_version=5
 
 config/name="Ember Godot"
 config/description="Godot 4 Forward+ Ember. Maps are authored .tscn; pack is one-way import."
-run/main_scene="res://scenes/fan_town.tscn"
+run/main_scene="res://scenes/landscape_compact.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
 
@@ -34,7 +34,7 @@ enabled=PackedStringArray("res://addons/ember_import/plugin.cfg", "res://addons/
 [ember]
 
 pack_path=""
-map_id="fan_town"
+map_id="landscape_compact"
 save_slot=0
 
 [rendering]

@@ -65,6 +65,7 @@ static func scaled_action_damage(
 	amount = maxi(0, roundi(float(amount) * float(100 - resistance_percent) / 100.0))
 	if StatusRules.has(target, "overheated") and amount > 0:
 		amount = ceili(float(amount) * 1.25)
+	amount = StatusRules.damage_amount(actor, amount, true)
 	if critical and amount > 0:
 		amount = ceili(float(amount) * 1.5)
 	return amount

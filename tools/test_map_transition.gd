@@ -1,227 +1,155 @@
 extends SceneTree
-## Wave 4 smoke: the existing Ember map/region destination survives scene
-## handoff, resolves to the authored region, and cannot loop immediately.
+## Real exploration/door/trigger/spawn handoff on saved native test maps.
+## No historical city, author scene or JOI map is part of this mechanics gate.
 
 const Transition = preload("res://scripts/ember_map_transition.gd")
-const SANDBOX_SCENE := "res://scenes/agent_sandbox.tscn"
-const INTERIOR_SCENE := "res://scenes/agent_sandbox_interior.tscn"
-const FAN_SCENE := "res://scenes/fan_town.tscn"
-const FAN_ROUTES := [
-	{"door": "ft_inn_door", "map": "fan_town_inn", "root": "FanTownInn", "return": "inn_enter"},
-	{"door": "ft_mage_door", "map": "fan_town_mage", "root": "FanTownMage", "return": "mage_enter"},
-	{"door": "ft_smith_door", "map": "fan_town_smith", "root": "FanTownSmith", "return": "smith_enter"},
-	{"door": "ft_house_door", "map": "fan_town_house", "root": "FanTownHouse", "return": "house_enter"},
-]
+const Fixture = preload("res://tools/fixtures/ember_exploration_test_fixture.gd")
+
+var _fixtures: Array[PackedScene] = []
+var _routes: Array[Dictionary] = []
+var _source_id := ""
+var _directory := ""
+var _errors: Array[String] = []
+var _setup: Dictionary = {}
+var _scene_hashes: Dictionary = {}
 
 
 func _init() -> void:
-	_run_and_quit.call_deferred()
+	_directory = "user://ember-tests/map-transition-%d-%d" % [OS.get_process_id(), Time.get_ticks_usec()]
+	_setup = Fixture.prepare(self, _directory)
+	_run.call_deferred()
 
 
-func _run_and_quit() -> void:
-	quit(await _run())
+func _check(value: bool, message: String) -> bool:
+	if not value: _errors.append(message)
+	return value
 
 
-func _run() -> int:
-	var errors: Array[String] = []
-	var progress: Node = get_root().get_node_or_null("EmberExploreProgress")
-	if progress != null:
-		progress.set(&"persistence_enabled", false)
-		progress.set(&"restore_enabled", false)
+func _run() -> void:
+	var progress := root.get_node_or_null("EmberExploreProgress") as EmberExploreState
+	if not _check(progress != null, "progress autoload missing"):
+		quit(1)
+		return
+	progress.persistence_enabled = false
+	progress.restore_enabled = false
+	_check(_setup.error == OK, "could not prepare native fixture")
+	_check(_setup.progress_isolated, "progress was not isolated before autoload readiness")
+	progress.reset_new_game()
 	Transition.clear_for_test()
-
-	Transition.prepare("agent_sandbox_interior", "start")
-	if Transition.consume_spawn_region("agent_sandbox_interior", 1000) != "start":
-		errors.append("door targetRegionId=start was not handed to the interior")
-	if not Transition.consume_spawn_region("agent_sandbox_interior", 1001).is_empty():
-		errors.append("spawn destination was consumed more than once")
-
-	Transition.prepare("agent_sandbox", "cabin_enter")
-	if Transition.consume_spawn_region("agent_sandbox", 2000) != "cabin_enter":
-		errors.append("exit targetRegionId=cabin_enter was not handed back")
-	if Transition.trigger_allowed("cabin_enter", 2500):
-		errors.append("return trigger guard did not block the arrival region")
-	if not Transition.trigger_allowed("cabin_enter", 3300):
-		errors.append("return trigger guard did not expire")
-	Transition.prepare("stale_map", "stale_region")
-	if Transition.change_scene(self, "__missing_transition_scene__", "missing") != ERR_FILE_NOT_FOUND:
-		errors.append("missing target scene did not report ERR_FILE_NOT_FOUND")
-	if not Transition.consume_spawn_region("stale_map", 3400).is_empty():
-		errors.append("missing target scene left a stale pending destination")
-
-	var required_scenes := [SANDBOX_SCENE, INTERIOR_SCENE, FAN_SCENE]
-	for route in FAN_ROUTES:
-		required_scenes.append(Transition.scene_path(route.map))
-	for path in required_scenes:
-		if not ResourceLoader.exists(path):
-			errors.append("target scene unavailable: %s" % path)
-
-	var packed := ResourceLoader.load(SANDBOX_SCENE, "", ResourceLoader.CACHE_MODE_REPLACE) as PackedScene
-	var root := packed.instantiate(PackedScene.GEN_EDIT_STATE_DISABLED) if packed else null
-	if root == null:
-		errors.append("agent_sandbox scene could not be instantiated")
-	else:
-		var map := root.get_node_or_null("Map") as EmberMapLoader
-		var region := root.get_node_or_null("Map/Regions/cabin_enter") as Node3D
-		if map == null or region == null:
-			errors.append("agent_sandbox cabin_enter region is missing")
-		elif not map.region_world("cabin_enter").is_equal_approx(region.position):
-			errors.append("map loader did not resolve cabin_enter to its authored position")
-		root.free()
-
-	var interior_packed := ResourceLoader.load(
-		INTERIOR_SCENE,
-		"",
-		ResourceLoader.CACHE_MODE_REPLACE,
-	) as PackedScene
-	var interior := interior_packed.instantiate(PackedScene.GEN_EDIT_STATE_DISABLED) if interior_packed else null
-	if interior == null:
-		errors.append("agent_sandbox_interior scene could not be instantiated")
-	else:
-		var interior_map := interior.get_node_or_null("Map") as EmberMapLoader
-		if interior_map == null or interior_map.map_id != "agent_sandbox_interior":
-			errors.append("interior scene is not wired to its Ember map id")
-		if interior.get_node_or_null("CanvasLayer/Gate") == null:
-			errors.append("interior play HUD contract is missing")
-		interior.free()
-
+	_test_handoff()
+	if _make_fixtures():
+		_test_saved_scenes()
+		Transition.clear_for_test()
+		await _test_live_routes()
 	Transition.clear_for_test()
-	await _run_live_scene_route(errors)
-	Transition.clear_for_test()
-	await _run_live_fan_town_routes(errors)
-	Transition.clear_for_test()
-	if not errors.is_empty():
-		printerr("FAIL map transition")
-		for error in errors:
-			printerr(" - ", error)
-		return 1
+	for path in _scene_hashes:
+		_check(FileAccess.get_sha256(path) == _scene_hashes[path], "runtime changed the saved fixture scene")
+	if current_scene != null:
+		current_scene.queue_free()
+		current_scene = null
+		await process_frame
+	if not _errors.is_empty():
+		printerr("FAIL map transition: ", "; ".join(_errors))
+		quit(1)
+		return
 	print("PASS map transition")
-	print("  door -> interior:start")
-	print("  exit -> sandbox:cabin_enter")
-	print("  fan_town inn/mage/smith/house -> interior:start -> matching return region")
-	print("  arrival trigger guard expires after 1200 ms")
-	return 0
+	print("  six saved/reopened native fixtures in user://; no historical maps/models or JOI")
+	print("  native item catalog needs no item JSON; other JOI domains remain separate")
+	print("  five real door -> nested entry -> exit -> matching return routes")
+	print("  real exploration/player/HUD/water-contact owners, no runtime substitutes")
+	print("  one-shot destination, wrong-map handoff, missing scene cleanup and 1200 ms arrival guard")
+	quit(0)
 
 
-func _run_live_scene_route(errors: Array[String]) -> void:
-	if change_scene_to_file(SANDBOX_SCENE) != OK:
-		errors.append("could not start agent_sandbox runtime scene")
-		return
-	await process_frame
-	await process_frame
-	var sandbox := current_scene
-	var door := sandbox.get_node_or_null("Map/Props/sbx_cabin_door/Interact") as EmberInteract
-	if door == null:
-		errors.append("runtime cabin door Interact is missing")
-		return
-	if not door.activate().begins_with("enter"):
-		errors.append("runtime cabin door did not request a scene transition")
-		return
-	await process_frame
-	await process_frame
-	var interior := current_scene
-	if interior == null or interior.name != "AgentSandboxInterior":
-		errors.append("runtime door did not enter agent_sandbox_interior")
-		return
-	var interior_map := interior.get_node_or_null("Map") as EmberMapLoader
-	# This suite verifies scene routing and spawn positions, not player gameplay.
-	# Keep it independent from the editor's global-class cache: the packed scene
-	# still instantiates the real EmberPlayer, while the test only needs its
-	# CharacterBody3D position/body contract.
-	var interior_player := interior.get_node_or_null("Player") as CharacterBody3D
-	if interior_map == null or interior_player == null:
-		errors.append("runtime interior did not create Map + Player")
-		return
-	if interior_player.find_child("WaterContact", false, false) == null:
-		errors.append("runtime player lacks its automatic water contact visual")
-	var interior_spawn := interior_map.region_world("start")
-	if not _same_xz(interior_player.global_position, interior_spawn):
-		errors.append("runtime interior player did not spawn at region start")
-	var exit_region := interior.get_node_or_null("Map/Regions/exit") as EmberRegion
-	if exit_region == null:
-		errors.append("runtime interior exit trigger is missing")
-		return
-	exit_region._on_body_entered(interior_player)
-	await process_frame
-	await process_frame
-	var returned := current_scene
-	if returned == null or returned.name != "AgentSandbox":
-		errors.append("runtime exit did not return to agent_sandbox")
-		return
-	var returned_map := returned.get_node_or_null("Map") as EmberMapLoader
-	var returned_player := returned.get_node_or_null("Player") as CharacterBody3D
-	if returned_map == null or returned_player == null:
-		errors.append("returned sandbox did not create Map + Player")
-		return
-	var return_spawn := returned_map.region_world("cabin_enter")
-	if not _same_xz(returned_player.global_position, return_spawn):
-		errors.append("runtime return did not spawn at cabin_enter")
-	if Transition.trigger_allowed("cabin_enter"):
-		errors.append("runtime return did not guard cabin_enter against an immediate loop")
+func _test_handoff() -> void:
+	Transition.prepare("fixture_room", "entry")
+	_check(Transition.consume_spawn_region("other_map", 999).is_empty(), "wrong map consumed a destination")
+	_check(Transition.consume_spawn_region("fixture_room", 1000) == "entry", "target region was not handed to the room")
+	_check(Transition.consume_spawn_region("fixture_room", 1001).is_empty(), "spawn destination consumed twice")
+	Transition.prepare("fixture_home", "return_point")
+	_check(Transition.consume_spawn_region("fixture_home", 2000) == "return_point", "return destination lost")
+	_check(not Transition.trigger_allowed("return_point", 2500), "arrival trigger guard did not block its region")
+	_check(Transition.trigger_allowed("different_region", 2500), "arrival guard blocked an unrelated region")
+	_check(Transition.trigger_allowed("return_point", 3300), "arrival guard did not expire")
+	Transition.prepare("stale_map", "stale_region")
+	_check(Transition.change_scene(self, "__missing_transition_scene__", "missing") == ERR_FILE_NOT_FOUND, "missing scene error lost")
+	_check(Transition.consume_spawn_region("stale_map", 3400).is_empty(), "failed transition left stale pending state")
 
 
-func _run_live_fan_town_routes(errors: Array[String]) -> void:
-	if change_scene_to_file(FAN_SCENE) != OK:
-		errors.append("could not start fan_town runtime scene")
-		return
-	await process_frame
-	await process_frame
-	for route in FAN_ROUTES:
-		var town := current_scene
-		var door_path := "Map/Props/%s/Interact" % route.door
-		var door := town.get_node_or_null(door_path) as EmberInteract
-		if door == null:
-			errors.append("runtime fan_town door is missing: %s" % route.door)
-			return
-		if not door.activate().begins_with("enter"):
-			errors.append("runtime fan_town door did not transition: %s" % route.door)
-			return
-		await process_frame
-		await process_frame
-		var interior := current_scene
-		if interior == null or interior.name != route.root:
-			errors.append("%s did not enter %s" % [route.door, route.map])
-			return
-		var interior_map := interior.get_node_or_null("Map") as EmberMapLoader
-		var interior_player := interior.get_node_or_null("Player") as CharacterBody3D
-		if interior_map == null or interior_player == null:
-			errors.append("%s did not create Map + Player" % route.map)
-			return
-		if not _same_xz(interior_player.global_position, interior_map.region_world("start")):
-			errors.append("%s did not spawn at start" % route.map)
-		var exit_region := interior.get_node_or_null("Map/Regions/exit") as EmberRegion
-		if exit_region == null:
-			errors.append("%s exit trigger is missing" % route.map)
-			return
-		exit_region._on_body_entered(interior_player)
-		await process_frame
-		await process_frame
-		var returned := current_scene
-		if returned == null or returned.name != "FanTown":
-			errors.append("%s exit did not return to fan_town" % route.map)
-			return
-		var returned_map := returned.get_node_or_null("Map") as EmberMapLoader
-		var returned_player := returned.get_node_or_null("Player") as CharacterBody3D
-		if returned_map == null or returned_player == null:
-			errors.append("fan_town return from %s lost Map + Player" % route.map)
-			return
-		var expected_return := returned_map.region_world(route.return)
-		if not _near_xz(
-			returned_player.global_position,
-			expected_return,
-			returned_map.imported_tile_size,
-		):
-			errors.append(
-			"%s did not return near %s: player=%s region=%s"
-			% [route.map, route.return, returned_player.global_position, expected_return]
-		)
-		if Transition.trigger_allowed(route.return):
-			errors.append("%s return region was not guarded" % route.return)
+func _make_fixtures() -> bool:
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(_directory))
+	_source_id = "transition_fixture_home_%d" % OS.get_process_id()
+	var doors: Array[Dictionary] = []
+	var returns: Array[Dictionary] = []
+	for index in 5:
+		var room_id := "transition_fixture_room_%d_%d" % [index, OS.get_process_id()]
+		var return_id := "return_%d" % index
+		_routes.append({"door": "door_%d" % index, "map": room_id, "return": return_id})
+		doors.append({"id": "door_%d" % index, "map": room_id, "region": "entry"})
+		returns.append({"id": return_id, "position": Vector3(10 + index * 10, 4, 44), "map": room_id, "region": "entry"})
+		var exits: Array[Dictionary] = [{"id": "exit", "position": Vector3(44, 4, 40), "map": _source_id, "region": return_id}]
+		var room := Fixture.save_map(room_id, _directory, [], exits)
+		if not _check(room != null, "could not save/reopen native room fixture"): return false
+		_fixtures.append(room)
+		var room_path := _directory.path_join(room_id + ".tscn")
+		_scene_hashes[room_path] = FileAccess.get_sha256(room_path)
+	var source := Fixture.save_map(_source_id, _directory, doors, returns)
+	if not _check(source != null, "could not save/reopen native source fixture"): return false
+	_fixtures.append(source)
+	var source_path := _directory.path_join(_source_id + ".tscn")
+	_scene_hashes[source_path] = FileAccess.get_sha256(source_path)
+	return true
+
+
+func _test_saved_scenes() -> void:
+	for packed in _fixtures:
+		_check(ResourceLoader.exists(packed.resource_path), "logical fixture destination is unavailable")
+		var scene := packed.instantiate()
+		var map := scene.get_node("Map") as EmberMapLoader
+		_check(map != null and map.has_authored_content(), "saved native ground missing; legacy import would run")
+		_check(not map.hydrate_legacy_regions, "fixture retained legacy region hydration")
+		_check(map.compact_terrain.validation_errors().is_empty(), "fixture terrain failed validation")
+		_check(map.find_region("entry") != null, "saved nested player_start missing")
+		_check(map.region_world("entry").is_equal_approx(Vector3(32, 4, 16)), "saved nested transforms were lost")
+		_check(map.spawn_world().is_equal_approx(map.region_world("entry")), "default/explicit saved entry disagree")
+		_check(scene.get_node_or_null("CanvasLayer/Gate") != null, "shared exploration HUD missing")
+		scene.free()
+
+
+func _test_live_routes() -> void:
+	if not _check(change_scene_to_file(Transition.scene_path(_source_id)) == OK, "could not start native source scene"): return
+	if not await _wait_scene(_source_id): return
+	for route in _routes:
+		var door := current_scene.get_node_or_null("Map/Props/%s/Interact" % route.door) as EmberInteract
+		if not _check(door != null, "saved door missing: " + route.door): return
+		if not _check(door.activate().begins_with("enter"), "real door did not transition: " + route.door): return
+		if not await _wait_scene(route.map): return
+		var map := current_scene.get_node_or_null("Map") as EmberMapLoader
+		var player := current_scene.get_node_or_null("Player") as EmberPlayer
+		if not _check(map != null and player != null, "room did not create real Map + Player"): return
+		_check(player.find_child("WaterContact", false, false) != null, "real player's water contact missing")
+		_check(_same_xz(player.global_position, map.region_world("entry")), "player did not use the selected nested entry")
+		var exit := map.find_region("exit")
+		if not _check(exit != null, "saved exit trigger missing"): return
+		exit._on_body_entered(player)
+		if not await _wait_scene(_source_id): return
+		var returned_map := current_scene.get_node("Map") as EmberMapLoader
+		var returned_player := current_scene.get_node("Player") as EmberPlayer
+		_check(_same_xz(returned_player.global_position, returned_map.region_world(route.return)), "return region lost for " + route.map)
+		_check(not Transition.trigger_allowed(route.return), "arrival region not protected: " + route.return)
+		var return_trigger := returned_map.find_region(route.return)
+		return_trigger._on_body_entered(returned_player)
+		_check(not return_trigger._transitioning and current_scene.name == _source_id, "arrival trigger caused an immediate scene bounce")
 
 
 func _same_xz(a: Vector3, b: Vector3) -> bool:
 	return Vector2(a.x, a.z).is_equal_approx(Vector2(b.x, b.z))
 
 
-func _near_xz(a: Vector3, b: Vector3, radius: float) -> bool:
-	return Vector2(a.x, a.z).distance_to(Vector2(b.x, b.z)) <= radius
+func _wait_scene(expected: String) -> bool:
+	for frame in 12:
+		await process_frame
+		if current_scene != null and str(current_scene.name) == expected:
+			await process_frame
+			return true
+	return _check(false, "scene transition did not reach " + expected)

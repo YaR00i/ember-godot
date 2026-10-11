@@ -314,6 +314,7 @@ static func _emit(
 	var bark_marks := BarkPattern.marks(wood, lines, seed, settings)
 	if not bark_marks.is_empty(): source.palette.append(settings.bark_pattern_color)
 	source.material = material.duplicate(true)
+	preload("res://scripts/ember_voxel_material_profiles.gd").assign(source.material, "bark", {"4": "foliage", "5": "foliage", "6": "foliage"})
 	source.material["generator"] = "large_broadleaf_tree_v%d" % int(settings.generation_version)
 	source.physical = true
 	source.voxels.resize(cells)

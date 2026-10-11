@@ -5,6 +5,8 @@ extends RefCounted
 const Catalog := preload("res://scripts/prototypes/ember_encounter_catalog.gd")
 const CombatResult := preload("res://scripts/prototypes/ember_combat_result.gd")
 const COMBAT_SCENE := "res://scenes/combat_lab.tscn"
+const LIBRARY_TEST_PREFIX := "--ember-library-encounter="
+const LIBRARY_CHECK_PREFIX := "--ember-library-check="
 
 static var _pending_encounter_id := ""
 static var _active_encounter_id := ""
@@ -23,12 +25,44 @@ static var _locked_progress: WeakRef
 static var last_start_error := ""
 
 
+static func library_test_requested() -> bool:
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with(LIBRARY_TEST_PREFIX): return true
+	return false
+
+
+static func isolated_editor_process_requested() -> bool:
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with(LIBRARY_TEST_PREFIX) or arg.begins_with(LIBRARY_CHECK_PREFIX): return true
+	return false
+
+
+static func library_test_request(arguments: PackedStringArray) -> Dictionary:
+	var paths := PackedStringArray()
+	for arg in arguments:
+		if arg.begins_with(LIBRARY_TEST_PREFIX): paths.append(arg.trim_prefix(LIBRARY_TEST_PREFIX))
+	if paths.size() != 1: return {"ok": false, "error": "Укажите одну сохранённую встречу для теста."}
+	return library_test_content(paths[0])
+
+
+static func library_test_content(path: String) -> Dictionary:
+	if path.get_base_dir() != "res://content/combat/encounters" or path.get_extension() != "tres" or path.simplify_path() != path:
+		return {"ok": false, "error": "Для теста выберите встречу из native библиотеки."}
+	if not ResourceLoader.exists(path): return {"ok": false, "error": "Сохранённая встреча не найдена."}
+	var encounter := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as EmberEncounterResource
+	if encounter == null: return {"ok": false, "error": "Файл не является встречей."}
+	var errors := encounter.validation_errors()
+	if not errors.is_empty(): return {"ok": false, "error": "Исправьте встречу перед тестом:\n" + "\n".join(errors)}
+	return {"ok": true, "path": path, "encounter": encounter}
+
+
 static func change_scene(
 	tree: SceneTree,
 	encounter_id: String,
 	progress: EmberExploreState = null,
 ) -> Error:
 	last_start_error = ""
+	if isolated_editor_process_requested(): return ERR_UNAVAILABLE
 	if not _pending_encounter_id.is_empty() or not _active_encounter_id.is_empty():
 		last_start_error = "Боевая встреча уже выполняется."
 		return ERR_ALREADY_IN_USE
@@ -117,6 +151,7 @@ static func finish(
 ) -> Error:
 	if tree == null or outcome not in ["victory", "defeat"]:
 		return ERR_INVALID_DATA
+	if isolated_editor_process_requested(): return ERR_UNAVAILABLE
 	# A defeated attempt is never a persistent result. The defeat screen must
 	# either rebuild the active encounter from its pre-battle copies or load an
 	# existing save through `load_save`; only victory crosses this commit point.
@@ -156,6 +191,8 @@ static func finish(
 	_active_inventory_snapshot = {}
 	_active_strategy_snapshot = []
 	_return_scene_path = ""
+	if return_path.get_file().get_basename() in EmberMapTransition.RETIRED_MAP_IDS or return_path.is_empty() or not ResourceLoader.exists(return_path):
+		return_path = progress.resume_scene_path() if progress != null else EmberMapTransition.scene_path(EmberMapTransition.DEFAULT_MAP_ID)
 	if return_path.is_empty() or not ResourceLoader.exists(return_path):
 		_return_action_id = ""
 		_return_steps.clear()

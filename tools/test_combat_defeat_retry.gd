@@ -3,12 +3,21 @@ extends SceneTree
 ## persistent owner, Retry restores pre-battle copies with a new seed, and the
 ## result modal can load an existing manual save or autosave.
 
-const SOURCE_SCENE := "res://scenes/agent_sandbox.tscn"
+const Fixture = preload("res://tools/fixtures/ember_exploration_test_fixture.gd")
 const ENCOUNTER_ID := "colored_crossing_demo"
 const VISUAL_ARG := "--visual"
+const MANUAL_SPAWN := Vector3(43.25, 5.0, 27.5)
+const AUTO_SPAWN := Vector3(18.75, 6.0, 38.5)
+var _directory := ""
+var _source_scene := ""
+var _source: PackedScene
+var _setup: Dictionary = {}
 
 
 func _init() -> void:
+	_directory = "user://ember-tests/combat-defeat-retry-%d-%d" % [OS.get_process_id(), Time.get_ticks_usec()]
+	# Shared native items supply the wallet; no historical content is supplied.
+	_setup = Fixture.prepare(self, _directory)
 	call_deferred("_run")
 
 
@@ -19,26 +28,41 @@ func _run() -> void:
 		printerr("FAIL combat defeat/retry: progress autoload missing")
 		quit(1)
 		return
-	var nonce := "%d-%d" % [Time.get_ticks_usec(), randi()]
-	var root_path := "user://ember-tests/combat-defeat-retry-%s" % nonce
-	progress.storage_root = root_path.path_join("v2")
-	progress.legacy_storage_root = root_path.path_join("v1")
+	if _setup.error != OK or not _setup.progress_isolated:
+		printerr("FAIL combat defeat/retry: fixture/progress isolation failed")
+		quit(1)
+		return
+	var map_id := "retry_fixture_%d" % OS.get_process_id()
+	_source = Fixture.save_map(map_id, _directory)
+	if _source == null:
+		printerr("FAIL combat defeat/retry: could not save/reopen native exploration fixture")
+		quit(1)
+		return
+	_source_scene = EmberMapTransition.scene_path(map_id)
+	var fixture_path := _directory.path_join(map_id + ".tscn")
+	var fixture_hash := FileAccess.get_sha256(fixture_path)
+	var root_path := _directory
 	progress.persistence_enabled = true
 	progress.restore_enabled = true
 	progress.reset_new_game()
 	var manual_bytes := PackedByteArray()
 	var autosave_bytes := PackedByteArray()
 
-	if change_scene_to_file(SOURCE_SCENE) != OK:
+	if change_scene_to_file(_source_scene) != OK:
 		errors.append("could not open exploration fixture")
 	else:
 		await scene_changed
 		await process_frame
+		var map := current_scene.get_node("Map") as EmberMapLoader
+		if map.hydrate_legacy_regions or FileAccess.file_exists(EmberPack.map_path(map_id)):
+			errors.append("native source fixture unexpectedly depends on map JSON")
+		(current_scene.get_node("Player") as EmberPlayer).global_position = MANUAL_SPAWN
 		_set_party_values(progress, 17, 12)
 		progress.inventory["herb"] = 3
 		progress.flags = {"loaded_marker": "manual"}
 		if not progress.save_slot(0):
 			errors.append("manual fixture save could not be written")
+		(current_scene.get_node("Player") as EmberPlayer).global_position = AUTO_SPAWN
 		_set_party_values(progress, 9, 6)
 		progress.inventory["herb"] = 1
 		progress.flags = {"loaded_marker": "autosave"}
@@ -46,8 +70,7 @@ func _run() -> void:
 			errors.append("autosave fixture could not be written")
 		manual_bytes = _file_bytes(progress.save_path(0))
 		autosave_bytes = _file_bytes(progress.autosave_path())
-		# The exploration fixture contains authored autosave regions. Disable writes
-		# after creating the isolated fixtures so the gate measures Retry itself.
+		# Freeze these isolated files so Retry must preserve their exact bytes.
 		progress.persistence_enabled = false
 		_set_party_values(progress, 13, 7)
 		progress.inventory["herb"] = 2
@@ -57,7 +80,7 @@ func _run() -> void:
 		EmberCombatTransition.clear_for_test()
 		var enter_error := EmberCombatTransition.change_scene(self, ENCOUNTER_ID, progress)
 		if enter_error != OK:
-			errors.append("valid authored encounter rejected defeat/retry fixture")
+			errors.append("valid authored encounter rejected defeat/retry fixture: %d · %s" % [enter_error, EmberCombatTransition.last_start_error])
 		else:
 			await scene_changed
 			await process_frame
@@ -67,14 +90,16 @@ func _run() -> void:
 			else:
 				var first_state: Dictionary = hud.call("state_snapshot")
 				var first_seed := int(first_state.get("rngSeed", 0))
-				_force_spent_defeat(hud)
-				await process_frame
-				_assert_defeat_modal(hud, errors)
 				var persistent_party := progress.party.duplicate(true)
 				var persistent_inventory := progress.inventory.duplicate(true)
 				var persistent_flags := progress.flags.duplicate(true)
+				_force_spent_defeat(hud)
+				await process_frame
+				_assert_defeat_modal(hud, errors)
 				if EmberCombatTransition.finish(self, "defeat", progress, hud.call("state_snapshot")) != ERR_UNAVAILABLE:
 					errors.append("defeat could still cross the persistent result commit point")
+				if progress.party != persistent_party or progress.inventory != persistent_inventory or progress.flags != persistent_flags:
+					errors.append("defeated attempt mutated persistent party, inventory or flags")
 				var retry := current_scene.find_child("CombatResultRetry", true, false) as Button
 				if retry == null:
 					errors.append("defeat modal has no Retry button")
@@ -159,6 +184,7 @@ func _run() -> void:
 						await scene_changed
 						await process_frame
 						_assert_loaded_state(progress, "manual", 17, 12, 3, errors)
+						(current_scene.get_node("Player") as EmberPlayer).global_position = AUTO_SPAWN
 						_set_party_values(progress, 9, 6)
 						progress.inventory["herb"] = 1
 						progress.flags = {"loaded_marker": "autosave"}
@@ -193,6 +219,8 @@ func _run() -> void:
 		quit(1)
 		return
 	await _test_pair_retry(progress, errors)
+	if FileAccess.get_sha256(fixture_path) != fixture_hash:
+		errors.append("runtime changed the saved native exploration fixture")
 	if not errors.is_empty():
 		for message in errors:
 			printerr("FAIL active Retry: ", message)
@@ -205,6 +233,7 @@ func _run() -> void:
 	print("  corrupt load failures preserve persistent progress and the active handoff")
 	print("  R cannot bypass the load-only panel; Back keeps its focus contract")
 	print("  manual save and autosave both clear combat handoff and restore their scene")
+	print("  native saved fixture + distinct manual/autosave positions; no historical map/model/JOI input")
 	quit(0)
 
 
@@ -351,8 +380,13 @@ func _assert_loaded_state(
 	herbs: int,
 	errors: Array[String],
 ) -> void:
-	if current_scene == null or current_scene.scene_file_path != SOURCE_SCENE:
+	if current_scene == null or current_scene.scene_file_path != _source_scene:
 		errors.append("%s did not restore the saved exploration scene" % marker)
+	else:
+		var player := current_scene.get_node_or_null("Player") as EmberPlayer
+		var expected := MANUAL_SPAWN if marker == "manual" else AUTO_SPAWN
+		if player == null or not Vector2(player.global_position.x, player.global_position.z).is_equal_approx(Vector2(expected.x, expected.z)):
+			errors.append("%s did not restore its own saved player position" % marker)
 	if str(progress.flags.get("loaded_marker", "")) != marker:
 		errors.append("%s did not restore its saved flags" % marker)
 	var mira := progress.party_member_view("mira")

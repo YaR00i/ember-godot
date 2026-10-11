@@ -33,8 +33,8 @@ static func entries() -> Array[Dictionary]:
 		]
 		var path := EmberVoxelPrefab.prefab_path(model_id)
 		var ready := ResourceLoader.exists(path)
-		var owner := str(definition.get("_owner", "legacy_import"))
-		var owner_line := "Источник: Godot Resource" if owner == "godot" else "Ожидает одноразового импорта из JOI"
+		var owner := str(definition.get("_owner", "godot"))
+		var owner_line := "Источник: Godot Resource"
 		result.append({
 			"id": model_id,
 			"title": title,

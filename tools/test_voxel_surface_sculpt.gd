@@ -588,11 +588,10 @@ func _native_selector_probe() -> int:
 	if not toolbar.visible or selector._grid.get("width") != 2 or selector._grid.get("depth") != 3:
 		errors.append("native Surface does not supply its own selector dimensions")
 	var legacy := EmberMapLoader.new()
-	legacy.map_id = "fan_town"
-	var expected: Dictionary = EmberTileMesher.surface_grid(
-		EmberPack.parse_json_file(EmberPack.map_path("fan_town")))
+	legacy.map_id = "missing_native_selector_fixture"
+	var expected: Dictionary = {}
 	if selector._surface_grid_for_map(legacy) != expected:
-		errors.append("legacy selector changed its source grid or heights")
+		errors.append("missing native Surface unexpectedly produced a legacy grid")
 	toolbar.free()
 	map.free()
 	legacy.free()

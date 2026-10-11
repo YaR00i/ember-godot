@@ -33,6 +33,8 @@ func _same(a: RefCounted, b: RefCounted) -> void:
 		assert(first.sea.dry_tiles == second.sea.dry_tiles)
 		assert(first.shore_data.get_data() == second.shore_data.get_data())
 		assert(first.height.get_image().get_data() == second.height.get_image().get_data())
+		assert(a._cache.components[key].labels == b._cache.components[key].labels)
+		assert(a._cache.components[key].spills == b._cache.components[key].spills)
 	for time in [0.0, 1.5, 3.8, 5.7]:
 		a.advance(time, 2.8, 8.0, 10.0, -0.35, 6.0)
 		b.advance(time, 2.8, 8.0, 10.0, -0.35, 6.0)
@@ -75,12 +77,15 @@ func _run() -> void:
 	var authored := Cache.digest(document.sections[Vector2i.ZERO].heights)
 	var cold := await _fields(document)
 	assert(cold.stats.built_regions == 5 and cold.stats.disk_hits == 0 and cold.stats.cache_failures == 0)
+	assert(cold.stats.component_builds == 5 and cold.stats.component_disk_hits == 0)
 	var source_path := directory.path_join("fixture.tres")
 	assert(ResourceSaver.save(document, source_path) == OK)
 	var reopened := ResourceLoader.load(source_path, "", ResourceLoader.CACHE_MODE_IGNORE) as Terrain
 	assert(reopened.sections[Vector2i.ZERO] != document.sections[Vector2i.ZERO])
 	var warm := await _fields(reopened)
 	assert(warm.stats.built_regions == 0 and warm.stats.disk_hits == 5)
+	assert(warm.stats.get("component_disk_hits", 0) == 5 and warm.stats.get("component_builds", -1) == 0,
+		"fresh resource must restore local components without repeating flood fills")
 	_same(cold, warm)
 	print("WATER_CACHE_PROFILE cold=", cold.stats, " warm=", warm.stats)
 	# No animation history or scene style is written to the cache.
@@ -91,6 +96,7 @@ func _run() -> void:
 	palette_only.palette[1] = Color.RED
 	var painted := await _fields(palette_only)
 	assert(painted.stats.disk_hits == 5)
+	assert(painted.stats.component_disk_hits == 5)
 	# Changing the middle section invalidates its halo neighbours, not the ends.
 	var edited := reopened.working_copy()
 	var part: Terrain = edited.sections[Vector2i(2, 0)].working_copy()
@@ -98,10 +104,12 @@ func _run() -> void:
 	edited.sections[Vector2i(2, 0)] = part
 	var changed := await _fields(edited)
 	assert(changed.stats.built_regions == 3 and changed.stats.disk_hits == 2)
+	assert(changed.stats.component_builds == 3 and changed.stats.component_disk_hits == 2)
 	var calculated := await _fields(edited, false)
 	_same(changed, calculated)
 	var undone := await _fields(reopened)
 	assert(undone.stats.disk_hits == 5)
+	assert(undone.stats.component_disk_hits == 5)
 	# A distant sea/lake change must invalidate despite unchanged local content.
 	var connected := reopened.working_copy()
 	part = connected.sections[Vector2i.ZERO].working_copy()
@@ -113,6 +121,8 @@ func _run() -> void:
 	var opened := await _fields(connected)
 	assert(not opened.sample(Vector2i(1200, 70)).is_empty())
 	assert(opened.regions[Vector2i(3, 0)].disk_key != warm.regions[Vector2i(3, 0)].disk_key)
+	assert(opened.stats.component_disk_hits == 3)
+	assert(opened._cache.components[Vector2i(3, 0)].disk_key == warm._cache.components[Vector2i(3, 0)].disk_key)
 	var closed := await _fields(reopened)
 	assert(closed.stats.disk_hits == 5 and closed.sample(Vector2i(1200, 70)).is_empty())
 	# Neighbouring flow outside a region's halo can still alter component labels
@@ -124,8 +134,35 @@ func _run() -> void:
 	flow_edit.sections[Vector2i(4, 0)] = part
 	var flowing := await _fields(flow_edit)
 	assert(flowing.regions[Vector2i(2, 0)].disk_key != warm.regions[Vector2i(2, 0)].disk_key)
+	assert(flowing.stats.component_disk_hits == 3 and flowing.stats.component_builds == 2)
 	var flowing_reference := await _fields(flow_edit, false)
 	_same(flowing, flowing_reference)
+	# Growing a sparse envelope does not invalidate distant local classification.
+	var enlarged := reopened.working_copy()
+	enlarged.width += 384
+	var empty_edge := await _fields(enlarged)
+	assert(empty_edge.stats.component_disk_hits == 5 and empty_edge.stats.component_builds == 0)
+	enlarged.sections[Vector2i(5, 0)] = reopened.sections[Vector2i(4, 0)].working_copy()
+	var extended := await _fields(enlarged)
+	assert(extended.stats.component_disk_hits == 4 and extended.stats.component_builds == 2)
+	var extended_reference := await _fields(enlarged, false)
+	_same(extended, extended_reference)
+	for fields in [empty_edge, extended, extended_reference]: fields.close()
+	# Real spill geometry (including the minimum four-cell drop) survives reload.
+	var waterfall := preload("res://tools/build_compact_waterfall_study.gd").fixture()
+	for z in range(90, waterfall.depth):
+		for x in waterfall.width:
+			var i := x + z * waterfall.width
+			waterfall.heights[i] -= 20
+			if waterfall.water_levels[i] > 0: waterfall.water_levels[i] -= 20
+	waterfall = waterfall.sectioned_copy()
+	var falls_cold := await _fields(waterfall)
+	var falls_warm := await _fields(waterfall.working_copy())
+	assert(falls_warm.stats.component_disk_hits == waterfall.sections.size())
+	assert(not falls_warm.waterfall.info.is_empty())
+	assert(falls_cold.waterfall.info == falls_warm.waterfall.info)
+	_same(falls_cold, falls_warm)
+	falls_cold.close(); falls_warm.close()
 	# Truncation, checksum failure, future version and valid but malformed payload.
 	var storage := Cache.new()
 	storage.directory = directory
@@ -145,6 +182,24 @@ func _run() -> void:
 		assert(repaired.stats.disk_hits == 4 and repaired.stats.built_regions == 1, kind)
 		assert(not storage.read(key).is_empty(), "bad cache was not replaced: " + kind)
 		repaired.close()
+	# Component payload validation, partial sections and repair preserve exact fields.
+	key = warm._cache.components[Vector2i(4, 0)].disk_key
+	for kind in ["labels", "range", "groups", "dimensions", "spills", "version", "missing"]:
+		var saved := storage.read(key)
+		match kind:
+			"labels": saved.labels = "bad"
+			"range": saved.labels[0] = saved.groups + 1
+			"groups": saved.groups = saved.labels.size() + 1
+			"dimensions": saved.depth += 1
+			"spills": saved.spills = {Vector4i(7, 0, 8, 4): [0]}
+			"version": saved.version += 1
+			"missing": assert(DirAccess.remove_absolute(storage.path(key)) == OK)
+		if kind != "missing": storage.write(key, saved, func() -> bool: return false)
+		var repaired := await _fields(reopened)
+		assert(repaired.stats.component_disk_hits == 4 and repaired.stats.component_builds == 1, kind)
+		assert(repaired.stats.disk_hits == 5, "component repair must preserve coast cache")
+		_same(warm, repaired)
+		repaired.close()
 	# Read/write denial is a cache miss, never a startup failure.
 	var blocker := directory.path_join("not-a-directory")
 	var file := FileAccess.open(blocker, FileAccess.WRITE)
@@ -156,7 +211,7 @@ func _run() -> void:
 	while not fallback.prepare() and Time.get_ticks_msec() < deadline: await process_frame
 	assert(fallback.ready)
 	fallback.commit()
-	assert(fallback.stats.built_regions == 5 and fallback.stats.cache_failures == 5)
+	assert(fallback.stats.built_regions == 5 and fallback.stats.component_builds == 5 and fallback.stats.cache_failures == 10)
 	# Cancelled work cannot publish, and content-addressed writes cannot poison Undo.
 	var cancelled_fields := Regions.new()
 	cancelled_fields.cache_directory = directory

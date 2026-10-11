@@ -122,6 +122,7 @@ func grid_size() -> Vector3i:
 
 func validation_errors() -> Array[String]:
 	var errors: Array[String] = []
+	errors.append_array(preload("res://scripts/ember_voxel_material_profiles.gd").validation_errors(material, palette.size()))
 	if model_id.strip_edges().is_empty():
 		errors.append("model_id is empty")
 	if size_blocks.x < 1 or size_blocks.y < 1 or size_blocks.z < 1:

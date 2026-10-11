@@ -41,6 +41,12 @@ var _step := 0
 var _last_parameters := PackedFloat64Array()
 var coordinate_origin := Vector2i.ZERO
 var _static_records := PackedFloat32Array()
+var _border_records := PackedFloat32Array()
+var _core := Rect2i()
+var _last_gpu_full_time := -1.0
+var _border_uploaded := false
+const BORDER_WIDTH := 8 # Half a metre; includes both bilinear sides of the seam.
+const FAR_INTERVAL := 0.2
 static var _profile_key := PackedFloat64Array()
 static var _profile_values := {}
 
@@ -69,6 +75,8 @@ func build(source: EmberTerrainPilotResource, ocean_mask := PackedByteArray(),
 	foam_age_texture = null
 	bounds = Rect2i()
 	_last_time = -1.0
+	_last_gpu_full_time = -1.0
+	_border_uploaded = false
 	var count := source.width * source.depth
 	var river_guard := PackedByteArray()
 	river_guard.resize(count)
@@ -177,6 +185,7 @@ func restore_static(source: EmberTerrainPilotResource, saved: PackedVector4Array
 func _prepare_records(source: EmberTerrainPilotResource, origin: Vector2i,
 		core: Rect2i, defer_upload: bool) -> void:
 	if records.is_empty(): return
+	_core = core
 	var low := Vector2i(source.width, source.depth)
 	var high := Vector2i.ZERO
 	for item in records:
@@ -236,6 +245,7 @@ func enable_gpu() -> bool:
 	if _static_records.is_empty(): _pack_static_records()
 	_gpu = GPU.new()
 	_gpu.initialize(bounds.size, _static_records, _state.to_byte_array(), _foam_age.to_byte_array())
+	_last_gpu_full_time = _last_time
 	state_texture = _gpu.state_texture
 	foam_age_texture = _gpu.foam_texture
 	return true
@@ -243,6 +253,8 @@ func enable_gpu() -> bool:
 
 func _pack_static_records() -> void:
 	_static_records.resize(records.size() * 8)
+	_border_records.clear()
+	var collect_border := _core.has_area() and not Engine.is_editor_hint()
 	for index in records.size():
 		var slot := _record_pixels[index]
 		var at := index * 8
@@ -253,15 +265,27 @@ func _pack_static_records() -> void:
 		_static_records[at + 4] = _info[slot]
 		_static_records[at + 5] = _info[slot + 1]
 		_static_records[at + 6] = _info[slot + 2]
+		_static_records[at + 7] = 0.0
+		if collect_border:
+			var point := Vector2i(int(records[index].x), int(records[index].y)) + coordinate_origin
+			var border := _core.grow(BORDER_WIDTH).has_point(point) and (
+				absi(point.x - _core.position.x) <= BORDER_WIDTH or absi(point.x - _core.end.x) <= BORDER_WIDTH
+				or absi(point.y - _core.position.y) <= BORDER_WIDTH or absi(point.y - _core.end.y) <= BORDER_WIDTH)
+			_static_records[at + 7] = 1.0 if border else 0.0
+			if border: _border_records.append_array(_static_records.slice(at, at + 8))
 
 
 func advance(seconds: float, height: float, period: float, reach: float, offset: float, drying: float,
-	approach := 20.0, offshore_strength := 0.65) -> void:
+	approach := 20.0, offshore_strength := 0.65, full_rate := true) -> void:
 	if state_texture == null: return
 	active_height = height
 	var started := Time.get_ticks_usec()
 	var parameters := PackedFloat64Array([seconds, height, period, reach, offset, drying, approach, offshore_strength])
-	if parameters == _last_parameters: update_us = 0; return
+	if parameters == _last_parameters:
+		if full_rate: promote_gpu()
+		update_us = 0
+		return
+	var changed := _last_parameters.is_empty() or parameters.slice(1) != _last_parameters.slice(1)
 	_last_parameters = parameters
 	var reset := seconds < _last_time
 	if reset:
@@ -282,13 +306,36 @@ func advance(seconds: float, height: float, period: float, reach: float, offset:
 	var crest_fronts: PackedFloat32Array = table.fronts
 	var drying_step := dt / maxf(drying, 1.0)
 	if _gpu != null:
-		_gpu.update(table.bytes, PackedFloat32Array([dt, drying_step, offset, height,
-			grain_cosine, grain_sine, 1.0 if reset else 0.0, records.size()]).to_byte_array())
+		var full := full_rate or changed or reset or _last_gpu_full_time < 0.0 or seconds - _last_gpu_full_time >= FAR_INTERVAL - 0.000001
+		_dispatch_gpu(table.bytes, dt, reset, full)
 		_record_query_history(PackedFloat64Array([seconds, dt, height, period, reach, offset, drying, approach, offshore_strength]))
 		update_us = Time.get_ticks_usec() - started
 		return
 	_update_cpu(profiles, incoming, crest_fronts, dt, drying_step, offset, height, grain_cosine, grain_sine)
 	update_us = Time.get_ticks_usec() - started
+
+
+func promote_gpu() -> void:
+	# A physical query can arrive between far ticks. Publish the current surface
+	# once, without advancing query history or drying the already-current seam twice.
+	if _gpu == null or _last_parameters.is_empty() or _last_gpu_full_time == _last_time: return
+	var p := _last_parameters
+	_dispatch_gpu(profile_table(PackedFloat64Array([p[0], p[1], p[2], p[3], p[6], p[7]])).bytes, 0.0, false, true)
+
+
+func _dispatch_gpu(table: PackedByteArray, border_dt: float, reset: bool, full: bool) -> void:
+	if not full and not _border_uploaded:
+		_gpu.configure_border(_border_records)
+		_border_uploaded = true
+	var dt := clampf(_last_time - _last_gpu_full_time, 0.0, 0.25) if _last_gpu_full_time >= 0.0 and not reset else 0.0
+	var p := _last_parameters
+	var cycle := p[0] / maxf(p[2], 4.0)
+	var count := records.size() if full else _border_records.size() / 8
+	var constants := PackedFloat32Array([dt, dt / maxf(p[5], 1.0), p[4], p[1],
+		cos(cycle * TAU), sin(cycle * TAU), 1.0 if reset else 0.0, count,
+		border_dt, border_dt / maxf(p[5], 1.0), 0.0, 0.0])
+	_gpu.update(table, constants.to_byte_array(), not full)
+	if full: _last_gpu_full_time = _last_time
 
 
 static func profile_table(key: PackedFloat64Array) -> Dictionary:

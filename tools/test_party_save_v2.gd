@@ -2,16 +2,27 @@ extends SceneTree
 ## Stage 2 gate: fixed four-person party, save v2 slots/autosave, one-time v1
 ## migration and copy-in/copy-out combat ownership.
 
+const Fixture = preload("res://tools/fixtures/ember_party_test_fixture.gd")
+var _setup: Dictionary
+
 const ENCOUNTER := preload("res://content/combat/encounters/colored_crossing_demo.tres")
 const EmberPartyState := preload("res://scripts/ember_party_state.gd")
 
 
 func _init() -> void:
+	_setup = Fixture.prepare(self)
+	if _setup.refused:
+		quit.call_deferred(2)
+		return
 	call_deferred("_run")
 
 
 func _run() -> void:
 	var errors: Array[String] = []
+	if _setup.error != OK or not _setup.progress_isolated:
+		printerr("FAIL native party/save fixture preparation")
+		quit(1)
+		return
 	var nonce := "%d-%d" % [Time.get_ticks_usec(), randi()]
 	var root_path := "user://ember-tests/party-save-v2-%s" % nonce
 	var state := EmberExploreState.new()
@@ -27,9 +38,9 @@ func _run() -> void:
 		if member.is_empty() or (member.get("equipment", {}) as Dictionary).size() != 5:
 			errors.append("%s did not receive level/HP/MP and five equipment slots" % hero_id)
 
-	state.grant_item("funeral_polearm", 1, false)
-	var equipped := state.equip_item_for_member("mira", "funeral_polearm")
-	if not bool(equipped.get("ok", false)) or state.party_member_view("mira").get("equipment", {}).get("weapon") != "funeral_polearm":
+	state.grant_item(Fixture.WEAPON, 1, false)
+	var equipped := state.equip_item_for_member("mira", Fixture.WEAPON)
+	if not bool(equipped.get("ok", false)) or state.party_member_view("mira").get("equipment", {}).get("weapon") != Fixture.WEAPON:
 		errors.append("equipment did not attach to the selected permanent hero")
 	var mira: Dictionary = state.party.get("mira", {})
 	mira["level"] = 3
@@ -84,7 +95,7 @@ func _run() -> void:
 			or int(loaded_mira.get("xp", 0)) != 47
 			or int(loaded_mira.get("hp", 0)) != 7
 			or int(loaded_mira.get("mp", 0)) != 9
-			or (loaded_mira.get("equipment", {}) as Dictionary).get("weapon") != "funeral_polearm"
+			or (loaded_mira.get("equipment", {}) as Dictionary).get("weapon") != Fixture.WEAPON
 		):
 			errors.append("hero level/XP/HP/MP/equipment changed after reopen")
 		if loaded.combat_strategy_snapshot() != strategy:
@@ -103,6 +114,7 @@ func _run() -> void:
 	_test_save_deletion(state, errors)
 	state.free()
 	loaded.free()
+	Fixture.verify_sources(_setup, errors)
 	if not errors.is_empty():
 		printerr("FAIL party/save v2")
 		for message in errors:
@@ -223,7 +235,7 @@ func _test_v1_migration(root_path: String, errors: Array[String]) -> void:
 		"y": 56.0,
 		"elev": 8.0,
 		"inventory": {"coin": 20},
-		"equipment": {"weapon": "herb", "body": "mourning_mail"},
+		"equipment": {"weapon": "herb", "body": Fixture.ARMOR},
 		"openedChests": ["agent_sandbox:test"],
 		"shopStock": {},
 		"flags": {"legacy_flag": true},
@@ -244,7 +256,7 @@ func _test_v1_migration(root_path: String, errors: Array[String]) -> void:
 	var leader := state.party_member_view("protagonist")
 	if int(leader.get("hp", -1)) != 10:
 		errors.append("v1 leader HP ratio was not preserved in the new stat scale")
-	if (leader.get("equipment", {}) as Dictionary).get("body") != "mourning_mail":
+	if (leader.get("equipment", {}) as Dictionary).get("armor") != Fixture.ARMOR:
 		errors.append("compatible v1 equipment was not assigned to the protagonist")
 	if int(state.inventory.get("herb", 0)) != 1:
 		errors.append("incompatible v1 equipment was not returned to the shared bag")

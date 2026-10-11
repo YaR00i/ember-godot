@@ -46,6 +46,7 @@ static func build_region(
 			voxel_size,
 			PackedByteArray(),
 			visible_height,
+			resource.material,
 		)
 	)
 	_copy_surfaces(terrain, result)
@@ -59,6 +60,7 @@ static func _copy_surfaces(source: ArrayMesh, target: ArrayMesh) -> void:
 		target.add_surface_from_arrays(
 			source.surface_get_primitive_type(surface_index),
 			source.surface_get_arrays(surface_index),
+			[], {}, source.surface_get_format(surface_index),
 		)
 		target.surface_set_name(
 			target.get_surface_count() - 1,

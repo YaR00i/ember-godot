@@ -1,117 +1,57 @@
 extends SceneTree
-## Godot-native roof section, Area3D occupancy and renderer-owned fade/shadows.
-
-const SANDBOX_SCENE := "res://scenes/agent_sandbox.tscn"
-
+const Fixture = preload("res://tools/fixtures/ember_map_startup_test_fixture.gd")
+var _state: Dictionary
 
 func _init() -> void:
-	_run_and_quit.call_deferred()
+	_state = Fixture.prepare(self)
+	if _state.refused:
+		quit.call_deferred(2)
+		return
+	_run.call_deferred()
 
-
-func _run_and_quit() -> void:
-	quit(await _run())
-
-
-func _run() -> int:
+func _run() -> void:
 	var errors: Array[String] = []
-	var sections := _test_roof_build(errors)
-	await _test_native_volume(sections, errors)
-	await _test_live_sandbox(errors)
+	var saved := Fixture.saved_scene(_state, true)
+	if saved.is_empty():
+		printerr("FAIL native cutaway fixture")
+		quit(1)
+		return
+	for absent in [false, true]:
+		if absent: ProjectSettings.set_setting("ember/pack_path", ProjectSettings.globalize_path(str(_state.directory).path_join("absent-pack")))
+		var scene := (saved.scene as PackedScene).instantiate()
+		root.add_child(scene)
+		await process_frame
+		var map := scene.get_node("Map") as EmberMapLoader
+		var group := map.get_node_or_null("Cutaways")
+		if group == null or map.cutaway_section_count() != 2:
+			errors.append("startup removed saved native roofs or missed nested volume")
+			scene.free()
+			continue
+		var volumes := map._cutaway_volumes()
+		map.refresh_cutaway_runtime()
+		map.refresh_cutaway_runtime()
+		if map.get_node("Cutaways") != group or map.cutaway_section_count() != 2: errors.append("repeat refresh replaced authored cutaways")
+		for volume in volumes:
+			if volume.roof() == null or volume.roof().transparency != 0.0 or volume.is_processing(): errors.append("saved roof did not reopen opaque/event driven")
+			if volume.reveal_changed.get_connections().size() != 1: errors.append("repeat refresh duplicated reveal binding")
+		map.set_cutaway_preview(true, true)
+		if map.cutaway_active_count() != 2: errors.append("native preview lost nested sections")
+		for volume in volumes:
+			if volume.roof().transparency != 1.0 or volume.roof().cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_ON: errors.append("reveal changed structural roof shadow")
+		map.set_cutaway_preview(false, true)
+		var player := scene.get("_player") as EmberPlayer
+		volumes[0].body_entered.emit(player)
+		if map.cutaway_active_count() != 1 or not volumes[0].is_revealed(): errors.append("player entry did not reveal native roof")
+		await create_timer(0.25).timeout
+		if not is_equal_approx(volumes[0].roof().transparency, 1.0): errors.append("native roof fade did not finish")
+		volumes[0].body_exited.emit(player)
+		await create_timer(0.25).timeout
+		if map.cutaway_active_count() != 0 or not is_zero_approx(volumes[0].roof().transparency): errors.append("player exit did not restore roof")
+		scene.free()
+	Fixture.verify(_state, saved, errors)
 	if not errors.is_empty():
-		printerr("FAIL native cutaway")
-		for error in errors:
-			printerr(" - ", error)
-		return 1
-	print("PASS native cutaway")
-	print("  ground_z roof -> one scene section per interior volume")
-	print("  Area3D reveal -> native transparency + stable structural shadow")
-	print("  agent_sandbox opt-in creates one cabin section without scene traversal")
-	return 0
-
-
-func _test_roof_build(errors: Array[String]) -> Array[Dictionary]:
-	var raw: Variant = EmberPack.parse_json_file(EmberPack.map_path("agent_sandbox"))
-	if typeof(raw) != TYPE_DICTIONARY:
-		errors.append("could not parse agent_sandbox map")
-		return []
-	var sections := EmberTileMesher.build_cutaway_roofs(raw)
-	if sections.size() != 1:
-		errors.append("agent_sandbox did not build exactly one cutaway section")
-		return sections
-	var section: Dictionary = sections[0]
-	var mesh := section.get("mesh") as ArrayMesh
-	if str(section.get("id", "")) != "cabin" or int(section.get("cells", 0)) != 16:
-		errors.append("cabin roof did not claim the expanded 4x4 roof section")
-	if mesh == null or mesh.get_surface_count() != 1:
-		errors.append("cabin roof section has no renderable surface")
-	if section.get("origin", Vector3.ZERO) != Vector3(256.0, 0.0, 32.0):
-		errors.append("cabin roof section origin diverged from its authored volume")
-	return sections
-
-
-func _test_native_volume(sections: Array[Dictionary], errors: Array[String]) -> void:
-	if sections.is_empty():
+		printerr("FAIL native cutaway: ", "; ".join(errors))
+		quit(1)
 		return
-	var volume := EmberCutawayVolume.new()
-	volume.setup(sections[0], EmberVoxelPrefab.voxel_material())
-	root.add_child(volume)
-	await process_frame
-	var roof := volume.roof()
-	if roof == null or roof.transparency != 0.0:
-		errors.append("native roof did not start opaque")
-	if volume.is_processing():
-		errors.append("cutaway volume introduced a per-frame process loop")
-	volume.set_revealed(true, true)
-	if roof.transparency != 1.0:
-		errors.append("revealed roof did not use GeometryInstance3D transparency")
-	if roof.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_ON:
-		errors.append("revealed roof stopped casting its stable structural shadow")
-	volume.set_revealed(false, true)
-	if roof.transparency != 0.0:
-		errors.append("closed roof did not restore opaque rendering")
-	if roof.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_ON:
-		errors.append("closed roof lost shadow casting")
-	volume.queue_free()
-	await process_frame
-
-
-func _test_live_sandbox(errors: Array[String]) -> void:
-	var state := root.get_node_or_null("EmberExploreProgress") as EmberExploreState
-	if state:
-		state.persistence_enabled = false
-		state.restore_enabled = false
-		state.reset_new_game()
-	if change_scene_to_file(SANDBOX_SCENE) != OK:
-		errors.append("could not start agent_sandbox")
-		return
-	await process_frame
-	await process_frame
-	var map := current_scene.get_node_or_null("Map") as EmberMapLoader
-	if map == null:
-		errors.append("agent_sandbox lost Map")
-		return
-	if map.cutaway_section_count() != 1 or map.cutaway_active_count() != 0:
-		errors.append("agent_sandbox did not hydrate one closed cutaway section")
-	var volume := map.get_node_or_null("Cutaways/Cutaway_cabin") as EmberCutawayVolume
-	if volume == null or volume.roof() == null:
-		errors.append("live cabin cutaway nodes were not created")
-		return
-	map.set_cutaway_preview(true, true)
-	if map.cutaway_active_count() != 1 or not volume.is_revealed():
-		errors.append("map preview did not reveal the live cutaway section")
-	map.set_cutaway_preview(false, true)
-	if map.cutaway_active_count() != 0 or volume.is_revealed():
-		errors.append("map preview did not restore the live cutaway section")
-	var overlay := current_scene.get_node_or_null("CanvasLayer/LightingBenchmark") as EmberBenchmarkOverlay
-	if overlay == null:
-		errors.append("agent_sandbox lost the benchmark overlay used for F7 preview")
-		return
-	var event := InputEventKey.new()
-	event.keycode = KEY_F7
-	event.pressed = true
-	overlay._unhandled_input(event)
-	if map.cutaway_active_count() != 1 or not volume.is_revealed():
-		errors.append("F7 did not reveal the live cutaway section")
-	overlay._unhandled_input(event)
-	if map.cutaway_active_count() != 0 or volume.is_revealed():
-		errors.append("second F7 did not restore the live cutaway section")
+	print("PASS native cutaway; saved nested roofs, reveal/fade/shadows/reopen without sandbox/JSON")
+	quit(0)

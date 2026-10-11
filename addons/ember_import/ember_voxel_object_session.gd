@@ -23,7 +23,6 @@ var _projection_cache: RefCounted
 var _last_saved_asset: Dictionary = {}
 var _source_path := ""
 var _source_hash := ""
-var _legacy_signature := ""
 var _expected_id := ""
 var _unique_id := ""
 var _context_mesh_frame := Transform3D.IDENTITY
@@ -38,7 +37,6 @@ func open(prop: EmberVoxelProp, scene_root: Node, undo_redo: Object, edit_shared
 	_refresh_adapters.clear()
 	_last_saved_asset = {}
 	_unique_id = ""
-	_legacy_signature = ""
 	if not is_instance_valid(prop) or not is_instance_valid(scene_root):
 		return _fail("Объект или сцена уже закрыты.")
 	_target = weakref(prop)
@@ -47,17 +45,9 @@ func open(prop: EmberVoxelProp, scene_root: Node, undo_redo: Object, edit_shared
 	shared = edit_shared
 	_expected_id = prop.model_id
 	_source_path = source_directory.path_join(_expected_id + ".tres")
-	if FileAccess.file_exists(_source_path):
-		_source = ResourceLoader.load(_source_path) as EmberVoxelModelResource
-	else:
-		if not FileAccess.file_exists(EmberPack.model_json_path(_expected_id)):
-			return _fail("Voxel source не найден: %s" % _expected_id)
-		var parity := Parity.inspect_model(_expected_id)
-		if not bool(parity.get("ok", false)):
-			return _fail("Legacy-модель не прошла точную проверку: %s" % "; ".join(parity.get("errors", [])))
-		_source = EmberVoxelLegacyImporter.preview_model(_expected_id).get("resource")
-		_source_path = EmberPack.model_json_path(_expected_id)
-		_legacy_signature = EmberVoxelPrefab.source_signature(_expected_id)
+	if not FileAccess.file_exists(_source_path):
+		return _fail("Native voxel source не найден: %s. Готовый объект не изменён." % _expected_id)
+	_source = ResourceLoader.load(_source_path) as EmberVoxelModelResource
 	if _source == null:
 		return _fail("Не удалось прочитать voxel source.")
 	_baseline = _source.duplicate_model()
@@ -176,8 +166,6 @@ func save(resource: EmberVoxelModelResource, prepare_only := false, fresh_asset 
 		return _result_error("Для общей модели сначала сохраните и закройте другие вкладки сцен. Их несохранённые экземпляры нельзя безопасно обновить из текущего Canvas.")
 	if prop.model_id != _expected_id or FileAccess.get_sha256(_source_path) != _source_hash or not _same_data(_source, _baseline):
 		return _result_error("Source изменён вне этой сессии. Откройте объект заново; чужие правки не перезаписаны.")
-	if not _legacy_signature.is_empty() and EmberVoxelPrefab.source_signature(_expected_id) != _legacy_signature:
-		return _result_error("Legacy JSON/VOX изменены вне этой сессии. Откройте объект заново; source не изменён.")
 	# One detached baseline per transaction. Never cache across saves: external
 	# mesh edits must still be compared with independently built source geometry.
 	var baseline_packed := EmberVoxelPrefab.prepare_resource(_baseline, _projection_cache)
@@ -283,7 +271,6 @@ func accept_prepared_save(next: EmberVoxelModelResource, destination: String, re
 	_unique_id = next.model_id if reuse_id and not shared else ""
 	_source_path = destination
 	_source_hash = FileAccess.get_sha256(destination)
-	_legacy_signature = ""
 	_source = ResourceLoader.load(destination) as EmberVoxelModelResource
 	_baseline = next.duplicate_model()
 

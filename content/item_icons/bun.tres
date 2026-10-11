@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="EmberItemIconResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_item_icon_resource.gd" id="1_source"]
+
+[resource]
+script = ExtResource("1_source")
+icon_id = "bun"
+definition = {
+  "id": "bun",
+  "nameRu": "Пирожок",
+  "size": 16,
+  "palette": {
+    ".": "",
+    "F": "#e8c8a0",
+    "M": "#c87850",
+    "Y": "#f4e8a0",
+    "K": "#6a4030",
+    "P": "#8b3048"
+  },
+  "rows": [
+    "................",
+    "................",
+    ".....FFFFFF.....",
+    "....FYYYYYYF....",
+    "...FYYFFFFYYF...",
+    "...FYFMMMMFYF...",
+    "...FYFMPPMFYF...",
+    "...FYFMMMMFYF...",
+    "....FYYYYYYF....",
+    ".....FKKKKF.....",
+    "......FFFF......",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................"
+  ]
+}

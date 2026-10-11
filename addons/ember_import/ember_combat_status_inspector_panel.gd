@@ -53,7 +53,7 @@ func setup(status: Resource) -> void:
 	_validation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(_validation)
 	var hint := Label.new()
-	hint.text = "Бой хранит только ID и число оставшихся ходов. Название и вид берутся из этого canonical .tres."
+	hint.text = "Бой хранит ID и число оставшихся ходов. Название, вид и поддерживаемые настройки поведения берутся из этого .tres."
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.modulate = Color(0.62, 0.72, 0.82)
 	hint.add_theme_font_size_override("font_size", 12)
@@ -83,6 +83,7 @@ func _refresh() -> void:
 		str(_status.get("display_name")),
 		"%s · %s" % [str(_status.get("status_id")), str(_status.call("kind_label"))],
 		str(_status.get("description")),
+		str(_status.call("behavior_summary")),
 	])
 	var errors: Array = _status.call("validation_errors")
 	_validation.text = "✓ Статус готов" if errors.is_empty() else "⚠ " + "\n⚠ ".join(errors)

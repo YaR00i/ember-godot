@@ -89,8 +89,6 @@ func rebuild_catalog_model(id: String, scene: Node, undo: Object) -> Dictionary:
 	var source: EmberVoxelModelResource
 	if FileAccess.file_exists(source_path):
 		source = ResourceLoader.load(source_path, "", ResourceLoader.CACHE_MODE_IGNORE_DEEP) as EmberVoxelModelResource
-	elif FileAccess.file_exists(EmberPack.model_json_path(id)):
-		source = EmberVoxelLegacyImporter.preview_model(id).get("resource")
 	if source == null: return {"ok": false, "error": "Voxel source отсутствует."}
 	# Do not remesh a large existing asset merely to load its saved proxy; the
 	# session's validated/cached builder already prepares the replacement.

@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="EmberItemIconResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_item_icon_resource.gd" id="1_source"]
+
+[resource]
+script = ExtResource("1_source")
+icon_id = "tofu"
+definition = {
+  "id": "tofu",
+  "nameRu": "Тофу",
+  "size": 16,
+  "palette": {
+    ".": "",
+    "S": "#efe4d4",
+    "Y": "#f4e8a0",
+    "K": "#1c100c",
+    "B": "#4a2c1c",
+    "F": "#e8c8a0"
+  },
+  "rows": [
+    "................",
+    "................",
+    ".....SS.SYS.....",
+    ".....SS.SSS.....",
+    "....SSSSSSSS....",
+    "...KBBBBBBBBK...",
+    "...BFFFFFFFFB...",
+    "....BFFFFFFB....",
+    ".....BBBBBB.....",
+    "......KKKK......",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................",
+    "................"
+  ]
+}

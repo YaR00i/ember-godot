@@ -68,6 +68,12 @@ var runtime_geometry_cache_enabled := true
 var runtime_geometry_cache_directory := GeometryCache.ROOT
 var _geometry_cache: RefCounted
 var _geometry_keys := {}
+var _geometry_prepared := {}
+var _geometry_requests := {}
+var _geometry_request_serial := 0
+var _geometry_snapshot: TerrainResource
+var _geometry_snapshot_revision := -1
+var _geometry_prepare_disabled := false # Thread-start failure keeps the exact synchronous fallback.
 var _mesh_lod_jobs := {}
 var _ground_lod_cache := {}
 var _mesh_lod_thread := Thread.new()
@@ -104,6 +110,11 @@ func _cancel_mesh_lods() -> void:
 	_mesh_lod_cancellation.set_cancelled(false)
 	_geometry_keys.clear()
 	_geometry_cache = null
+	_geometry_prepared.clear()
+	_geometry_requests.clear()
+	_geometry_snapshot = null
+	_geometry_snapshot_revision = -1
+	_geometry_prepare_disabled = false
 
 
 func _configure_lod_cache(job: Dictionary) -> void:
@@ -116,11 +127,43 @@ func pending_runtime_lod_count() -> int:
 	return _mesh_lod_jobs.size() + _mesh_lod_in_flight + _mesh_lod_results.size() - _mesh_lod_cursor
 
 
-func _queue_ground_lod(key: Vector2i, mesh: ArrayMesh) -> ArrayMesh:
+func _uses_geometry_preparation() -> bool:
+	return not Engine.is_editor_hint() and runtime_geometry_cache_enabled and not runtime_geometry_cache_directory.is_empty() and not _geometry_prepare_disabled
+
+
+func _start_geometry_preparation() -> void:
+	if not _uses_geometry_preparation() or _pending.is_empty() or not _geometry_prepared.is_empty(): return
+	if _geometry_cache == null: _geometry_cache = GeometryCache.new()
+	_geometry_cache.directory = runtime_geometry_cache_directory
+	if _geometry_snapshot_revision != _column_revision:
+		# Sectioned working_copy shares persistent payloads, not its mutable root.
+		# Dense maps receive private arrays once per revision, never once per tile.
+		_geometry_snapshot = document.working_copy()
+		_geometry_snapshot_revision = _column_revision
+	var jobs := []
+	var swash_tiles: Dictionary = _staged_water_fields.pending_dry_tiles() if _staged_water_fields != null else (_sea_swash.dry_tiles if _sea_swash != null else {})
+	var fall: RefCounted = _staged_water_fields.waterfall if _staged_water_fields != null else _waterfall
+	for i in mini(GeometryCache.PREPARE_TILES, _pending.size()):
+		var key: Vector2i = _pending[i]
+		jobs.append({"key": key, "request": _geometry_requests.get(key, 0),
+			"policy": [water_mesh_step, water_volume_sides, runtime_water_mesh_optimization, runtime_ground_lod_enabled, runtime_water_lod_enabled],
+			"swash": (swash_tiles.get(key, PackedVector4Array()) as PackedVector4Array).duplicate(),
+			"sheet": (fall.tiles.get(key, {}) as Dictionary).duplicate(true) if fall != null else {}})
+	_mesh_lod_in_flight = jobs.size()
+	var error := _mesh_lod_thread.start(_geometry_cache.prepare_batch.bind(_geometry_snapshot, jobs, _column_revision, _mesh_lod_cancellation.is_cancelled), Thread.PRIORITY_LOW)
+	if error != OK:
+		_mesh_lod_in_flight = 0
+		_geometry_prepare_disabled = true
+		_profile_add("geometry_prepare_worker_failures", 1)
+	else:
+		_profile_add("geometry_prepare_batches", 1)
+
+
+func _queue_ground_lod(key: Vector2i, mesh: ArrayMesh, source_arrays: Array = []) -> ArrayMesh:
 	if Engine.is_editor_hint() or not runtime_ground_lod_enabled or mesh.get_surface_count() == 0: return mesh
 	var cached: Dictionary = _ground_lod_cache.get(key, {})
 	if not cached.is_empty() and int(cached.revision) == _column_revision: return cached.mesh
-	var arrays := mesh.surface_get_arrays(0)
+	var arrays := _lod_arrays(mesh, source_arrays)
 	if (arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array).size() < GroundLOD.MIN_INDICES: return mesh
 	_mesh_lod_jobs[Vector3i(key.x, key.y, 0)] = {"key": key, "kind": "ground", "builder": GroundLOD.build, "mesh": mesh, "arrays": arrays, "revision": _column_revision,
 		"bounds": Rect2i(key * TILE_SIZE, Vector2i(mini(TILE_SIZE, document.width - key.x * TILE_SIZE), mini(TILE_SIZE, document.depth - key.y * TILE_SIZE)))}
@@ -128,9 +171,9 @@ func _queue_ground_lod(key: Vector2i, mesh: ArrayMesh) -> ArrayMesh:
 	return mesh
 
 
-func _queue_water_lod(key: Vector2i, mesh: ArrayMesh) -> ArrayMesh:
+func _queue_water_lod(key: Vector2i, mesh: ArrayMesh, source_arrays: Array = []) -> ArrayMesh:
 	if Engine.is_editor_hint() or not runtime_water_lod_enabled or mesh.get_surface_count() == 0: return mesh
-	var arrays := mesh.surface_get_arrays(0)
+	var arrays := _lod_arrays(mesh, source_arrays)
 	if mesh.surface_get_array_index_len(0) < WaterLOD.MIN_INDICES: return mesh
 	# Water can remesh after shoreline fields change without a column revision.
 	# Coalesce queued jobs by tile, but never reuse a ground-revision-only cache.
@@ -141,15 +184,46 @@ func _queue_water_lod(key: Vector2i, mesh: ArrayMesh) -> ArrayMesh:
 	return mesh
 
 
+func _lod_arrays(mesh: ArrayMesh, source_arrays: Array) -> Array:
+	if not source_arrays.is_empty(): return source_arrays
+	# Exact fallback without the geometry cache still uses the old mesh path.
+	var started := Time.get_ticks_usec()
+	var arrays := mesh.surface_get_arrays(0)
+	_profile_add("runtime_lod_array_readbacks", 1)
+	_profile_add("runtime_lod_array_readback_us", Time.get_ticks_usec() - started)
+	return arrays
+
+
 func _poll_mesh_lods(frame_started: int) -> void:
 	if _mesh_lod_thread.is_started() and not _mesh_lod_thread.is_alive():
 		_mesh_lod_results = _mesh_lod_thread.wait_to_finish()
 		_mesh_lod_in_flight = 0
 		_mesh_lod_cursor = 0
+		var prepared_count := 0
+		var prepared_size := 0
+		for result: Dictionary in _mesh_lod_results:
+			if result.kind == "geometry":
+				prepared_count += 1
+				prepared_size += GeometryCache.prepared_bytes(result.data)
+		_profile["geometry_prepare_max_tiles"] = maxi(int(_profile.get("geometry_prepare_max_tiles", 0)), prepared_count)
+		_profile["geometry_prepare_max_bytes"] = maxi(int(_profile.get("geometry_prepare_max_bytes", 0)), prepared_size)
 	while _mesh_lod_cursor < _mesh_lod_results.size() and Time.get_ticks_usec() - frame_started < 4000:
 		var result: Dictionary = _mesh_lod_results[_mesh_lod_cursor]
 		_mesh_lod_results[_mesh_lod_cursor] = null
 		_mesh_lod_cursor += 1
+		if result.kind == "geometry":
+			_profile_add("geometry_prepare_jobs", 1)
+			_profile_add("geometry_cache_key_us", int(result.key_us))
+			_profile_add("geometry_cache_read_us", int(result.read_us))
+			_profile_add("geometry_cache_invalid", int(result.cache_invalid))
+			_profile_add("geometry_cache_failures", int(result.cache_failures))
+			for phase in ["decode", "validate"]:
+				_profile_add("geometry_cache_" + phase + "_us", int(result.data.get("cache_" + phase + "_us", 0)))
+			if result.request != _geometry_requests.get(result.key, 0):
+				_profile_add("geometry_prepare_stale", 1)
+			else:
+				_geometry_prepared[result.key] = result
+			continue
 		if result.kind == "cache_maintenance":
 			_profile_add("geometry_cache_trim_us", int(result.cpu_us))
 			continue
@@ -188,6 +262,8 @@ func _poll_mesh_lods(frame_started: int) -> void:
 	if _mesh_lod_cursor == _mesh_lod_results.size():
 		_mesh_lod_results.clear()
 		_mesh_lod_cursor = 0
+	if not _mesh_lod_thread.is_started() and _mesh_lod_results.is_empty():
+		if _uses_geometry_preparation() and not _pending.is_empty(): _start_geometry_preparation()
 	if not Engine.is_editor_hint() and _pending.is_empty() and not _mesh_lod_thread.is_started() and _mesh_lod_results.is_empty() and not _mesh_lod_jobs.is_empty():
 		var jobs := _mesh_lod_jobs.values()
 		_mesh_lod_jobs.clear()
@@ -196,6 +272,9 @@ func _poll_mesh_lods(frame_started: int) -> void:
 		if error != OK:
 			_mesh_lod_in_flight = 0
 			_profile_add("mesh_lod_worker_failures", 1) # Exact mesh is the fallback.
+	if _pending.is_empty() and not _mesh_lod_thread.is_started():
+		_geometry_snapshot = null
+		_geometry_snapshot_revision = -1
 	if _pending.is_empty() and pending_runtime_lod_count() == 0:
 		_profile["runtime_mesh_ready_ms"] = Time.get_ticks_msec() - _started_ms
 
@@ -427,9 +506,16 @@ func _process(_delta: float) -> void:
 	_profile["max_sleep_us"] = maxi(int(_profile.get("max_sleep_us", 0)), OS.low_processor_usage_mode_sleep_usec)
 	if _pending_needs_sort:
 		_prioritize_pending()
+	if not Engine.is_editor_hint(): _poll_mesh_lods(started)
 	var remaining := _pending.size()
 	while remaining > 0 and not _pending.is_empty() and (Time.get_ticks_usec() - started < 4000 or Time.get_ticks_usec() == started):
-		var key: Vector2i = _pending.pop_front()
+		var pending_index := 0
+		if _uses_geometry_preparation():
+			if _geometry_prepared.is_empty(): break
+			pending_index = _pending.find(_geometry_prepared.keys()[0])
+		var key: Vector2i = _pending.pop_at(pending_index)
+		var prepared: Dictionary = _geometry_prepared.get(key, {})
+		_geometry_prepared.erase(key)
 		remaining -= 1
 		var index := key.x + key.y * _pending_tile_columns
 		var now := Time.get_ticks_usec()
@@ -441,7 +527,7 @@ func _process(_delta: float) -> void:
 		var edited := _pending_edit_flags[index] != 0
 		_pending_edit_flags[index] = 0
 		_profile["max_pending_age_us"] = maxi(int(_profile.get("max_pending_age_us", 0)), now - _pending_since_us[index])
-		_rebuild_tile(key)
+		_rebuild_tile(key, prepared)
 		if edited:
 			if _last_edit_build_us[index] > 0: _profile_add("repeat_edit_builds", 1)
 			_last_edit_build_us[index] = Time.get_ticks_usec()
@@ -459,7 +545,7 @@ func _process(_delta: float) -> void:
 	_profile["max_process_us"] = maxi(int(_profile.get("max_process_us", 0)), elapsed)
 
 
-func _rebuild_tile(key: Vector2i) -> void:
+func _rebuild_tile(key: Vector2i, prepared: Dictionary = {}) -> void:
 	var tile_started := Time.get_ticks_usec()
 	var started := tile_started
 	var swash_tiles: Dictionary = _staged_water_fields.pending_dry_tiles() if _staged_water_fields != null else (_sea_swash.dry_tiles if _sea_swash != null else {})
@@ -468,7 +554,13 @@ func _rebuild_tile(key: Vector2i) -> void:
 	var sheet: Dictionary = fall.tiles.get(key, {}) if fall != null else {}
 	var generated := {}
 	var cache_key := ""
-	if not Engine.is_editor_hint() and runtime_geometry_cache_enabled and not runtime_geometry_cache_directory.is_empty():
+	if not prepared.is_empty():
+		cache_key = prepared.cache_key
+		_geometry_keys[key] = cache_key
+		if not prepared.data.is_empty(): generated = GeometryCache.publish_geometry(prepared.data)
+		_profile_add("geometry_cache_upload_us", int(generated.get("cache_upload_us", 0)))
+		_profile_add("geometry_cache_hits" if not generated.is_empty() else "geometry_cache_misses", 1)
+	elif not Engine.is_editor_hint() and runtime_geometry_cache_enabled and not runtime_geometry_cache_directory.is_empty():
 		if _geometry_cache == null: _geometry_cache = GeometryCache.new()
 		_geometry_cache.directory = runtime_geometry_cache_directory
 		cache_key = _geometry_cache.tile_key(document, key, _column_revision,
@@ -479,6 +571,8 @@ func _rebuild_tile(key: Vector2i) -> void:
 		var invalid_before: int = _geometry_cache.disk.invalid
 		var failures_before: int = _geometry_cache.disk.failures
 		generated = _geometry_cache.read_geometry(cache_key)
+		for phase in ["decode", "validate", "upload"]:
+			_profile_add("geometry_cache_" + phase + "_us", int(generated.get("cache_" + phase + "_us", 0)))
 		_profile_add("geometry_cache_read_us", Time.get_ticks_usec() - read_started)
 		_profile_add("geometry_cache_invalid", _geometry_cache.disk.invalid - invalid_before)
 		_profile_add("geometry_cache_failures", _geometry_cache.disk.failures - failures_before)
@@ -491,7 +585,7 @@ func _rebuild_tile(key: Vector2i) -> void:
 			var write_started := Time.get_ticks_usec()
 			var bytes_before: int = _geometry_cache.disk.written_bytes
 			var failures_before: int = _geometry_cache.disk.failures
-			_geometry_cache.write_geometry(cache_key, generated)
+			generated.merge(_geometry_cache.write_geometry(cache_key, generated))
 			_profile_add("geometry_cache_write_us", Time.get_ticks_usec() - write_started)
 			_profile_add("geometry_cache_written_bytes", _geometry_cache.disk.written_bytes - bytes_before)
 			_profile_add("geometry_cache_failures", _geometry_cache.disk.failures - failures_before)
@@ -536,12 +630,12 @@ func _rebuild_tile(key: Vector2i) -> void:
 	_profile_add("node_us", Time.get_ticks_usec() - started)
 	started = Time.get_ticks_usec()
 	tile.position = Vector3.ZERO
-	var ground_mesh := _queue_ground_lod(key, generated["terrain"] as ArrayMesh)
+	var ground_mesh := _queue_ground_lod(key, generated["terrain"] as ArrayMesh, generated.get("ground_arrays", []))
 	if ground_mesh.get_surface_count() > 0:
 		ground_mesh.surface_set_material(0, _ground_material)
 	(tile.get_node("Ground") as MeshInstance3D).mesh = ground_mesh
 	(tile.get_node("Ground") as MeshInstance3D).material_overlay = _editor_hover_overlay if _editor_hover_tiles.has(key) else null
-	var water_mesh := _queue_water_lod(key, generated["water"] as ArrayMesh)
+	var water_mesh := _queue_water_lod(key, generated["water"] as ArrayMesh, generated.get("water_arrays", []))
 	if water_mesh.get_surface_count() > 0:
 		water_mesh.surface_set_material(0, _water_material)
 	(tile.get_node("Water") as MeshInstance3D).mesh = water_mesh
@@ -581,6 +675,8 @@ func _profile_reset(operation: String) -> void:
 		"water_lod_max_publish_us": 0, "water_lod_saved_indices": 0, "water_lod_extra_index_bytes": 0,
 		"water_lod_stale_results": 0}
 	for key in ["geometry_cache_hits", "geometry_cache_misses", "geometry_cache_invalid", "geometry_cache_failures",
+		"geometry_prepare_jobs", "geometry_prepare_batches", "geometry_prepare_stale", "geometry_prepare_worker_failures", "geometry_prepare_max_tiles", "geometry_prepare_max_bytes",
+		"geometry_cache_decode_us", "geometry_cache_validate_us", "geometry_cache_upload_us", "runtime_lod_array_readbacks", "runtime_lod_array_readback_us",
 		"geometry_cache_key_us", "geometry_cache_read_us", "geometry_cache_write_us", "geometry_cache_lod_us",
 		"geometry_cache_written_bytes", "geometry_cache_trim_us", "ground_lod_cache_hits", "ground_lod_cache_misses", "water_lod_cache_hits", "water_lod_cache_misses"]:
 		_profile[key] = 0
@@ -1115,6 +1211,11 @@ func _queue_tile(key: Vector2i, front: bool) -> void:
 	if key.x < 0 or key.y < 0 or key.x >= _pending_tile_columns or key.y >= _pending_tile_rows:
 		return
 	if document.is_sectioned() and not document.has_column(key.x * TILE_SIZE, key.y * TILE_SIZE): return
+	if not Engine.is_editor_hint():
+		_geometry_request_serial += 1
+		_geometry_requests[key] = _geometry_request_serial
+		# A newer terrain/water request must never publish an older CPU snapshot.
+		_geometry_prepared.erase(key)
 	var index := key.x + key.y * _pending_tile_columns
 	if _pending_flags[index] != 0:
 		if front: _pending_edit_flags[index] = 1

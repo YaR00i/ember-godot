@@ -1,8 +1,13 @@
 @tool
-extends ConfirmationDialog
+extends VBoxContainer
 const Assembly = preload("res://addons/ember_import/ember_voxel_scene_assembly.gd")
 const Placement = preload("res://addons/ember_import/ember_voxel_placement_session.gd")
 signal created(world_step: Vector3)
+signal edit_closed
+var parameters_panel: VBoxContainer
+var _parameter_scroll: ScrollContainer
+var _create_button: Button
+var _title: Label
 var operation: RefCounted
 var placement: RefCounted
 var _undo: Object
@@ -15,14 +20,14 @@ var _camera: Camera3D
 var _updating := false
 
 func _init() -> void:
-	title = "Дублировать со смещением"
-	dialog_hide_on_ok = false
-	get_ok_button().text = "Создать копии"
-	get_cancel_button().text = "Отмена"
+	size_flags_vertical = Control.SIZE_EXPAND_FILL
+	parameters_panel = VBoxContainer.new(); parameters_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_title = Label.new(); _title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; parameters_panel.add_child(_title)
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(570, 500)
+	_parameter_scroll = scroll
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	add_child(scroll)
+	parameters_panel.add_child(scroll)
 	var box := VBoxContainer.new()
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(box)
@@ -32,10 +37,10 @@ func _init() -> void:
 	box.add_child(info)
 	_grid = OptionButton.new()
 	_grid.fit_to_longest_item = false
+	_grid.clip_text = true
 	box.add_child(_grid)
-	var row := HBoxContainer.new()
-	box.add_child(row)
 	for axis in ["X", "Y", "Z"]:
+		var row := VBoxContainer.new(); box.add_child(row)
 		var label := Label.new()
 		label.text = axis + " · vox"
 		row.add_child(label)
@@ -64,13 +69,14 @@ func _init() -> void:
 	var container := SubViewportContainer.new()
 	container.name = "CopyPreview"
 	container.stretch = true
-	container.custom_minimum_size = Vector2(560, 300)
-	container.size_flags_vertical = Control.SIZE_FILL
-	box.add_child(container)
+	container.custom_minimum_size = Vector2(320,240)
+	container.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	add_child(container)
 	var viewport := SubViewport.new()
 	viewport.size = Vector2i(560, 300)
 	viewport.own_world_3d = true
-	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	viewport.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
 	container.add_child(viewport)
 	_preview = Node3D.new()
 	viewport.add_child(_preview)
@@ -83,7 +89,10 @@ func _init() -> void:
 	light.rotation_degrees = Vector3(-55, -35, 0)
 	_preview.add_child(light)
 	_grid.item_selected.connect(_refresh.unbind(1))
-	confirmed.connect(_commit)
+	var actions := HBoxContainer.new(); parameters_panel.add_child(actions)
+	_create_button = Button.new(); _create_button.text = "Создать копии"; _create_button.disabled = true
+	_create_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL; actions.add_child(_create_button); _create_button.pressed.connect(_commit)
+	var cancel := Button.new(); cancel.text = "Отмена"; actions.add_child(cancel); cancel.pressed.connect(cancel_edit)
 
 func open_for(prop: EmberVoxelProp, scene: Node, undo: Object, directory := EmberVoxelCatalog.NATIVE_DIR) -> bool:
 	_undo = undo
@@ -95,12 +104,17 @@ func open_for(prop: EmberVoxelProp, scene: Node, undo: Object, directory := Embe
 	operation = Assembly.new()
 	operation.source_directory = directory
 	_updating = true
+	_grid.clear()
+	for number in _axes: number.value = 0
+	_count.value = 1
 	for index in placement.grids.size():
 		_grid.add_item(placement.grid_label(index))
+	_grid.select(0)
 	_axes[0].value = maxf(1, placement.bounds_local.size.x * prop.global_basis.x.length())
 	_updating = false
 	_refresh()
-	popup_centered(Vector2i(620, 600))
+	_title.text = "Дублирование · %s" % prop.name
+	show()
 	return true
 
 func world_step() -> Vector3:
@@ -109,7 +123,8 @@ func world_step() -> Vector3:
 func _refresh() -> void:
 	if _updating or operation == null:
 		return
-	get_ok_button().disabled = true
+	_grid.tooltip_text = placement.grid_label(_grid.selected)
+	_create_button.disabled = true
 	for child in _preview.get_children():
 		if child is MeshInstance3D:
 			child.free()
@@ -141,13 +156,34 @@ func _refresh() -> void:
 	_camera.position = box.get_center() + Vector3(1, 1, 1).normalized() * extent * 2.5
 	_camera.look_at(box.get_center())
 	_status.text = "%d новых копий · шаг в единицах сцены %s. Исходник остаётся на месте." % [int(_count.value), world_step()]
-	get_ok_button().disabled = false
+	_create_button.disabled = false
 
 func _commit() -> void:
+	if operation == null or _create_button.disabled: return
 	var copies: Array = operation.commit_copies(_undo)
 	if copies.is_empty():
 		_status.text = operation.error
-		get_ok_button().disabled = true
+		_create_button.disabled = true
 		return
-	hide()
-	created.emit(world_step())
+	var step := world_step()
+	cancel_edit()
+	created.emit(step)
+
+
+func get_create_button() -> Button:
+	return _create_button
+
+
+func is_dirty() -> bool:
+	return placement != null
+
+
+func cancel_edit() -> void:
+	operation = null; placement = null; _undo = null; _create_button.disabled = true
+	for child in _preview.get_children():
+		if child is MeshInstance3D: child.free()
+	hide(); edit_closed.emit()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE and is_instance_valid(parameters_panel): parameters_panel.free()

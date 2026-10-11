@@ -6,6 +6,11 @@ uniform sampler2D role_lookup : filter_nearest, repeat_disable;
 uniform sampler2D pattern_atlas : source_color, filter_nearest, repeat_disable;
 uniform sampler2D side_pattern_atlas : source_color, filter_nearest, repeat_disable;
 uniform sampler2D finish_lookup : filter_nearest, repeat_disable;
+uniform sampler2D detail_lookup : filter_nearest, repeat_disable;
+uniform sampler2D surface_lookup : filter_nearest, repeat_disable;
+uniform bool independent_surface_enabled = false;
+uniform sampler2D roughness_atlas : filter_nearest, repeat_disable;
+uniform sampler2D side_roughness_atlas : filter_nearest, repeat_disable;
 uniform float texture_span = 64.0;
 uniform int toon_steps : hint_range(3, 5) = 4;
 uniform float band_floor : hint_range(0.0, 0.5) = 0.19;
@@ -13,6 +18,7 @@ uniform float local_light_softness : hint_range(0.0, 1.0) = 1.0;
 uniform float terrain_side_fill : hint_range(0.0, 3.0) = 1.2;
 uniform int material_light_mode : hint_enum("Previous", "Soft materials", "Toy plastic") = 0;
 uniform bool material_gray_preview = false;
+uniform bool surface_detail_enabled = true;
 uniform float underwater_caustics : hint_range(0.0, 1.0) = 0.0;
 uniform bool reflection_pass_enabled = false;
 uniform float caustic_water_level = 16.02;
@@ -26,6 +32,7 @@ uniform float sand_wet_strength = 0.0;
 #include "res://shaders/ember_compact_sea_swash.gdshaderinc"
 #include "res://shaders/ember_diorama_light.gdshaderinc"
 #include "res://shaders/ember_material_light.gdshaderinc"
+#include "res://shaders/ember_terrain_surface_detail.gdshaderinc"
 #include "res://shaders/ember_compact_study_wave.gdshaderinc"
 
 varying vec3 terrain_position;
@@ -106,11 +113,18 @@ void fragment() {
 		bool side_artwork = has_side_pattern && normal_axis.y < 0.5;
 		vec2 position = normal_axis.y > 0.5 ? terrain_position.xz :
 			(normal_axis.x > 0.5 ? terrain_position.zy : terrain_position.xy);
-		vec2 uv = mirrored_tile(position / texture_span);
+		vec3 surface = independent_surface_enabled ? texelFetch(surface_lookup,ivec2(palette_index,0),0).rgb : vec3(4.0,0.0,0.0);
+		float span = texture_span*max(surface.r,0.125)/4.0;
+		vec2 uv = mirrored_tile(position / span);
+		float art_fade = surface.b > 0.5 ? 1.0-smoothstep(0.5,1.5,length(fwidth(position/span*16.0))) : 1.0;
 		ivec2 pixel = clamp(ivec2(floor(uv * 16.0)), ivec2(0), ivec2(15));
-		ALBEDO = artwork_pixel(ivec2(pixel.x, palette_index * 16 + pixel.y), side_artwork).rgb;
-		if (finish.b > 0.0 && (normal_axis.y > 0.5 || side_artwork)) {
-			vec2 tile_phase = fract(position / texture_span * 0.5);
+		ALBEDO = mix(COLOR.rgb,artwork_pixel(ivec2(pixel.x, palette_index * 16 + pixel.y), side_artwork).rgb,art_fade);
+		if (surface_detail_enabled && surface.g > 0.001) {
+			float rough_pixel=normal_axis.y < 0.5 ? texelFetch(side_roughness_atlas,ivec2(pixel.x,palette_index*16+pixel.y),0).r : texelFetch(roughness_atlas,ivec2(pixel.x,palette_index*16+pixel.y),0).r;
+			ROUGHNESS=clamp(ROUGHNESS+(rough_pixel-0.5)*2.0*surface.g*art_fade,0.22,1.0);
+		}
+		if (finish.b > 0.0 && (normal_axis.y > 0.5 || side_artwork) && (surface.b < 0.5 || surface_detail_enabled)) {
+			vec2 tile_phase = fract(position / span * 0.5);
 			vec2 mirror_sign = vec2(tile_phase.x < 0.5 ? 1.0 : -1.0,
 				tile_phase.y < 0.5 ? 1.0 : -1.0);
 			int row = palette_index * 16 + pixel.y;
@@ -118,13 +132,29 @@ void fragment() {
 			float right_height = artwork_pixel(ivec2(min(pixel.x + 1, 15), row), side_artwork).a;
 			float near_height = artwork_pixel(ivec2(pixel.x, palette_index * 16 + max(pixel.y - 1, 0)), side_artwork).a;
 			float far_height = artwork_pixel(ivec2(pixel.x, palette_index * 16 + min(pixel.y + 1, 15)), side_artwork).a;
-			float relief = finish.b * (has_side_pattern ? 0.65 : 0.3);
+			float relief = finish.b * (has_side_pattern ? 0.65 : 0.3)*art_fade;
 			vec3 tangent = normal_axis.x > 0.5 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
 			vec3 bitangent = normal_axis.y > 0.5 ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
 			vec3 painted_normal = normalize(terrain_normal
 				+ tangent * (left_height - right_height) * relief * mirror_sign.x
 				+ bitangent * (near_height - far_height) * relief * mirror_sign.y);
 			NORMAL = normalize((VIEW_MATRIX * vec4(MODEL_NORMAL_MATRIX * painted_normal, 0.0)).xyz);
+		}
+		vec3 detail = texelFetch(detail_lookup,ivec2(palette_index,0),0).rgb;
+		float detail_role = texelFetch(role_lookup,ivec2(palette_index,0),0).b*255.0;
+		if (surface_detail_enabled && detail_role > 0.5 && (detail.r > 0.001 || detail.b > 0.001)) {
+			// World-sized local coordinates, same field across tile boundaries.
+			vec2 p = position/16.0/max(detail.g,0.03);
+			float fade = 1.0-smoothstep(0.35,1.2,length(fwidth(p)));
+			if (fade > 0.001) {
+				vec3 grain = ember_terrain_detail(p,detail_role);
+				vec3 tangent = normal_axis.x > 0.5 ? vec3(0,0,1) : vec3(1,0,0);
+				vec3 bitangent = normal_axis.y > 0.5 ? vec3(0,0,1) : vec3(0,1,0);
+				vec3 view_tangent = normalize((VIEW_MATRIX*vec4(MODEL_NORMAL_MATRIX*tangent,0.0)).xyz);
+				vec3 view_bitangent = normalize((VIEW_MATRIX*vec4(MODEL_NORMAL_MATRIX*bitangent,0.0)).xyz);
+				NORMAL = normalize(NORMAL+(view_tangent*grain.x+view_bitangent*grain.y)*detail.r*fade);
+				ROUGHNESS = clamp(ROUGHNESS+grain.z*detail.b*fade,0.22,1.0);
+			}
 		}
 	}
 	if (material_light_mode == 2) {

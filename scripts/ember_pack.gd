@@ -25,22 +25,6 @@ static func model_json_path(model_id: String) -> String:
 	return pack_root().path_join("voxels").path_join("models").path_join("%s.json" % model_id)
 
 
-static func script_path(script_id: String) -> String:
-	return pack_root().path_join("scripts").path_join("%s.json" % script_id)
-
-
-static func scene_path(scene_id: String) -> String:
-	return pack_root().path_join("scenes").path_join("%s.json" % scene_id)
-
-
-static func shop_catalog_path() -> String:
-	return pack_root().path_join("shops").path_join("catalog.json")
-
-
-static func item_catalog_path() -> String:
-	return pack_root().path_join("items").path_join("catalog.json")
-
-
 static func stage_path(stage_id: String) -> String:
 	return pack_root().path_join("stages").path_join("%s.json" % stage_id)
 

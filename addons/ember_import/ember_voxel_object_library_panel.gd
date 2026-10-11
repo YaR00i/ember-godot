@@ -8,7 +8,6 @@ signal place_requested(model_id: String, anchor: Node3D)
 signal brush_requested(model_id: String)
 signal edit_requested(model_id: String)
 signal open_resource_requested(model_id: String)
-signal migrate_requested(model_id: String)
 signal new_shape_requested
 signal new_tree_requested
 signal tree_variant_requested(model_id: String)
@@ -219,7 +218,6 @@ func _build() -> void:
 	var filter_group := ButtonGroup.new()
 	_add_filter(filters, filter_group, "all", "Все", true)
 	_add_filter(filters, filter_group, "godot", "Готовы в Godot")
-	_add_filter(filters, filter_group, "legacy_import", "Ожидают переноса")
 	filters.add_child(rebuild_library)
 
 	var body := HBoxContainer.new()
@@ -321,7 +319,6 @@ func _build() -> void:
 	_more_button.name = "VoxelObjectLibraryMore"
 	_more_button.text = "Ещё…"
 	_more_button.get_popup().add_item("Открыть Godot Resource", 0)
-	_more_button.get_popup().add_item("Перенести в Godot", 1)
 	_more_button.get_popup().add_item("Создать вариант из рецепта…", 2)
 	_more_button.get_popup().add_item("Генерировать похожие · параметры…", 3)
 	_more_button.get_popup().id_pressed.connect(_on_more_action)
@@ -420,22 +417,17 @@ func _refresh_variant_details() -> void:
 	_owner_label.tooltip_text = (
 		"Модель уже хранится как Godot Resource."
 		if owner == "godot"
-		else "Legacy-модель. При первом добавлении prefab будет собран автоматически."
+		else "Native source не найден. Готовый объект не изменён."
 	)
 	_owner_label.modulate = Color(0.50, 0.86, 0.62) if owner == "godot" else Color(0.94, 0.70, 0.38)
 	_place_button.disabled = model_id.is_empty() or not _can_place
 	if is_instance_valid(_brush_button): # Preserve old shelf instances during editor script hot-reload.
 		_brush_button.disabled = _place_button.disabled
 	_edit_button.disabled = model_id.is_empty()
-	_edit_button.text = "Перенести и редактировать" if owner == "legacy_import" else "Редактировать шаблон"
-	_edit_button.tooltip_text = (
-		"Перенести legacy-модель в Godot Resource и открыть общий шаблон в Canvas. Изменения затронут все её экземпляры."
-		if owner == "legacy_import"
-		else "Открыть общую voxel-модель в Canvas. Изменения затронут все её экземпляры в сценах."
-	)
+	_edit_button.text = "Редактировать шаблон"
+	_edit_button.tooltip_text = "Открыть общую native voxel-модель в Canvas. Изменения затронут все её экземпляры."
 	var popup := _more_button.get_popup()
 	popup.set_item_disabled(popup.get_item_index(0), owner != "godot")
-	popup.set_item_disabled(popup.get_item_index(1), owner != "legacy_import")
 	var recipe_path := recipe_directory.path_join(model_id + ".tres")
 	popup.set_item_disabled(popup.get_item_index(2), owner != "godot" or not ResourceLoader.exists(recipe_path))
 	var recipe := GenerativeObjects.load_recipe(model_id, recipe_directory)
@@ -463,8 +455,6 @@ func _on_more_action(id: int) -> void:
 		return
 	if id == 0:
 		open_resource_requested.emit(model_id)
-	elif id == 1:
-		migrate_requested.emit(model_id)
 	elif id == 2:
 		tree_variant_requested.emit(model_id)
 	elif id == 3:

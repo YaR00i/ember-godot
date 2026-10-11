@@ -1,8 +1,7 @@
 @tool
 class_name EmberShopEditor
 extends VBoxContainer
-## Compact editor for one canonical shop definition. Legacy catalog entries are
-## visible but locked until the explicit per-shop Resource migration.
+## Compact editor for one canonical native shop definition.
 
 const Store = preload("res://addons/ember_import/ember_shop_store.gd")
 const ItemStore = preload("res://addons/ember_import/ember_item_store.gd")
@@ -11,9 +10,7 @@ const ItemVisuals = preload("res://scripts/ember_item_visuals.gd")
 const VisualLibraryPicker = preload("res://addons/ember_import/ember_visual_library_picker.gd")
 
 signal save_requested(document: Dictionary)
-signal migrate_requested(shop_id: String)
 signal item_save_requested(document: Dictionary)
-signal item_migrate_requested(item_id: String)
 signal cancel_requested
 
 var _current_id := ""
@@ -45,8 +42,7 @@ func _build() -> void:
 	title.modulate = Color(0.96, 0.72, 0.32)
 	add_child(title)
 	var existing := not _base.is_empty()
-	var owner := Store.owner(_current_id)
-	var editable := not existing or owner == "native"
+	var editable := true
 	_id_input = _line_row("ShopId", "ID", "snake_case; после создания не переименовывается")
 	_id_input.text = _current_id if existing else _suggested_id
 	_id_input.editable = not existing
@@ -54,13 +50,7 @@ func _build() -> void:
 	_name_input.text = str(_base.get("nameRu", "Новый магазин"))
 	_name_input.editable = editable
 	if existing:
-		_add_owner_row(owner)
-	if owner == "legacy":
-		var hint := Label.new()
-		hint.text = "Legacy catalog доступен только для чтения. Перенеси этот магазин в .tres, затем редактируй ассортимент."
-		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		hint.modulate = Color(0.90, 0.68, 0.36)
-		add_child(hint)
+		_add_owner_row()
 	_listings = VBoxContainer.new()
 	_listings.name = "ShopListings"
 	_listings.add_theme_constant_override("separation", 5)
@@ -100,22 +90,15 @@ func _build() -> void:
 	_reindex()
 
 
-func _add_owner_row(owner: String) -> void:
+func _add_owner_row() -> void:
 	var row := HBoxContainer.new()
 	var source := Label.new()
 	source.name = "ShopStorageOwner"
-	source.text = "Godot Resource" if owner == "native" else "Legacy JSON"
+	source.text = "Godot Resource"
 	source.tooltip_text = Store.source_path(_current_id)
 	source.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	source.modulate = Color(0.50, 0.82, 0.60) if owner == "native" else Color(0.90, 0.68, 0.36)
+	source.modulate = Color(0.50, 0.82, 0.60)
 	row.add_child(source)
-	var migrate := Button.new()
-	migrate.name = "MigrateShopResource"
-	migrate.text = "Уже .tres" if owner == "native" else "Перенести в .tres"
-	migrate.disabled = owner != "legacy"
-	migrate.tooltip_text = "Создаёт отдельный native Resource. Общий shops/catalog.json не меняется; Ctrl+Z отменяет."
-	migrate.pressed.connect(_request_migration)
-	row.add_child(migrate)
 	add_child(row)
 
 
@@ -264,7 +247,6 @@ func _toggle_item_editor(holder: VBoxContainer, button: Button, option: OptionBu
 		var editor := ItemEditor.new() as EmberItemEditor
 		editor.setup(editable_id, ItemStore.suggested_id(source_id))
 		editor.save_requested.connect(_on_item_save.bind(holder, button, option))
-		editor.migrate_requested.connect(item_migrate_requested.emit)
 		editor.cancel_requested.connect(_dismiss_item_editor.bind(holder, button))
 		holder.add_child(editor)
 		holder.visible = true
@@ -384,13 +366,6 @@ func _submit() -> void:
 	_validation.text = "\n".join(errors)
 	if errors.is_empty():
 		save_requested.emit(value)
-
-
-func _request_migration() -> void:
-	if Store.owner(_current_id) != "legacy":
-		return
-	migrate_requested.emit(_current_id)
-	call_deferred("_reload_after_migration")
 
 
 func _reload_after_migration() -> void:

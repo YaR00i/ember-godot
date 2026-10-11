@@ -5,6 +5,7 @@ const Extract = preload("res://addons/ember_import/ember_voxel_fragment_extract.
 const Preset = preload("res://addons/ember_import/ember_voxel_stamp_preset.gd")
 const Placement = preload("res://addons/ember_import/ember_voxel_brush_placement.gd")
 const Generator = preload("res://addons/ember_import/ember_voxel_generator.gd")
+const Profiles = preload("res://scripts/ember_voxel_material_profiles.gd")
 const DIRECTORY := "res://content/editor/voxel_stamps"
 
 static func capture(source: EmberVoxelModelResource, indices: PackedInt32Array, title: String) -> Dictionary:
@@ -402,7 +403,7 @@ static func _plan_many_variants(
 			return {"error":"Штамп переносит воксели, а не водную заливку или отдельные источники света. Уберите их из модели штампа."}
 		if target.normalized_density() != stamp.normalized_density():
 			return {"error":"Плотности объекта и штампа должны совпадать (16/32). Размер не меняется скрыто."}
-		if target.material != stamp.material:
+		if Profiles.base_material(target.material) != Profiles.base_material(stamp.material):
 			return {"error":"Общие настройки материала отличаются. Штамп не будет менять материал всего объекта."}
 		var indices := PackedInt32Array()
 		var low := stamp.grid_size()
@@ -483,6 +484,7 @@ static func _plan_many_variants(
 					values[index] = 1 if target.voxels[index] != 0 else 0
 		properties[channel] = values
 	properties.palette = target.palette.duplicate()
+	var surface_material := target.material.duplicate(true)
 	var owners := target.voxel_part_ids.duplicate()
 	var locked := Fragment.Groups.locked_indices(target.voxel_groups)
 	var selected := PackedInt32Array()
@@ -532,7 +534,7 @@ static func _plan_many_variants(
 			if not colors.has(color_key):
 				var mapped := -1
 				for candidate in range(1,properties.palette.size()):
-					if properties.palette[candidate] == stamp.palette[color_index]:
+					if properties.palette[candidate] == stamp.palette[color_index] and Profiles.palette_role(surface_material,candidate) == Profiles.palette_role(stamp.material,color_index):
 						mapped = candidate
 						break
 				if mapped == -1:
@@ -540,6 +542,7 @@ static func _plan_many_variants(
 						return {"error":"Не хватает места в палитре. Цвета не округляются.","positions":positions}
 					mapped = properties.palette.size()
 					properties.palette.append(stamp.palette[color_index])
+					Profiles.set_palette_role(surface_material,mapped,Profiles.palette_role(stamp.material,color_index))
 				colors[color_key] = mapped
 			properties.voxels[dest] = colors[color_key]
 			for channel in Fragment.CHANNELS:
@@ -559,6 +562,7 @@ static func _plan_many_variants(
 				selected.append(dest)
 	if not owners.is_empty():
 		properties.voxel_part_ids = owners
+	if surface_material != target.material: properties.material = surface_material
 	var before := {}
 	for key in properties.keys():
 		if key in Fragment.CHANNELS and key != "voxels" and target.get(key).is_empty() and properties[key].count(0) == properties[key].size():

@@ -144,7 +144,7 @@ static func tile_keys(source, size: int) -> Array[Vector2i]:
 	return result
 
 
-static func validation_errors(source) -> Array[String]:
+static func validation_errors(source, local_sections: Array[Vector2i] = []) -> Array[String]:
 	var errors: Array[String] = []
 	if source.width > MAX_AXIS * CELLS or source.depth > MAX_AXIS * CELLS: return ["terrain section envelope exceeds supported size"]
 	if source.sections.is_empty(): return ["terrain sections are missing"]
@@ -163,6 +163,10 @@ static func validation_errors(source) -> Array[String]:
 		var count: int = part.width * part.depth
 		for channel in CHANNELS:
 			if part.get(channel).size() != count: return ["terrain section channel has wrong size"]
+		edge = edge.max(key * CELLS + Vector2i(part.width, part.depth))
+		# Local editor operations enter through an already validated session.
+		# Keep global structural checks; inspect payload values only where affected.
+		if not local_sections.is_empty() and key not in local_sections: continue
 		var heights: PackedInt32Array = part.heights
 		var waters: PackedInt32Array = part.water_levels
 		var tops: PackedByteArray = part.top_materials

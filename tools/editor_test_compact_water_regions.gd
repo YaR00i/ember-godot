@@ -39,13 +39,13 @@ func add_region(world: Node, importer: Node) -> void:
 	importer._extend_compact_map()
 	drag(world, Vector2i(4, 0), Vector2i(7, 3))
 	world._section_next.pressed.emit()
-	var dialog: ConfirmationDialog = world._generation_dialog
+	var dialog: Control = world._generation_panel
 	check(dialog.visible, "192x120 Next did not open parameters")
 	if not dialog.visible: return
 	dialog._preview_button.pressed.emit()
 	await ready_dialog(dialog)
 	check(world._generation_context.candidate.sections.size() == 36, "preview lost occupied terrain or selected sections")
-	dialog.get_ok_button().pressed.emit()
+	dialog.get_apply_button().pressed.emit()
 	check(not dialog.visible, "Apply did not commit")
 
 func _run() -> void:

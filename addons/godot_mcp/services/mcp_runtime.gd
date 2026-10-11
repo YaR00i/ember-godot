@@ -78,6 +78,11 @@ const ASYNC_METHODS: Array[String] = [
 
 
 func _ready() -> void:
+	# Independent saved-data checks must not replace the gameplay IPC handshake.
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--ember-library-check="):
+			set_process(false)
+			return
 	# DIAGNOSTIC: print immediately to confirm this autoload was instantiated.
 	# If this message does NOT appear in the game output log, the autoload
 	# was never loaded — check "Failed to instantiate an autoload" errors

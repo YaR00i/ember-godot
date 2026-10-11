@@ -1,6 +1,7 @@
 extends SceneTree
-## One contract for runtime terrain projection and the visual destination picker.
-## The test never writes map JSON or opens map scenes.
+const MixedFixture = preload("res://tools/fixtures/ember_mixed_editor_test_fixture.gd")
+## Native saved-region schematics and stable destination IDs in both pickers.
+## The test never writes authored scenes or opens them in the runtime tree.
 
 const MapVisuals = preload("res://scripts/ember_map_visuals.gd")
 const InteractEditor = preload("res://addons/ember_import/ember_interact_editor.gd")
@@ -8,58 +9,62 @@ const ChainEditor = preload("res://addons/ember_import/ember_action_chain_editor
 
 
 func _init() -> void:
+	if not MixedFixture.prepare(self):
+		quit(2)
+		return
 	quit(_run())
 
 
 func _run() -> int:
 	var errors: Array[String] = []
-	var source_path := EmberPack.map_path("agent_sandbox")
+	var source_path := "res://scenes/editor_fixture_b.tscn"
 	var source_hash := FileAccess.get_sha256(source_path)
-	_test_surface_projection(errors)
+	var previous_pack: Variant = ProjectSettings.get_setting("ember/pack_path", "")
+	ProjectSettings.set_setting("ember/pack_path", "user://missing-map-visual-pack")
+	_test_native_schematic(errors)
 	_test_map_and_region_entries(errors)
+	ProjectSettings.set_setting("ember/pack_path", previous_pack)
 	_test_interact_picker(errors)
 	_test_action_picker(errors)
 	if FileAccess.get_sha256(source_path) != source_hash:
-		errors.append("visual projection changed canonical map JSON")
+		errors.append("visual projection changed canonical map scene")
+	MixedFixture.verify_sources(errors)
 	if not errors.is_empty():
 		printerr("FAIL map visual library")
 		for error in errors:
 			printerr(" - ", error)
 		return 1
 	print("PASS map visual library")
-	print("  CPU map thumbnails reuse the runtime top-surface projection")
-	print("  region tiles highlight canonical map regions without scene execution")
+	print("  CPU schematics read saved native regions without JOI")
+	print("  region tiles highlight saved map regions without scene execution")
 	print("  door and change-map editors keep stable destination IDs")
-	print("  canonical map JSON stays unchanged")
+	print("  canonical map scene stays unchanged")
 	return 0
 
 
-func _test_surface_projection(errors: Array[String]) -> void:
-	var map: Dictionary = EmberPack.parse_json_file(EmberPack.map_path("agent_sandbox"))
-	var surface := EmberTileMesher.surface_grid(map)
-	var built := EmberTileMesher.build(map)
-	if int(surface.get("cells", -1)) <= 0:
-		errors.append("shared surface grid has no visible cells")
-	if int(surface.get("cells", -1)) != int(built.get("cells", -2)):
-		errors.append("map preview and runtime terrain disagree about visible cells")
-	var image := MapVisuals.map_image("agent_sandbox")
+func _test_native_schematic(errors: Array[String]) -> void:
+	var image := MapVisuals.map_image("editor_fixture_b")
 	if image.get_size() != MapVisuals.PREVIEW_SIZE:
 		errors.append("map thumbnail did not preserve the 96x96 preview contract")
 	elif _unique_opaque_colors(image) < 3:
-		errors.append("map thumbnail does not show the map's actual tile palette")
+		errors.append("native schematic does not show saved region markers")
 
 
 func _test_map_and_region_entries(errors: Array[String]) -> void:
 	var map_entries := MapVisuals.map_entries()
 	if map_entries.size() != EmberInteractionContent.map_ids().size():
 		errors.append("visual map library dropped canonical map IDs")
-	if not _entries_have_id(map_entries, "agent_sandbox"):
-		errors.append("visual map library has no agent_sandbox card")
-	var regions := MapVisuals.region_entries("agent_sandbox")
-	if not _entries_have_id(regions, "") or not _entries_have_id(regions, "start") or not _entries_have_id(regions, "notice"):
+	if not _entries_have_id(map_entries, "editor_fixture_b"):
+		errors.append("visual map library has no editor_fixture_b card")
+	if not _entries_have_id(map_entries, "landscape_compact"):
+		errors.append("visual map library has no current landscape_compact card")
+	if not _entries_have_id(MapVisuals.region_entries("landscape_compact"), "landscape_compact_start"):
+		errors.append("visual region library has no current native entrance")
+	var regions := MapVisuals.region_entries("editor_fixture_b")
+	if not _entries_have_id(regions, "") or not _entries_have_id(regions, "entry") or not _entries_have_id(regions, "notice"):
 		errors.append("region library lost default/start/notice destinations")
-	var base := MapVisuals.map_image("agent_sandbox")
-	var highlighted := MapVisuals.map_image("agent_sandbox", "notice")
+	var base := MapVisuals.map_image("editor_fixture_b")
+	var highlighted := MapVisuals.map_image("editor_fixture_b", "notice")
 	if base.get_data() == highlighted.get_data():
 		errors.append("selected region has no visual highlight")
 
@@ -69,19 +74,19 @@ func _test_interact_picker(errors: Array[String]) -> void:
 	root.add_child(editor)
 	editor.setup({
 		"kind": "door",
-		"target_map_id": "agent_sandbox_interior",
-		"target_region_id": "start",
-	}, false, "agent_sandbox")
+		"target_map_id": "editor_fixture_destination",
+		"target_region_id": "entry",
+	}, false, "editor_fixture_b")
 	if editor.find_child("OpenTargetMapLibrary", true, false) == null:
 		errors.append("door form has no visual map library button")
 	if editor.find_child("OpenTargetRegionLibrary", true, false) == null:
 		errors.append("door form has no visual region library button")
 	editor.set("_map_library_mode", "map")
-	editor.call("_choose_map_library_value", "agent_sandbox")
+	editor.call("_choose_map_library_value", "editor_fixture_b")
 	editor.set("_map_library_mode", "region")
 	editor.call("_choose_map_library_value", "notice")
 	var values: Dictionary = editor.call("_values")
-	if str(values.get("target_map_id", "")) != "agent_sandbox" or str(values.get("target_region_id", "")) != "notice":
+	if str(values.get("target_map_id", "")) != "editor_fixture_b" or str(values.get("target_region_id", "")) != "notice":
 		errors.append("door visual picker did not project stable map/region IDs")
 	editor.free()
 
@@ -94,8 +99,8 @@ func _test_action_picker(errors: Array[String]) -> void:
 		"nameRu": "Map visual test",
 		"steps": [{
 			"type": "change_map",
-			"targetMapId": "agent_sandbox_interior",
-			"targetRegionId": "start",
+			"targetMapId": "editor_fixture_destination",
+			"targetRegionId": "entry",
 		}],
 	})
 	var map_option := editor.find_child("StepField_targetMapId", true, false) as OptionButton
@@ -111,7 +116,7 @@ func _test_action_picker(errors: Array[String]) -> void:
 		editor.set("_map_target_option", map_option)
 		editor.set("_map_region_option", region_option)
 		editor.set("_map_region_library_button", region_button)
-		editor.call("_choose_map_library_value", "agent_sandbox")
+		editor.call("_choose_map_library_value", "editor_fixture_b")
 		editor.set("_map_library_mode", "region")
 		editor.call("_choose_map_library_value", "notice")
 		var document: Dictionary = editor.call("_document")
@@ -120,7 +125,7 @@ func _test_action_picker(errors: Array[String]) -> void:
 			errors.append("change-map editor changed the action step count")
 		else:
 			var step: Dictionary = steps[0]
-			if str(step.get("targetMapId", "")) != "agent_sandbox" or str(step.get("targetRegionId", "")) != "notice":
+			if str(step.get("targetMapId", "")) != "editor_fixture_b" or str(step.get("targetRegionId", "")) != "notice":
 				errors.append("change-map visual picker did not preserve stable IDs")
 	editor.free()
 

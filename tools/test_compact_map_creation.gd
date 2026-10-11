@@ -83,10 +83,10 @@ func _run() -> void:
 	dialog.creation.terrain_directory = creation.terrain_directory
 	dialog._id_field.text = "flat_ui_test"
 	dialog._prepare()
-	assert(not dialog.get_ok_button().disabled and dialog._swatch.visible)
+	assert(not dialog.get_create_button().disabled and dialog._swatch.visible)
 	dialog._height.value = 16
 	await process_frame
-	assert(dialog.get_ok_button().disabled)
+	assert(dialog.get_create_button().disabled)
 	dialog.free()
 	scene.set_script(null)
 	root.add_child(scene)

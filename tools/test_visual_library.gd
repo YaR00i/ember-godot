@@ -10,7 +10,17 @@ const VnAssets = preload("res://scripts/ember_vn_assets.gd")
 const VnVisuals = preload("res://scripts/ember_vn_visuals.gd")
 
 
+const Fixture = preload("res://tools/fixtures/ember_vn_test_fixture.gd")
+var _state: Dictionary
+
 func _init() -> void:
+	_state = Fixture.prepare(self)
+	if _state.refused:
+		quit.call_deferred(2)
+		return
+	_run_deferred.call_deferred()
+
+func _run_deferred() -> void:
 	quit(_run())
 
 
@@ -88,27 +98,26 @@ func _test_editor_projection(errors: Array[String]) -> void:
 
 
 func _test_vn_projection(errors: Array[String]) -> void:
+	var background := Fixture.import_fixture(_state, false)
+	var portrait := Fixture.import_fixture(_state, true)
+	if not background.get("ok", false) or not portrait.get("ok", false):
+		errors.append("native VN visual fixture import failed")
+		return
 	var assets := VnAssets.new() as EmberVnAssets
-	var art_entries := VnVisuals.background_entries(
-		assets, "Наследовать", "Фон сцены", null, "hu_tao_clear_placeholder"
-	)
-	if art_entries.size() < 2 or str(art_entries[0].get("id", "missing")) != "":
-		errors.append("VN visual adapter lost the explicit background inheritance tile")
-	for entry in art_entries:
-		if str(entry.get("id", "")) == "hu_tao_bunny_tease":
-			errors.append("VN visual background library leaked portrait-kind art")
-	var speakers := VnVisuals.speaker_entries(assets, "hu_tao")
-	if speakers.is_empty() or not _entries_have_id(speakers, "hu_tao"):
-		errors.append("VN visual library did not project canonical speaker IDs")
-	var portraits := VnVisuals.portrait_entries(assets, "hu_tao", "bunny_tease")
-	if not _entries_have_id(portraits, "bunny_tease"):
-		errors.append("VN visual library did not project speaker-scoped expression IDs")
-	var legacy_portrait_path := assets.portrait_path("hu_tao", "bunny_tease")
-	if legacy_portrait_path.is_empty() or not FileAccess.file_exists(legacy_portrait_path):
-		errors.append("native-first portrait resolver did not fall through to legacy image path")
-	var missing := VnVisuals.portrait_entries(assets, "hu_tao", "legacy_unknown")
-	if not _entries_have_id(missing, "legacy_unknown"):
-		errors.append("VN visual library erased an unknown legacy portrait ID")
+	var art_entries := VnVisuals.background_entries(assets, "Наследовать", "Фон сцены", null, background.id)
+	if art_entries.size() < 2 or str(art_entries[0].get("id", "missing")) != "" or not _entries_have_id(art_entries, background.id):
+		errors.append("VN visual adapter lost native background/inheritance tiles")
+	var speakers := VnVisuals.speaker_entries(assets, "fixture_speaker")
+	if not _entries_have_id(speakers, "fixture_speaker"): errors.append("native speaker tile missing")
+	var portraits := VnVisuals.portrait_entries(assets, "fixture_speaker", portrait.portraitKey)
+	if not _entries_have_id(portraits, portrait.portraitKey): errors.append("native expression tile missing")
+	var missing_background := VnVisuals.background_entries(assets, "", "", null, "retired_art")
+	var missing_speaker := VnVisuals.speaker_entries(assets, "retired_speaker")
+	var missing_portrait := VnVisuals.portrait_entries(assets, "retired_speaker", "retired_expression")
+	if not _entries_have_id(missing_background, "retired_art") or not _entries_have_id(missing_speaker, "retired_speaker") or not _entries_have_id(missing_portrait, "retired_expression"):
+		errors.append("missing saved VN ID erased")
+	Fixture.check_detached(_state, errors)
+
 
 
 func _entries_have_id(entries: Array[Dictionary], expected: String) -> bool:

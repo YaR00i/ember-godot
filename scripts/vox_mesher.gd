@@ -3,6 +3,8 @@ extends RefCounted
 ## MagicaVoxel Z-up → Ember/Godot Y-up: ember(x, y, z) = vox(x, z, y).
 ## Same mapping as joi-conductor `emberVoxCodec.ts`.
 
+const MaterialProfiles = preload("res://scripts/ember_voxel_material_profiles.gd")
+
 const VOXELS_PER_BLOCK := 16
 const DENSE_VOXELS_PER_BLOCK := 32
 const OCCLUSION_TRANSPARENCY_MAX := 127
@@ -104,6 +106,7 @@ static func build_from_packed_voxel_region(
 	voxel_size := 1.0,
 	skip := PackedByteArray(),
 	visible_height := -1,
+	material: Dictionary = {},
 ) -> ArrayMesh:
 	var expected := global_size.x * global_size.y * global_size.z
 	if expected < 1 or voxels.size() != expected:
@@ -118,6 +121,7 @@ static func build_from_packed_voxel_region(
 		region_size,
 		voxel_size,
 		skip,
+		material,
 	)
 
 
@@ -253,7 +257,8 @@ static func _build_from_ember_model_region(
 	var colors := _model_colors(model)
 	return _build_culled(
 		size.x, size.y, size.z, filled, index_at, colors, transparency, voxel_size,
-		region_min, region_size,
+		region_min, region_size, Vector3i.ZERO,
+		MaterialProfiles.palette_parameters(model.get("material", {}), colors.size()),
 	)
 
 
@@ -275,6 +280,7 @@ static func _build_padded_model_region(
 		region_size,
 		voxel_size,
 		skip,
+		model.get("material", {}),
 	)
 
 
@@ -287,6 +293,7 @@ static func _build_padded_voxel_region(
 	region_size: Vector3i,
 	voxel_size: float,
 	skip: PackedByteArray,
+	material: Dictionary = {},
 ) -> ArrayMesh:
 	var start := Vector3i(
 		clampi(region_min.x, 0, global_size.x),
@@ -346,6 +353,7 @@ static func _build_padded_voxel_region(
 		local_size.x, local_size.y, local_size.z,
 		filled, index_at, colors, transparency, voxel_size,
 		start - padded_start, end - start, padded_start,
+		MaterialProfiles.palette_parameters(material, colors.size()),
 	)
 
 
@@ -487,6 +495,7 @@ static func _build_culled(
 	region_min := Vector3i.ZERO,
 	region_size := Vector3i(-1, -1, -1),
 	cell_origin := Vector3i.ZERO,
+	profile_parameters: Array[Vector4] = [],
 ) -> ArrayMesh:
 	# This is the shared editor/runtime hot path. Building indexed buffers directly
 	# avoids six SurfaceTool calls per quad followed by SurfaceTool.index() hashing.
@@ -496,6 +505,8 @@ static func _build_culled(
 	var opaque_normals := PackedVector3Array()
 	var opaque_colors := PackedColorArray()
 	var opaque_indices := PackedInt32Array()
+	var opaque_custom := PackedFloat32Array()
+	var transparent_custom := PackedFloat32Array()
 	var transparent_vertices := PackedVector3Array()
 	var transparent_normals := PackedVector3Array()
 	var transparent_colors := PackedColorArray()
@@ -556,6 +567,7 @@ static func _build_culled(
 								color,
 								voxel_size,
 							)
+							_append_profile(transparent_custom, profile_parameters, pi)
 						else:
 							_append_face_arrays(
 								opaque_vertices,
@@ -567,9 +579,10 @@ static func _build_culled(
 								color,
 								voxel_size,
 							)
+							_append_profile(opaque_custom, profile_parameters, pi)
 	var mesh := ArrayMesh.new()
 	_append_array_mesh_surface(
-		mesh, opaque_vertices, opaque_normals, opaque_colors, opaque_indices, "opaque"
+		mesh, opaque_vertices, opaque_normals, opaque_colors, opaque_indices, "opaque", opaque_custom
 	)
 	_append_array_mesh_surface(
 		mesh,
@@ -577,7 +590,7 @@ static func _build_culled(
 		transparent_normals,
 		transparent_colors,
 		transparent_indices,
-		"transparent",
+		"transparent", transparent_custom,
 	)
 	return mesh
 
@@ -672,6 +685,7 @@ static func _append_array_mesh_surface(
 	colors: PackedColorArray,
 	indices: PackedInt32Array,
 	surface_name: String,
+	custom := PackedFloat32Array(),
 ) -> void:
 	if vertices.is_empty():
 		return
@@ -681,5 +695,19 @@ static func _append_array_mesh_surface(
 	arrays[Mesh.ARRAY_NORMAL] = normals
 	arrays[Mesh.ARRAY_COLOR] = colors
 	arrays[Mesh.ARRAY_INDEX] = indices
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var flags := 0
+	if not custom.is_empty():
+		arrays[Mesh.ARRAY_CUSTOM0] = custom
+		flags = Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, flags)
 	mesh.surface_set_name(mesh.get_surface_count() - 1, surface_name)
+
+
+static func _append_profile(output: PackedFloat32Array, parameters: Array[Vector4], palette_index: int) -> void:
+	if parameters.is_empty(): return
+	var value := parameters[palette_index]
+	for unused in 4:
+		output.append(value.x)
+		output.append(value.y)
+		output.append(value.z)
+		output.append(value.w)

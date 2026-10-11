@@ -1,7 +1,7 @@
 @tool
 class_name EmberDialogueEditor
 extends VBoxContainer
-## Inline card editor for the lossless linear/simple-choice subset of JOI scenes.
+## Inline card editor for the lossless linear/simple-choice native dialogue graphs.
 
 const Store = preload("res://addons/ember_import/ember_dialogue_store.gd")
 const TypedValueEditor = preload("res://addons/ember_import/ember_typed_value_editor.gd")
@@ -38,7 +38,7 @@ func setup(dialogue_id: String, suggested_id: String, document_override: Diction
 	if not bool(projected.get("ok", false)):
 		var blocked := Label.new()
 		blocked.name = "DialogueUnsupported"
-		blocked.text = "Безопасное редактирование недоступно:\n%s\nОригинальный JSON не будет изменён." % projected.get("error", "")
+		blocked.text = "Безопасное редактирование недоступно:\n%s\nИсходный диалог не будет изменён." % projected.get("error", "")
 		blocked.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		blocked.modulate = Color(1.0, 0.58, 0.42)
 		add_child(blocked)
@@ -59,7 +59,7 @@ func setup(dialogue_id: String, suggested_id: String, document_override: Diction
 	save.name = "SaveDialogue"
 	save.text = "Сохранить диалог"
 	save.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	save.tooltip_text = "Пишет canonical content/ember/scenes/<id>.json через одну Undo/Redo operation."
+	save.tooltip_text = "Сохраняет native dialogue Resource через одну Undo/Redo operation."
 	save.pressed.connect(_submit)
 	actions.add_child(save)
 	var cancel := Button.new()
@@ -95,7 +95,7 @@ func _build_header(existing: bool) -> void:
 	add_child(use_row)
 	if existing:
 		var source := Label.new()
-		source.text = "Источник: %s" % EmberPack.scene_path(str(_base_document.get("id", "")))
+		source.text = "Источник: %s" % Store.source_path(str(_base_document.get("id", "")))
 		source.modulate = Color(0.62, 0.72, 0.82)
 		source.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		add_child(source)

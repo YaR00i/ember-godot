@@ -4,6 +4,7 @@ extends RefCounted
 const Selection = preload("res://addons/ember_import/ember_voxel_selection.gd")
 const Fragment = preload("res://addons/ember_import/ember_voxel_fragment.gd")
 const Extract = preload("res://addons/ember_import/ember_voxel_fragment_extract.gd")
+const Profiles = preload("res://scripts/ember_voxel_material_profiles.gd")
 const MAX_CELLS := 524288
 
 static func plan(inputs: Array[Dictionary], align_grid := false, bake_orientation := false) -> Dictionary:
@@ -37,11 +38,14 @@ static func plan(inputs: Array[Dictionary], align_grid := false, bake_orientatio
 	var low := Vector3i(2147483647,2147483647,2147483647)
 	var high := -low
 	var palette := PackedColorArray([Color.TRANSPARENT])
+	var surface_material := Profiles.base_material(first.material)
 	var names := PackedStringArray()
 	for item in inputs:
 		var source: EmberVoxelModelResource = item.source
 		for property in ["material","physical","emissive_strength","emissive_suppress_host_shadow"]:
-			if source.get(property) != first.get(property):
+			var differs: bool = source.get(property) != first.get(property)
+			if property == "material": differs = Profiles.base_material(source.material) != Profiles.base_material(first.material)
+			if differs:
 				return {"error":"У деталей различаются общие настройки материала или физики: " + property}
 		var relative: Transform3D = base.affine_inverse()*item.frame
 		var snapped := Basis(relative.basis.x.round(),relative.basis.y.round(),relative.basis.z.round())
@@ -71,7 +75,7 @@ static func plan(inputs: Array[Dictionary], align_grid := false, bake_orientatio
 		for i in range(1,source.palette.size()):
 			var mapped := -1
 			for candidate in range(1,palette.size()):
-				if palette[candidate] == source.palette[i]:
+				if palette[candidate] == source.palette[i] and Profiles.palette_role(surface_material,candidate) == Profiles.palette_role(source.material,i):
 					mapped = candidate
 					break
 			if mapped < 0:
@@ -79,6 +83,7 @@ static func plan(inputs: Array[Dictionary], align_grid := false, bake_orientatio
 					return {"error":"Общая палитра превышает 255 цветов. Склейка остановлена без потери цветов."}
 				mapped = palette.size()
 				palette.append(source.palette[i])
+				Profiles.set_palette_role(surface_material,mapped,Profiles.palette_role(source.material,i))
 			colors[i] = mapped
 		var part_offset := names.size()
 		if source.merge_parts.is_empty():
@@ -106,6 +111,7 @@ static func plan(inputs: Array[Dictionary], align_grid := false, bake_orientatio
 	result.size_blocks = Vector3i(size.x/density,ceili(float(size.y)/density),size.z/density)
 	result.height_voxels = size.y
 	result.palette = palette
+	result.material = surface_material
 	result.merge_parts = names
 	result.voxel_groups = []
 	result.voxel_part_ids = PackedInt32Array()

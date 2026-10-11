@@ -1,9 +1,8 @@
 class_name EmberVnAssets
 extends RefCounted
-## Shared VN asset catalog. New backgrounds are Godot Resources; the existing
-## JOI art registry and portrait registries remain read-only compatibility input.
+## Shared native-only VN asset catalog; imported images and Godot Resources
+## own backgrounds and speaker expressions.
 
-const Pack = preload("res://scripts/ember_pack.gd")
 const NativeBackground = preload("res://scripts/ember_vn_background.gd")
 const NativePortrait = preload("res://scripts/ember_vn_portrait.gd")
 
@@ -14,7 +13,6 @@ const NATIVE_PORTRAIT_ASSET_DIR := "res://assets/vn_portraits"
 const SUPPORTED_BACKGROUND_EXTENSIONS: Array[String] = ["png", "jpg", "jpeg", "webp", "svg"]
 
 var _arts: Dictionary = {}
-var _portraits: Dictionary = {}
 var _native_portraits: Dictionary = {}
 var _textures: Dictionary = {}
 var _images: Dictionary = {}
@@ -26,28 +24,11 @@ func _init() -> void:
 
 func reload() -> void:
 	_arts.clear()
-	_portraits.clear()
 	_native_portraits.clear()
 	_textures.clear()
 	_images.clear()
 	_load_native_backgrounds()
 	_load_native_portraits()
-	var raw: Variant = Pack.parse_json_file(Pack.pack_root().path_join("arts").path_join("registry.json"))
-	if typeof(raw) != TYPE_DICTIONARY:
-		return
-	var entries: Variant = (raw as Dictionary).get("arts", [])
-	if typeof(entries) != TYPE_ARRAY:
-		return
-	for value in entries:
-		if typeof(value) != TYPE_DICTIONARY:
-			continue
-		var entry: Dictionary = value
-		var art_id := str(entry.get("id", "")).strip_edges()
-		var path := str(entry.get("path", "")).strip_edges()
-		# Native .tres entries are the writable Godot owner. Legacy JOI JSON is
-		# read-only compatibility input and cannot overwrite a migrated ID.
-		if not art_id.is_empty() and not path.is_empty() and not _arts.has(art_id):
-			_arts[art_id] = entry.duplicate(true)
 
 
 func art_path(art_id: String) -> String:
@@ -164,7 +145,7 @@ func art_entries() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	for art_id in _arts:
 		var entry: Dictionary = (_arts[art_id] as Dictionary).duplicate(true)
-		entry["exists"] = FileAccess.file_exists(art_path(str(art_id)))
+		entry["exists"] = _path_exists(art_path(str(art_id)))
 		result.append(entry)
 	result.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		return str(a.get("captionRu", a.get("id", ""))).naturalnocasecmp_to(
@@ -178,11 +159,6 @@ func speaker_ids() -> Array[String]:
 	var known := {}
 	for speaker in _native_portraits:
 		known[str(speaker)] = true
-	var root := Pack.pack_root().path_join("portraits")
-	if DirAccess.dir_exists_absolute(root):
-		for speaker in DirAccess.get_directories_at(root):
-			if FileAccess.file_exists(root.path_join(speaker).path_join("registry.json")):
-				known[speaker] = true
 	var result: Array[String] = []
 	for speaker in known:
 		result.append(str(speaker))
@@ -196,25 +172,10 @@ func portrait_entries(speaker: String) -> Array[Dictionary]:
 	if typeof(native) == TYPE_DICTIONARY:
 		for portrait_key in native:
 			by_key[str(portrait_key)] = (native[portrait_key] as Dictionary).duplicate(true)
-	var registry := _portrait_registry(speaker)
-	var expressions: Variant = registry.get("expressions", {})
-	if typeof(expressions) == TYPE_DICTIONARY:
-		for portrait_key in expressions:
-			if by_key.has(str(portrait_key)):
-				continue
-			var raw: Variant = (expressions as Dictionary)[portrait_key]
-			if typeof(raw) != TYPE_DICTIONARY:
-				continue
-			var entry: Dictionary = (raw as Dictionary).duplicate(true)
-			entry["key"] = str(portrait_key)
-			entry["exists"] = FileAccess.file_exists(
-				_absolute_path(str(entry.get("path", "")))
-			)
-			by_key[str(portrait_key)] = entry
 	var result: Array[Dictionary] = []
 	for portrait_key in by_key:
 		var entry: Dictionary = (by_key[portrait_key] as Dictionary).duplicate(true)
-		entry["exists"] = FileAccess.file_exists(_entry_path(entry))
+		entry["exists"] = _path_exists(_entry_path(entry))
 		result.append(entry)
 	result.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		return str(a.get("labelRu", a.get("key", ""))).naturalnocasecmp_to(
@@ -246,18 +207,11 @@ func portrait_path(speaker: String, portrait_key: String) -> String:
 			var native_path := _entry_path(native_entry as Dictionary)
 			if not native_path.is_empty():
 				return native_path
-	var registry := _portrait_registry(speaker)
-	var expressions: Variant = registry.get("expressions", {})
-	if typeof(expressions) != TYPE_DICTIONARY:
-		return ""
-	var raw: Variant = (expressions as Dictionary).get(portrait_key, {})
-	if typeof(raw) != TYPE_DICTIONARY:
-		return ""
-	return _absolute_path(str((raw as Dictionary).get("path", "")))
+	return ""
 
 
 func texture_for_path(path: String) -> Texture2D:
-	if path.is_empty() or not FileAccess.file_exists(path):
+	if path.is_empty() or not _path_exists(path):
 		return null
 	# Dummy/headless rendering has no preview surface; path resolution remains testable.
 	if DisplayServer.get_name() == "headless":
@@ -289,14 +243,8 @@ func portrait_thumbnail(speaker: String, portrait_key: String, max_size := 48) -
 
 
 func _load_native_backgrounds() -> void:
-	var absolute_dir := ProjectSettings.globalize_path(NATIVE_BACKGROUND_DIR)
-	if not DirAccess.dir_exists_absolute(absolute_dir):
-		return
-	for filename in DirAccess.get_files_at(absolute_dir):
-		if filename.get_extension().to_lower() != "tres":
-			continue
-		var resource_path := NATIVE_BACKGROUND_DIR.path_join(filename)
-		var background := ResourceLoader.load(resource_path) as EmberVnBackground
+	for resource_path in _native_paths(NATIVE_BACKGROUND_DIR):
+		var background := ResourceLoader.load(resource_path, "", ResourceLoader.CACHE_MODE_IGNORE) as EmberVnBackground
 		if background == null or background.normalized_id().is_empty() or background.image_path.is_empty():
 			continue
 		var art_id := background.normalized_id()
@@ -312,14 +260,8 @@ func _load_native_backgrounds() -> void:
 
 
 func _load_native_portraits() -> void:
-	var absolute_dir := ProjectSettings.globalize_path(NATIVE_PORTRAIT_DIR)
-	if not DirAccess.dir_exists_absolute(absolute_dir):
-		return
-	for filename in DirAccess.get_files_at(absolute_dir):
-		if filename.get_extension().to_lower() != "tres":
-			continue
-		var resource_path := NATIVE_PORTRAIT_DIR.path_join(filename)
-		var portrait := ResourceLoader.load(resource_path) as EmberVnPortrait
+	for resource_path in _native_paths(NATIVE_PORTRAIT_DIR):
+		var portrait := ResourceLoader.load(resource_path, "", ResourceLoader.CACHE_MODE_IGNORE) as EmberVnPortrait
 		if portrait == null:
 			continue
 		var speaker := portrait.normalized_speaker_id()
@@ -341,10 +283,10 @@ func _load_native_portraits() -> void:
 func _entry_path(entry: Dictionary) -> String:
 	var raw := str(entry.get("path", "")).strip_edges().replace("\\", "/")
 	if raw.begins_with("res://") or raw.begins_with("user://"):
-		return ProjectSettings.globalize_path(raw)
+		return raw
 	if raw.is_absolute_path():
 		return raw
-	return _absolute_path(raw)
+	return ""
 
 
 func _safe_asset_id(raw: String) -> String:
@@ -402,24 +344,8 @@ func _validate_svg(path: String) -> String:
 	return ""
 
 
-func _portrait_registry(speaker: String) -> Dictionary:
-	var clean := speaker.strip_edges()
-	if clean.is_empty():
-		return {}
-	if _portraits.has(clean):
-		return _portraits[clean]
-	var path := Pack.pack_root().path_join("portraits").path_join(clean).path_join("registry.json")
-	if not FileAccess.file_exists(path):
-		_portraits[clean] = {}
-		return {}
-	var raw: Variant = Pack.parse_json_file(path)
-	var registry: Dictionary = raw if typeof(raw) == TYPE_DICTIONARY else {}
-	_portraits[clean] = registry
-	return registry
-
-
 func _thumbnail_for_path(path: String, max_size: int) -> Texture2D:
-	if path.is_empty() or not FileAccess.file_exists(path) or DisplayServer.get_name() == "headless":
+	if path.is_empty() or not _path_exists(path) or DisplayServer.get_name() == "headless":
 		return null
 	var key := "thumb:%d:%s" % [max_size, path]
 	if _textures.has(key) and is_instance_valid(_textures[key]):
@@ -444,15 +370,38 @@ func _image_for_path(path: String) -> Image:
 	if _images.has(path):
 		var cached := _images[path] as Image
 		return cached.duplicate() as Image if cached != null else null
-	var image := Image.load_from_file(path)
+	var image: Image
+	if FileAccess.file_exists(path):
+		image = Image.new()
+		var bytes := FileAccess.get_file_as_bytes(path)
+		var error := ERR_FILE_UNRECOGNIZED
+		match path.get_extension().to_lower():
+			"png": error = image.load_png_from_buffer(bytes)
+			"jpg", "jpeg": error = image.load_jpg_from_buffer(bytes)
+			"webp": error = image.load_webp_from_buffer(bytes)
+			"svg": error = image.load_svg_from_buffer(bytes)
+		if error != OK: return null
+	elif ResourceLoader.exists(path):
+		var texture := ResourceLoader.load(path) as Texture2D
+		if texture != null: image = texture.get_image()
 	if image == null or image.is_empty():
 		return null
 	_images[path] = image
 	return image.duplicate() as Image
 
 
-func _absolute_path(relative_path: String) -> String:
-	var clean := relative_path.strip_edges().replace("\\", "/")
-	if clean.is_empty():
-		return ""
-	return Pack.pack_root().path_join(clean)
+
+static func _path_exists(path: String) -> bool:
+	return not path.is_empty() and (FileAccess.file_exists(path) or ResourceLoader.exists(path))
+
+
+static func _native_paths(directory: String) -> Array[String]:
+	var result: Array[String] = []
+	if not DirAccess.dir_exists_absolute(directory): return result
+	for filename in DirAccess.get_files_at(directory):
+		filename = filename.trim_suffix(".remap")
+		if not filename.ends_with(".tres"): continue
+		var path := directory.path_join(filename)
+		if path not in result and ResourceLoader.exists(path): result.append(path)
+	result.sort()
+	return result

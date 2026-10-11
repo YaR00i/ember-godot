@@ -57,6 +57,9 @@ func _run() -> void:
 	else:
 		var dialog := Dialog.new()
 		root.add_child(dialog)
+		root.add_child(dialog.parameters_panel)
+		dialog.size = Vector2(600, 350)
+		for i in 5: await process_frame
 		dialog.pattern_path_override = path
 		if not dialog.open_role("grass"):
 			errors.append("dialog did not open saved pattern")
@@ -66,7 +69,7 @@ func _run() -> void:
 			dialog._select_face(1)
 			dialog._grid.current_tone = 2
 			dialog._grid.stroke_started.emit()
-			dialog._grid.paint_at(Vector2(12.5, 12.5), 2)
+			dialog._grid.paint_at(Vector2.ONE * minf(dialog._grid.size.x, dialog._grid.size.y) / 32.0, 2)
 			dialog._grid.stroke_finished.emit()
 			if dialog._draft.side_pixels.size() != 256 or dialog._draft.pixels != original_top:
 				errors.append("side stroke modified the top or did not create side artwork")
@@ -94,7 +97,7 @@ func _run() -> void:
 			else:
 				dialog._grid.current_tone = 1
 				dialog._grid.stroke_started.emit()
-				dialog._grid.paint_at(Vector2((pixel % 16 + 0.5) * 25, (pixel / 16 + 0.5) * 25), 1)
+				dialog._grid.paint_at(Vector2(pixel % 16 + 0.5, pixel / 16 + 0.5) * minf(dialog._grid.size.x, dialog._grid.size.y) / 16.0, 1)
 				dialog._grid.stroke_finished.emit()
 				if dialog._draft.pixels[pixel] != 1:
 					errors.append("paint did not change draft pixel")
@@ -126,7 +129,7 @@ func _run() -> void:
 					dialog.undo_edit()
 					if dialog._draft.pixels[0] != fixture.pixels[0] or dialog._draft.pixels[1] != fixture.pixels[1]:
 						errors.append("drag stroke undo was not atomic")
-			dialog.hide()
+			dialog.cancel_edit()
 			var discarded := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as Pattern
 			if discarded == null or discarded.pixels != fixture.pixels or not is_zero_approx(discarded.gloss):
 				errors.append("closing dialog wrote an unsaved draft")
@@ -156,6 +159,12 @@ func _run() -> void:
 				(dialog._finish_sliders["gloss"] as HSlider).value = 0.55
 				(dialog._finish_sliders["sheen"] as HSlider).value = 0.35
 				(dialog._finish_sliders["pixel_relief"] as HSlider).value = 0.12
+				(dialog._finish_sliders["micro_relief"] as HSlider).value = 0.2
+				dialog.undo_edit()
+				if not is_zero_approx(dialog._draft.micro_relief): errors.append("detail Undo failed")
+				dialog.redo_edit()
+				(dialog._finish_sliders["micro_size_m"] as HSlider).value = 0.15
+				(dialog._finish_sliders["micro_roughness"] as HSlider).value = 0.3
 				dialog._select_face(1)
 				var sides := dialog._draft.pixels.duplicate()
 				sides[0] = 2
@@ -172,6 +181,7 @@ func _run() -> void:
 				elif not is_equal_approx(reopened.gloss, 0.55) or not is_equal_approx(reopened.sheen, 0.35) or not is_equal_approx(reopened.pixel_relief, 0.12):
 					errors.append("finish save/reopen failed")
 				if reopened == null or reopened.side_pixels != sides: errors.append("side save/reopen failed")
+				if reopened == null or not is_equal_approx(reopened.micro_relief,0.2) or not is_equal_approx(reopened.micro_size_m,0.15) or not is_equal_approx(reopened.micro_roughness,0.3): errors.append("surface detail save/reopen failed")
 				var material := Materials.compact_terrain_material()
 				Materials.set_compact_terrain_roles(material, PackedStringArray(["", "grass"]))
 				var atlas := material.get_shader_parameter("pattern_atlas") as Texture2D

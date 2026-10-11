@@ -121,6 +121,7 @@ static func build(
 	var source: EmberVoxelModelResource = built.source
 	source.tags = PackedStringArray(["stamp", "generated", "rock"])
 	source.material = material.duplicate(true)
+	preload("res://scripts/ember_voxel_material_profiles.gd").assign(source.material, "stone")
 	var grid := source.grid_size()
 	var origin: Vector3i = built.origin
 	var center := Vector3(dimensions - Vector3i.ONE) * 0.5
@@ -185,6 +186,7 @@ static func _build_object(settings: Dictionary, seed: int, material: Dictionary,
 	var source: EmberVoxelModelResource = built.source
 	source.tags = PackedStringArray(["generated", "rock"])
 	source.material = material.duplicate(true)
+	preload("res://scripts/ember_voxel_material_profiles.gd").assign(source.material, "stone")
 	var grid := source.grid_size()
 	var origin: Vector3i = built.origin
 	var noise := FastNoiseLite.new()
@@ -239,6 +241,19 @@ static func _build_cluster(settings: Dictionary, seed: int, material: Dictionary
 	var source: EmberVoxelModelResource = built.source
 	source.tags = PackedStringArray(["generated", "rock", "crystal" if settings.rock_type == 3 else "ice"])
 	source.material = material.duplicate(true)
+	preload("res://scripts/ember_voxel_material_profiles.gd").assign(source.material, "crystal" if settings.rock_type == 3 else "ice")
+	source.material.object_surface.optics = {"enabled":true,
+		"finish":"crystal_rough" if settings.rock_type == 3 else "ice_natural",
+		"thickness_m":0.8,"refraction_strength":0.026,"cloud_scale":2.4,
+		"cloud_seed":float(maxi(0,seed)%100000),
+		"cloud_light":settings.stone_color.lerp(Color.WHITE,0.65).to_html(false),
+		"cloud_deep":settings.stone_color.darkened(0.42).to_html(false)}
+	var inherited_surface: Variant = material.get("object_surface",{})
+	var inherited: Variant = inherited_surface.get("optics",null) if inherited_surface is Dictionary else null
+	var role := "crystal" if settings.rock_type == 3 else "ice"
+	if inherited is Dictionary and preload("res://scripts/ember_voxel_material_profiles.gd").palette_role(material,1) == role:
+		# Regenerating the same family preserves the author's saved optical finish.
+		source.material.object_surface.optics = inherited.duplicate(true)
 	var grid := source.grid_size()
 	var origin: Vector3i = built.origin
 	var center := Vector3(dimensions - Vector3i.ONE) * 0.5

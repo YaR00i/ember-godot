@@ -34,11 +34,7 @@ static func background_entries(
 				caption,
 				art_id,
 				source.get("path", ""),
-				(
-					"Godot Resource · редактируемый"
-					if bool(source.get("native", false))
-					else "Legacy JSON · только чтение"
-				) if exists else "ФАЙЛ ОТСУТСТВУЕТ",
+				"Godot Resource · редактируемый" if exists else "ФАЙЛ ОТСУТСТВУЕТ",
 			],
 			"texture": assets.art_thumbnail(art_id, 56),
 		})
@@ -66,7 +62,7 @@ static func speaker_entries(assets: EmberVnAssets, current_speaker: String) -> A
 		})
 		found = found or speaker == current_speaker
 	if not found:
-		entries.append(_missing_entry(current_speaker, "Нет portrait registry"))
+		entries.append(_missing_entry(current_speaker, "Нет native портретов"))
 	return entries
 
 

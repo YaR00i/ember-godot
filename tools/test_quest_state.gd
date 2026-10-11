@@ -1,11 +1,19 @@
 extends SceneTree
-## Quest marker status/icon projection plus live agent_sandbox binding.
+
+const Content = preload("res://tools/fixtures/ember_interaction_test_fixture.gd")
+var _setup: Dictionary = {}
+var _source: PackedScene
+var _scene_path := ""
+## Quest marker status/icon projection plus saved native map binding.
 
 const QuestState = preload("res://scripts/ember_quest_state.gd")
-const SANDBOX_SCENE := "res://scenes/agent_sandbox.tscn"
 
 
 func _init() -> void:
+	_setup = Content.prepare(self)
+	if _setup.refused:
+		quit.call_deferred(2)
+		return
 	_run_and_quit.call_deferred()
 
 
@@ -15,8 +23,13 @@ func _run_and_quit() -> void:
 
 func _run() -> int:
 	var errors: Array[String] = []
+	if _setup.error != OK or not _setup.progress_isolated:
+		printerr("FAIL interaction fixture/progress setup")
+		return 1
+	_prepare_map()
 	_test_projection(errors)
 	await _test_live_markers(errors)
+	Content.verify_sources(_setup, errors)
 	if not errors.is_empty():
 		printerr("FAIL quest state")
 		for error in errors:
@@ -56,19 +69,19 @@ func _test_projection(errors: Array[String]) -> void:
 	var authored := EmberSceneAuthoring.normalized_interact_values({
 		"kind": "quest_marker",
 		"trigger_id": "notice",
-		"script_id": "sandbox_notice_read",
-		"quest_id": "sandbox_notice_quest",
+		"script_id": "interaction_quest_read",
+		"quest_id": "interaction_quest",
 		"icon_id": "quest",
 		"quest_status": "active",
 	})
 	if (
-		str(authored.get("script_id", "")) != "sandbox_notice_read"
-		or str(authored.get("quest_id", "")) != "sandbox_notice_quest"
+		str(authored.get("script_id", "")) != "interaction_quest_read"
+		or str(authored.get("quest_id", "")) != "interaction_quest"
 		or str(authored.get("icon_id", "")) != "quest"
 		or str(authored.get("quest_status", "")) != "active"
 	):
 		errors.append("scene authoring normalization dropped quest modifier fields")
-	var quest_definition := EmberQuestCatalog.definition("sandbox_notice_quest")
+	var quest_definition := EmberQuestCatalog.definition("interaction_quest")
 	var quest_objectives: Array = quest_definition.get("objectives", [])
 	if quest_objectives.is_empty():
 		errors.append("sandbox quest has no objectives for marker projection")
@@ -77,7 +90,7 @@ func _test_projection(errors: Array[String]) -> void:
 	var final_flag := str(final_definition.get("flagId", ""))
 	var fresh := EmberQuestCatalog.projection(quest_definition, {})
 	var start := QuestState.marker_projection(fresh, [
-		{"type": "set_flag", "flag": "sandbox_notice_status", "value": "active"},
+		{"type": "set_flag", "flag": "interaction_quest_status", "value": "active"},
 	], "available")
 	if str(start.get("role", "")) != "start" or not bool(start.get("visible", false)):
 		errors.append("start event did not produce the available quest marker")
@@ -86,7 +99,7 @@ func _test_projection(errors: Array[String]) -> void:
 	], "active")
 	if bool(final_objective.get("visible", true)) or str(final_objective.get("reason", "")) != "quest_not_started":
 		errors.append("future objective marker is visible before the quest starts")
-	var ready_flags := {"sandbox_notice_status": "active"}
+	var ready_flags := {"interaction_quest_status": "active"}
 	for index in range(quest_objectives.size() - 1):
 		var objective: Dictionary = quest_objectives[index]
 		ready_flags[str(objective.get("flagId", ""))] = true
@@ -109,7 +122,7 @@ func _test_projection(errors: Array[String]) -> void:
 	if bool(final_objective.get("visible", true)):
 		errors.append("completed objective marker did not disappear")
 	var turn_in := QuestState.marker_projection(completed, [
-		{"type": "set_flag", "flag": "sandbox_notice_status", "value": "done"},
+		{"type": "set_flag", "flag": "interaction_quest_status", "value": "done"},
 	], "done")
 	if not bool(turn_in.get("visible", false)) or str(turn_in.get("status", "")) != "done":
 		errors.append("ready turn-in event did not show the completion marker")
@@ -123,16 +136,16 @@ func _test_live_markers(errors: Array[String]) -> void:
 	progress.persistence_enabled = false
 	progress.restore_enabled = false
 	progress.reset_new_game()
-	if change_scene_to_file(SANDBOX_SCENE) != OK:
-		errors.append("could not start agent_sandbox")
+	if change_scene_to_file(_scene_path) != OK:
+		errors.append("could not start fixture_map")
 		return
 	await process_frame
 	await process_frame
-	var available := _interact_for_placement(current_scene, "sbx_quest_sign")
-	var active := _interact_for_placement(current_scene, "sbx_quest_active")
-	var final := _interact_for_placement(current_scene, "sbx_quest_done")
+	var available := _interact_for_placement(current_scene, "quest_start")
+	var active := _interact_for_placement(current_scene, "quest_middle")
+	var final := _interact_for_placement(current_scene, "quest_final")
 	if available == null or active == null or final == null:
-		errors.append("agent_sandbox lost one of its three quest markers")
+		errors.append("fixture_map lost one of its three quest markers")
 		return
 	var available_state := available.effective_quest_marker_projection()
 	var active_state := active.effective_quest_marker_projection()
@@ -143,12 +156,12 @@ func _test_live_markers(errors: Array[String]) -> void:
 	var final_state := final.effective_quest_marker_projection()
 	if str(final_state.get("role", "")) != "objective" or bool(final_state.get("visible", true)):
 		errors.append("sandbox final objective is visible before its prerequisites")
-	if available.resolved_action_script_id() != "sandbox_notice":
-		errors.append("native quest giver did not resolve sandbox_notice")
+	if available.resolved_action_script_id() != "interaction_notice":
+		errors.append("native quest giver did not resolve interaction_notice")
 	if (
-		available.quest_id != "sandbox_notice_quest"
-		or available.script_id != "sandbox_notice"
-		or available.effective_quest_id() != "sandbox_notice_quest"
+		available.quest_id != "interaction_quest"
+		or available.script_id != "interaction_notice"
+		or available.effective_quest_id() != "interaction_quest"
 	):
 		errors.append("sandbox quest giver regressed to the ambiguous legacy flag binding")
 	if not available.is_in_group("ember_interact"):
@@ -160,22 +173,22 @@ func _test_live_markers(errors: Array[String]) -> void:
 	var direct := EmberInteract.new()
 	direct.name = "DirectQuestBindingProbe"
 	direct.kind = "quest_marker"
-	direct.quest_id = "sandbox_notice_quest"
-	direct.script_id = "sandbox_chain"
+	direct.quest_id = "interaction_quest"
+	direct.script_id = "interaction_chain"
 	current_scene.add_child(direct)
 	await process_frame
-	if direct.effective_quest_id() != "sandbox_notice_quest":
+	if direct.effective_quest_id() != "interaction_quest":
 		errors.append("native quest_id binding did not resolve its Resource")
-	if direct.effective_quest_status_flag_id() != "sandbox_notice_status":
+	if direct.effective_quest_status_flag_id() != "interaction_quest_status":
 		errors.append("native quest marker did not derive statusFlagId from its Resource")
-	if direct.resolved_action_script_id() != "sandbox_chain" or not direct.is_in_group("ember_interact"):
+	if direct.resolved_action_script_id() != "interaction_chain" or not direct.is_in_group("ember_interact"):
 		errors.append("native quest marker did not keep a separate actionable chain")
-	progress.set_flag("sandbox_notice_status", "active", false)
+	progress.set_flag("interaction_quest_status", "active", false)
 	await process_frame
 	if direct.effective_quest_status() != "active":
 		errors.append("native quest marker did not react to its derived status flag")
 	direct.queue_free()
-	progress.clear_flags(["sandbox_notice_status"], false)
+	progress.clear_flags(["interaction_quest_status"], false)
 	var available_marker := available.get_node_or_null("QuestMarker") as Node3D
 	var active_marker := active.get_node_or_null("QuestMarker") as Node3D
 	var done_marker := final.get_node_or_null("QuestMarker") as Node3D
@@ -210,8 +223,8 @@ func _test_live_markers(errors: Array[String]) -> void:
 	)
 	if not available_marker.position.is_equal_approx(expected_anchor):
 		errors.append("quest marker is not anchored above the visible mesh center")
-	progress.set_flag("sandbox_notice_status", "active", false)
-	progress.set_flag("sandbox_notice_read", true, false)
+	progress.set_flag("interaction_quest_status", "active", false)
+	progress.set_flag("interaction_quest_read", true, false)
 	await process_frame
 	if (
 		bool(available.effective_quest_marker_projection().get("visible", true))
@@ -222,7 +235,7 @@ func _test_live_markers(errors: Array[String]) -> void:
 		errors.append("runtime did not hide the giver and reveal the middle objective marker")
 	if str(available.effective_quest_marker_projection().get("status", "")) == "done":
 		errors.append("resolved giver still projects a false completed-quest icon")
-	progress.set_flag("sandbox_notice_quest_objective_2", true, false)
+	progress.set_flag("interaction_quest_middle", true, false)
 	await process_frame
 	var final_event_flag := ""
 	var final_queue := EmberActionScript.queue_for(final.resolved_action_script_id())
@@ -269,3 +282,9 @@ func _interact_for_placement(scene: Node, placement_id: String) -> EmberInteract
 		if prop != null and prop.placement_id == placement_id:
 			return prop.get_node_or_null("Interact") as EmberInteract
 	return null
+
+
+func _prepare_map() -> void:
+	var id := "interaction_fixture_%d" % OS.get_process_id()
+	_source = Content.save_map(id, _setup.directory)
+	_scene_path = EmberMapTransition.scene_path(id)

@@ -1,10 +1,14 @@
 extends SceneTree
+const Fixture = preload("res://tools/fixtures/ember_mixed_editor_test_fixture.gd")
 ## Stress native frame retirement and objective focus without writing content.
 const Workspace = preload("res://addons/ember_import/ember_graph_workspace.gd")
 var errors: Array[String] = []
 
 
 func _init() -> void:
+	if not Fixture.prepare(self):
+		quit(2)
+		return
 	_run.call_deferred()
 
 
@@ -18,7 +22,7 @@ func _run() -> void:
 	for cycle in 3:
 		var workspace := Workspace.new()
 		workspace_host.add_child(workspace)
-		workspace.open_resource("dialogue", "sandbox_branch")
+		workspace.open_resource("dialogue", "interaction_branch")
 		var document: Dictionary = (workspace.get("_dialogue_draft") as Dictionary).duplicate(true)
 		document["editorGroups"] = [{
 			"id": "lifecycle_group", "title": "Lifecycle test",
@@ -41,7 +45,7 @@ func _run() -> void:
 			_check(live_frames == 1, "retired frames leaked into active selection")
 		# Switching resource in the same tick must release all original names,
 		# but retain retired frames' parent until deferred native calls finish.
-		workspace.open_resource("action", "sandbox_notice_quest")
+		workspace.open_resource("action", "interaction_notice")
 		for id in retired:
 			var frame := instance_from_id(id) as GraphFrame
 			_check(frame != null and frame.get_parent() == graph and not frame.visible
@@ -51,7 +55,7 @@ func _run() -> void:
 		for id in retired:
 			_check(not is_instance_id_valid(id), "retired frame survived the frame boundary")
 		# Repeated focused quest views used to allocate an unparented root card.
-		workspace.open_resource("quest", "sandbox_notice_quest")
+		workspace.open_resource("quest", "interaction_quest")
 		var quest: Dictionary = workspace.get("_quest_draft")
 		var objectives: Array = quest.get("objectives", [])
 		_check(not objectives.is_empty(), "missing quest fixture")
@@ -66,7 +70,7 @@ func _run() -> void:
 		_check(int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT)) == baseline,
 			"quest focus leaked orphan nodes while workspace was alive (cycle %d)" % cycle)
 		if "--visual" in OS.get_cmdline_user_args() and cycle == 0:
-			workspace.open_resource("dialogue", "sandbox_branch")
+			workspace.open_resource("dialogue", "interaction_branch")
 			workspace.set("_dialogue_draft", document)
 			workspace.call("_render_document", document)
 			var secondary_tools := workspace.find_child("GraphSecondaryTools", true, false) as Button

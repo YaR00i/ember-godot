@@ -1,12 +1,17 @@
 extends SceneTree
 ## Inventory/equipment vertical slice: pure mutations, one UI owner and live
-## agent_sandbox wiring over the existing EmberExploreState.
+## native fixture wiring over the existing EmberExploreState.
 
-const SANDBOX_SCENE := "res://scenes/agent_sandbox.tscn"
+const Fixture = preload("res://tools/fixtures/ember_party_test_fixture.gd")
+var _setup: Dictionary
 const VISUAL_ARG := "--visual"
 
 
 func _init() -> void:
+	_setup = Fixture.prepare(self)
+	if _setup.refused:
+		quit.call_deferred(2)
+		return
 	_run_and_quit.call_deferred()
 
 
@@ -16,6 +21,9 @@ func _run_and_quit() -> void:
 
 func _run() -> int:
 	var errors: Array[String] = []
+	if _setup.error != OK or not _setup.progress_isolated:
+		printerr("FAIL native party fixture preparation")
+		return 1
 	var runtime_progress := get_root().get_node_or_null("EmberExploreProgress") as EmberExploreState
 	if runtime_progress:
 		runtime_progress.persistence_enabled = false
@@ -23,11 +31,12 @@ func _run() -> int:
 	var state := EmberExploreState.new()
 	state.persistence_enabled = false
 	state.reset_new_game()
+	state.set_world_context(_setup.map_id, null, 16.0)
 	state.inventory = {
 		"coin": 20,
 		"herb": 1,
-		"funeral_polearm": 1,
-		"spirit_bolt": 1,
+		Fixture.WEAPON: 1,
+		Fixture.ARENA: 1,
 	}
 	_test_state_contract(state, errors)
 	_test_save_round_trip(state, errors)
@@ -35,7 +44,7 @@ func _run() -> int:
 	state.set_active_hero_ids(["mira", "orik"], false)
 	var full_party := state.combat_party_snapshot()
 	var full_inventory := state.inventory.duplicate(true)
-	for result in [state.equip_item_for_member("protagonist", "spirit_bolt"), state.unequip_slot_for_member("sena", "weapon"), state.use_item_on_member("sena", "herb", false)]:
+	for result in [state.equip_item_for_member("protagonist", Fixture.ARENA), state.unequip_slot_for_member("sena", "weapon"), state.use_item_on_member("sena", "herb", false)]:
 		if bool(result.get("ok", false)):
 			errors.append("inactive hero accepted inventory mutation")
 	if state.party != full_party or state.inventory != full_inventory or not state.inventory_view_for_member("sena").is_empty():
@@ -58,6 +67,7 @@ func _run() -> int:
 	active_ui.free()
 	await _test_live_wiring(errors)
 	state.free()
+	Fixture.verify_sources(_setup, errors)
 	if not errors.is_empty():
 		printerr("FAIL inventory/equipment")
 		for error in errors:
@@ -65,7 +75,7 @@ func _run() -> int:
 		return 1
 	print("PASS inventory/equipment")
 	print("  bag view joins the real item catalog")
-	print("  JRPG/arena slots move items both ways and update stats")
+	print("  five canonical slots move items both ways; retired arena equipment stays in bag")
 	print("  one overlay blocks movement and coexists with talk/shop")
 	return 0
 
@@ -75,26 +85,26 @@ func _test_state_contract(state: EmberExploreState, errors: Array[String]) -> vo
 	if int(initial.get("atk", -1)) != 4:
 		errors.append("unarmed explore attack diverged from the established value 4")
 	if int(initial.get("arenaAtk", -1)) != 4:
-		errors.append("unarmed arena atk diverged from JOI 4")
+		errors.append("unarmed arena atk diverged from baseline 4")
 	var rows: Array = initial.get("items", [])
-	if not _has_named_row(rows, "funeral_polearm", "Пика похоронного бюро"):
-		errors.append("bag did not join inventory ids to items/catalog.json")
-	var polearm := state.equip_item("funeral_polearm")
+	if not _has_named_row(rows, Fixture.WEAPON, Fixture.WEAPON_NAME):
+		errors.append("bag did not join inventory ids to native item Resources")
+	var polearm := state.equip_item(Fixture.WEAPON)
 	if not bool(polearm.get("ok", false)):
 		errors.append("JRPG weapon could not be equipped")
-	elif state.equipment.get("weapon") != "funeral_polearm":
+	elif state.equipment.get("weapon") != Fixture.WEAPON:
 		errors.append("weapon_jrpg did not resolve to weapon slot")
-	elif state.inventory.has("funeral_polearm"):
+	elif state.inventory.has(Fixture.WEAPON):
 		errors.append("equipped polearm remained in the bag")
 	elif int(state.inventory_view().get("atk", -1)) != 18:
 		errors.append("equipped polearm did not add atk 14 to baseline 4")
-	var arena := state.equip_item("spirit_bolt")
-	if not bool(arena.get("ok", false)) or state.equipment.get("arena_weapon") != "spirit_bolt":
-		errors.append("weapon_arena did not resolve to arena_weapon slot")
-	elif int(state.inventory_view().get("arenaAtk", -1)) != 14:
-		errors.append("arena weapon did not update arena atk")
+	var arena := state.equip_item(Fixture.ARENA)
+	if bool(arena.get("ok", false)) or state.equipment.has("arena_weapon") or int(state.inventory.get(Fixture.ARENA, 0)) != 1:
+		errors.append("retired arena weapon should stay in bag without creating an old slot")
+	elif int(state.inventory_view().get("arenaAtk", -1)) != 18:
+		errors.append("both modes did not use the same equipped weapon")
 	var returned := state.unequip_slot("weapon")
-	if not bool(returned.get("ok", false)) or int(state.inventory.get("funeral_polearm", 0)) != 1:
+	if not bool(returned.get("ok", false)) or int(state.inventory.get(Fixture.WEAPON, 0)) != 1:
 		errors.append("unequip did not return the item to the bag")
 	if bool(state.equip_item("herb").get("ok", false)):
 		errors.append("non-equipment item was equipped")
@@ -111,9 +121,9 @@ func _test_save_round_trip(state: EmberExploreState, errors: Array[String]) -> v
 	loaded.storage_root = state.storage_root
 	if not loaded.load_slot(0):
 		errors.append("equipment save v2 fixture could not be loaded")
-	elif loaded.equipment.get("arena_weapon") != "spirit_bolt":
-		errors.append("arena equipment did not survive save v2 restart")
-	elif int(loaded.inventory.get("funeral_polearm", 0)) != 1:
+	elif loaded.equipment.has("arena_weapon") or int(loaded.inventory.get(Fixture.ARENA, 0)) != 1:
+		errors.append("retired arena weapon did not remain in saved bag")
+	elif int(loaded.inventory.get(Fixture.WEAPON, 0)) != 1:
 		errors.append("bag counts changed during equipment save round-trip")
 	var file_path := state.save_path(0)
 	if FileAccess.file_exists(file_path):
@@ -142,24 +152,24 @@ func _test_ui_contract(state: EmberExploreState, errors: Array[String]) -> void:
 		errors.append("inventory does not expose a functional Strategy save section")
 	elif not ui.save_strategy() or state.combat_strategy_snapshot()[0] != original_strategy[1]:
 		errors.append("explicit Strategy save did not commit through EmberExploreState")
-	if not ui.select_item("funeral_polearm"):
+	if not ui.select_item(Fixture.WEAPON):
 		errors.append("inventory UI could not select the returned polearm")
 	else:
 		ui.confirm()
-		if state.equipment.get("weapon") != "funeral_polearm":
+		if state.equipment.get("weapon") != Fixture.WEAPON:
 			errors.append("F/confirm did not route equip through EmberExploreState")
 	ui._set_mode(EmberInventoryUi.MODE_EQUIPMENT)
 	ui.confirm()
-	if state.equipment.get("weapon") != null or int(state.inventory.get("funeral_polearm", 0)) != 1:
+	if state.equipment.get("weapon") != null or int(state.inventory.get(Fixture.WEAPON, 0)) != 1:
 		errors.append("equipment mode confirm did not unequip the selected slot")
 	ui.call("_select_hero", 1)
-	if not ui.select_item("funeral_polearm"):
+	if not ui.select_item(Fixture.WEAPON):
 		errors.append("party member switch lost the shared bag")
 	else:
 		ui.confirm()
 		if (
 			str(ui.view_state().get("heroId", "")) != "mira"
-			or (state.party_member_view("mira").get("equipment", {}) as Dictionary).get("weapon") != "funeral_polearm"
+			or (state.party_member_view("mira").get("equipment", {}) as Dictionary).get("weapon") != Fixture.WEAPON
 		):
 			errors.append("inventory hero tabs did not equip the selected party member")
 	ui.close()
@@ -170,8 +180,8 @@ func _test_ui_contract(state: EmberExploreState, errors: Array[String]) -> void:
 
 
 func _test_live_wiring(errors: Array[String]) -> void:
-	if change_scene_to_file(SANDBOX_SCENE) != OK:
-		errors.append("could not start agent_sandbox runtime scene")
+	if change_scene_to_file(_setup.scene.resource_path) != OK:
+		errors.append("could not start native fixture runtime scene")
 		return
 	await process_frame
 	await process_frame
@@ -180,10 +190,14 @@ func _test_live_wiring(errors: Array[String]) -> void:
 	var inventory_ui := sandbox.get_node_or_null("CanvasLayer/InventoryUI") as EmberInventoryUi
 	var interaction_ui := sandbox.get_node_or_null("CanvasLayer/InteractionUI") as EmberInteractionUi
 	if player == null or inventory_ui == null or interaction_ui == null:
-		errors.append("agent_sandbox lost Player/InventoryUI/InteractionUI wiring")
+		errors.append("native fixture lost Player/InventoryUI/InteractionUI wiring")
 		return
 	if player.inventory_ui != inventory_ui or player.interaction_ui != interaction_ui:
 		errors.append("player does not reference the two exclusive overlay owners")
+	var progress := root.get_node_or_null("EmberExploreProgress") as EmberExploreState
+	if progress == null or player.progress_state != progress or inventory_ui.progress_state != progress:
+		errors.append("live bag/player do not share the real progress owner")
+		return
 	inventory_ui.open()
 	if not player._ui_blocks_movement():
 		errors.append("live player movement is not blocked by inventory")
@@ -224,6 +238,25 @@ func _test_live_wiring(errors: Array[String]) -> void:
 	inventory_ui.close()
 	if player._ui_blocks_movement():
 		errors.append("live player remained blocked after inventory close")
+	# Exercise equipment through the mounted UI, then reopen the real owner's save.
+	progress.inventory = {Fixture.WEAPON: 1, "coin": 20}
+	progress.persistence_enabled = true
+	inventory_ui.open()
+	if not inventory_ui.select_item(Fixture.WEAPON):
+		errors.append("live bag did not expose native fixture weapon")
+	else:
+		inventory_ui.confirm()
+		if progress.equipment.get("weapon") != Fixture.WEAPON or progress.inventory.has(Fixture.WEAPON):
+			errors.append("live bag equip bypassed the progress owner")
+	inventory_ui.close()
+	if not progress.save_slot(0):
+		errors.append("live bag could not save equipment")
+	var loaded := EmberExploreState.new()
+	loaded.storage_root = progress.storage_root
+	if not loaded.load_slot(0) or loaded.equipment.get("weapon") != Fixture.WEAPON or loaded.inventory != progress.inventory:
+		errors.append("live bag equipment/counts did not survive save reopen")
+	loaded.free()
+	progress.persistence_enabled = false
 	print("  40 live inventory hero switches: %d us" % inventory_switch_micros)
 
 

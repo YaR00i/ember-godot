@@ -1,6 +1,9 @@
 @tool
 extends EditorPlugin
 
+const TerrainCacheExport = preload("res://addons/ember_import/ember_terrain_cache_export.gd")
+var _terrain_cache_export: EditorExportPlugin
+
 const EmberToolsDock = preload("res://addons/ember_import/ember_tools_dock.gd")
 const EmberVoxelObjectLibrary = preload("res://addons/ember_import/ember_voxel_object_library_panel.gd")
 const EditorPreparation = preload("res://addons/ember_import/ember_editor_preparation.gd")
@@ -8,7 +11,6 @@ var _editor_preparation
 const ObjectBrush = preload("res://addons/ember_import/ember_voxel_object_brush.gd")
 var _object_brush: Node
 var _object_brush_button: Button
-var _object_brush_settings: AcceptDialog
 const EmberVoxelPropGizmo = preload("res://addons/ember_import/ember_voxel_prop_gizmo.gd")
 const EmberStandaloneTriggerGizmo = preload("res://addons/ember_import/ember_standalone_trigger_gizmo.gd")
 const EmberObjectInspector = preload("res://addons/ember_import/ember_object_inspector_plugin.gd")
@@ -46,7 +48,6 @@ var _object_library
 var _generation_panel
 var _generation_initialization_pending := false
 var _generation_next_recipe: Resource
-var _confirm: ConfirmationDialog
 var _voxel_gizmo: EditorNode3DGizmoPlugin
 var _trigger_gizmo: EditorNode3DGizmoPlugin
 var _walk_surface_gizmo: EditorNode3DGizmoPlugin
@@ -67,11 +68,20 @@ var _graph_workspace: EmberGraphWorkspace
 var _last_selected_voxel: EmberVoxelProp
 var _last_duplicate_step := Vector3.ZERO
 var _last_selected_trigger: EmberInteract
-var _compact_map_dialog: ConfirmationDialog
+var _compact_map_panel: VBoxContainer
+var _placement_bottom_button: Button
+var _shape_bottom_button: Button
+var _duplicate_bottom_button: Button
+var _merge_bottom_button: Button
+var _split_bottom_button: Button
+var _conversion_bottom_button: Button
+var _material_pattern_bottom_button: Button
 var _compact_extension_dialog: ConfirmationDialog
 
 
 func _enter_tree() -> void:
+	_terrain_cache_export = TerrainCacheExport.new()
+	add_export_plugin(_terrain_cache_export)
 	if DisplayServer.get_name() != "headless":
 		_editor_preparation = EditorPreparation.new()
 		_editor_preparation.theme = EditorInterface.get_editor_theme()
@@ -165,15 +175,17 @@ func _enter_tree() -> void:
 	_object_brush.changed.connect(func() -> void:
 		_object_brush_button.text = "Кисть: %s…" % _object_brush.model_id.trim_prefix("vox_").left(18) if _object_brush.active else "Кисть объектов…"
 		_object_brush_button.tooltip_text = "Активна: %s · ЛКМ/мазок · Esc выключает" % _object_brush.model_id if _object_brush.active else "Выберите объект в библиотеке → Расставлять кистью"
+		if is_instance_valid(_world_editor) and not _object_brush.active:
+			_world_editor.close_object_brush_panel()
 	)
 	_object_brush.stroke_committed.connect(func(count: int) -> void:
 		if is_instance_valid(_object_library):
 			_object_library.show_status("Кисть: добавлено %d · Ctrl+Z отменяет весь мазок · максимум 256 за мазок." % count)
 	)
 	_configure_fullscreen_playtest()
-	add_tool_menu_item("Ember: Reimport map from pack…", _ask_reimport)
 	add_tool_menu_item("Ember: Open Combat Lab", _open_combat_lab)
 	add_tool_menu_item("Ember: Open Combat Content", _open_combat_content)
+	add_tool_menu_item("Ember: Игровые системы", _open_game_systems)
 	add_tool_menu_item("Ember: Open Loot Library", _open_loot_library)
 	add_tool_menu_item("Ember: Run Combat Lab", _run_combat_lab)
 	add_tool_menu_item("Ember: Open Battle Arena · E2", _open_combat_arena_e2)
@@ -193,15 +205,11 @@ func _enter_tree() -> void:
 	# Keep this identity distinct from the legacy right-slot dock name "Ember".
 	# Godot restores dock placement by Control.name from editor_layout.cfg.
 	_dock.name = "EmberMigrationWorkflow"
-	_dock.reimport_requested.connect(_ask_reimport)
 	_dock.duplicate_requested.connect(_duplicate_voxel_prop)
 	_dock.standalone_trigger_requested.connect(_create_standalone_trigger)
-	_dock.voxel_prop_requested.connect(_create_voxel_prop)
 	_dock.voxel_library_requested.connect(_open_voxel_object_library)
-	_dock.voxel_migrate_requested.connect(_migrate_voxel_from_library)
-	_dock.voxel_batch_migrate_requested.connect(_migrate_voxel_batch_from_dashboard)
 	_dock.close_requested.connect(_close_migration_panel)
-	add_control_to_bottom_panel(_dock, "Ember Migration")
+	add_control_to_bottom_panel(_dock, "Ember · Сервис")
 	_object_library = EmberVoxelObjectLibrary.new()
 	_object_library.defer_initial_refresh = is_instance_valid(_editor_preparation)
 	_object_library.rebuild_library_requested.connect(func():
@@ -212,7 +220,6 @@ func _enter_tree() -> void:
 	_object_library.brush_requested.connect(_activate_object_brush)
 	_object_library.edit_requested.connect(_edit_voxel_library_template)
 	_object_library.open_resource_requested.connect(_open_voxel_library_resource)
-	_object_library.migrate_requested.connect(_migrate_voxel_from_library)
 	_object_library.new_shape_requested.connect(_new_voxel_shape)
 	_object_library.new_tree_requested.connect(_new_voxel_tree)
 	_object_library.tree_variant_requested.connect(_new_voxel_tree_variant)
@@ -230,14 +237,12 @@ func _enter_tree() -> void:
 	_graph_workspace.name = "EmberGraphWorkspace"
 	_graph_workspace.configure(get_editor_interface(), get_undo_redo())
 	_graph_workspace.action_save_requested.connect(_save_action_script_from_graph)
-	_graph_workspace.action_migrate_requested.connect(_migrate_action_script_from_graph)
 	_graph_workspace.dialogue_save_requested.connect(_save_dialogue_from_graph)
-	_graph_workspace.dialogue_migrate_requested.connect(_migrate_dialogue_from_graph)
 	_graph_workspace.quest_save_requested.connect(_save_quest_from_graph)
 	_graph_workspace.shop_save_requested.connect(_save_shop_from_editor)
-	_graph_workspace.shop_migrate_requested.connect(_migrate_shop_from_editor)
 	_graph_workspace.item_save_requested.connect(_save_item_from_editor)
-	_graph_workspace.item_migrate_requested.connect(_migrate_item_from_editor)
+	_graph_workspace.system_resource_requested.connect(_inspect_game_systems_resource)
+	_graph_workspace.system_file_requested.connect(_show_game_systems_file)
 	_graph_workspace.scene_node_requested.connect(_select_graph_scene_node)
 	_graph_workspace.quest_event_bind_requested.connect(_bind_graph_quest_event)
 	_graph_workspace.quest_event_unbind_requested.connect(_unbind_graph_quest_event)
@@ -259,9 +264,7 @@ func _enter_tree() -> void:
 		_save_standalone_bounds_from_inspector,
 		_save_dialogue_from_inspector,
 		_save_shop_from_editor,
-		_migrate_shop_from_editor,
 		_save_item_from_editor,
-		_migrate_item_from_editor,
 		_save_quest_from_inspector,
 	)
 	add_inspector_plugin(_object_inspector)
@@ -319,15 +322,58 @@ func _enter_tree() -> void:
 	_world_editor_dock.default_slot = EditorDock.DOCK_SLOT_RIGHT_UL
 	_world_editor_dock.add_child(_world_editor.inspector_panel)
 	_world_editor.active_changed.connect(_set_world_editor_dock_active)
+	_material_pattern_bottom_button = add_control_to_bottom_panel(_world_editor.material_pattern_dialog, "Рисунок земли")
+	_material_pattern_bottom_button.hide()
+	_world_editor.material_pattern_dialog.hide()
+	_world_editor._material_workspace.add_child(_world_editor.material_pattern_dialog.parameters_panel)
+	_world_editor.placement_panel = preload("res://addons/ember_import/ember_voxel_placement_dialog.gd").new()
+	_placement_bottom_button = add_control_to_bottom_panel(_world_editor.placement_panel, "Расстановка")
+	_placement_bottom_button.hide(); _world_editor.placement_panel.hide()
+	_world_editor._placement_workspace.add_child(_world_editor.placement_panel.parameters_panel)
+	_world_editor.placement_panel.edit_closed.connect(_world_editor._close_placement_workspace)
+	_world_editor.placement_panel.applied.connect(func(target: Node3D):
+		var selection := EditorInterface.get_selection(); selection.clear(); selection.add_node(target)
+	)
+	_world_editor.shape_panel = preload("res://addons/ember_import/ember_voxel_shape_dialog.gd").new()
+	_world_editor.shape_panel.use_dock_layout()
+	_shape_bottom_button = add_control_to_bottom_panel(_world_editor.shape_panel, "Новая форма")
+	_shape_bottom_button.hide(); _world_editor.shape_panel.hide()
+	_world_editor._shape_workspace.add_child(_world_editor.shape_panel.parameters_panel)
+	_world_editor.shape_panel.edit_closed.connect(_world_editor._close_shape_workspace)
+	_world_editor.shape_panel.created.connect(func(prop: EmberVoxelProp): _voxel_canvas_action(prop, "selected"))
+	_world_editor.duplicate_panel = preload("res://addons/ember_import/ember_voxel_duplicate_dialog.gd").new()
+	_duplicate_bottom_button = add_control_to_bottom_panel(_world_editor.duplicate_panel,"Копии объектов")
+	_duplicate_bottom_button.hide(); _world_editor.duplicate_panel.hide()
+	_world_editor._duplicate_workspace.add_child(_world_editor.duplicate_panel.parameters_panel)
+	_world_editor.duplicate_panel.edit_closed.connect(_world_editor._close_duplicate_workspace)
+	_world_editor.duplicate_panel.created.connect(func(step: Vector3): _last_duplicate_step = step)
+	_world_editor.merge_panel = preload("res://addons/ember_import/ember_voxel_merge_dialog.gd").new()
+	_world_editor.merge_panel.use_dock_layout()
+	_merge_bottom_button = add_control_to_bottom_panel(_world_editor.merge_panel,"Склейка")
+	_merge_bottom_button.hide(); _world_editor.merge_panel.hide()
+	_world_editor._merge_workspace.add_child(_world_editor.merge_panel.parameters_panel)
+	_world_editor.merge_panel.can_commit = _voxel_canvas_is_clean
+	_world_editor.merge_panel.edit_closed.connect(_world_editor._close_merge_workspace)
+	_world_editor.split_panel = preload("res://addons/ember_import/ember_voxel_split_dialog.gd").new()
+	_world_editor.split_panel.use_dock_layout()
+	_split_bottom_button = add_control_to_bottom_panel(_world_editor.split_panel,"Секции объекта")
+	_split_bottom_button.hide(); _world_editor.split_panel.hide()
+	_world_editor._split_workspace.add_child(_world_editor.split_panel.parameters_panel)
+	_world_editor.split_panel.can_commit = _voxel_canvas_is_clean
+	_world_editor.split_panel.edit_closed.connect(_world_editor._close_split_workspace)
+	_world_editor.conversion_panel = preload("res://addons/ember_import/ember_voxel_conversion_dialog.gd").new()
+	_world_editor.conversion_panel.use_dock_layout()
+	_conversion_bottom_button = add_control_to_bottom_panel(_world_editor.conversion_panel,"Форма в voxel")
+	_conversion_bottom_button.hide(); _world_editor.conversion_panel.hide()
+	_world_editor._conversion_workspace.add_child(_world_editor.conversion_panel.parameters_panel)
+	_world_editor.conversion_panel.can_commit = _voxel_canvas_is_clean
+	_world_editor.conversion_panel.edit_closed.connect(_world_editor._close_conversion_workspace)
+	_world_editor.conversion_panel.created.connect(func(prop: EmberVoxelProp): _voxel_canvas_action(prop,"selected"))
+	_world_editor.configure_panel_host()
 	set_input_event_forwarding_always_enabled()
 	set_force_draw_over_forwarding_enabled()
 	print("[Ember Migration] v2.64.1 loaded: staged combat command selection")
-	_confirm = ConfirmationDialog.new()
-	_confirm.title = "Полный reimport Ember-карты"
-	_confirm.dialog_text = "Look / Terrain / Props / Regions будут пересозданы из pack.\nРучные позиции и вложенные правки сцены будут потеряны."
-	_confirm.ok_button_text = "Переимпортировать и сохранить"
-	_confirm.confirmed.connect(_reimport_and_save)
-	add_child(_confirm)
+
 	if not scene_changed.is_connected(_on_scene_changed):
 		scene_changed.connect(_on_scene_changed)
 	var selection := EditorInterface.get_selection()
@@ -353,6 +399,7 @@ func _configure_fullscreen_playtest() -> void:
 
 
 func _set_world_editor_dock_active(value: bool) -> void:
+	value = value or (is_instance_valid(_world_editor) and _world_editor._panel_host.any_active())
 	if not is_instance_valid(_world_editor_dock) or value == _world_editor_dock_added: return
 	if value:
 		add_dock(_world_editor_dock)
@@ -368,15 +415,40 @@ func _apply_water_preview_settings(scene_path: String, node_path: NodePath, valu
 
 
 func _exit_tree() -> void:
+	if _terrain_cache_export != null:
+		remove_export_plugin(_terrain_cache_export)
+		_terrain_cache_export = null
 	if _water_preview_debugger != null:
 		remove_debugger_plugin(_water_preview_debugger)
 		_water_preview_debugger = null
-	if is_instance_valid(_compact_map_dialog):
-		_compact_map_dialog.free()
-	_compact_map_dialog = null
+	if is_instance_valid(_world_editor): _world_editor._panel_host.release()
+	if is_instance_valid(_compact_map_panel):
+		_compact_map_panel.free()
+	_compact_map_panel = null
 	if is_instance_valid(_compact_extension_dialog):
 		_compact_extension_dialog.free()
 	_compact_extension_dialog = null
+	if is_instance_valid(_world_editor) and is_instance_valid(_world_editor.material_pattern_dialog):
+		remove_control_from_bottom_panel(_world_editor.material_pattern_dialog)
+		_world_editor.material_pattern_dialog.free()
+	if is_instance_valid(_world_editor) and is_instance_valid(_world_editor.placement_panel):
+		remove_control_from_bottom_panel(_world_editor.placement_panel)
+		_world_editor.placement_panel.free()
+	if is_instance_valid(_world_editor) and is_instance_valid(_world_editor.shape_panel):
+		remove_control_from_bottom_panel(_world_editor.shape_panel)
+		_world_editor.shape_panel.free()
+	if is_instance_valid(_world_editor) and is_instance_valid(_world_editor.duplicate_panel):
+		remove_control_from_bottom_panel(_world_editor.duplicate_panel)
+		_world_editor.duplicate_panel.free()
+	if is_instance_valid(_world_editor) and is_instance_valid(_world_editor.merge_panel):
+		remove_control_from_bottom_panel(_world_editor.merge_panel)
+		_world_editor.merge_panel.free()
+	if is_instance_valid(_world_editor) and is_instance_valid(_world_editor.split_panel):
+		remove_control_from_bottom_panel(_world_editor.split_panel)
+		_world_editor.split_panel.free()
+	if is_instance_valid(_world_editor) and is_instance_valid(_world_editor.conversion_panel):
+		remove_control_from_bottom_panel(_world_editor.conversion_panel)
+		_world_editor.conversion_panel.free()
 	if _world_editor_dock_added: remove_dock(_world_editor_dock)
 	_world_editor_dock_added = false
 	if is_instance_valid(_world_editor_dock): _world_editor_dock.free()
@@ -393,8 +465,6 @@ func _exit_tree() -> void:
 	if is_instance_valid(_object_brush):
 		_object_brush.free()
 		_object_brush = null
-	if is_instance_valid(_object_brush_settings):
-		_object_brush_settings.free()
 	if is_instance_valid(_walk_surface_panel):
 		remove_control_from_bottom_panel(_walk_surface_panel)
 		_walk_surface_panel.free()
@@ -409,9 +479,9 @@ func _exit_tree() -> void:
 	remove_tool_menu_item("Ember: Новая voxel-форма…")
 	remove_tool_menu_item("Ember: Новая компактная карта…")
 	remove_tool_menu_item("Ember: Точная voxel-расстановка…")
-	remove_tool_menu_item("Ember: Reimport map from pack…")
 	remove_tool_menu_item("Ember: Open Combat Lab")
 	remove_tool_menu_item("Ember: Open Combat Content")
+	remove_tool_menu_item("Ember: Игровые системы")
 	remove_tool_menu_item("Ember: Open Loot Library")
 	remove_tool_menu_item("Ember: Run Combat Lab")
 	remove_tool_menu_item("Ember: Open Battle Arena · E2")
@@ -475,8 +545,6 @@ func _exit_tree() -> void:
 		remove_control_from_bottom_panel(_object_library)
 		_object_library.queue_free()
 		_object_library = null
-	if _confirm:
-		_confirm.queue_free()
 
 
 func _open_combat_lab() -> void:
@@ -493,6 +561,23 @@ func _open_loot_library() -> void:
 	EditorInterface.set_main_screen_editor("Ember Graph")
 	if _graph_workspace != null:
 		_graph_workspace.open_resource("loot", "")
+
+
+func _open_game_systems() -> void:
+	EditorInterface.set_main_screen_editor("Ember Graph")
+	if _graph_workspace != null:
+		_graph_workspace.open_resource("systems", "systems_library")
+
+
+func _inspect_game_systems_resource(path: String) -> void:
+	if path == COMBAT_LAB_SCENE:
+		_open_combat_lab()
+	elif ResourceLoader.exists(path):
+		EditorInterface.edit_resource(load(path))
+
+
+func _show_game_systems_file(path: String) -> void:
+	if FileAccess.file_exists(path): EditorInterface.get_file_system_dock().navigate_to_path(path)
 
 
 func _run_combat_lab() -> void:
@@ -681,79 +766,11 @@ func _open_world_surface(map: EmberMapLoader, region_blocks: Rect2i) -> void:
 		_world_editor.edit_region = region_blocks
 		_world_editor.open_canvas()
 		return
-	if not map.hydrate_legacy_regions:
-		var native_surface := map.resolved_visual_surface()
-		if native_surface == null:
-			push_warning("Ember Surface: у этой native-карты нет подходящей voxel Surface. Простые формы редактируются в сцене; их преобразование в Surface не поддерживается.")
-			return
-		var native_path := EmberVoxelSculptModel.surface_save_path(native_surface, native_surface.resource_path)
-		_open_surface_canvas(native_surface, native_path, region_blocks)
-		return
-	if not FileAccess.file_exists(EmberPack.map_path(map.map_id)):
-		push_warning("Ember Surface: исходная геометрия карты %s не найдена" % map.map_id)
-		return
-	var raw: Variant = EmberPack.parse_json_file(EmberPack.map_path(map.map_id))
-	if typeof(raw) != TYPE_DICTIONARY:
-		push_warning("Ember Surface: исходная геометрия карты %s не найдена" % map.map_id)
-		return
-	var map_data := raw as Dictionary
-	var grid := EmberTileMesher.surface_grid(map_data)
-	var width := int(grid.get("width", 0))
-	var depth := int(grid.get("depth", 0))
-	if width < 1 or depth < 1:
-		push_warning("Ember Surface: карта %s не содержит поверхности" % map.map_id)
-		return
-	var surface_path := EmberVoxelSculptModel.world_surface_path(map.map_id)
-	var surface := map.visual_surface
-	if surface == null and ResourceLoader.exists(surface_path):
-		surface = ResourceLoader.load(
-			surface_path, "", ResourceLoader.CACHE_MODE_REPLACE
-		) as EmberVoxelModelResource
-	if surface != null and (
-		surface.size_blocks.x != width or surface.size_blocks.z != depth
-	):
-		push_warning(
-			"Ember Surface: размер %s — %dx%d, карта — %dx%d. "
-			+ "Сохраните старый Resource и очистите Visual Surface перед пересозданием."
-			% [surface.display_name, surface.size_blocks.x, surface.size_blocks.z, width, depth]
-		)
-		return
+	var surface := map.resolved_visual_surface()
 	if surface == null:
-		var display_name := str(map.get_parent().name) if map.get_parent() != null else map.map_id
-		surface = EmberVoxelSculptModel.make_world_surface(
-			map.map_id,
-			display_name,
-			grid,
-			EmberTileMesher.tileset_colors(str(map_data.get("tilesetId", "village_16"))),
-		)
-		var absolute := ProjectSettings.globalize_path(surface_path)
-		DirAccess.make_dir_recursive_absolute(absolute.get_base_dir())
-		var save_error := ResourceSaver.save(
-			surface, surface_path, ResourceSaver.FLAG_CHANGE_PATH
-		)
-		if save_error != OK:
-			push_error("Ember Surface: не удалось создать %s: %s" % [surface_path, error_string(save_error)])
-			return
-		surface.take_over_path(surface_path)
-		preload("res://addons/ember_import/ember_editor_filesystem.gd").request(get_editor_interface().get_resource_filesystem())
-	elif not EmberVoxelSculptModel.is_writable_resource_path(surface.resource_path):
-		var externalize_error := ResourceSaver.save(
-			surface, surface_path, ResourceSaver.FLAG_CHANGE_PATH
-		)
-		if externalize_error != OK:
-			push_error("Ember Surface: не удалось вынести embedded поверхность: %s" % error_string(externalize_error))
-			return
-		surface.take_over_path(surface_path)
-		EditorInterface.mark_scene_as_unsaved()
-	if map.visual_surface != surface:
-		var undo_redo := get_undo_redo()
-		undo_redo.create_action("Назначить общую Surface карте %s" % map.map_id)
-		undo_redo.add_do_property(map, "visual_surface", surface)
-		undo_redo.add_undo_property(map, "visual_surface", map.visual_surface)
-		undo_redo.add_do_method(map, "notify_property_list_changed")
-		undo_redo.add_undo_method(map, "notify_property_list_changed")
-		undo_redo.commit_action()
-		EditorInterface.mark_scene_as_unsaved()
+		push_warning("Ember Surface: у карты нет подходящей native voxel Surface. Простые формы редактируются в сцене.")
+		return
+	var surface_path := EmberVoxelSculptModel.surface_save_path(surface, surface.resource_path)
 	_open_surface_canvas(surface, surface_path, region_blocks)
 
 
@@ -863,19 +880,9 @@ func _save_action_script_from_graph(document: Dictionary) -> void:
 		push_warning("Ember Graph: action document is invalid or could not be saved.")
 
 
-func _migrate_action_script_from_graph(script_id: String) -> void:
-	if _interact_actions and not _interact_actions.migrate_action_script(script_id, self):
-		push_warning("Ember Graph: action-chain migration could not be completed.")
-
-
 func _save_dialogue_from_graph(document: Dictionary) -> void:
 	if _interact_actions and not _interact_actions.save_dialogue_graph(document, self):
 		push_warning("Ember Graph: dialogue document is invalid or could not be saved.")
-
-
-func _migrate_dialogue_from_graph(dialogue_id: String) -> void:
-	if _interact_actions and not _interact_actions.migrate_dialogue(dialogue_id, self):
-		push_warning("Ember Graph: dialogue migration could not be completed.")
 
 
 func _save_quest_from_graph(document: Dictionary) -> void:
@@ -885,22 +892,12 @@ func _save_quest_from_graph(document: Dictionary) -> void:
 
 func _save_shop_from_editor(document: Dictionary) -> void:
 	if _interact_actions and not _interact_actions.save_shop(document, self):
-		push_warning("Ember shop: document is invalid, still legacy, or could not be saved.")
-
-
-func _migrate_shop_from_editor(shop_id: String) -> void:
-	if _interact_actions and not _interact_actions.migrate_shop(shop_id, self):
-		push_warning("Ember shop: migration could not be completed.")
+		push_warning("Ember shop: document is invalid or could not be saved.")
 
 
 func _save_item_from_editor(document: Dictionary) -> void:
 	if _interact_actions and not _interact_actions.save_item(document, self):
-		push_warning("Ember item: document is invalid, still legacy, or could not be saved.")
-
-
-func _migrate_item_from_editor(item_id: String) -> void:
-	if _interact_actions and not _interact_actions.migrate_item(item_id, self):
-		push_warning("Ember item: migration could not be completed.")
+		push_warning("Ember item: document is invalid or could not be saved.")
 
 
 func _save_quest_from_inspector(interact: EmberInteract, document: Dictionary) -> void:
@@ -918,7 +915,7 @@ func _make_visible(visible: bool) -> void:
 
 
 func _forward_3d_gui_input(viewport_camera: Camera3D, event: InputEvent) -> int:
-	if is_instance_valid(_world_editor) and _world_editor.active:
+	if is_instance_valid(_world_editor) and (_world_editor.active or _world_editor._panel_host.blocks_viewport_tools()):
 		return _world_editor.forward_input(viewport_camera,event)
 	if is_instance_valid(_walk_surface_panel):
 		var support_result: int = _walk_surface_panel.forward_3d_gui_input(viewport_camera,event)
@@ -947,6 +944,7 @@ func _forward_3d_gui_input(viewport_camera: Camera3D, event: InputEvent) -> int:
 
 
 func _forward_3d_force_draw_over_viewport(overlay: Control) -> void:
+	if is_instance_valid(_world_editor) and _world_editor._panel_host.blocks_viewport_tools(): return
 	if is_instance_valid(_world_editor) and _world_editor.active:
 		_world_editor.draw_overlay(overlay)
 		return
@@ -989,10 +987,10 @@ func _apply_changes() -> void:
 	if is_instance_valid(_compact_extension_dialog) and is_instance_valid(_world_editor):
 		_world_editor.clear_compact_extension_preview()
 		_compact_extension_dialog.call("show_error", "Предпросмотр закрыт перед сохранением. Выберите сторону ещё раз.")
-	if is_instance_valid(_world_editor) and is_instance_valid(_world_editor._generation_dialog):
+	if is_instance_valid(_world_editor) and is_instance_valid(_world_editor._generation_panel):
 		_world_editor.clear_terrain_generation_preview()
-		if _world_editor._generation_dialog.visible:
-			_world_editor._generation_dialog.set_pending("Предпросмотр закрыт перед сохранением. Обновите его для применения.")
+		if _world_editor._generation_panel.visible:
+			_world_editor._generation_panel.set_pending("Предпросмотр закрыт перед сохранением. Обновите его для применения.")
 
 func _save_external_data() -> void:
 	# Godot is still inside _save_scene here; recursive save_scene is forbidden.
@@ -1193,34 +1191,12 @@ func _open_voxel_library_resource(model_id: String) -> void:
 
 
 func _edit_voxel_library_template(model_id: String) -> void:
-	if EmberVoxelCatalog.owner(model_id) == "legacy_import":
-		if _interact_actions == null or not _interact_actions.migrate_voxel_model(model_id, self):
-			_object_library.show_status("Не удалось перенести модель %s для редактирования." % model_id, true)
-			return
 	var resource := EmberVoxelCatalog.native_resource(model_id)
 	if resource == null:
 		_object_library.show_status("Godot Resource для %s не найден." % model_id, true)
 		return
 	_open_surface_canvas(resource, resource.resource_path)
 	_object_library.show_status("Шаблон %s открыт в Canvas · изменения затронут все экземпляры." % model_id)
-
-
-func _migrate_voxel_from_library(model_id: String) -> void:
-	if _interact_actions == null or not _interact_actions.migrate_voxel_model(model_id, self):
-		if _dock:
-			_dock.show_status("Модель %s уже перенесена или legacy-источник недоступен." % model_id, true)
-		if _object_library:
-			_object_library.show_status("Модель %s уже перенесена или legacy-источник недоступен." % model_id, true)
-
-
-func _migrate_voxel_batch_from_dashboard(model_ids: Array[String]) -> void:
-	if _interact_actions == null or not _interact_actions.migrate_voxel_models(model_ids, self):
-		if _dock:
-			_dock.show_status("Voxel-партия изменилась или не прошла проверку.", true)
-		return
-	if _dock:
-		_dock.call_deferred("_refresh_content_migration_report")
-		_dock.show_status("Перенесено %d voxel-моделей · одна операция Ctrl+Z/Redo." % model_ids.size())
 
 
 func _on_voxel_model_changed(model_id: String) -> void:
@@ -1231,11 +1207,14 @@ func _on_voxel_model_changed(model_id: String) -> void:
 
 
 func _new_voxel_shape() -> void:
-	_stop_scene_object_brush()
 	var root := EditorInterface.get_edited_scene_root() as Node3D
 	if root == null:
 		push_warning("Откройте 3D-сцену для создания voxel-формы.")
 		return
+	if _world_editor._shape_mode and _world_editor.shape_panel._root == root:
+		_world_editor.show_shape_panel(); return
+	if not _world_editor.can_leave_panel(): return
+	_stop_scene_object_brush()
 	var parent := root.get_node_or_null("Map/Props") as Node3D
 	if parent == null:
 		parent = root
@@ -1243,35 +1222,37 @@ func _new_voxel_shape() -> void:
 	if start == null:
 		start = root.find_child("player_start", true, false) as Node3D
 	var position := parent.to_local(start.global_position) if start != null else Vector3.ZERO
-	var dialog := preload("res://addons/ember_import/ember_voxel_shape_dialog.gd").new()
-	EditorInterface.get_base_control().add_child(dialog)
-	dialog.created.connect(func(prop: EmberVoxelProp):
-		_voxel_canvas_action(prop, "selected")
-		dialog.queue_free()
-	)
-	dialog.canceled.connect(dialog.queue_free)
 	var map := root.get_node_or_null("Map") as EmberMapLoader
-	dialog.open_for(root, parent, get_undo_redo(), position, map.imported_tile_size if map != null and map.imported_tile_size > 0 else 16.0)
+	_world_editor.shape_panel.open_for(root, parent, get_undo_redo(), position, map.imported_tile_size if map != null and map.imported_tile_size > 0 else 16.0)
+	_world_editor.show_shape_panel()
 
 
 func _new_compact_map() -> void:
-	if is_instance_valid(_compact_map_dialog):
-		_compact_map_dialog.call("open_for")
+	if is_instance_valid(_world_editor) and _world_editor._panel_host.is_active("map"):
+		_world_editor._panel_host.reveal()
 		return
-	var dialog := preload("res://addons/ember_import/ember_compact_map_dialog.gd").new() as ConfirmationDialog
-	_compact_map_dialog = dialog
-	EditorInterface.get_base_control().add_child(dialog)
-	dialog.created.connect(func(path: String) -> void:
-		preload("res://addons/ember_import/ember_editor_filesystem.gd").request()
-		EditorInterface.open_scene_from_path(path)
-		_compact_map_dialog = null
-		dialog.queue_free()
-	)
-	dialog.canceled.connect(func() -> void:
-		_compact_map_dialog = null
-		dialog.queue_free()
-	)
-	dialog.call("open_for")
+	if is_instance_valid(_world_editor) and not _world_editor.can_leave_panel(): return
+	if not is_instance_valid(_compact_map_panel):
+		_stop_scene_object_brush()
+		var panel := preload("res://addons/ember_import/ember_compact_map_dialog.gd").new()
+		_compact_map_panel = panel
+		panel.created.connect(func(path: String) -> void:
+			_cancel_compact_map_creation()
+			preload("res://addons/ember_import/ember_editor_filesystem.gd").request()
+			EditorInterface.open_scene_from_path(path)
+		)
+		panel.cancel_requested.connect(_cancel_compact_map_creation)
+	_world_editor.show_map_creation_panel(_compact_map_panel)
+	_compact_map_panel.open_for()
+
+
+func _cancel_compact_map_creation() -> void:
+	if not is_instance_valid(_compact_map_panel): return
+	var panel := _compact_map_panel
+	_compact_map_panel = null
+	panel.clear_preview(); panel.hide()
+	_world_editor.close_map_creation_panel()
+	panel.queue_free()
 
 
 func _extend_compact_map() -> void:
@@ -1398,15 +1379,21 @@ func _bind_generation_workshop() -> void:
 	make_bottom_panel_item_visible(_generation_panel)
 
 
-func _merge_voxel_selected(separating: bool) -> void:
+func _voxel_canvas_is_clean() -> bool:
 	var workspace := EditorInterface.get_editor_main_screen().find_child(SURFACE_WORKSPACE_NODE,true,false) as EmberVoxelSculptWorkspace
-	if workspace != null and workspace.has_unsaved_changes():
+	return workspace == null or not workspace.has_unsaved_changes()
+
+func _merge_voxel_selected(separating: bool) -> void:
+	var selection := EditorInterface.get_selection().get_selected_nodes()
+	var scene := EditorInterface.get_edited_scene_root()
+	if _world_editor._panel_host.is_active("merge") and _world_editor.merge_panel.matches_context(selection,scene,separating):
+		_world_editor._panel_host.reveal(); return
+	if not _world_editor.can_leave_panel(): return
+	if not _voxel_canvas_is_clean():
 		push_warning("Сначала сохраните или отмените изменения Canvas, затем склейте детали.")
 		return
-	var dialog := preload("res://addons/ember_import/ember_voxel_merge_dialog.gd").new()
-	EditorInterface.get_base_control().add_child(dialog)
-	dialog.canceled.connect(dialog.queue_free)
-	dialog.open_merge(EditorInterface.get_selection().get_selected_nodes(),EditorInterface.get_edited_scene_root(),get_undo_redo(),separating)
+	_world_editor.merge_panel.open_merge(selection,scene,get_undo_redo(),separating)
+	_world_editor._panel_host.open("merge")
 
 
 func _walk_surface_selected() -> void:
@@ -1435,6 +1422,9 @@ func _close_walk_surface_panel() -> void:
 func _scene_assembly_command(command: int) -> void:
 	var selected := EditorInterface.get_selection().get_selected_nodes()
 	var root := EditorInterface.get_edited_scene_root()
+	if command == 4 and _world_editor._duplicate_mode and selected.size() == 1 and _world_editor.duplicate_panel.placement.target() == selected[0]:
+		_world_editor.show_duplicate_panel(); return
+	if not _world_editor.can_leave_panel(): return
 	var operation := preload("res://addons/ember_import/ember_voxel_scene_assembly.gd").new()
 	if command == 2:
 		if operation.group(selected, root, get_undo_redo()) == null:
@@ -1455,57 +1445,50 @@ func _scene_assembly_command(command: int) -> void:
 		elif not operation.prepare_copies(selected[0], root, _last_duplicate_step, 1) or operation.commit_copies(get_undo_redo()).is_empty():
 			push_warning(operation.error)
 		return
-	var dialog := preload("res://addons/ember_import/ember_voxel_duplicate_dialog.gd").new()
-	EditorInterface.get_base_control().add_child(dialog)
-	dialog.canceled.connect(dialog.queue_free)
-	dialog.created.connect(func(step: Vector3):
-		_last_duplicate_step = step
-		dialog.queue_free()
-	)
-	if not dialog.open_for(selected[0], root, get_undo_redo()):
-		push_warning(dialog._status.text)
-		dialog.queue_free()
+	if not _world_editor.duplicate_panel.open_for(selected[0], root, get_undo_redo()):
+		push_warning(_world_editor.duplicate_panel._status.text); return
+	_world_editor.show_duplicate_panel()
 
 func _place_voxel_selection() -> void:
 	var selected := EditorInterface.get_selection().get_selected_nodes()
 	if selected.size() != 1 or not selected[0] is Node3D:
 		push_warning("Выберите один voxel-объект или существующую группу его частей.")
 		return
+	if _world_editor._placement_mode and _world_editor.placement_panel.placement.target() == selected[0]:
+		_world_editor.show_placement_panel(); return
+	if not _world_editor.can_leave_panel(): return
 	var root := EditorInterface.get_edited_scene_root()
 	var session := preload("res://addons/ember_import/ember_voxel_placement_session.gd").new()
 	if not session.open(selected[0],root,get_undo_redo()):
 		push_warning(session.error)
 		return
-	var dialog := preload("res://addons/ember_import/ember_voxel_placement_dialog.gd").new()
-	EditorInterface.get_base_control().add_child(dialog)
-	dialog.canceled.connect(dialog.queue_free)
-	dialog.applied.connect(func(target: Node3D):
-		var editor_selection := EditorInterface.get_selection()
-		editor_selection.clear()
-		editor_selection.add_node(target)
-		dialog.queue_free()
-	)
-	if not dialog.open_for(session):
-		dialog.queue_free()
+	if not _world_editor.placement_panel.open_for(session):
 		push_warning("Не удалось открыть точную voxel-расстановку.")
+		return
+	_world_editor.show_placement_panel()
 
 
 func _split_voxel_object() -> void:
 	var selected := EditorInterface.get_selection().get_selected_nodes()
+	var scene := EditorInterface.get_edited_scene_root()
+	if selected.size() == 1 and _world_editor._panel_host.is_active("split") and _world_editor.split_panel.matches_context(selected[0],scene):
+		_world_editor._panel_host.reveal(); return
+	if not _world_editor.can_leave_panel(): return
 	if selected.size() != 1 or not selected[0] is EmberVoxelProp:
 		push_warning("Выберите один voxel-объект. Для простой формы сначала выполните «Форму в voxel…».")
 		return
-	var dialog := preload("res://addons/ember_import/ember_voxel_split_dialog.gd").new()
-	EditorInterface.get_base_control().add_child(dialog)
-	dialog.canceled.connect(dialog.queue_free)
-	dialog.open_split(selected[0],EditorInterface.get_edited_scene_root(),get_undo_redo())
+	_world_editor.split_panel.open_split(selected[0],scene,get_undo_redo())
+	_world_editor._panel_host.open("split")
 
 func _convert_voxel_form() -> void:
 	var selected := EditorInterface.get_selection().get_selected_nodes()
+	var root := EditorInterface.get_edited_scene_root()
+	if selected.size() == 1 and _world_editor._panel_host.is_active("conversion") and _world_editor.conversion_panel.matches_context(selected[0],root):
+		_world_editor._panel_host.reveal(); return
+	if not _world_editor.can_leave_panel(): return
 	if selected.size() != 1:
 		push_warning("Выберите одну простую форму или её контейнер в дереве сцены.")
 		return
-	var root := EditorInterface.get_edited_scene_root()
 	var conversion := preload("res://addons/ember_import/ember_voxel_primitive_conversion.gd")
 	var inspection := conversion.inspect(selected[0],root)
 	if inspection.get("alignable",false):
@@ -1526,16 +1509,9 @@ func _convert_voxel_form() -> void:
 		prompt.canceled.connect(prompt.queue_free)
 		prompt.popup_centered()
 		return
-	var dialog := preload("res://addons/ember_import/ember_voxel_conversion_dialog.gd").new()
-	EditorInterface.get_base_control().add_child(dialog)
-	dialog.created.connect(func(prop: EmberVoxelProp):
-		_voxel_canvas_action(prop,"selected")
-		dialog.queue_free()
-	)
-	dialog.canceled.connect(dialog.queue_free)
 	var map := root.get_node_or_null("Map") as EmberMapLoader
-	if not dialog.open_conversion(selected[0],root,get_undo_redo(),map.imported_tile_size if map != null and map.imported_tile_size > 0 else 16.0):
-		dialog.queue_free()
+	if _world_editor.conversion_panel.open_conversion(selected[0],root,get_undo_redo(),map.imported_tile_size if map != null and map.imported_tile_size > 0 else 16.0):
+		_world_editor._panel_host.open("conversion")
 
 
 func _stop_scene_object_brush() -> void:
@@ -1544,6 +1520,7 @@ func _stop_scene_object_brush() -> void:
 
 
 func _activate_object_brush(model_id: String) -> void:
+	if is_instance_valid(_world_editor) and not _world_editor.can_leave_panel(): return
 	if is_instance_valid(_world_editor) and (_world_editor.dragging or not _world_editor.grab.is_empty()):
 		_world_editor._status("Подождите завершения мазка или отмените его Esc.")
 		return
@@ -1581,50 +1558,12 @@ func _open_object_brush_settings() -> void:
 	if not _object_brush.active:
 		_open_voxel_object_library()
 		return
+	if is_instance_valid(_world_editor) and _world_editor._panel_host.is_active("objects"):
+		_world_editor.show_object_brush_panel()
+		return
+	if not is_instance_valid(_world_editor) or not _world_editor.can_leave_panel(): return
 	_object_brush.cancel_stroke()
-	if is_instance_valid(_object_brush_settings):
-		_object_brush_settings.free()
-	_object_brush_settings = AcceptDialog.new()
-	_object_brush_settings.title = "Кисть расстановки объектов"
-	_object_brush_settings.ok_button_text = "Продолжить расстановку"
-	var box := VBoxContainer.new()
-	box.custom_minimum_size = Vector2(390, 0)
-	_object_brush_settings.add_child(box)
-	var title := Label.new()
-	title.text = _object_brush.model_id
-	box.add_child(title)
-	for spec in [
-		["Шаг · блоки", "spacing_blocks", 0.05, 64.0, 0.05],
-		["Поворот Y · °", "yaw_degrees", -180.0, 180.0, 1.0],
-		["Масштаб", "scale_factor", 0.05, 10.0, 0.05],
-		["Заглубление · vox", "bury_vox", -64.0, 64.0, 0.5],
-	]:
-		var row := HBoxContainer.new()
-		box.add_child(row)
-		var label := Label.new()
-		label.text = spec[0]
-		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(label)
-		var spin := SpinBox.new()
-		spin.min_value = spec[2]
-		spin.max_value = spec[3]
-		spin.step = spec[4]
-		spin.value = _object_brush.get(spec[1])
-		spin.custom_minimum_size.x = 140
-		spin.value_changed.connect(func(value: float) -> void: _object_brush.set(spec[1], value))
-		row.add_child(spin)
-	var help := Label.new()
-	help.text = "ЛКМ — объект · протянуть ЛКМ — мазок\nCtrl+Z — весь мазок · Esc — выключить\nПКМ / СКМ / Alt — обычная камера\nДо 256 объектов за мазок, только на физической поверхности."
-	box.add_child(help)
-	var stop := Button.new()
-	stop.text = "Выключить кисть"
-	stop.pressed.connect(func() -> void:
-		_object_brush.deactivate()
-		_object_brush_settings.hide()
-	)
-	box.add_child(stop)
-	EditorInterface.get_base_control().add_child(_object_brush_settings)
-	_object_brush_settings.popup_centered()
+	_world_editor.show_object_brush_panel()
 
 
 func _create_voxel_prop(model_id: String, anchor: Node3D) -> void:
@@ -1728,8 +1667,6 @@ func _on_scene_changed(root: Node) -> void:
 	if is_instance_valid(_world_editor): _world_editor.scene_changed(root)
 	if is_instance_valid(_object_brush):
 		_object_brush.deactivate()
-	if is_instance_valid(_object_brush_settings):
-		_object_brush_settings.hide()
 	if is_instance_valid(_walk_surface_panel):
 		_walk_surface_panel.scene_context_changed(root)
 	if is_instance_valid(_generation_panel):
@@ -1798,13 +1735,6 @@ func _refresh_voxel_gizmos() -> void:
 		)
 
 
-func _ask_reimport() -> void:
-	if EditorInterface.get_edited_scene_root() == null:
-		push_warning("ember import: no edited scene")
-		return
-	_confirm.popup_centered(Vector2i(520, 220))
-
-
 func _duplicate_voxel_prop(source: EmberVoxelProp) -> void:
 	var root := EditorInterface.get_edited_scene_root()
 	if root == null or not is_instance_valid(source) or source.get_parent() == null:
@@ -1852,33 +1782,4 @@ func _remove_authored_duplicate(parent: Node, duplicate: EmberVoxelProp) -> void
 	EditorInterface.mark_scene_as_unsaved()
 	if _dock:
 		_dock.show_status("Дублирование отменено.")
-		_dock.refresh()
-
-
-func _pack_save(root: Node) -> void:
-	var path := root.scene_file_path
-	if path.is_empty():
-		EditorInterface.save_scene()
-		return
-	var packed := PackedScene.new()
-	var err := packed.pack(root)
-	if err != OK:
-		push_error("ember import: pack failed (%s)" % err)
-		return
-	ResourceSaver.save(packed, path)
-
-
-func _reimport_and_save() -> void:
-	var root := EditorInterface.get_edited_scene_root()
-	if root == null:
-		push_warning("ember import: no edited scene")
-		return
-	var map := root.find_child("Map", true, false) as EmberMapLoader
-	if map == null:
-		push_warning("ember import: no Map (EmberMapLoader) in scene")
-		return
-	map.load_map(map.map_id)
-	preload("res://addons/ember_import/ember_editor_filesystem.gd").request()
-	_pack_save(root)
-	if _dock:
 		_dock.refresh()

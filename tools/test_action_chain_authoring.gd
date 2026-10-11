@@ -2,7 +2,8 @@ extends SceneTree
 ## Editor-first contract: one Undo action authors a canonical action document and
 ## a scene-owned trigger using the same EmberInteract/runtime schema.
 
-const SOURCE_SCENE := "res://scenes/fan_town.tscn"
+const Fixture = preload("res://tools/fixtures/ember_story_test_fixture.gd")
+var _setup: Dictionary
 const TEMP_SCRIPT_ID := "ember_test_action_chain_authoring"
 const TEMP_BIND_SCRIPT_ID := "ember_test_quest_binding_actions"
 const TEMP_BIND_QUEST_ID := "ember_test_quest_binding_quest"
@@ -13,12 +14,23 @@ const QuestStore = preload("res://addons/ember_import/ember_quest_store.gd")
 
 
 func _init() -> void:
+	_setup = Fixture.prepare(self)
+	if _setup.refused:
+		quit.call_deferred(2)
+		return
+	_run_and_quit.call_deferred()
+
+
+func _run_and_quit() -> void:
 	quit(_run())
 
 
 func _run() -> int:
 	var errors: Array[String] = []
-	var source_hash := FileAccess.get_sha256(SOURCE_SCENE)
+	if _setup.error != OK or not _setup.progress_isolated:
+		printerr("FAIL native action authoring fixture")
+		return 1
+	var source_hash := FileAccess.get_sha256(_setup.scene_path)
 	var old_document: Dictionary = Store.document(TEMP_SCRIPT_ID)
 	var old_binding_document: Dictionary = Store.document(TEMP_BIND_SCRIPT_ID)
 	var old_shared_document: Dictionary = Store.document(TEMP_SHARED_SCRIPT_ID)
@@ -29,32 +41,33 @@ func _run() -> int:
 	Store.delete_document(TEMP_SHARED_SCRIPT_ID)
 	Store.delete_document(TEMP_ORPHAN_SCRIPT_ID)
 	QuestStore.restore_snapshot({"id": TEMP_BIND_QUEST_ID, "native": {}})
-	var packed := ResourceLoader.load(SOURCE_SCENE, "", ResourceLoader.CACHE_MODE_REPLACE) as PackedScene
+	var packed := ResourceLoader.load(_setup.scene_path, "", ResourceLoader.CACHE_MODE_REPLACE) as PackedScene
 	var root := packed.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE) if packed else null
 	if root == null:
-		printerr("FAIL action-chain authoring: fan_town unavailable")
+		printerr("FAIL action-chain authoring: native map unavailable")
 		_restore_fixture(old_document)
 		_restore_binding_fixture(old_binding_document)
 		_restore_document(TEMP_SHARED_SCRIPT_ID, old_shared_document)
 		_restore_document(TEMP_ORPHAN_SCRIPT_ID, old_orphan_document)
 		QuestStore.restore_snapshot(old_binding_quest)
 		return 1
-	var prop := root.get_node_or_null("Map/Props/ft_fountain") as EmberVoxelProp
+	var prop := root.get_node_or_null("Map/Props/story_prop") as EmberVoxelProp
 	if prop == null or prop.get_node_or_null("Interact") != null:
-		errors.append("clean fountain fixture unavailable")
+		errors.append("clean native prop fixture unavailable")
 	else:
 		_run_history(errors, root, prop)
 		_test_quest_event_binding(errors, root)
 		_test_shared_quest_event_unbind(errors, root)
 		_test_orphaned_quest_event_removal(errors, root)
 	root.free()
-	if FileAccess.get_sha256(SOURCE_SCENE) != source_hash:
-		errors.append("authoring changed source fan_town.tscn")
+	if FileAccess.get_sha256(_setup.scene_path) != source_hash:
+		errors.append("authoring changed saved native source scene")
 	_restore_fixture(old_document)
 	_restore_binding_fixture(old_binding_document)
 	_restore_document(TEMP_SHARED_SCRIPT_ID, old_shared_document)
 	_restore_document(TEMP_ORPHAN_SCRIPT_ID, old_orphan_document)
 	QuestStore.restore_snapshot(old_binding_quest)
+	Fixture.verify_sources(_setup, errors)
 	if not errors.is_empty():
 		printerr("FAIL action-chain authoring")
 		for error in errors:
@@ -87,7 +100,7 @@ func _run_history(errors: Array[String], root: Node, prop: EmberVoxelProp) -> vo
 		"id": "bad_map_order",
 		"nameRu": "Broken map order",
 		"steps": [
-			{"type": "change_map", "targetMapId": "agent_sandbox_interior", "targetRegionId": "start"},
+			{"type": "change_map", "targetMapId": Fixture.MAP, "targetRegionId": "entry"},
 			{"type": "set_flag", "flag": "unreachable", "value": true},
 		],
 	}).is_empty():
@@ -96,12 +109,12 @@ func _run_history(errors: Array[String], root: Node, prop: EmberVoxelProp) -> vo
 		"id": TEMP_SCRIPT_ID,
 		"nameRu": "Тестовая цепочка редактора",
 		"steps": [
-			{"type": "talk", "dialogueId": "sandbox_notice_talk"},
+			{"type": "talk", "dialogueId": Fixture.Content.NOTICE_TALK},
 			{"type": "give_item", "itemId": "coin", "count": 2},
 			{"type": "set_flag", "flag": "editor_chain_done", "value": true},
 			{"type": "wait", "sec": 0.1},
-			{"type": "open_shop", "shopId": "village_kiosk"},
-			{"type": "change_map", "targetMapId": "agent_sandbox_interior", "targetRegionId": "start"},
+			{"type": "open_shop", "shopId": Fixture.Content.SHOP},
+			{"type": "change_map", "targetMapId": Fixture.MAP, "targetRegionId": "entry"},
 		],
 	}
 	if not actions.save_chain(prop, document, root):

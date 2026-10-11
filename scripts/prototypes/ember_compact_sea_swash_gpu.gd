@@ -8,6 +8,9 @@ var foam_texture := Texture2DRD.new()
 var ready := false
 var error := ""
 var dispatches := 0
+var full_dispatches := 0
+var border_dispatches := 0
+var processed_records := 0
 var _rd: RenderingDevice
 var _shader := RID()
 var _pipeline := RID()
@@ -18,6 +21,8 @@ var _foam := RID()
 var _resources: Array[RID] = []
 var _released := false
 var _count := 0
+var _border_count := 0
+var _border_uniforms := RID()
 
 
 func initialize(size: Vector2i, records: PackedFloat32Array, initial_state: PackedByteArray, initial_foam: PackedByteArray) -> void:
@@ -25,9 +30,24 @@ func initialize(size: Vector2i, records: PackedFloat32Array, initial_state: Pack
 	RenderingServer.call_on_render_thread(_initialize.bind(size, records.to_byte_array(), initial_state, initial_foam))
 
 
-func update(table: PackedByteArray, constants: PackedByteArray) -> void:
+func update(table: PackedByteArray, constants: PackedByteArray, border_only := false) -> void:
 	if not _released:
-		RenderingServer.call_on_render_thread(_dispatch.bind(table, constants))
+		RenderingServer.call_on_render_thread(_dispatch.bind(table, constants, border_only))
+
+
+func configure_border(records: PackedFloat32Array) -> void:
+	if _released: return
+	_border_count = records.size() / 8
+	if _border_count > 0:
+		RenderingServer.call_on_render_thread(_initialize_border.bind(records.to_byte_array()))
+
+
+func _initialize_border(records: PackedByteArray) -> void:
+	if not ready: return
+	var buffer := _rd.storage_buffer_create(records.size(), records)
+	_resources.append(buffer)
+	_border_uniforms = _make_uniforms(buffer)
+	_resources.append(_border_uniforms)
 
 
 func release() -> void:
@@ -81,6 +101,14 @@ func _initialize(size: Vector2i, records: PackedByteArray, initial_state: Packed
 	_resources.append(_table)
 	_state = _texture(size, RenderingDevice.DATA_FORMAT_R32G32B32A32_SFLOAT, initial_state)
 	_foam = _texture(size, RenderingDevice.DATA_FORMAT_R32_SFLOAT, initial_foam)
+	_uniforms = _make_uniforms(record_buffer)
+	_resources.append(_uniforms)
+	state_texture.texture_rd_rid = _state
+	foam_texture.texture_rd_rid = _foam
+	ready = _pipeline.is_valid() and _uniforms.is_valid()
+
+
+func _make_uniforms(record_buffer: RID) -> RID:
 	var bindings: Array[RDUniform] = []
 	for spec in [[0, RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER, record_buffer],
 		[1, RenderingDevice.UNIFORM_TYPE_STORAGE_BUFFER, _table],
@@ -90,11 +118,7 @@ func _initialize(size: Vector2i, records: PackedByteArray, initial_state: Packed
 		uniform.uniform_type = spec[1]
 		uniform.add_id(spec[2])
 		bindings.append(uniform)
-	_uniforms = _rd.uniform_set_create(bindings, _shader, 0)
-	_resources.append(_uniforms)
-	state_texture.texture_rd_rid = _state
-	foam_texture.texture_rd_rid = _foam
-	ready = _pipeline.is_valid() and _uniforms.is_valid()
+	return _rd.uniform_set_create(bindings, _shader, 0)
 
 
 func _texture(size: Vector2i, format: int, bytes: PackedByteArray) -> RID:
@@ -109,16 +133,21 @@ func _texture(size: Vector2i, format: int, bytes: PackedByteArray) -> RID:
 	return texture
 
 
-func _dispatch(table: PackedByteArray, constants: PackedByteArray) -> void:
+func _dispatch(table: PackedByteArray, constants: PackedByteArray, border_only: bool) -> void:
 	if not ready: return
+	var count := _border_count if border_only else _count
+	if count == 0: return
 	_rd.buffer_update(_table, 0, table.size(), table)
 	var commands := _rd.compute_list_begin()
 	_rd.compute_list_bind_compute_pipeline(commands, _pipeline)
-	_rd.compute_list_bind_uniform_set(commands, _uniforms, 0)
+	_rd.compute_list_bind_uniform_set(commands, _border_uniforms if border_only else _uniforms, 0)
 	_rd.compute_list_set_push_constant(commands, constants, constants.size())
-	_rd.compute_list_dispatch(commands, ceili(float(_count) / 64.0), 1, 1)
+	_rd.compute_list_dispatch(commands, ceili(float(count) / 64.0), 1, 1)
 	_rd.compute_list_end()
 	dispatches += 1
+	processed_records += count
+	if border_only: border_dispatches += 1
+	else: full_dispatches += 1
 
 
 static func _free_resources(resources: Array[RID], state: Texture2DRD, foam: Texture2DRD) -> void:

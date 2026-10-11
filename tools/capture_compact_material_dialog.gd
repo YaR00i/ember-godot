@@ -11,7 +11,10 @@ func _initialize() -> void:
 func _capture() -> void:
 	root.size = Vector2i(1600, 900)
 	var dialog := Dialog.new()
-	root.add_child(dialog)
+	var layout := HBoxContainer.new(); layout.size = Vector2(1600, 900); root.add_child(layout)
+	layout.add_child(dialog); dialog.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var dock := PanelContainer.new(); dock.custom_minimum_size.x = 302; layout.add_child(dock)
+	dock.add_child(dialog.parameters_panel)
 	if not dialog.open_variant("grass_autumn", "grass"):
 		printerr("FAIL: pattern dialog did not open")
 		quit(1)

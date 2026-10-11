@@ -1,23 +1,27 @@
 extends SceneTree
+const MixedFixture = preload("res://tools/fixtures/ember_mixed_editor_test_fixture.gd")
 ## Wave 3 smoke: scene-owned move/rotate/duplicate survives save/reopen without
 ## touching the authored scene or JOI pack. The test writes only to user://.
 
-const MAP_PATH := "res://scenes/fan_town.tscn"
-const MAP_ID := "fan_town"
-const SOURCE_PLACEMENT_ID := "ft_inn_door"
+const MAP_PATH := "res://scenes/editor_fixture_a.tscn"
+const MAP_ID := "editor_fixture_a"
+const SOURCE_PLACEMENT_ID := "roundtrip_door"
 const TEMP_PATH := "user://ember_wave3_scene_roundtrip.tscn"
 const TILE_SIZE := 16.0
 const SceneAuthoring = preload("res://scripts/ember_scene_authoring.gd")
 
 
 func _init() -> void:
+	if not MixedFixture.prepare(self):
+		quit(2)
+		return
 	quit(_run())
 
 
 func _run() -> int:
 	var errors: Array[String] = []
 	var scene_hash_before := FileAccess.get_sha256(MAP_PATH)
-	var pack_hash_before := FileAccess.get_sha256(EmberPack.map_path(MAP_ID))
+	var pack_hash_before := FileAccess.get_sha256(EmberVoxelCatalog.native_path(MixedFixture.BLOCK))
 	var source_packed := ResourceLoader.load(MAP_PATH, "", ResourceLoader.CACHE_MODE_REPLACE) as PackedScene
 	var root := source_packed.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE) if source_packed else null
 	if root == null:
@@ -75,12 +79,13 @@ func _run() -> int:
 
 	if FileAccess.get_sha256(MAP_PATH) != scene_hash_before:
 		errors.append("roundtrip изменил исходный .tscn")
-	if FileAccess.get_sha256(EmberPack.map_path(MAP_ID)) != pack_hash_before:
-		errors.append("roundtrip изменил JOI map JSON")
+	if FileAccess.get_sha256(EmberVoxelCatalog.native_path(MixedFixture.BLOCK)) != pack_hash_before:
+		errors.append("roundtrip изменил native model Resource")
 	var temp_absolute := ProjectSettings.globalize_path(TEMP_PATH)
 	if FileAccess.file_exists(temp_absolute):
 		DirAccess.remove_absolute(temp_absolute)
 
+	MixedFixture.verify_sources(errors)
 	if not errors.is_empty():
 		printerr("FAIL scene edit roundtrip")
 		for error in errors:
@@ -89,7 +94,7 @@ func _run() -> int:
 	print("PASS scene edit roundtrip")
 	print("  duplicate placement: ", expected_id)
 	print("  move + rotate + Interact survived save/reopen")
-	print("  source .tscn and JOI map JSON preserved")
+	print("  source .tscn and native source preserved")
 	return 0
 
 

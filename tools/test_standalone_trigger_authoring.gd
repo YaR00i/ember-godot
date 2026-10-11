@@ -1,14 +1,18 @@
 extends SceneTree
+const MixedFixture = preload("res://tools/fixtures/ember_mixed_editor_test_fixture.gd")
 ## Editor-first standalone trigger: scene-owned sibling survives Map reimport,
 ## exposes visible bounds, writes the same action-list, and supports Undo/Redo.
 
-const SOURCE_SCENE := "res://scenes/fan_town.tscn"
+const SOURCE_SCENE := "res://scenes/editor_fixture_a.tscn"
 const TEMP_SCENE := "user://ember_test_standalone_trigger.tscn"
 const TEMP_SCRIPT_ID := "ember_test_standalone_trigger_actions"
 const Store = preload("res://addons/ember_import/ember_action_script_store.gd")
 
 
 func _init() -> void:
+	if not MixedFixture.prepare(self):
+		quit(2)
+		return
 	quit(_run())
 
 
@@ -20,15 +24,16 @@ func _run() -> int:
 	var packed := ResourceLoader.load(SOURCE_SCENE, "", ResourceLoader.CACHE_MODE_REPLACE) as PackedScene
 	var scene := packed.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE) if packed else null
 	if scene == null:
-		errors.append("fan_town fixture unavailable")
+		errors.append("editor_fixture_a fixture unavailable")
 	else:
 		_run_history(errors, scene)
 		scene.free()
 	if FileAccess.get_sha256(SOURCE_SCENE) != source_hash:
-		errors.append("standalone authoring changed source fan_town.tscn")
+		errors.append("standalone authoring changed source editor_fixture_a.tscn")
 	_restore_fixture(old_document)
 	if FileAccess.file_exists(TEMP_SCENE):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(TEMP_SCENE))
+	MixedFixture.verify_sources(errors)
 	if not errors.is_empty():
 		printerr("FAIL standalone trigger authoring")
 		for error in errors:
@@ -45,7 +50,7 @@ func _run_history(errors: Array[String], scene: Node) -> void:
 	var history := UndoRedo.new()
 	var actions := EmberObjectInspectorActions.new()
 	actions.configure(history)
-	var anchor := scene.get_node_or_null("Map/Props/ft_fountain") as Node3D
+	var anchor := scene.get_node_or_null("Map/Props/plain_prop") as Node3D
 	if anchor == null:
 		errors.append("standalone anchor fixture missing")
 		history.free()
@@ -69,7 +74,7 @@ func _run_history(errors: Array[String], scene: Node) -> void:
 	if not interact.position.is_equal_approx(expected_world):
 		errors.append("standalone trigger was not created at selected anchor")
 	var snapshot := EmberObjectInspectorModel.snapshot(interact)
-	if str(snapshot.get("mapId", "")) != "fan_town":
+	if str(snapshot.get("mapId", "")) != "editor_fixture_a":
 		errors.append("standalone Inspector could not resolve sibling Map owner")
 	if (snapshot.get("components", []) as Array).size() != 2:
 		errors.append("standalone Inspector lacks volume + Interact cards")
@@ -84,20 +89,20 @@ func _run_history(errors: Array[String], scene: Node) -> void:
 	panel.free()
 
 	var rules := EmberSceneAuthoring.interact_values(interact)
-	rules.condition_flag_id = "sandbox_notice_status"
+	rules.condition_flag_id = "interaction_quest_status"
 	rules.condition_value = "active"
-	rules.fallback_script_id = "sandbox_notice"
+	rules.fallback_script_id = "interaction_notice"
 	rules.one_shot = true
-	rules.completion_flag_id = "fan_town_trigger_1_used"
+	rules.completion_flag_id = "editor_fixture_a_trigger_1_used"
 	rules.activation_mode = "enter"
 	if not actions.save_standalone(interact, rules, scene):
 		errors.append("standalone launch rules save failed")
 	elif (
-		interact.condition_flag_id != "sandbox_notice_status"
+		interact.condition_flag_id != "interaction_quest_status"
 		or interact.condition_value != "active"
-		or interact.fallback_script_id != "sandbox_notice"
+		or interact.fallback_script_id != "interaction_notice"
 		or not interact.one_shot
-		or interact.completion_flag_id != "fan_town_trigger_1_used"
+		or interact.completion_flag_id != "editor_fixture_a_trigger_1_used"
 		or interact.activation_mode != "enter"
 	):
 		errors.append("standalone launch rules changed during normalization")
@@ -128,7 +133,7 @@ func _run_history(errors: Array[String], scene: Node) -> void:
 		"id": TEMP_SCRIPT_ID,
 		"nameRu": "Самостоятельная тестовая зона",
 		"steps": [
-			{"type": "talk", "dialogueId": "sandbox_notice_talk"},
+			{"type": "talk", "dialogueId": "interaction_notice_talk"},
 			{"type": "set_flag", "flag": "standalone_trigger_done", "value": true},
 		],
 	}
@@ -139,7 +144,7 @@ func _run_history(errors: Array[String], scene: Node) -> void:
 
 	var map := scene.get_node_or_null("Map") as EmberMapLoader
 	if map == null:
-		errors.append("fan_town Map missing before reimport survival check")
+		errors.append("editor_fixture_a Map missing before reimport survival check")
 	else:
 		# Full reimport starts by clearing every generated child below Map.
 		# Calling that stage directly keeps this detached editor fixture free of
@@ -160,11 +165,11 @@ func _run_history(errors: Array[String], scene: Node) -> void:
 		elif not EmberSceneAuthoring.standalone_box_size(reopened_interact).is_equal_approx(Vector3(48.0, 10.0, 32.0)):
 			errors.append("standalone bounds did not survive save/reopen")
 		elif (
-			reopened_interact.condition_flag_id != "sandbox_notice_status"
+			reopened_interact.condition_flag_id != "interaction_quest_status"
 			or reopened_interact.condition_value != "active"
-			or reopened_interact.fallback_script_id != "sandbox_notice"
+			or reopened_interact.fallback_script_id != "interaction_notice"
 			or not reopened_interact.one_shot
-			or reopened_interact.completion_flag_id != "fan_town_trigger_1_used"
+			or reopened_interact.completion_flag_id != "editor_fixture_a_trigger_1_used"
 			or reopened_interact.activation_mode != "enter"
 		):
 			errors.append("standalone launch rules did not survive save/reopen")

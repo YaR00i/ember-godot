@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="EmberItemIconResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_item_icon_resource.gd" id="1_source"]
+
+[resource]
+script = ExtResource("1_source")
+icon_id = "herb"
+definition = {
+  "id": "herb",
+  "nameRu": "Трава",
+  "size": 16,
+  "palette": {
+    ".": "",
+    "J": "#3d6a38",
+    "H": "#6a9a48",
+    "Y": "#f4e8a0",
+    "B": "#4a2c1c",
+    "C": "#6a4030"
+  },
+  "rows": [
+    "................",
+    "........H.......",
+    ".......HJH......",
+    "......HJHJH.....",
+    ".....HJHHJH.....",
+    "......JHJH......",
+    ".......JC.......",
+    "......YC........",
+    ".....Y.C........",
+    ".......C........",
+    ".......B........",
+    "......BB........",
+    "................",
+    "................",
+    "................",
+    "................"
+  ]
+}

@@ -41,7 +41,11 @@ static func inspect_model(model_id: String) -> Dictionary:
 	var resource: EmberVoxelModelResource = preview.get("resource")
 	var definition: Dictionary = preview.get("legacyDefinition", {})
 	var raw_model: Variant = definition.get("model", {})
-	var legacy_model: Dictionary = raw_model if typeof(raw_model) == TYPE_DICTIONARY else {}
+	var legacy_model: Dictionary = (raw_model as Dictionary).duplicate(true) if typeof(raw_model) == TYPE_DICTIONARY else {}
+	# Old material labels (e.g. "wood") are not shader parameters. The importer
+	# already normalizes them to an empty dictionary; preflight uses that same
+	# boundary before invoking the current mesher. Frozen input stays untouched.
+	legacy_model["material"] = _dictionary(legacy_model.get("material", {}))
 	var vox_document: Dictionary = preview.get("voxDocument", {})
 	if resource == null:
 		errors.append("preview did not produce EmberVoxelModelResource")

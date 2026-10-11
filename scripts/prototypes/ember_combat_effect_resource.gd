@@ -135,8 +135,11 @@ func validation_errors() -> Array[String]:
 				errors.append("Для наложения укажите стабильный ID статуса.")
 			elif StatusCatalog.resource(status_id) == null:
 				errors.append("Статус %s отсутствует в боевом каталоге." % status_id)
-			if status_duration <= 0:
-				errors.append("Длительность статуса должна быть больше нуля.")
+			if status_duration < 0 or status_duration > 12:
+				errors.append("Длительность: 0 использует настройку статуса, иначе от 1 до 12 ходов.")
+			var status := StatusCatalog.resource(status_id)
+			if status != null:
+				for error in status.call("validation_errors"): errors.append("Статус %s: %s" % [status_id, error])
 		Operation.REMOVE_STATUS:
 			_validate_status_list(remove_status_ids, "Снимаемый статус", errors)
 			if remove_status_ids.is_empty():
@@ -185,6 +188,20 @@ func content_signature() -> String:
 		str(restore_hp_amount), str(move_max_height_delta),
 		ui_color.to_html(true), icon.resource_path if icon != null else "",
 	])
+
+
+func behavior_summary() -> String:
+	match operation:
+		Operation.APPLY_STATUS:
+			return "Наложить %s. Длительность: %s. Повтор и модификаторы задаются карточкой статуса; устойчивость цели сокращает длительность." % [status_id if not status_id.is_empty() else "выбранный статус", "из карточки статуса" if status_duration == 0 else "%d хода бойца" % status_duration]
+		Operation.REMOVE_STATUS: return "Снять выбранные статусы с цели. Остальные состояния остаются."
+		Operation.PUSH: return "Оттолкнуть цель на соседнюю допустимую клетку. Сила сравнивается со стойкостью цели; высота и падение проверяются общим расчётом."
+		Operation.CELL_PATCH: return "Изменить высоту, преграду или теги клетки до конца этого боя. Исходное боевое поле не перезаписывается."
+		Operation.SPREAD: return "Перенести выбранные состояния/теги из источника в заданный радиус. Для источника-клетки длительность задаётся отдельно."
+		Operation.RESTORE_HP: return "Восстановить %d HP живой цели, не превышая её максимум." % restore_hp_amount
+		Operation.MOVE_ACTOR: return "Переместить применяющего на свободную клетку. Дальность задаётся приёмом; этот эффект ограничивает перепад высоты."
+		Operation.ACTIVATE_FOCUS: return "Активировать узел боевого поля. Цель и дальность задаются приёмом."
+	return "Выберите поддерживаемую операцию."
 
 
 func _validate_id_list(values: PackedStringArray, label: String, errors: Array[String]) -> void:

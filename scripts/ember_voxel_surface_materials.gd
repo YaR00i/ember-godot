@@ -42,9 +42,14 @@ static func set_compact_terrain_roles(material: ShaderMaterial, roles: PackedStr
 	var side_atlas := Image.create(16, 16 * 256, false, Image.FORMAT_RGBA8)
 	var finish_lookup := Image.create(256, 1, false, Image.FORMAT_RGBA8)
 	finish_lookup.fill(Color(0.0, 0.0, 0.0, 1.0))
+	var detail_lookup := Image.create(256, 1, false, Image.FORMAT_RGBAF)
+	detail_lookup.fill(Color(0.0,0.09,0.0,0.0))
 	var images: Dictionary = {}
 	var side_images: Dictionary = {}
 	var patterns: Dictionary = {}
+	var surface_lookup:=Image.create(256,1,false,Image.FORMAT_RGBAF); surface_lookup.fill(Color(4,0,0,0))
+	var rough_atlas:=Image.create(16,16*256,false,Image.FORMAT_R8); rough_atlas.fill(Color(0.5,0,0))
+	var side_rough_atlas:=Image.create(16,16*256,false,Image.FORMAT_R8); side_rough_atlas.fill(Color(0.5,0,0))
 	for index in mini(roles.size(), 256):
 		var role := roles[index]
 		if role.is_empty(): continue
@@ -53,14 +58,15 @@ static func set_compact_terrain_roles(material: ShaderMaterial, roles: PackedStr
 			var pattern := load_compact_terrain_variant(id)
 			if pattern != null and pattern.role_id == role and pattern.validation_errors().is_empty():
 				var image := pattern.to_image()
+				var top_relief:=pattern.surface_pixels("relief")
 				for y in 16:
 					for x in 16:
 						var color := image.get_pixel(x, y)
-						color.a = [0.5, 1.0, 0.0][pattern.pixels[x + y * 16]]
+						color.a = [0.5, 1.0, 0.0][top_relief[x + y * 16]]
 						image.set_pixel(x, y, color)
 				images[id] = image
 				var side_image := pattern.to_image(true)
-				var side_artwork := pattern.face_pixels(true)
+				var side_artwork := pattern.surface_pixels("relief",true)
 				for y in 16:
 					for x in 16:
 						var color := side_image.get_pixel(x, y)
@@ -73,14 +79,25 @@ static func set_compact_terrain_roles(material: ShaderMaterial, roles: PackedStr
 		var tile := images[id] as Image
 		if tile == null: continue
 		var finish := patterns[id] as TerrainPattern
-		lookup.set_pixel(index, 0, Color8(1, 1 if not finish.side_pixels.is_empty() else 0, 0))
+		lookup.set_pixel(index, 0, Color8(1, 1 if not finish.side_pixels.is_empty() or not finish.relief_pixels.is_empty() or not finish.side_relief_pixels.is_empty() else 0, 1 if finish.role_id == "grass" else 2 if finish.role_id == "soil" else 0))
 		atlas.blit_rect(tile, Rect2i(0, 0, 16, 16), Vector2i(0, index * 16))
 		side_atlas.blit_rect(side_images[id], Rect2i(0, 0, 16, 16), Vector2i(0, index * 16))
 		finish_lookup.set_pixel(index, 0, Color(finish.gloss, finish.sheen, finish.pixel_relief / 0.3, 1.0))
+		detail_lookup.set_pixel(index,0,Color(finish.micro_relief,finish.micro_size_m,finish.micro_roughness,0.0))
+		var custom:=not finish.relief_pixels.is_empty() or not finish.side_relief_pixels.is_empty() or not finish.roughness_pixels.is_empty() or not finish.side_roughness_pixels.is_empty() or not is_equal_approx(finish.pattern_size_m,4)
+		surface_lookup.set_pixel(index,0,Color(finish.pattern_size_m,finish.roughness_variation,1.0 if custom else 0.0,0))
+		for side in [false,true]:
+			var rough:=finish.surface_image("roughness",side); rough.convert(Image.FORMAT_R8)
+			(side_rough_atlas if side else rough_atlas).blit_rect(rough,Rect2i(0,0,16,16),Vector2i(0,index*16))
 	material.set_shader_parameter("role_lookup", ImageTexture.create_from_image(lookup))
 	material.set_shader_parameter("pattern_atlas", ImageTexture.create_from_image(atlas))
 	material.set_shader_parameter("side_pattern_atlas", ImageTexture.create_from_image(side_atlas))
 	material.set_shader_parameter("finish_lookup", ImageTexture.create_from_image(finish_lookup))
+	material.set_shader_parameter("detail_lookup", ImageTexture.create_from_image(detail_lookup))
+	material.set_shader_parameter("surface_lookup",ImageTexture.create_from_image(surface_lookup))
+	material.set_shader_parameter("roughness_atlas",ImageTexture.create_from_image(rough_atlas))
+	material.set_shader_parameter("side_roughness_atlas",ImageTexture.create_from_image(side_rough_atlas))
+	material.set_shader_parameter("independent_surface_enabled",true)
 
 
 static func load_compact_terrain_pattern(role: String) -> TerrainPattern:

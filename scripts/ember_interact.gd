@@ -291,21 +291,8 @@ func activate() -> String:
 
 
 func _bound_region() -> EmberRegion:
-	var current: Node = self
-	while current != null and not current is EmberMapLoader:
-		current = current.get_parent()
-	if current == null:
-		return null
-	var regions := current.get_node_or_null("Regions")
-	if regions == null:
-		regions = current.get_node_or_null("Map/Regions")
-	if regions == null:
-		return null
-	for child in regions.get_children():
-		var region := child as EmberRegion
-		if region != null and (region.region_id == trigger_id or str(region.name) == trigger_id):
-			return region
-	return null
+	var map := _map_owner()
+	return map.find_region(trigger_id) if map != null else null
 
 
 func _map_owner() -> EmberMapLoader:

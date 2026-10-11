@@ -1,6 +1,5 @@
 extends SceneTree
-## Voxel visual-library contract: native Godot owners and the legacy import
-## queue share one projection; only a chosen prefab is instantiated.
+## Native voxel shelf contract; only a chosen prefab is instantiated.
 
 const Catalog = preload("res://scripts/ember_voxel_catalog.gd")
 const Visuals = preload("res://scripts/ember_voxel_visuals.gd")
@@ -8,7 +7,15 @@ const SceneAuthoring = preload("res://scripts/ember_scene_authoring.gd")
 const TEMP_PATH := "user://ember_voxel_visual_library_roundtrip.tscn"
 
 
+const Fixture = preload("res://tools/fixtures/ember_voxel_native_test_fixture.gd")
 func _init() -> void:
+	var state := Fixture.prepare(self)
+	if state.refused:
+		quit.call_deferred(2)
+		return
+	_run_deferred.call_deferred()
+
+func _run_deferred() -> void:
 	quit(_run())
 
 

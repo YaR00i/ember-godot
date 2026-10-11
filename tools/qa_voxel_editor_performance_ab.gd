@@ -1,11 +1,12 @@
 extends SceneTree
+const MixedFixture = preload("res://tools/fixtures/ember_mixed_editor_test_fixture.gd")
 ## Opt-in native Forward+ A/B fixture. Reads authored sources; writes only user:// QA.
 
 const Workspace = preload("res://addons/ember_import/ember_voxel_sculpt_workspace.gd")
 const Session = preload("res://addons/ember_import/ember_voxel_object_session.gd")
 const Model = preload("res://addons/ember_import/ember_voxel_sculpt_model.gd")
-const SURFACE_PATH := "res://content/world_surfaces/agent_sandbox_surface.tres"
-const PIER_PATH := "res://scenes/test_pier.tscn"
+const SURFACE_PATH := "res://content/world_surfaces/editor_profile_surface.tres"
+const PIER_PATH := "res://scenes/editor_context_fixture.tscn"
 const RESULT_PATH := "user://ember_editor_performance_ab_v13.json"
 const DIAGNOSTICS_RESULT_PATH := "user://ember_editor_performance_diagnostics_v14.json"
 
@@ -14,6 +15,9 @@ var _results := {}
 
 
 func _init() -> void:
+	if not MixedFixture.prepare_profile(self):
+		quit(2)
+		return
 	_run.call_deferred()
 
 
@@ -427,7 +431,7 @@ func _measure_context() -> void:
 	while projection != null and not projection.call("is_projection_complete") and Time.get_ticks_msec() < deadline:
 		await process_frame
 	_check(projection != null and projection.call("is_projection_complete"), "Pier projection did not settle")
-	var target := scene.get_node("Map/Props/BarrelA") as EmberVoxelProp
+	var target := scene.get_node("Map/Props/plain_prop") as EmberVoxelProp
 	var shared_mesh := BoxMesh.new()
 	for index in 12:
 		var prop := MeshInstance3D.new()

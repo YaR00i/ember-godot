@@ -211,7 +211,7 @@ static func apply_authored_effects(
 			"remove_status":
 				if not target.is_empty():
 					for raw_status in effect.get("removeStatusIds", []):
-						StatusRules.remove_status(resolved, str(target.get("id", "")), str(raw_status))
+						StatusRules.remove_status(resolved, str(target.get("id", "")), str(raw_status), true)
 			"push":
 				if not target.is_empty():
 					set_push(state, resolved, actor, target, int(effect.get("force", 0)))

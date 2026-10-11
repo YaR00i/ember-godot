@@ -1,12 +1,16 @@
 extends SceneTree
+const MixedFixture = preload("res://tools/fixtures/ember_mixed_editor_test_fixture.gd")
 ## Headless Wave 2 smoke: targeted prefab rebuild must not rewrite the authored map.
 
-const MAP_PATH := "res://scenes/fan_town.tscn"
-const MODEL_ID := "vox_fan_lantern_stone"
+const MAP_PATH := "res://scenes/editor_rebuild_map.tscn"
+const MODEL_ID := "editor_rebuild_fixture"
 const TILE_SIZE := 16.0
 
 
 func _init() -> void:
+	if not MixedFixture.prepare_rebuild(self):
+		quit(2)
+		return
 	quit(_run())
 
 
@@ -22,7 +26,7 @@ func _run() -> int:
 	var live_visual := live_prop.get_node_or_null("Mesh") as MeshInstance3D if live_prop else null
 	var live_mesh := live_visual.mesh if live_visual else null
 	if placements_before.is_empty():
-		errors.append("контрольный prefab отсутствует на fan_town")
+		errors.append("контрольный prefab отсутствует на editor_rebuild_map")
 	if live_mesh == null:
 		errors.append("не удалось получить live Mesh до rebuild")
 
@@ -144,7 +148,7 @@ func _validate_transparency_surface(visual: MeshInstance3D, errors: Array[String
 				has_alpha = true
 				break
 		if not has_alpha:
-			errors.append("transparent surface потерял vertex alpha из Ember JSON")
+			errors.append("transparent surface потерял vertex alpha из native Resource")
 	if not found_opaque:
 		errors.append("контрольный фонарь потерял opaque surface")
 	if not found_transparent:

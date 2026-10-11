@@ -1,10 +1,11 @@
 extends SceneTree
+const MixedFixture = preload("res://tools/fixtures/ember_mixed_editor_test_fixture.gd")
 ## Opt-in visible Forward+ diagnostic Canvas. No authored Resource or scene is saved.
 
 const Workspace = preload("res://addons/ember_import/ember_voxel_sculpt_workspace.gd")
 const Model = preload("res://addons/ember_import/ember_voxel_sculpt_model.gd")
 const SurfaceMesher = preload("res://scripts/ember_voxel_surface_mesher.gd")
-const SOURCE := "res://content/world_surfaces/agent_sandbox_surface.tres"
+const SOURCE := "res://content/world_surfaces/editor_profile_surface.tres"
 const RESULT_BEFORE := "user://ember_editor_edit_cost_v15_before.json"
 const RESULT_AFTER := "user://ember_editor_edit_cost_v15_after.json"
 const STROKE_POINTS := 40
@@ -13,6 +14,9 @@ var _errors: Array[String] = []
 
 
 func _init() -> void:
+	if not MixedFixture.prepare_profile(self):
+		quit(2)
+		return
 	_run.call_deferred()
 
 

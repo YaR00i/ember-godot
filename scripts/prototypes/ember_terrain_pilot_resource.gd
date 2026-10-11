@@ -115,7 +115,7 @@ func same_terrain_geometry(other: EmberTerrainPilotResource, ignore_height_limit
 	return true
 
 
-func validation_errors() -> Array[String]:
+func validation_errors(local_sections: Array[Vector2i] = []) -> Array[String]:
 	var errors: Array[String] = []
 	var count := width * depth
 	if is_sectioned():
@@ -124,7 +124,7 @@ func validation_errors() -> Array[String]:
 		if unsupported_holes > 0: errors.append("terrain pilot cannot represent internal holes")
 		errors.append_array(surface_role_errors())
 		errors.append_array(material_id_errors())
-		errors.append_array(Sections.validation_errors(self))
+		errors.append_array(Sections.validation_errors(self, local_sections))
 		return errors
 	if schema_version != SCHEMA_VERSION:
 		errors.append("unsupported terrain pilot schema")

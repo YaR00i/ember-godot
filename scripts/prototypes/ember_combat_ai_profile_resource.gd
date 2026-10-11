@@ -108,6 +108,10 @@ func content_signature() -> String:
 	])
 
 
+func behavior_summary() -> String:
+	return "Цель: %s. Приём: %s.\nПозиция: %s. При HP не выше %d%%: %s.\n%s ИИ выбирает только допустимые команды прежнего боевого расчёта." % [target_priority_label(), action_priority_label(), positioning_behavior_label(), low_hp_threshold_percent, low_hp_behavior_label(), "Предпочитает стихийные реакции." if prefer_elemental_reactions else "Дополнительного приоритета стихийных реакций нет."]
+
+
 func _valid_id(value: String) -> bool:
 	var clean := value.strip_edges()
 	if clean.is_empty():

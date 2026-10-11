@@ -1,0 +1,37 @@
+[gd_resource type="Resource" script_class="EmberItemIconResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_item_icon_resource.gd" id="1_source"]
+
+[resource]
+script = ExtResource("1_source")
+icon_id = "coin"
+definition = {
+  "id": "coin",
+  "nameRu": "Монета",
+  "size": 16,
+  "palette": {
+    ".": "",
+    "G": "#d4b44a",
+    "Y": "#f4e8a0",
+    "K": "#6a4a10",
+    "B": "#8a6818"
+  },
+  "rows": [
+    "................",
+    "......GGGG......",
+    "....GGYYYYGG....",
+    "...GYYYYYYYYG...",
+    "..GYYYGGGGYYYG..",
+    "..GYYGKBKBGYYG..",
+    "..GYYGK.K.KGYYG.",
+    "..GYYG.KKK.GYYG.",
+    "..GYYGK.K.KGYYG.",
+    "..GYYGKBKBGYYG..",
+    "..GYYYGGGGYYYG..",
+    "...GYYYYYYYYG...",
+    "....GGYYYYGG....",
+    "......GGGG......",
+    "................",
+    "................"
+  ]
+}

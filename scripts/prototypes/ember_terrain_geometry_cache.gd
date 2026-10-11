@@ -7,6 +7,8 @@ const ROOT := "user://ember-terrain-geometry-cache"
 const VERSION := 1 # Bump for mesher, topology or LOD algorithm changes.
 const TILE_SIZE := 64
 const BUDGET_BYTES := 512 * 1024 * 1024
+const PREPARE_TILES := 32
+const PREPARE_BYTES := 64 * 1024 * 1024 # Soft batch limit; one validated record is at most 16 MiB.
 var directory := ROOT
 var _fingerprints := {}
 var _revision := -1
@@ -14,6 +16,8 @@ var disk := Storage.new()
 
 func _init() -> void:
 	disk.max_bytes = 16 * 1024 * 1024
+	disk.packaged_directory = Storage.PACKAGED_ROOT.path_join("geometry")
+	disk.packaged_for_directory = ROOT
 
 func tile_key(source: Terrain, tile: Vector2i, revision: int, policy: Array, swash: PackedVector4Array, sheet: Dictionary) -> String:
 	if _revision != revision:
@@ -63,8 +67,15 @@ static func _valid_arrays(arrays: Variant) -> bool:
 	return count % 3 == 0 if indices == null or (indices is PackedInt32Array and indices.is_empty()) else _valid_indices(indices, count)
 
 func read_geometry(key: String) -> Dictionary:
+	var data := read_geometry_arrays(key)
+	return {} if data.is_empty() else publish_geometry(data)
+
+func read_geometry_arrays(key: String) -> Dictionary:
 	disk.directory = directory
+	var started := Time.get_ticks_usec()
 	var data := disk.read(key)
+	var decode_us := Time.get_ticks_usec() - started
+	started = Time.get_ticks_usec()
 	if data.is_empty(): return {}
 	if data.get("version") != VERSION or not _valid_arrays(data.get("ground")) or not _valid_arrays(data.get("water")) or not data.get("collision_faces") is PackedVector3Array:
 		disk.invalid += 1
@@ -83,24 +94,74 @@ func read_geometry(key: String) -> Dictionary:
 			if indices.size() != faces.size(): disk.invalid += 1; return {}
 			for i in indices.size():
 				if vertices[indices[i]] != faces[i]: disk.invalid += 1; return {}
+	var validate_us := Time.get_ticks_usec() - started
+	return {"ground_arrays": ground, "water_arrays": data.water, "collision_faces": faces,
+		"water_source_vertices": int(data.get("water_source_vertices", 0)),
+		"cache_decode_us": decode_us, "cache_validate_us": validate_us}
+
+static func publish_geometry(data: Dictionary) -> Dictionary:
+	# Scene/RenderingServer publication stays on the caller's main thread.
+	var started := Time.get_ticks_usec()
 	var terrain := ArrayMesh.new()
 	var water := ArrayMesh.new()
-	if not ground.is_empty(): terrain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, ground)
-	if not data.water.is_empty(): water.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, data.water)
-	return {"terrain": terrain, "water": water, "collision_faces": faces,
+	if not data.ground_arrays.is_empty(): terrain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, data.ground_arrays)
+	if not data.water_arrays.is_empty(): water.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, data.water_arrays)
+	var result := data.duplicate()
+	result.merge({"terrain": terrain, "water": water,
+		"cache_upload_us": Time.get_ticks_usec() - started,
 		"water_vertices": water.surface_get_array_len(0) if water.get_surface_count() > 0 else 0,
-		"water_source_vertices": int(data.get("water_source_vertices", 0)),
-		"water_indices": water.surface_get_array_index_len(0) if water.get_surface_count() > 0 else 0}
+		"water_indices": water.surface_get_array_index_len(0) if water.get_surface_count() > 0 else 0})
+	return result
 
-func write_geometry(key: String, generated: Dictionary) -> void:
+static func prepared_bytes(data: Dictionary) -> int:
+	if data.is_empty(): return 0
+	var size: int = data.collision_faces.size() * 12
+	for arrays: Array in [data.ground_arrays, data.water_arrays]:
+		if arrays.is_empty(): continue
+		for channel in [Mesh.ARRAY_VERTEX, Mesh.ARRAY_NORMAL, Mesh.ARRAY_COLOR, Mesh.ARRAY_TEX_UV, Mesh.ARRAY_INDEX]:
+			if arrays[channel] != null:
+				size += arrays[channel].size() * (16 if channel == Mesh.ARRAY_COLOR else 8 if channel == Mesh.ARRAY_TEX_UV else 4 if channel == Mesh.ARRAY_INDEX else 12)
+	return size
+
+func prepare_batch(snapshot: Terrain, jobs: Array, revision: int, cancelled: Callable) -> Array:
+	# Exclusive ownership of this cache instance while the projection's one CPU
+	# worker runs. Snapshot payloads are persistent; no Nodes or GPU APIs here.
+	var results := []
+	var bytes := 0
+	for job: Dictionary in jobs:
+		if cancelled.call() or results.size() >= PREPARE_TILES or bytes >= PREPARE_BYTES: break
+		var started := Time.get_ticks_usec()
+		var key := tile_key(snapshot, job.key, revision, job.policy, job.swash, job.sheet)
+		var key_us := Time.get_ticks_usec() - started
+		if cancelled.call(): break
+		started = Time.get_ticks_usec()
+		var invalid_before := disk.invalid
+		var failures_before := disk.failures
+		var data := read_geometry_arrays(key)
+		if cancelled.call(): break
+		bytes += prepared_bytes(data)
+		results.append({"kind": "geometry", "key": job.key, "request": job.request,
+			"cache_key": key, "data": data, "key_us": key_us,
+			"read_us": Time.get_ticks_usec() - started,
+			"cache_invalid": disk.invalid - invalid_before, "cache_failures": disk.failures - failures_before})
+	return results
+
+func write_geometry(key: String, generated: Dictionary) -> Dictionary:
 	disk.directory = directory
-	disk.write(key, {"version": VERSION, "ground": mesh_arrays(generated.terrain), "water": mesh_arrays(generated.water),
+	var ground := mesh_arrays(generated.terrain)
+	var water := mesh_arrays(generated.water)
+	disk.write(key, {"version": VERSION, "ground": ground, "water": water,
 		"collision_faces": generated.collision_faces, "water_source_vertices": generated.get("water_source_vertices", generated.get("water_vertices", 0))}, func() -> bool: return false)
+	# Cold/I-O fallback keeps the same serialized representation and can reuse
+	# the serialization readback for LOD. No CPU arrays remain in the tile cache.
+	return {"ground_arrays": ground, "water_arrays": water}
 
 static func _lod_disk(directory_path: String) -> Storage:
 	var store := Storage.new()
 	store.directory = directory_path
 	store.max_bytes = 16 * 1024 * 1024
+	store.packaged_directory = Storage.PACKAGED_ROOT.path_join("geometry")
+	store.packaged_for_directory = ROOT
 	return store
 
 static func build_lod(job: Dictionary, cancelled: Callable) -> Dictionary:

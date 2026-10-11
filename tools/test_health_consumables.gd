@@ -1,11 +1,16 @@
 extends SceneTree
-## Leader HP, armor mitigation, hpRestore consumption, save v2 and sandbox H probe.
+## Leader HP, armor mitigation, hpRestore consumption, save v2 and native H probe.
 
-const SANDBOX_SCENE := "res://scenes/agent_sandbox.tscn"
+const Fixture = preload("res://tools/fixtures/ember_party_test_fixture.gd")
+var _setup: Dictionary
 const ExploreState = preload("res://scripts/ember_explore_state.gd")
 
 
 func _init() -> void:
+	_setup = Fixture.prepare(self, 30.0)
+	if _setup.refused:
+		quit.call_deferred(2)
+		return
 	_run_and_quit.call_deferred()
 
 
@@ -15,6 +20,9 @@ func _run_and_quit() -> void:
 
 func _run() -> int:
 	var errors: Array[String] = []
+	if _setup.error != OK or not _setup.progress_isolated:
+		printerr("FAIL native party fixture preparation")
+		return 1
 	var runtime_progress := root.get_node_or_null("EmberExploreProgress") as ExploreState
 	if runtime_progress:
 		runtime_progress.persistence_enabled = false
@@ -22,11 +30,13 @@ func _run() -> int:
 	var state := ExploreState.new()
 	state.persistence_enabled = false
 	state.reset_new_game()
+	state.set_world_context(_setup.map_id, null, 16.0)
 	_test_health_contract(state, errors)
 	_test_save_round_trip(state, errors)
 	await _test_inventory_ui(state, errors)
-	await _test_live_sandbox(errors)
+	await _test_live_fixture(errors)
 	state.free()
+	Fixture.verify_sources(_setup, errors)
 	if not errors.is_empty():
 		printerr("FAIL health/consumables")
 		for error in errors:
@@ -35,7 +45,7 @@ func _run() -> int:
 	print("PASS health/consumables")
 	print("  persistent protagonist HP -> armor damage -> hpRestore clamp")
 	print("  consumable decrements through EmberExploreState and save v2 stores current HP only")
-	print("  agent_sandbox H probe applies authored debug damage without a second health owner")
+	print("  native fixture H probe applies authored debug damage without a second health owner")
 	return 0
 
 
@@ -43,7 +53,7 @@ func _test_health_contract(state: ExploreState, errors: Array[String]) -> void:
 	if state.hp != 20.0 or state.max_hp != 20.0:
 		errors.append("new game did not project the protagonist's derived 20 HP")
 	state.inventory = {"coin": 5, "herb": 2, "meat_bun": 1}
-	state.equipment = EmberEquipment.normalize({"body": "mourning_mail"})
+	state.equipment = EmberEquipment.normalize({"armor": Fixture.ARMOR})
 	var hit := state.apply_damage(18.0, false)
 	if float(hit.get("damage", -1.0)) != 10.0 or state.hp != 10.0:
 		errors.append("incoming damage did not apply max(1, raw - def)")
@@ -59,9 +69,9 @@ func _test_health_contract(state: ExploreState, errors: Array[String]) -> void:
 		errors.append("clamped heal did not consume exactly one bun")
 	var full := state.use_item("herb", false)
 	if not bool(full.get("ok", false)) or float(full.get("gained", -1.0)) != 0.0:
-		errors.append("full-HP use diverged from JOI's HP already full result")
+		errors.append("full-HP use diverged from the established HP already full result")
 	elif state.inventory.has("herb"):
-		errors.append("full-HP use did not decrement the stack like JOI")
+		errors.append("full-HP use did not decrement the stack at full HP")
 	var before_coin := state.inventory.duplicate(true)
 	var coin := state.use_item("coin", false)
 	if bool(coin.get("ok", false)) or str(coin.get("reason", "")) != "cannot_use":
@@ -118,28 +128,27 @@ func _test_inventory_ui(state: ExploreState, errors: Array[String]) -> void:
 	await process_frame
 
 
-func _test_live_sandbox(errors: Array[String]) -> void:
-	if change_scene_to_file(SANDBOX_SCENE) != OK:
-		errors.append("could not start agent_sandbox runtime scene")
+func _test_live_fixture(errors: Array[String]) -> void:
+	if change_scene_to_file(_setup.scene.resource_path) != OK:
+		errors.append("could not start native fixture runtime scene")
 		return
 	await process_frame
 	await process_frame
-	# The scene still instantiates the real EmberPlayer. The smoke only needs its
-	# public test hooks, so keep parsing independent from global class order.
-	var player := current_scene.get_node_or_null("Player") as CharacterBody3D
+	var player := current_scene.get_node_or_null("Player") as EmberPlayer
+	var state := root.get_node_or_null("EmberExploreProgress") as ExploreState
 	if player == null:
-		errors.append("agent_sandbox lost Player")
+		errors.append("native fixture lost Player")
+		return
+	if state == null or player.progress_state != state or player.inventory_ui.progress_state != state:
+		errors.append("health/consumption UI does not use the real progress owner")
 		return
 	if float(player.get("debug_damage_amount")) != 30.0 or not InputMap.has_action("health_test"):
-		errors.append("agent_sandbox did not expose its data-driven H damage probe")
-	var state := ExploreState.new()
-	state.persistence_enabled = false
-	state.reset_new_game()
-	player.set("progress_state", state)
-	player.call("_apply_debug_damage")
+		errors.append("native fixture did not expose its data-driven H damage probe")
+	Input.action_press("health_test")
+	await physics_frame
+	await process_frame
+	Input.action_release("health_test")
 	if state.hp != 0.0:
-		errors.append("sandbox H probe did not apply 30 raw damage")
+		errors.append("native H probe did not apply 30 raw damage")
 	if not str(player.call("_hud_text")).contains("HP 0/20"):
 		errors.append("live explore HUD did not expose current/max HP")
-	player.set("progress_state", null)
-	state.free()

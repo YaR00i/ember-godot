@@ -1,8 +1,9 @@
 @tool
 class_name EmberMapLoader
 extends Node3D
-## One-way import from Ember pack into an authored Godot scene.
-## After Reimport, Ctrl+S. Geometry lives in Look / Terrain / Props / Regions.
+## Native authored-map runtime and explicit editor import boundary.
+## Legacy load_map is never called by exploration startup. Geometry lives in
+## the saved Look / Terrain / Props / Regions nodes and native ground source.
 
 const SurfaceProjection := preload("res://scripts/ember_voxel_surface_projection.gd")
 const TerrainResource := preload("res://scripts/prototypes/ember_terrain_pilot_resource.gd")
@@ -10,9 +11,9 @@ const TerrainProjection := preload("res://scripts/prototypes/ember_terrain_pilot
 
 @export_group("0 · Карта и тест")
 ## ID карты. Legacy reimport читает joi-conductor; native scene держит свой Resource.
-@export var map_id := "fan_town"
-## Native scenes author their regions directly and need no legacy pack hydration.
-@export var hydrate_legacy_regions := true
+@export var map_id := EmberMapTransition.DEFAULT_MAP_ID
+## Deprecated serialized flag; runtime always uses authored native regions.
+@export var hydrate_legacy_regions := false
 ## Одна общая художественная поверхность карты. Выбранный прямоугольник в 3D
 ## является только областью редактирования и не создаёт отдельный Resource.
 @export var visual_surface: EmberVoxelModelResource:
@@ -42,7 +43,7 @@ const TerrainProjection := preload("res://scripts/prototypes/ember_terrain_pilot
 		compact_material_gray_preview = value
 		_apply_compact_material_light()
 ## Saved map footprint lets a native Surface validate without reading the
-## temporary JOI archive. Zero keeps the legacy importer fallback for old maps.
+## source. Zero means unknown during scene deserialization, never a JSON lookup.
 @export var authored_size_blocks := Vector2i.ZERO
 ## Scene-owned origin of the shared voxel grid, in map-local world units.
 ## Old maps keep zero. Native ground can reserve volume below sea level.
@@ -71,8 +72,8 @@ func set_editor_surface_preview(source: EmberVoxelModelResource, origin := Vecto
 	_editor_surface_preview = source
 	_editor_surface_origin = origin
 	_refresh_visual_surface_projection()
-## G3 pilot: derive world collision and route heights from visual_surface.
-## Kept explicit per map until agent_sandbox proves the runtime contract.
+## Optional native surface physics: world collision and route heights share visual_surface.
+## Enabled explicitly per map; compact terrain retains its own native geometry.
 @export var use_visual_surface_physics := false
 ## Число ближайших фонарей с cube-тенью. Fill остальных фонарей всегда остаётся включённым.
 @export_enum("Только fill · 0:0", "Быстро · 2:2", "Баланс · 4:4", "Production · 8:8", "Расширенный · 12:12", "Stress · 16:16") var lighting_test_shadows := 4
@@ -147,7 +148,7 @@ func set_editor_surface_preview(source: EmberVoxelModelResource, origin := Vecto
 @export var imported_tile_size := 16.0
 
 @export_group("5 · Интерьеры")
-## Experimental Godot-native roof sections. Enabled only on agent_sandbox until visual acceptance.
+## Deprecated import-era flag; saved Cutaways nodes own runtime roof sections.
 @export var native_cutaway_enabled := false
 
 var _voxel_mat: ShaderMaterial
@@ -399,32 +400,30 @@ func stats() -> Dictionary:
 	return _stats.duplicate()
 
 
-func hydrate_native_cutaway() -> int:
-	var existing := get_node_or_null("Cutaways")
-	if existing:
-		remove_child(existing)
-		existing.queue_free()
+func refresh_cutaway_runtime() -> int:
+	# Bind saved scene-owned volumes. Startup never manufactures geometry from
+	# the legacy tile map and must not delete authored Cutaways children.
+	_cutaways = _content_node("Cutaways") as Node3D
 	_cutaway_sections = 0
 	_cutaway_active = 0
-	if not native_cutaway_enabled or Engine.is_editor_hint():
-		return 0
-	var raw: Variant = EmberPack.parse_json_file(EmberPack.map_path(map_id))
-	if typeof(raw) != TYPE_DICTIONARY:
-		return 0
-	var sections := EmberTileMesher.build_cutaway_roofs(raw)
-	if sections.is_empty():
-		return 0
-	_cutaways = Node3D.new()
-	_cutaways.name = "Cutaways"
-	add_child(_cutaways)
-	var material := EmberVoxelPrefab.voxel_material()
-	for section in sections:
-		var volume := EmberCutawayVolume.new()
-		volume.setup(section, material)
-		volume.reveal_changed.connect(_on_cutaway_reveal_changed)
-		_cutaways.add_child(volume)
-	_cutaway_sections = sections.size()
+	for volume in _cutaway_volumes():
+		_cutaway_sections += 1
+		if not volume.reveal_changed.is_connected(_on_cutaway_reveal_changed):
+			volume.reveal_changed.connect(_on_cutaway_reveal_changed)
+		if volume.is_revealed(): _cutaway_active += 1
 	return _cutaway_sections
+
+
+func _cutaway_volumes() -> Array[EmberCutawayVolume]:
+	var result: Array[EmberCutawayVolume] = []
+	if is_instance_valid(_cutaways): _collect_cutaway_volumes(_cutaways, result)
+	return result
+
+
+func _collect_cutaway_volumes(node: Node, result: Array[EmberCutawayVolume]) -> void:
+	for child in node.get_children():
+		if child is EmberCutawayVolume: result.append(child as EmberCutawayVolume)
+		_collect_cutaway_volumes(child, result)
 
 
 func cutaway_section_count() -> int:
@@ -436,32 +435,20 @@ func cutaway_active_count() -> int:
 
 
 func set_cutaway_preview(revealed: bool, immediate := false) -> void:
-	if not is_instance_valid(_cutaways):
-		return
-	for child in _cutaways.get_children():
-		var volume := child as EmberCutawayVolume
-		if volume:
-			volume.set_revealed(revealed, immediate)
+	for volume in _cutaway_volumes(): volume.set_revealed(revealed, immediate)
 
 
 func _on_cutaway_reveal_changed(_revealed: bool) -> void:
 	_cutaway_active = 0
-	if not is_instance_valid(_cutaways):
-		return
-	for child in _cutaways.get_children():
-		var volume := child as EmberCutawayVolume
-		if volume and volume.is_revealed():
-			_cutaway_active += 1
+	for volume in _cutaway_volumes():
+		if volume.is_revealed(): _cutaway_active += 1
 
 
 func spawn_world() -> Vector3:
-	var regions := _content_node("Regions")
-	if regions:
-		for child in regions.get_children():
-			# Read export, do not call EmberRegion methods (editor placeholders).
-			if child is Node3D and str(child.get("kind")) == "player_start":
-				var start := child as Node3D
-				return safe_spawn_world(start.global_position if start.is_inside_tree() else start.position)
+	for region in _region_nodes():
+		# Read export, do not call EmberRegion methods (editor placeholders).
+		if str(region.get("kind")) == "player_start":
+			return safe_spawn_world(_region_position(region))
 	return safe_spawn_world(Vector3(16, 8, 16))
 
 
@@ -477,44 +464,50 @@ func safe_spawn_world(point: Vector3) -> Vector3:
 func region_world(region_id: String) -> Vector3:
 	if region_id.is_empty():
 		return spawn_world()
-	var regions := _content_node("Regions")
-	if regions:
-		for child in regions.get_children():
-			if child is Node3D and (
-				str(child.get("region_id")) == region_id or child.name == region_id
-			):
-				var region := child as Node3D
-				return safe_spawn_world(region.global_position if region.is_inside_tree() else region.position)
+	var region := find_region(region_id)
+	if region != null:
+		return safe_spawn_world(_region_position(region))
 	push_warning("ember map %s: spawn region '%s' not found; using player_start" % [map_id, region_id])
 	return spawn_world()
 
 
-func hydrate_region_runtime() -> void:
-	if not hydrate_legacy_regions:
-		return
-	var raw_map: Variant = EmberPack.parse_json_file(EmberPack.map_path(map_id))
-	if typeof(raw_map) != TYPE_DICTIONARY:
-		return
-	var by_id := {}
-	var raw_regions: Variant = raw_map.get("regions", [])
-	if typeof(raw_regions) != TYPE_ARRAY:
-		return
-	for raw_region in raw_regions:
-		if typeof(raw_region) == TYPE_DICTIONARY:
-			var region_id := str(raw_region.get("id", "")).strip_edges()
-			if not region_id.is_empty():
-				by_id[region_id] = raw_region
+func find_region(region_id: String) -> EmberRegion:
+	if region_id.is_empty(): return null
+	for region in _region_nodes():
+		if region.region_id == region_id or str(region.name) == region_id: return region
+	return null
+
+
+func _region_nodes() -> Array[EmberRegion]:
+	var result: Array[EmberRegion] = []
 	var regions := _content_node("Regions")
-	if regions == null:
-		return
-	for child in regions.get_children():
-		var area := child as EmberRegion
-		if area == null or not by_id.has(area.region_id):
-			continue
-		_apply_region_record(area, by_id[area.region_id])
+	if regions == null: return result
+	var pending: Array[Node] = []
+	pending.assign(regions.get_children())
+	while not pending.is_empty():
+		var node := pending.pop_front() as Node
+		if node is EmberRegion: result.append(node as EmberRegion)
+		pending.append_array(node.get_children())
+	return result
+
+
+func _region_position(region: Node3D) -> Vector3:
+	if region.is_inside_tree(): return region.global_position
+	var position := Vector3.ZERO
+	var current: Node = region
+	while current != null and current != self:
+		if current is Node3D: position = (current as Node3D).transform * position
+		current = current.get_parent()
+	return position
+
+
+func refresh_region_runtime() -> void:
+	# Scene-owned properties are canonical; only runtime bindings/visuals refresh.
+	var tile_size := imported_tile_size if imported_tile_size > 0.0 else 16.0
+	for area in _region_nodes():
 		if area.is_inside_tree() and not Engine.is_editor_hint():
 			area.refresh_runtime_binding()
-		area.refresh_chest_visual(imported_tile_size)
+		area.refresh_chest_visual(tile_size)
 	var props := _content_node("Props")
 	if props != null:
 		_refresh_interact_runtime_bindings(props)
@@ -539,6 +532,7 @@ func occupying_region_id(world: Vector3, kinds: Array[String]) -> String:
 
 
 func load_map(id: String) -> Dictionary:
+	# Explicit editor Reimport only; gameplay never invokes this legacy reader.
 	map_id = id
 	_clear_generated()
 	_reset_stats()
@@ -723,14 +717,8 @@ func _expected_world_surface_blocks() -> Vector2i:
 		return Vector2i(int(_stats.width), int(_stats.height))
 	if authored_size_blocks.x > 0 and authored_size_blocks.y > 0:
 		return authored_size_blocks
-	# Inspector deserialization can ask before authored_size_blocks is assigned.
-	# An unknown native footprint is valid here; it never implies legacy import.
-	if not hydrate_legacy_regions or not FileAccess.file_exists(EmberPack.map_path(map_id)):
-		return Vector2i.ZERO
-	var raw: Variant = EmberPack.parse_json_file(EmberPack.map_path(map_id))
-	if typeof(raw) != TYPE_DICTIONARY:
-		return Vector2i.ZERO
-	return Vector2i(maxi(1, int(raw.get("width", 1))), maxi(1, int(raw.get("height", 1))))
+	# Inspector deserialization can ask before the saved extent is assigned.
+	return Vector2i.ZERO
 
 
 func _get_configuration_warnings() -> PackedStringArray:

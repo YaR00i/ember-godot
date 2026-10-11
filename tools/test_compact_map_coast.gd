@@ -93,10 +93,10 @@ func _run() -> void:
 	dialog._preset.select(1)
 	dialog._preset_changed(1)
 	dialog._prepare()
-	assert(not dialog.get_ok_button().disabled and dialog._texture.visible and dialog._texture.texture != null)
+	assert(not dialog.get_create_button().disabled and dialog._texture.visible and dialog._texture.texture != null)
 	dialog._seed.value = 372
 	await process_frame
-	assert(dialog.get_ok_button().disabled)
+	assert(dialog.get_create_button().disabled)
 	dialog.free()
 	scene.queue_free()
 	await process_frame

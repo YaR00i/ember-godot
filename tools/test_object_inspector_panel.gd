@@ -1,10 +1,11 @@
 extends SceneTree
+const MixedFixture = preload("res://tools/fixtures/ember_mixed_editor_test_fixture.gd")
 ## I1 smoke: the native Inspector panel renders the read-only component cards,
 ## routes its actions, and repeated panel lifecycles leave no controls.
 ## EditorInspectorPlugin itself is covered by the headless editor lifecycle smoke.
 
-const TOWN_SCENE := "res://scenes/fan_town.tscn"
-const SANDBOX_SCENE := "res://scenes/agent_sandbox.tscn"
+const TOWN_SCENE := "res://scenes/editor_fixture_a.tscn"
+const SANDBOX_SCENE := "res://scenes/editor_fixture_b.tscn"
 
 var _rebuild_requests := 0
 var _interact_save_requests := 0
@@ -14,13 +15,16 @@ var _last_interact_values: Dictionary = {}
 
 
 func _init() -> void:
+	if not MixedFixture.prepare(self):
+		quit(2)
+		return
 	var errors: Array[String] = []
 	var packed := ResourceLoader.load(TOWN_SCENE, "", ResourceLoader.CACHE_MODE_REPLACE) as PackedScene
 	var town := packed.instantiate(PackedScene.GEN_EDIT_STATE_DISABLED) if packed else null
 	if town == null:
-		errors.append("fan_town could not be instantiated")
+		errors.append("editor_fixture_a could not be instantiated")
 	else:
-		var door := town.get_node_or_null("Map/Props/ft_mage_door") as EmberVoxelProp
+		var door := town.get_node_or_null("Map/Props/destination_door") as EmberVoxelProp
 		var lantern := _first_lantern(town)
 		if door == null or lantern == null:
 			errors.append("door/lantern fixtures missing")
@@ -49,7 +53,7 @@ func _init() -> void:
 				if door_panel.find_child("InteractEditor", true, false) == null:
 					errors.append("existing Interact editor is not created lazily")
 				var outcome := door_panel.find_child("InteractOutcomeSummary", true, false) as Label
-				if outcome == null or outcome.text.find("fan_town_mage") < 0:
+				if outcome == null or outcome.text.find("editor_fixture_destination") < 0:
 					errors.append("Interact editor does not explain the in-game outcome")
 				var advanced := door_panel.find_child("ToggleInteractAdvanced", true, false) as Button
 				var condition_row := door_panel.find_child("FieldRow_condition_flag_id", true, false) as Control
@@ -59,7 +63,7 @@ func _init() -> void:
 					advanced.pressed.emit()
 					if not condition_row.visible:
 						errors.append("advanced launch rules do not expand on request")
-				if _selected_metadata(door_panel, "Field_target_map_id") != "fan_town_mage":
+				if _selected_metadata(door_panel, "Field_target_map_id") != "editor_fixture_destination":
 					errors.append("door editor did not preload target map")
 				remove_interact.pressed.emit()
 				if _interact_remove_requests != 1:
@@ -96,10 +100,10 @@ func _init() -> void:
 						errors.append("new Interact form offers a non-authorable empty chest shell")
 					_select_metadata(kind_option, "talk")
 					kind_option.item_selected.emit(kind_option.selected)
-					_select_metadata(script_option, "sandbox_guard_talk")
+					_select_metadata(script_option, "interaction_guard")
 					var save_interact := light_panel.find_child("SaveInteract", true, false) as Button
 					save_interact.pressed.emit()
-					if _interact_save_requests != 1 or str(_last_interact_values.get("script_id", "")) != "sandbox_guard_talk":
+					if _interact_save_requests != 1 or str(_last_interact_values.get("script_id", "")) != "interaction_guard":
 						errors.append("add Interact form did not emit normalized talk values")
 			if quick_chain == null:
 				errors.append("prop without Interact has no quick trigger + chain action")
@@ -134,8 +138,8 @@ func _init() -> void:
 							errors.append("set_flag step has no quest flag reference library")
 						else:
 							chain_editor.set("_quest_flag_target", flag_field)
-							chain_editor.call("_choose_quest_flag_value", "sandbox_notice_read")
-							if flag_field.text != "sandbox_notice_read":
+							chain_editor.call("_choose_quest_flag_value", "interaction_quest_read")
+							if flag_field.text != "interaction_quest_read":
 								errors.append("quest flag library did not fill the action step")
 							if not bool_field.visible or raw_value.visible:
 								errors.append("boolean flag still exposes a raw true/false text field")
@@ -173,6 +177,7 @@ func _init() -> void:
 		town.free()
 	_test_existing_chain_remove_ui(errors)
 	_test_guided_quest_interact_ui(errors)
+	MixedFixture.verify_sources(errors)
 	if not errors.is_empty():
 		printerr("FAIL object inspector panel")
 		for error in errors:
@@ -195,7 +200,7 @@ func _on_rebuild(_prop: EmberVoxelProp) -> void:
 func _test_existing_chain_remove_ui(errors: Array[String]) -> void:
 	var packed := ResourceLoader.load(SANDBOX_SCENE, "", ResourceLoader.CACHE_MODE_REPLACE) as PackedScene
 	var sandbox := packed.instantiate(PackedScene.GEN_EDIT_STATE_DISABLED) if packed else null
-	var prop := sandbox.get_node_or_null("Map/Props/sbx_quest_active") as EmberVoxelProp if sandbox else null
+	var prop := sandbox.get_node_or_null("Map/Props/quest_active") as EmberVoxelProp if sandbox else null
 	if prop == null:
 		errors.append("existing action-chain UI fixture is missing")
 		if sandbox:
@@ -225,7 +230,7 @@ func _test_existing_chain_remove_ui(errors: Array[String]) -> void:
 func _test_guided_quest_interact_ui(errors: Array[String]) -> void:
 	var packed := ResourceLoader.load(SANDBOX_SCENE, "", ResourceLoader.CACHE_MODE_REPLACE) as PackedScene
 	var sandbox := packed.instantiate(PackedScene.GEN_EDIT_STATE_DISABLED) if packed else null
-	var prop := sandbox.get_node_or_null("Map/Props/sbx_quest_active") as EmberVoxelProp if sandbox else null
+	var prop := sandbox.get_node_or_null("Map/Props/quest_active") as EmberVoxelProp if sandbox else null
 	if prop == null:
 		errors.append("quest interaction UI fixture is missing")
 		if sandbox:
@@ -247,7 +252,7 @@ func _test_guided_quest_interact_ui(errors: Array[String]) -> void:
 		var help := panel.find_child("QuestBindingHint", true, false) as Label
 		var fallback := panel.find_child("FieldRow_quest_status", true, false) as Control
 		var custom_icon := panel.find_child("FieldRow_icon_id", true, false) as Control
-		if quest == null or quest.get_item_text(quest.selected).find("Записка у ворот") < 0:
+		if quest == null or quest.get_item_text(quest.selected).find("Тестовое задание") < 0:
 			errors.append("quest selector still shows only a technical ID")
 		if script == null or script.get_item_text(script.selected).find("События задания") < 0:
 			errors.append("action selector still shows only a technical ID")

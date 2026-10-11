@@ -16,7 +16,12 @@ const BrushParameters = preload("res://addons/ember_import/ember_world_brush_par
 const CompactMapExtension = preload("res://addons/ember_import/ember_compact_map_extension.gd")
 const CompactExtensionPreview = preload("res://addons/ember_import/ember_compact_map_extension_preview.gd")
 const TerrainGeneration = preload("res://addons/ember_import/ember_compact_terrain_generation.gd")
-const TerrainGenerationDialog = preload("res://addons/ember_import/ember_compact_terrain_generation_dialog.gd")
+const TerrainGenerationPanel = preload("res://addons/ember_import/ember_compact_terrain_generation_dialog.gd")
+const TerrainPlan = preload("res://scripts/ember_terrain_plan_resource.gd")
+const TerrainPlanPanel = preload("res://addons/ember_import/ember_terrain_plan_dialog.gd")
+const TerrainComposition = preload("res://addons/ember_import/ember_terrain_plan_composition.gd")
+const GrovePlanner = preload("res://addons/ember_import/ember_grove_planner.gd")
+const GrovePreview = preload("res://addons/ember_import/ember_grove_preview.gd")
 const SectionSelection = preload("res://addons/ember_import/ember_compact_section_selection.gd")
 const TerrainDiagnostics = preload("res://addons/ember_import/ember_terrain_diagnostics.gd")
 const MaterialPatternDialog = preload("res://addons/ember_import/ember_compact_material_pattern_dialog.gd")
@@ -170,11 +175,439 @@ var _compact_grid_visible_tiles := {}
 var _compact_hover_grid_stats := {}
 var _compact_extension_preview: Node3D
 var _compact_extension_candidate := {}
-var _generation_dialog: ConfirmationDialog
+var _generation_panel: VBoxContainer
 var _generation_button: Button
 var _generation_job: RefCounted
 var _generation_preview: Node3D
 var _generation_context := {}
+var _plan_panel: VBoxContainer
+var _plan_button: Button
+var _plan_selection := "" # Empty/new/bounds: only active while selecting in 3D.
+var _path_points := PackedVector2Array()
+var _path_hover := Vector2(-1,-1)
+var _path_draw_cache := {}
+var _plan_selected_id := ""
+var _plan_target: WeakRef
+var _panel_host := preload("res://addons/ember_import/ember_world_panel_host.gd").new()
+# Mode queries below are views of the single route, never separate lifecycle state.
+var _terrain_workspace: VBoxContainer
+var _tools_workspace: VBoxContainer
+var _workspace_tools_button: Button
+var _workspace_terrain_button: Button
+var _workspace_tabs: HBoxContainer
+var _map_creation_workspace: VBoxContainer
+var _map_creation_mode: bool:
+	get: return _panel_host.is_active("map")
+var _material_workspace: VBoxContainer
+var _object_brush_workspace: VBoxContainer
+var _object_brush_body: VBoxContainer
+var _object_brush_title: Label
+var _object_brush_scroll: ScrollContainer
+var _object_brush_stop: Button
+var _object_brush_mode: bool:
+	get: return _panel_host.is_active("objects")
+var _object_parameters_parent: Node
+var _object_parameters_index := 0
+var _object_brush_controls: Dictionary = {}
+var _material_mode: bool:
+	get: return _panel_host.is_active("material")
+var _material_bound_map: WeakRef
+var _material_bound_index := -1
+var _material_bound_id := ""
+var _material_choices: Array[Dictionary] = []
+var placement_panel: VBoxContainer
+var _placement_workspace: VBoxContainer
+var _placement_mode: bool:
+	get: return _panel_host.is_active("placement")
+var shape_panel: VBoxContainer
+var _shape_workspace: VBoxContainer
+var _shape_mode: bool:
+	get: return _panel_host.is_active("shape")
+var duplicate_panel: VBoxContainer
+var _duplicate_workspace: VBoxContainer
+var merge_panel: VBoxContainer
+var _merge_workspace: VBoxContainer
+var split_panel: VBoxContainer
+var _split_workspace: VBoxContainer
+var conversion_panel: VBoxContainer
+var _conversion_workspace: VBoxContainer
+var _duplicate_mode: bool:
+	get: return _panel_host.is_active("duplicate")
+
+func configure_panel_host() -> void:
+	_panel_host.configure(self)
+	_panel_host.register_panel("placement",_placement_workspace,{
+		"preview": placement_panel,"button": plugin._placement_bottom_button,
+		"pending": placement_panel.is_dirty,"cancel": placement_panel.cancel_edit,
+		"blocked": func(): placement_panel._status.text = "В расстановке есть правки. Нажмите «Применить» или «Отмена» перед сменой инструмента."})
+	_panel_host.register_panel("shape",_shape_workspace,{
+		"preview": shape_panel,"button": plugin._shape_bottom_button,
+		"pending": shape_panel.is_dirty,"cancel": shape_panel.cancel_edit,
+		"blocked": func(): shape_panel._status.text = "В новой форме есть параметры или предпросмотр. Нажмите «Создать» или «Отмена» перед сменой инструмента."})
+	_panel_host.register_panel("duplicate",_duplicate_workspace,{
+		"preview": duplicate_panel,"button": plugin._duplicate_bottom_button,
+		"pending": duplicate_panel.is_dirty,"cancel": duplicate_panel.cancel_edit,
+		"blocked": func(): duplicate_panel._status.text = "Ряд копий ещё не создан. Нажмите «Создать копии» или «Отмена» перед сменой инструмента."})
+	_panel_host.register_panel("merge",_merge_workspace,{
+		"preview": merge_panel,"button": plugin._merge_bottom_button,
+		"pending": merge_panel.is_dirty,"cancel": merge_panel.cancel_edit,
+		"blocked": func(): merge_panel._status.text = "Операция с выбранными деталями ещё не подтверждена. Нажмите «Склеить»/«Разобрать» или «Отмена» перед сменой инструмента."})
+	_panel_host.register_panel("split",_split_workspace,{
+		"preview": split_panel,"button": plugin._split_bottom_button,
+		"pending": split_panel.is_dirty,"cancel": split_panel.cancel_edit,
+		"blocked": func(): split_panel._status.text = "Разрезание ещё не подтверждено. Нажмите «Разрезать» или «Отмена» перед сменой инструмента."})
+	_panel_host.register_panel("conversion",_conversion_workspace,{
+		"preview": conversion_panel,"button": plugin._conversion_bottom_button,
+		"pending": conversion_panel.is_dirty,"cancel": conversion_panel.cancel_edit,
+		"blocked": func(): conversion_panel._status.text = "Преобразование ещё не подтверждено. Нажмите «Преобразовать» или «Отмена» перед сменой инструмента."})
+	_panel_host.register_panel("material",_material_workspace,{
+		"preview": material_pattern_dialog,"button": plugin._material_pattern_bottom_button,
+		"pending": material_pattern_dialog.is_dirty,"cancel": material_pattern_dialog.cancel_edit,
+		"history_key": material_pattern_dialog.handle_history_key,"persist_scene": true,
+		"closed": func(): _material_bound_map = null; _material_choices.clear(); _material_bound_index = -1,
+		"blocked": func(): material_pattern_dialog._message.text = "В рисунке есть правки. Нажмите «Сохранить» или «Отмена» перед сменой инструмента."})
+	_panel_host.register_panel("map",_map_creation_workspace,{
+		"cancel": plugin._cancel_compact_map_creation,
+		"pending": func(): return is_instance_valid(plugin._compact_map_panel) and plugin._compact_map_panel.is_dirty(),
+		"blocked": func(): plugin._compact_map_panel._status.text = "В новой карте есть параметры или предпросмотр. Нажмите «Создать карту» или «Отмена» перед сменой инструмента."})
+	_panel_host.register_panel("objects",_object_brush_workspace,{
+		"prepare_tools": false,"viewport_tools": true,"cancel": plugin._stop_scene_object_brush,
+		"opened": func():
+			object_parameters.reparent(_object_brush_body); _object_brush_body.move_child(object_parameters,1); object_parameters.show(),
+		"closed": func():
+			object_parameters.reparent(_object_parameters_parent); _object_parameters_parent.move_child(object_parameters,_object_parameters_index)
+			object_parameters.visible = category.selected == 3})
+
+
+func can_leave_panel() -> bool:
+	return _panel_host.can_leave()
+
+
+func _prepare_parameter_panel() -> void:
+	if plugin != null: plugin._stop_scene_object_brush()
+	cancel_stroke(); cancel_section_selection(); _plan_selection = ""; selecting = false; region_preview = Rect2i()
+	clear_terrain_generation_preview(); clear_compact_extension_preview()
+	if is_instance_valid(_generation_panel) and _generation_panel.visible:
+		_generation_panel.set_pending("Предпросмотр закрыт. Обновите его перед применением.")
+
+
+func _parameter_toolbars() -> Array:
+	return [plugin._voxel_object_toolbar,plugin._world_surface_toolbar,plugin._battlefield_toolbar] if plugin != null else []
+
+
+func _present_parameter_panel(route: Dictionary) -> void:
+	_tools_workspace.hide(); _terrain_workspace.hide(); _workspace_tabs.hide(); sidebar.hide()
+	route.page.show(); inspector_panel.show()
+	if plugin != null:
+		plugin._set_world_editor_dock_active(active); plugin._world_editor_dock.make_visible()
+		if route.has("preview"):
+			route.button.show(); plugin.make_bottom_panel_item_visible(route.preview)
+
+
+func _hide_parameter_panel(route: Dictionary) -> void:
+	route.page.hide(); _workspace_tabs.show()
+	if plugin != null and route.has("preview"):
+		if route.button.button_pressed: plugin.hide_bottom_panel()
+		route.button.hide()
+
+
+func _restore_parameter_workspace(terrain: bool) -> void:
+	inspector_panel.visible = active
+	_show_workspace(terrain if active else false)
+	if plugin != null: plugin._set_world_editor_dock_active(active)
+
+
+func show_duplicate_panel() -> void:
+	_panel_host.open("duplicate")
+
+func _close_duplicate_workspace() -> void:
+	_panel_host.close("duplicate")
+
+func _close_merge_workspace() -> void:
+	_panel_host.close("merge")
+
+func _close_split_workspace() -> void:
+	_panel_host.close("split")
+
+func _close_conversion_workspace() -> void:
+	_panel_host.close("conversion")
+
+func show_shape_panel() -> void:
+	_panel_host.open("shape")
+
+func _close_shape_workspace() -> void:
+	_panel_host.close("shape")
+
+func show_placement_panel() -> void:
+	_panel_host.open("placement")
+
+func _close_placement_workspace() -> void:
+	_panel_host.close("placement")
+
+func _show_material_workspace() -> void:
+	_panel_host.open("material")
+
+func _close_material_workspace() -> void:
+	_panel_host.close("material")
+
+func _on_material_variant_opened(id: String, role: String) -> void:
+	_material_bound_id = id
+	if _material_bound_map == null or _material_bound_map.get_ref() != map:
+		_material_bound_index = -1; return
+	for choice in _material_choices:
+		if choice.id == id and choice.role == role:
+			_material_bound_index = choice.index; break
+
+
+func _sync_object_brush_controls() -> void:
+	if plugin == null or not is_instance_valid(plugin._object_brush): return
+	for property in _object_brush_controls:
+		_object_brush_controls[property].set_value_no_signal(plugin._object_brush.get(property))
+	_object_brush_title.text = "Кисть объектов · %s" % plugin._object_brush.model_id
+
+
+func show_object_brush_panel() -> void:
+	if plugin == null or not plugin._object_brush.active: return
+	_sync_object_brush_controls()
+	if active:
+		_show_workspace(false); _category_changed(3,false)
+	else: _panel_host.open("objects")
+	plugin._world_editor_dock.make_visible()
+
+func close_object_brush_panel() -> void:
+	_panel_host.close("objects")
+
+func show_map_creation_panel(panel: Control) -> void:
+	if panel.get_parent() == null: _map_creation_workspace.add_child(panel)
+	_panel_host.open("map")
+
+func close_map_creation_panel() -> void:
+	_panel_host.close("map")
+
+
+func _show_workspace(terrain: bool) -> void:
+	if not can_leave_panel(): return
+	if not is_instance_valid(_terrain_workspace): return
+	if is_instance_valid(sidebar): sidebar.visible = active and not terrain
+	_tools_workspace.visible = not terrain
+	_terrain_workspace.visible = terrain
+	_workspace_tools_button.set_pressed_no_signal(not terrain)
+	_workspace_terrain_button.set_pressed_no_signal(terrain)
+	if not terrain:
+		cancel_section_selection()
+		if not _plan_selection.is_empty():
+			_plan_selection = ""; selecting = false; region_preview = Rect2i()
+		clear_terrain_generation_preview()
+		if is_instance_valid(_generation_panel): _generation_panel.hide()
+	if plugin != null and is_instance_valid(plugin._world_editor_dock):
+		plugin._world_editor_dock.make_visible()
+
+func _close_generation_panel() -> void:
+	clear_terrain_generation_preview()
+	_generation_panel.hide()
+	if _generation_context.get("composition", false) or not _generation_context.get("plan_id", "").is_empty():
+		_open_terrain_plan()
+	else:
+		_show_workspace(false)
+
+
+func _open_terrain_plan() -> void:
+	if not can_leave_panel(): return
+	if not _compact_active(): return
+	cancel_section_selection()
+	cancel_stroke()
+	_plan_selection = ""; selecting = false; region_preview = Rect2i()
+	clear_terrain_generation_preview()
+	if is_instance_valid(_generation_panel): _generation_panel.hide()
+	_show_workspace(true)
+	_plan_target = weakref(map)
+	if not is_instance_valid(_plan_panel):
+		_plan_panel = TerrainPlanPanel.new()
+		_terrain_workspace.add_child(_plan_panel)
+		_plan_panel.action_requested.connect(_terrain_plan_action)
+		_plan_panel.selection_changed.connect(func(id): _plan_selected_id = id; _update_overlay())
+	_refresh_terrain_plan(true)
+
+func _refresh_terrain_plan(reveal := false) -> void:
+	if not is_instance_valid(_plan_panel) or _plan_target == null: return
+	var target: EmberMapLoader = _plan_target.get_ref()
+	if not is_instance_valid(target) or target != map: _plan_panel.hide(); return
+	var plan: Resource = TerrainPlan.read(target)
+	_plan_panel.show_plan(plan if plan != null else TerrainPlan.new(), _plan_selected_id, reveal)
+	_plan_selected_id = _plan_panel.selected_id()
+	_update_overlay()
+
+func commit_terrain_plan(target: EmberMapLoader, plan: Resource) -> String:
+	if not is_instance_valid(target) or scene == null: return "Карта была закрыта."
+	var draft := sessions.open_map(target, scene)
+	if draft.is_empty(): return sessions.error
+	if plan != null:
+		var errors: Array[String] = plan.validation_errors(Vector2i(draft.resource.width / 16, draft.resource.depth / 16))
+		if not errors.is_empty(): return errors[0]
+	var before: Resource = TerrainPlan.read(target)
+	if TerrainPlan.same(before, plan): return ""
+	var history: Object = sessions.undo
+	if history is EditorUndoRedoManager:
+		(history as EditorUndoRedoManager).create_action("Изменить план областей", UndoRedo.MERGE_DISABLE, scene)
+		Callable(history, "add_do_method").callv([self, "_apply_terrain_plan", draft, plan])
+		Callable(history, "add_undo_method").callv([self, "_apply_terrain_plan", draft, before])
+		(history as EditorUndoRedoManager).commit_action()
+	else:
+		(history as UndoRedo).create_action("Изменить план областей", UndoRedo.MERGE_DISABLE)
+		(history as UndoRedo).add_do_method(_apply_terrain_plan.bind(draft, plan))
+		(history as UndoRedo).add_undo_method(_apply_terrain_plan.bind(draft, before))
+		(history as UndoRedo).commit_action()
+	return ""
+
+func _apply_terrain_plan(draft: Dictionary, plan: Resource) -> void:
+	sessions.set_plan(draft, plan)
+	clear_terrain_generation_preview()
+	if is_instance_valid(_generation_panel) and _generation_panel.visible and not _generation_context.get("plan_id", "").is_empty():
+		_generation_panel.set_pending("План изменился. Откройте область снова и обновите предпросмотр.")
+	_refresh_terrain_plan()
+
+func _terrain_plan_action(action: String, id: String, value: String) -> void:
+	if _plan_target == null or _plan_target.get_ref() != map: return
+	if action not in ["compose","groves"]: _plan_selected_id = id
+	var original: Resource = TerrainPlan.read(map)
+	var plan: Resource = original.working_copy() if original != null else TerrainPlan.new()
+	var index: int = plan.index_of(id)
+	if action in ["add", "add_plateau", "add_lake", "add_river", "add_mountain", "add_road", "add_grove", "add_placement", "bounds"]:
+		if action == "bounds" and index < 0: return
+		clear_terrain_generation_preview(); cancel_stroke()
+		_plan_panel.set_status("Выделите область в 3D · Esc отменяет.")
+		_plan_selection = action; selecting = true; create_region = false
+		region_anchor = Vector2i(-1, -1); region_preview = Rect2i()
+		_path_points = PackedVector2Array(); _path_hover = Vector2(-1,-1)
+		if action in ["add_river","add_road"] or (action == "bounds" and plan.regions[index].get("kind") in ["river","road"]):
+			_plan_selection = action if action in ["add_river","add_road"] else "path_line"
+			var path_hint := "Кликайте точки дороги по суше." if _plan_path_kind() == "road" else "Кликайте точки от одного водоёма к другому."
+			_plan_panel.set_status(path_hint+" Enter — сохранить линию, Backspace — убрать точку, Esc — отменить. Камера работает как обычно.")
+			_status(path_hint+" Enter завершает · Esc отменяет.")
+			_update_overlay(); return
+		_status("Потяните прямоугольник области плана в 3D · Esc отменяет.")
+		return
+	_plan_selection = ""; selecting = false; region_preview = Rect2i()
+	if action == "groves":
+		_plan_panel.hide(); _ensure_generation_panel()
+		_generation_context = {"target":weakref(map),"area":Rect2i(),"grove":true,"plan_id":"","plan_version":original.data()}
+		_generation_panel.open_placement(Rect2i(),TerrainPlan.Influence.PLACEMENT_DEFAULTS,GrovePlanner.choices(true),false)
+		return
+	if action == "compose":
+		_plan_panel.hide(); _ensure_generation_panel()
+		_generation_context = {"target": weakref(map), "area": Rect2i(), "composition": true, "plan_id": "", "plan_version": original.data()}
+		_generation_panel.open_influence(Rect2i(), TerrainPlan.Influence.DEFAULTS, "plateau", false)
+		return
+	if index < 0: return
+	if action == "generate":
+		edit_region = plan.regions[index].bounds; _refresh_scope()
+		_plan_panel.hide(); _ensure_generation_panel()
+		var kind: String = plan.regions[index].get("kind", "generation")
+		if kind in ["grove","placement"]:
+			_generation_context = {"target":weakref(map),"area":edit_region,"grove":true,"plan_id":id,"plan_version":original.data()}
+			_generation_panel.open_placement(edit_region,plan.regions[index].parameters,GrovePlanner.choices(true))
+			return
+		var composition: bool = kind in ["plateau","lake","river","mountain","road"]
+		_generation_context = {"target": weakref(map), "area": edit_region, "plan_id": id, "plan_version": original.data(), "composition": composition}
+		if composition: _generation_panel.open_influence(edit_region, plan.regions[index].parameters,kind)
+		else: _generation_panel.open_plan(edit_region, plan.regions[index].parameters)
+		return
+	if action == "name": plan.regions[index].name = value.strip_edges()
+	elif action == "delete": plan.regions.remove_at(index); _plan_selected_id = ""
+	elif action == "toggle": plan.regions[index].enabled = not plan.regions[index].get("enabled", true)
+	elif action == "reverse" and plan.regions[index].get("kind") == "river":
+		var points: PackedVector2Array = plan.regions[index].points_m.duplicate(); points.reverse(); plan.regions[index].points_m = points
+	var error := commit_terrain_plan(map, plan)
+	_plan_panel.set_status(error if not error.is_empty() else "План изменён · Ctrl+Z отменяет · Ctrl+S сохраняет сцену.")
+	_refresh_terrain_plan()
+
+func _finish_terrain_plan_selection(bounds_m: Rect2i) -> void:
+	if _plan_selection.is_empty(): return
+	var original: Resource = TerrainPlan.read(map)
+	var plan: Resource = original.working_copy() if original != null else TerrainPlan.new()
+	if _plan_selection in ["add", "add_plateau", "add_lake", "add_mountain", "add_grove", "add_placement"]:
+		var id := "area_%s_%s" % [OS.get_process_id(), Time.get_ticks_usec()]
+		plan.regions.append({"id": id, "name": "Область %d" % (plan.regions.size() + 1), "bounds": bounds_m, "parameters": TerrainGeneration.Math.DEFAULTS.duplicate(true)})
+		if _plan_selection in ["add_plateau","add_lake"]:
+			var lake := _plan_selection == "add_lake"
+			if lake: plan.upgrade_local_layers()
+			else: plan.schema_version = maxi(plan.schema_version,2)
+			plan.regions[-1].kind = "lake" if lake else "plateau"; plan.regions[-1].enabled = true
+			plan.regions[-1].name = ("Озеро %d" if lake else "Плато %d") % plan.regions.size()
+			plan.regions[-1].parameters = (TerrainPlan.Influence.LAKE_DEFAULTS if lake else TerrainPlan.Influence.DEFAULTS).duplicate(true)
+		elif _plan_selection == "add_mountain":
+			plan.upgrade_local_layers(); plan.regions[-1].kind = "mountain"; plan.regions[-1].enabled = true
+			plan.regions[-1].name = "Гора %d" % plan.regions.size()
+			plan.regions[-1].parameters = TerrainPlan.Influence.mountain_defaults(bounds_m)
+		elif _plan_selection == "add_grove":
+			plan.upgrade_local_layers(); plan.regions[-1].kind = "grove"; plan.regions[-1].enabled = true
+			plan.regions[-1].name = "Роща %d"%plan.regions.size()
+			plan.regions[-1].parameters = TerrainPlan.Influence.GROVE_DEFAULTS.duplicate(true)
+			var variants := GrovePlanner.choices()
+			if not variants.is_empty(): plan.regions[-1].parameters.model_ids = PackedStringArray([variants[0].id])
+		elif _plan_selection == "add_placement":
+			plan.upgrade_local_layers(); plan.regions[-1].kind = "placement"; plan.regions[-1].enabled = true
+			plan.regions[-1].name = "Объекты %d"%plan.regions.size()
+			plan.regions[-1].parameters = TerrainPlan.Influence.PLACEMENT_DEFAULTS.duplicate(true)
+		_plan_selected_id = id
+	else:
+		var index: int = plan.index_of(_plan_selected_id)
+		if index >= 0: plan.regions[index].bounds = bounds_m
+	_plan_selection = ""
+	var error := commit_terrain_plan(map, plan)
+	_refresh_terrain_plan(true)
+	_plan_panel.set_status(error if not error.is_empty() else "Область добавлена в план. Земля не изменена.")
+
+func _plan_path_kind() -> String:
+	if _plan_selection == "add_road": return "road"
+	if _plan_selection == "add_river": return "river"
+	var plan: Resource = TerrainPlan.read(map)
+	var index: int = plan.index_of(_plan_selected_id) if plan != null else -1
+	return plan.regions[index].get("kind","") if index >= 0 else ""
+
+func _plan_path_bounds(region: Dictionary, parameters: Dictionary, extent: Vector2i) -> Rect2i:
+	return TerrainPlan.Influence.path_bounds(region.points_m,parameters.width_m,parameters.edge_m if region.kind == "road" else parameters.shore_m,extent)
+
+func _finish_plan_path() -> void:
+	var extent := Vector2i(entry.resource.width/16,entry.resource.depth/16)
+	var error := TerrainPlan.Influence.path_error(_path_points,extent)
+	if not error.is_empty(): _plan_panel.set_status(error); return
+	var original: Resource = TerrainPlan.read(map)
+	var plan: Resource = original.working_copy() if original != null else TerrainPlan.new()
+	plan.upgrade_local_layers()
+	var index: int = plan.index_of(_plan_selected_id)
+	var kind := _plan_path_kind()
+	if _plan_selection in ["add_river","add_road"]:
+		_plan_selected_id = "%s_%s_%s" % [kind,OS.get_process_id(),Time.get_ticks_usec()]
+		plan.regions.append({"id":_plan_selected_id,"name":("Дорога %d" if kind == "road" else "Река %d") % (plan.regions.size()+1),"kind":kind,"enabled":true,"parameters":(TerrainPlan.Influence.ROAD_DEFAULTS if kind == "road" else TerrainPlan.Influence.RIVER_DEFAULTS).duplicate()})
+		index = plan.regions.size()-1
+	if index < 0: return
+	plan.regions[index].points_m = _path_points.duplicate()
+	plan.regions[index].bounds = _plan_path_bounds(plan.regions[index],plan.regions[index].parameters,extent)
+	error = commit_terrain_plan(map,plan)
+	if not error.is_empty(): _plan_panel.set_status(error); return
+	_plan_selection = ""; selecting = false; _path_points = PackedVector2Array(); _path_hover = Vector2(-1,-1)
+	_refresh_terrain_plan(true)
+	_plan_panel.set_status("Линия сохранена в плане. Откройте параметры, затем предпросмотр и применение. Земля пока не изменена.")
+
+func _save_terrain_plan_parameters(parameters: Dictionary) -> void:
+	var target: EmberMapLoader = _generation_context.get("target").get_ref() if _generation_context.get("target") is WeakRef else null
+	if not is_instance_valid(target): return
+	var original: Resource = TerrainPlan.read(target)
+	if original == null: return
+	var plan: Resource = original.working_copy()
+	var index: int = plan.index_of(_generation_context.get("plan_id", ""))
+	if index < 0: return
+	if plan.regions[index].bounds != _generation_context.get("area"):
+		_generation_panel.set_pending("Границы изменились. Откройте область снова."); return
+	plan.regions[index].parameters = parameters.duplicate(true)
+	if plan.regions[index].get("kind") == "grove" and parameters.has("clearance_m"): plan.regions[index].kind = "placement"
+	if plan.regions[index].get("kind") in ["river","road"]:
+		plan.regions[index].bounds = _plan_path_bounds(plan.regions[index],parameters,Vector2i(entry.resource.width/16,entry.resource.depth/16))
+	var error := commit_terrain_plan(target, plan)
+	if error.is_empty(): _generation_context.plan_version = plan.data(); _generation_context.area = plan.regions[index].bounds
+	var result_hint := "Подготовьте предпросмотр для расстановки объектов." if plan.regions[index].get("kind") in ["grove","placement"] else "Подготовьте предпросмотр для изменения земли."
+	_generation_panel.set_pending(error if not error.is_empty() else "Параметры сохранены в плане · Ctrl+S сохраняет сцену. "+result_hint)
 var _section_mode := false
 var _section_dragging := false
 var _section_anchor := Vector2i.ZERO
@@ -232,6 +665,7 @@ func configure(owner_plugin: EditorPlugin, history: Object) -> void:
 
 
 func _open_terrain_generation() -> void:
+	if not can_leave_panel(): return
 	cancel_stroke()
 	if not _compact_active(): _status("Выберите компактную землю."); return
 	# The session owns the current terrain extent, including unsaved changes.
@@ -242,42 +676,68 @@ func _open_terrain_generation() -> void:
 		_status("Сначала выделите область до 96×96 м через «Область и вид → Ограничить участок».")
 		return
 	clear_compact_extension_preview()
-	_ensure_generation_dialog()
+	_ensure_generation_panel()
 	_generation_context = {"area": area, "target": weakref(map)}
-	_generation_dialog.open_for(area)
+	_generation_panel.open_for(area)
 
 
-func _ensure_generation_dialog() -> void:
-	if not is_instance_valid(_generation_dialog):
-		_generation_dialog = TerrainGenerationDialog.new()
-		EditorInterface.get_base_control().add_child(_generation_dialog)
-		_generation_dialog.preview_requested.connect(_prepare_terrain_generation)
-		_generation_dialog.settings_changed.connect(clear_terrain_generation_preview)
-		_generation_dialog.visibility_changed.connect(func():
-			if not _generation_dialog.visible: clear_terrain_generation_preview()
+func _ensure_generation_panel() -> void:
+	clear_terrain_generation_preview()
+	_show_workspace(true)
+	if is_instance_valid(_plan_panel): _plan_panel.hide()
+	if not is_instance_valid(_generation_panel):
+		_generation_panel = TerrainGenerationPanel.new()
+		_terrain_workspace.add_child(_generation_panel)
+		_generation_panel.preview_requested.connect(_prepare_terrain_generation)
+		_generation_panel.settings_changed.connect(clear_terrain_generation_preview)
+		_generation_panel.visibility_changed.connect(func():
+			if not _generation_panel.visible: clear_terrain_generation_preview()
 		)
-		_generation_dialog.confirmed.connect(_submit_terrain_generation)
-		_generation_dialog.select_area_requested.connect(func(): begin_section_selection(true))
+		_generation_panel.apply_requested.connect(_submit_terrain_generation)
+		_generation_panel.cancel_requested.connect(_close_generation_panel)
+		_generation_panel.select_area_requested.connect(func(): begin_section_selection(true))
+		_generation_panel.plan_settings_requested.connect(_save_terrain_plan_parameters)
+		_generation_panel.return_plan_requested.connect(_open_terrain_plan)
 
 
 func _prepare_terrain_generation(parameters: Dictionary) -> void:
-	var context := {"target": _generation_context.get("target"), "area": _generation_context.get("area", Rect2i()), "addition": _generation_context.get("addition", false)}
+	if _generation_context.get("grove",false): _prepare_grove(parameters); return
+	var context := {"target": _generation_context.get("target"), "area": _generation_context.get("area", Rect2i()), "addition": _generation_context.get("addition", false), "plan_id": _generation_context.get("plan_id", ""), "plan_version": _generation_context.get("plan_version", {}), "composition": _generation_context.get("composition", false)}
 	clear_terrain_generation_preview()
 	_generation_context = context
 	var target: EmberMapLoader = context.target.get_ref() if context.get("target") is WeakRef else null
-	if not is_instance_valid(target): _generation_dialog.set_pending("Карта была закрыта."); return
+	if not is_instance_valid(target): _generation_panel.set_pending("Карта была закрыта."); return
+	if not context.plan_id.is_empty():
+		var plan: Resource = TerrainPlan.read(target)
+		var index: int = plan.index_of(context.plan_id) if plan != null else -1
+		if index < 0 or plan.data() != context.plan_version or plan.regions[index].bounds != context.area:
+			_generation_panel.set_pending("План изменился. Откройте область снова."); return
 	var draft := sessions.open_map(target, scene)
-	if draft.is_empty(): _generation_dialog.set_pending(sessions.error); return
-	_generation_job = TerrainGeneration.new()
-	if not _generation_job.begin(draft.resource, context.area, parameters, context.addition):
-		_generation_dialog.set_pending(_generation_job.error)
+	if draft.is_empty(): _generation_panel.set_pending(sessions.error); return
+	var prepared := false
+	if context.composition:
+		var plan: Resource = TerrainPlan.read(target)
+		if plan == null or plan.data() != context.plan_version:
+			_generation_panel.set_pending("План изменился. Откройте его снова."); return
+		var input: Resource = plan.working_copy()
+		if not context.plan_id.is_empty():
+			var index: int = input.index_of(context.plan_id)
+			input.regions[index].parameters = parameters.duplicate(true)
+			if input.regions[index].get("kind") in ["river","road"]: input.regions[index].bounds = _plan_path_bounds(input.regions[index],parameters,Vector2i(draft.resource.width/16,draft.resource.depth/16))
+		_generation_job = TerrainComposition.new()
+		prepared = _generation_job.begin(draft.resource, input)
+	else:
+		_generation_job = TerrainGeneration.new()
+		prepared = _generation_job.begin(draft.resource, context.area, parameters, context.addition)
+	if not prepared:
+		_generation_panel.set_pending(_generation_job.error)
 		_generation_job = null
 		return
 	_generation_context["draft"] = draft
 	_generation_context["version"] = draft.resource.working_copy()
 	_generation_context["layout"] = Sessions.compact_layout(target).positions
 	_generation_context["selection"] = _generation_job.addition.duplicate()
-	_generation_dialog.set_pending("Подготавливаю землю…")
+	_generation_panel.set_pending("Подготавливаю землю…")
 
 
 func clear_terrain_generation_preview() -> void:
@@ -290,46 +750,199 @@ func clear_terrain_generation_preview() -> void:
 	_generation_context.erase("candidate")
 	_generation_context.erase("draft")
 	_generation_context.erase("version")
+	_generation_context.erase("output_plan")
+	_generation_context.erase("protected_blocks")
+	_generation_context.erase("validated_sections")
+	_generation_context.erase("grove_prepared")
+	_update_overlay()
 
 
 func _process_terrain_generation() -> void:
 	if _generation_job == null: return
+	if _generation_context.get("grove",false): _process_grove(); return
 	_generation_job.step(4000)
-	_generation_dialog.set_pending("Подготовка земли: %d%%" % roundi(_generation_job.progress() * 100.0))
+	if not _generation_job.error.is_empty():
+		_generation_panel.set_pending(_generation_job.error); clear_terrain_generation_preview(); return
+	_generation_panel.set_pending("Подготовка земли: %d%%" % roundi(_generation_job.progress() * 100.0))
 	if not _generation_job.finished: return
 	var target: EmberMapLoader = _generation_context.target.get_ref()
 	var candidate: EmberTerrainPilotResource = _generation_job.candidate
 	var bounds: Rect2i = _generation_job.bounds
 	var profile_ms := float(_generation_job.elapsed_us) / 1000.0
+	var preview_tiles: Array[Vector2i] = []
+	if _generation_context.get("composition", false):
+		_generation_context.output_plan = _generation_job.output_plan
+		_generation_context.validated_sections = _generation_job.validated_sections
+		_generation_context.protected_blocks = _generation_job.protected_blocks.keys()
+		var tiles := {}
+		for key: Vector2i in _generation_job.changed_tiles:
+			for delta in [Vector2i.ZERO, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+				if (key + delta).x >= 0 and (key + delta).y >= 0 and (key + delta).x * 64 < candidate.width and (key + delta).y * 64 < candidate.depth: tiles[key + delta] = true
+		preview_tiles.assign(tiles.keys())
+		for key in preview_tiles:
+			bounds = bounds.merge(Rect2i(key * 64, Vector2i.ONE * 64).intersection(Rect2i(0, 0, candidate.width, candidate.depth)))
+		if preview_tiles.is_empty():
+			_generation_context["candidate"] = candidate
+			_generation_job = null
+			_generation_panel.set_ready("Рельеф и вода уже совпадают. Можно применить состояние плана · защищено мест: %d." % _generation_context.protected_blocks.size()); _update_overlay(); return
 	_generation_job = null
-	if not is_instance_valid(target): _generation_dialog.set_pending("Карта была закрыта."); return
+	if not is_instance_valid(target): _generation_panel.set_pending("Карта была закрыта."); return
 	_generation_context["candidate"] = candidate
 	var preview := CompactExtensionPreview.new() as Node3D
 	target.add_child(preview, false, Node.INTERNAL_MODE_BACK)
-	if not preview.show_area(target, candidate, bounds, _generation_context.selection.get("offset", Vector2i.ZERO)):
+	if not preview.show_area(target, candidate, bounds, _generation_context.selection.get("offset", Vector2i.ZERO), preview_tiles,_generation_context.get("composition",false)):
 		preview.queue_free()
-		_generation_dialog.set_pending("3D-предпросмотр пока недоступен. Дождитесь открытия карты.")
+		_generation_panel.set_pending("3D-предпросмотр пока недоступен. Дождитесь открытия карты.")
 		return
 	_generation_preview = preview
-	_generation_dialog.set_pending("Строю 3D-предпросмотр…")
+	_generation_panel.set_pending("Строю 3D-предпросмотр…")
 	preview.preview_built.connect(func():
-		if _generation_preview == preview and is_instance_valid(_generation_dialog):
-			_generation_dialog.set_ready("Предпросмотр готов. Добавится %d участков; прежняя земля сохранится." % _generation_context.selection.keys.size() if _generation_context.addition else "Предпросмотр готов · расчёт %.0f мс. Применение заменит выбранную землю; отмена вернёт прежний вид." % profile_ms)
+		if _generation_preview == preview and is_instance_valid(_generation_panel):
+			if _generation_context.get("composition", false):
+				_generation_panel.set_ready("Предпросмотр областей готов · защищено мест: %d. Изменения применятся одной командой Undo." % _generation_context.protected_blocks.size()); _update_overlay(); return
+			_generation_panel.set_ready("Предпросмотр готов. Добавится %d участков; прежняя земля сохранится." % _generation_context.selection.keys.size() if _generation_context.addition else "Предпросмотр готов · расчёт %.0f мс. Применение заменит выбранную землю; отмена вернёт прежний вид." % profile_ms)
 	)
 
 
 func _submit_terrain_generation() -> void:
+	if _generation_context.get("grove",false): _submit_grove(); return
 	if not _generation_context.has("candidate"): return
 	var context := _generation_context.duplicate()
 	var target: EmberMapLoader = context.target.get_ref()
+	if context.get("composition", false) or not context.get("plan_id", "").is_empty():
+		var plan: Resource = TerrainPlan.read(target) if is_instance_valid(target) else null
+		if plan == null or plan.data() != context.plan_version:
+			_generation_panel.set_pending("План изменился. Подготовьте предпросмотр заново."); clear_terrain_generation_preview(); return
 	clear_terrain_generation_preview()
-	var message := commit_selected_sections(target, context) if context.get("addition", false) else commit_terrain_generation(target, context.draft, context.version, context.candidate)
+	var message := commit_terrain_composition(target, context) if context.get("composition", false) else commit_selected_sections(target, context) if context.get("addition", false) else commit_terrain_generation(target, context.draft, context.version, context.candidate)
 	if message.is_empty():
-		_generation_dialog.hide()
+		_close_generation_panel()
 	else:
-		_generation_dialog.set_pending(message)
+		_generation_panel.set_pending(message)
 	_status("Участки добавлены и выбраны для редактирования · Ctrl+Z отменяет · Ctrl+S сохраняет." if message.is_empty() and context.get("addition", false) else "Рельеф применён. Можно править кистями, отменить или сохранить карту." if message.is_empty() else message)
 
+func _prepare_grove(parameters: Dictionary) -> void:
+	var context := _generation_context.duplicate()
+	clear_terrain_generation_preview(); _generation_context = context
+	var target := (context.target as WeakRef).get_ref() as EmberMapLoader
+	var plan: Resource = TerrainPlan.read(target)
+	if not is_instance_valid(target) or plan == null or plan.data() != context.plan_version:
+		_generation_panel.set_pending("План изменился. Откройте область расстановки снова."); return
+	var input: Resource = plan.working_copy()
+	if not context.plan_id.is_empty():
+		var index: int = input.index_of(context.plan_id)
+		if index < 0: _generation_panel.set_pending("Область расстановки удалена."); return
+		input.regions[index].parameters = parameters.duplicate(true)
+		if input.regions[index].get("kind") == "grove" and parameters.has("clearance_m"):
+			input.upgrade_local_layers(); input.regions[index].kind = "placement"
+	var draft := sessions.open_map(target,scene)
+	if draft.is_empty(): _generation_panel.set_pending(sessions.error); return
+	_generation_job = GrovePlanner.new()
+	if not _generation_job.begin(draft.resource,target,scene,input):
+		_generation_panel.set_pending(_generation_job.error); _generation_job = null; return
+	_generation_context.draft = draft; _generation_context.version = draft.resource.working_copy()
+	_generation_context.layout = Sessions.compact_layout(target).positions
+	_generation_panel.set_pending("Подготавливаю расстановку объектов…")
+
+func _process_grove() -> void:
+	_generation_job.step(4000)
+	if not _generation_job.finished: return
+	var job: RefCounted = _generation_job; _generation_job = null
+	if not job.error.is_empty(): _generation_panel.set_pending(job.error); return
+	var target := (_generation_context.target as WeakRef).get_ref() as EmberMapLoader
+	if not is_instance_valid(target): return
+	_generation_context.grove_prepared = job
+	var preview := GrovePreview.new(); target.add_child(preview,false,Node.INTERNAL_MODE_BACK)
+	_generation_preview = preview
+	preview.preview_built.connect(func():
+		if _generation_preview == preview: _generation_panel.set_ready("Объектов: %d · защищено ручных правок/удалений: %d. Применение не меняет землю."%[job.placements.size(),job.protected_members.size()]))
+	preview.show_job(job)
+	_generation_panel.set_pending("Строю предпросмотр рощи…")
+
+func _submit_grove() -> void:
+	if not _generation_context.has("grove_prepared"): return
+	var context := _generation_context.duplicate()
+	clear_terrain_generation_preview()
+	var target := (context.target as WeakRef).get_ref() as EmberMapLoader
+	var message := commit_grove(target,context)
+	if not message.is_empty(): _generation_panel.set_pending(message); return
+	_close_generation_panel(); _status("Расстановка применена · Ctrl+Z отменяет · Ctrl+S сохраняет сцену.")
+
+func commit_grove(target: EmberMapLoader, context: Dictionary) -> String:
+	if not is_instance_valid(target): return "Карта была закрыта."
+	var draft: Dictionary = context.get("draft",{})
+	if not sessions.entries.values().has(draft) or draft.target.get_ref() != target: return "Черновик изменился."
+	var job: RefCounted = context.get("grove_prepared")
+	var plan: Resource = TerrainPlan.read(target)
+	if job == null or plan == null or plan.data() != context.plan_version or not draft.resource.same_terrain_data(context.version) or Sessions.compact_layout(target).positions != context.layout or job.stale():
+		return "Земля, объекты или источники объектов изменились. Обновите предпросмотр."
+	var delta: Dictionary = job.finalize(target.get_node("Props"))
+	if delta.is_empty(): return job.error
+	var problems: Array[String] = delta.plan.validation_errors(Vector2i(context.version.width/16,context.version.depth/16))
+	if not problems.is_empty():
+		for prop in delta.added: prop.free()
+		return problems[0]
+	if TerrainPlan.same(plan,delta.plan):
+		for prop in delta.added: prop.free()
+		return ""
+	var history: Object = sessions.undo
+	if history is EditorUndoRedoManager:
+		(history as EditorUndoRedoManager).create_action("Применить расстановку объектов",UndoRedo.MERGE_DISABLE,scene)
+		Callable(history,"add_do_method").callv([self,"_apply_grove_delta",context.draft,delta,delta.plan,true])
+		Callable(history,"add_undo_method").callv([self,"_apply_grove_delta",context.draft,delta,plan,false])
+		for prop in delta.added: (history as EditorUndoRedoManager).add_do_reference(prop)
+		for prop in delta.removed: (history as EditorUndoRedoManager).add_undo_reference(prop)
+		(history as EditorUndoRedoManager).commit_action()
+	else:
+		(history as UndoRedo).create_action("Применить расстановку объектов",UndoRedo.MERGE_DISABLE)
+		(history as UndoRedo).add_do_method(_apply_grove_delta.bind(context.draft,delta,delta.plan,true))
+		(history as UndoRedo).add_undo_method(_apply_grove_delta.bind(context.draft,delta,plan,false))
+		for prop in delta.added: (history as UndoRedo).add_do_reference(prop)
+		for prop in delta.removed: (history as UndoRedo).add_undo_reference(prop)
+		(history as UndoRedo).commit_action()
+	return ""
+
+func _apply_grove_delta(draft: Dictionary, delta: Dictionary, plan: Resource, forward: bool) -> void:
+	GrovePlanner.apply_delta(delta,forward)
+	sessions.set_plan(draft,plan)
+	if Engine.is_editor_hint(): EditorInterface.mark_scene_as_unsaved()
+	_refresh_terrain_plan()
+
+
+func commit_terrain_composition(target: EmberMapLoader, context: Dictionary) -> String:
+	if not is_instance_valid(target): return "Карта была закрыта."
+	var draft: Dictionary = context.draft
+	if not sessions.entries.values().has(draft) or draft.target.get_ref() != target: return "Черновик изменился."
+	if not draft.resource.same_terrain_data(context.version) or Sessions.compact_layout(target).positions != context.layout: return "Земля изменилась после предпросмотра. Обновите его."
+	var plan: Resource = TerrainPlan.read(target)
+	if plan == null or plan.data() != context.plan_version: return "План изменился после предпросмотра."
+	if Vector2i(context.candidate.width, context.candidate.depth) != Vector2i(draft.resource.width, draft.resource.depth): return "Локальные области не меняют размер карты."
+	var extent_error := _compact_extent_error(scene, context.candidate)
+	if not extent_error.is_empty(): return extent_error
+	var validation_scope: Array[Vector2i] = []
+	validation_scope.assign(context.get("validated_sections", []))
+	var errors: Array[String] = context.candidate.validation_errors(validation_scope)
+	errors.append_array(context.output_plan.validation_errors(Vector2i(context.candidate.width / 16, context.candidate.depth / 16)))
+	if not errors.is_empty(): return errors[0]
+	var history: Object = sessions.undo
+	var original: EmberTerrainPilotResource = draft.resource
+	if history is EditorUndoRedoManager:
+		(history as EditorUndoRedoManager).create_action("Применить локальные области", UndoRedo.MERGE_DISABLE, scene)
+		Callable(history, "add_do_method").callv([self, "_apply_composed_terrain", target, draft, context.candidate, context.output_plan])
+		Callable(history, "add_undo_method").callv([self, "_apply_composed_terrain", target, draft, original, plan])
+		(history as EditorUndoRedoManager).commit_action()
+	else:
+		(history as UndoRedo).create_action("Применить локальные области", UndoRedo.MERGE_DISABLE)
+		(history as UndoRedo).add_do_method(_apply_composed_terrain.bind(target, draft, context.candidate, context.output_plan))
+		(history as UndoRedo).add_undo_method(_apply_composed_terrain.bind(target, draft, original, plan))
+		(history as UndoRedo).commit_action()
+	return ""
+
+func _apply_composed_terrain(target: EmberMapLoader, draft: Dictionary, terrain: EmberTerrainPilotResource, plan: Resource) -> void:
+	if not is_instance_valid(target): return
+	sessions.set_plan(draft, plan)
+	_apply_generated_terrain(target, draft, terrain)
+	_refresh_terrain_plan()
 
 func commit_terrain_generation(target: EmberMapLoader, draft: Dictionary, before_version: EmberTerrainPilotResource, candidate: EmberTerrainPilotResource) -> String:
 	if not is_instance_valid(target) or candidate == null: return "Карта была закрыта."
@@ -495,6 +1108,13 @@ func _compact_extent_error(root: Node, source: EmberTerrainPilotResource) -> Str
 
 
 func _apply_compact_extension(target: EmberMapLoader, draft: Dictionary, source: EmberTerrainPilotResource, blocks: Vector2i, positions: Dictionary, direction := "") -> void:
+	# The legacy side-extension command shifts source coordinates without moving
+	# Map. Signed 3D selection handles its own Map rebase before this method.
+	if not positions.has("Map") and direction in ["west", "north"]:
+		var offset := Vector2i((source.width - draft.resource.width) / 16 if direction == "west" else 0,
+			(source.depth - draft.resource.depth) / 16 if direction == "north" else 0)
+		var plan: Resource = TerrainPlan.read(target)
+		if plan != null and offset != Vector2i.ZERO: sessions.set_plan(draft, plan.translated(offset))
 	var projection := target._visual_surface_projection as EmberTerrainPilotProjection if is_instance_valid(target) else null
 	if projection != null and not direction.is_empty():
 		projection.open_resized_document(source, draft.resource, direction, CompactMapExtension.Creation.SECTION_BLOCKS * EmberTerrainPilotResource.CELLS_PER_BLOCK)
@@ -553,6 +1173,7 @@ func build_toolbar() -> Control:
 
 
 func begin_section_selection(keep_area := false) -> void:
+	if not can_leave_panel(): return
 	var root := EditorInterface.get_edited_scene_root()
 	var target := root.find_child("Map", true, false) as EmberMapLoader if root != null else null
 	if target == null or target.compact_terrain == null:
@@ -562,7 +1183,7 @@ func begin_section_selection(keep_area := false) -> void:
 	cancel_stroke()
 	clear_terrain_generation_preview()
 	clear_compact_extension_preview()
-	if is_instance_valid(_generation_dialog): _generation_dialog.hide()
+	if is_instance_valid(_generation_panel): _generation_panel.hide()
 	map = target
 	target_choice.select(0)
 	_target_changed(0)
@@ -627,9 +1248,9 @@ func _confirm_section_selection() -> void:
 		return
 	_section_mode = false
 	_show_section_controls(false)
-	_ensure_generation_dialog()
+	_ensure_generation_panel()
 	_generation_context = {"area": Rect2i(_section_rect.position * 24, _section_rect.size * 24), "target": weakref(map), "addition": true}
-	_generation_dialog.open_for(_generation_context.area, selection.keys.size())
+	_generation_panel.open_for(_generation_context.area, selection.keys.size())
 	_update_overlay()
 
 
@@ -730,6 +1351,10 @@ func commit_selected_sections(target: EmberMapLoader, context: Dictionary) -> St
 func _apply_selected_sections(target: EmberMapLoader, draft: Dictionary, source: EmberTerrainPilotResource, blocks: Vector2i, positions: Dictionary, scope: Rect2i) -> void:
 	if not is_instance_valid(target): return
 	var new_position: Vector3 = positions.get("Map", target.position)
+	var displacement: Vector3 = target.basis.inverse() * (target.position - new_position) / target.imported_tile_size
+	var plan_offset := Vector2i(roundi(displacement.x), roundi(displacement.z))
+	var plan: Resource = TerrainPlan.read(target)
+	if plan != null and plan_offset != Vector2i.ZERO: sessions.set_plan(draft, plan.translated(plan_offset))
 	draft.compact_layout_delta["Map"] = draft.compact_layout_delta.get("Map", Vector3.ZERO) + new_position - target.position
 	target.position = new_position
 	_apply_compact_extension(target, draft, source, blocks, positions)
@@ -758,6 +1383,9 @@ func _editor_icon(name: StringName) -> Texture2D:
 func _button(parent: Node, text: String, callback: Callable) -> Button:
 	var button := Button.new()
 	button.text = text
+	if parent == object_parameters:
+		button.clip_text = true
+		button.tooltip_text = text
 	button.pressed.connect(callback)
 	parent.add_child(button)
 	if parent != object_parameters and parent != favorites_box and "Сохранить" not in text: _target_buttons.append(button)
@@ -849,7 +1477,53 @@ func build_sidebar() -> Control:
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(box)
 	var inspector_layout := VBoxContainer.new()
-	inspector_panel.add_child(inspector_layout)
+	var workspace := VBoxContainer.new()
+	inspector_panel.add_child(workspace)
+	var workspace_tabs := HBoxContainer.new(); _workspace_tabs = workspace_tabs; workspace.add_child(workspace_tabs)
+	_workspace_tools_button = Button.new(); _workspace_tools_button.text = "Инструменты"
+	_workspace_terrain_button = Button.new(); _workspace_terrain_button.text = "Рельеф"
+	for tab in [_workspace_tools_button, _workspace_terrain_button]:
+		tab.toggle_mode = true; tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL; workspace_tabs.add_child(tab)
+	_workspace_tools_button.button_pressed = true
+	_workspace_tools_button.pressed.connect(func(): _show_workspace(false))
+	_workspace_terrain_button.pressed.connect(_open_terrain_plan)
+	_tools_workspace = inspector_layout
+	_tools_workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	workspace.add_child(inspector_layout)
+	_terrain_workspace = VBoxContainer.new(); _terrain_workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	workspace.add_child(_terrain_workspace); _terrain_workspace.hide()
+	_map_creation_workspace = VBoxContainer.new(); _map_creation_workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	workspace.add_child(_map_creation_workspace); _map_creation_workspace.hide()
+	_material_workspace = VBoxContainer.new(); _material_workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	workspace.add_child(_material_workspace); _material_workspace.hide()
+	_placement_workspace = VBoxContainer.new(); _placement_workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	workspace.add_child(_placement_workspace); _placement_workspace.hide()
+	_shape_workspace = VBoxContainer.new(); _shape_workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	workspace.add_child(_shape_workspace); _shape_workspace.hide()
+	_duplicate_workspace = VBoxContainer.new(); _duplicate_workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	workspace.add_child(_duplicate_workspace); _duplicate_workspace.hide()
+	_merge_workspace = VBoxContainer.new(); _merge_workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	workspace.add_child(_merge_workspace); _merge_workspace.hide()
+	_split_workspace = VBoxContainer.new(); _split_workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	workspace.add_child(_split_workspace); _split_workspace.hide()
+	_conversion_workspace = VBoxContainer.new(); _conversion_workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	workspace.add_child(_conversion_workspace); _conversion_workspace.hide()
+	_object_brush_workspace = VBoxContainer.new(); _object_brush_workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	workspace.add_child(_object_brush_workspace); _object_brush_workspace.hide()
+	_object_brush_scroll = ScrollContainer.new()
+	_object_brush_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_object_brush_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_object_brush_workspace.add_child(_object_brush_scroll)
+	_object_brush_body = VBoxContainer.new(); _object_brush_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_object_brush_scroll.add_child(_object_brush_body)
+	_object_brush_title = Label.new(); _object_brush_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_object_brush_body.add_child(_object_brush_title)
+	var object_brush_help := Label.new(); object_brush_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	object_brush_help.text = "ЛКМ — объект; протянуть ЛКМ — мазок. Ctrl+Z отменяет весь мазок. Esc в 3D выключает кисть.\nПКМ / СКМ / Alt — камера. До 256 объектов за мазок, только на физической поверхности."
+	_object_brush_body.add_child(object_brush_help)
+	_object_brush_stop = Button.new(); _object_brush_stop.text = "Выключить кисть"
+	_object_brush_stop.pressed.connect(func(): if plugin != null: plugin._stop_scene_object_brush())
+	_object_brush_workspace.add_child(_object_brush_stop)
 	var inspector_scroll := ScrollContainer.new()
 	inspector_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	inspector_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -907,6 +1581,8 @@ func build_sidebar() -> Control:
 	create_ground_button.icon = _editor_icon(&"Add")
 	_generation_button = _button(box, "Сгенерировать рельеф…", _open_terrain_generation)
 	_generation_button.tooltip_text = "Остров, берег и холмы в существующей рабочей области. Сначала предпросмотр; применение отменяется одной командой."
+	_plan_button = _button(box, "План областей…", _open_terrain_plan)
+	_plan_button.tooltip_text = "Сохраняемая разметка и параметры рельефа; земля меняется только при применении."
 	category = _choice(box,["Форма","Покраска","Вода","Объекты"])
 	category.tooltip_text = "Раздел инструментов мира"
 	category.item_selected.connect(_category_changed)
@@ -975,7 +1651,8 @@ func build_sidebar() -> Control:
 	material_pattern_dialog = MaterialPatternDialog.new()
 	material_pattern_dialog.pattern_saved.connect(_on_material_pattern_saved)
 	material_pattern_dialog.pattern_created.connect(_on_material_pattern_created)
-	add_child(material_pattern_dialog)
+	material_pattern_dialog.edit_closed.connect(_close_material_workspace)
+	material_pattern_dialog.variant_opened.connect(_on_material_variant_opened)
 	sand_palette = _choice(settings,[])
 	palette.item_selected.connect(func(_index): cancel_stroke(); _refresh_palette_swatch())
 	surface_role_choice.item_selected.connect(func(index): set_compact_surface_role(int(palette.get_selected_metadata()), str(surface_role_choice.get_item_metadata(index))))
@@ -1037,11 +1714,18 @@ func build_sidebar() -> Control:
 	hide_water.toggled.connect(_set_working_water)
 	object_parameters = VBoxContainer.new()
 	settings.add_child(object_parameters)
-	for spec in [["Шаг · блоки","spacing_blocks",0.05,64,1,0.05],["Поворот Y","yaw_degrees",-180,180,0,1],["Масштаб","scale_factor",0.05,10,1,0.05],["Заглубление · vox","bury_vox",-64,64,0,0.5]]:
-		var control := _spin(object_parameters,spec[0],spec[2],spec[3],spec[4],spec[5])
+	for spec in [["Шаг · блоки","spacing_blocks",0.05,64,1,0.05],["Поворот Y · °","yaw_degrees",-180,180,0,1],["Масштаб","scale_factor",0.05,10,1,0.05],["Заглубление · vox","bury_vox",-64,64,0,0.5]]:
+		var group := VBoxContainer.new(); object_parameters.add_child(group)
+		var label := Label.new(); label.text = spec[0]; group.add_child(label)
+		var control := SpinBox.new(); control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		control.min_value = spec[2]; control.max_value = spec[3]; control.step = spec[5]; control.value = spec[4]
+		group.add_child(control)
 		var property: String = spec[1]
+		_object_brush_controls[property] = control
 		control.value_changed.connect(func(value):
-			if plugin != null and is_instance_valid(plugin._object_brush): plugin._object_brush.set(property,value)
+			if plugin != null and is_instance_valid(plugin._object_brush):
+				plugin._object_brush.cancel_stroke()
+				plugin._object_brush.set(property,value)
 		)
 	_button(object_parameters,"Библиотека объектов",func(): if plugin != null: plugin._open_voxel_object_library())
 	_button(object_parameters,"★ Закрепить текущий объект",func():
@@ -1051,6 +1735,7 @@ func build_sidebar() -> Control:
 			_save_settings()
 			_refresh_favorites()
 	)
+	_object_parameters_parent = settings; _object_parameters_index = object_parameters.get_index()
 	object_shelf_toggle = Button.new()
 	object_shelf_toggle.text = "Избранное / последние ▾"
 	object_shelf_toggle.toggle_mode = true
@@ -1350,10 +2035,12 @@ func _capture_terrain_diagnostics() -> void:
 func _refresh_dirty_status() -> void:
 	var started := Time.get_ticks_usec() if _compact_trace.recording else 0
 	if is_instance_valid(enabled): enabled.text = "Редактировать мир%s" % (" · %d*" % sessions.dirty_count(scene) if sessions.dirty_count(scene) > 0 else "")
+	if is_instance_valid(_plan_panel) and _plan_panel.visible: _refresh_terrain_plan()
 	_update_overlay()
 	if started > 0: _compact_trace.record_dirty_status(Time.get_ticks_usec() - started)
 
 func _toggle(value: bool) -> void:
+	if not can_leave_panel(): enabled.set_pressed_no_signal(active); return
 	if not value:
 		cancel_stroke()
 		if sessions.dirty_count(scene) > 0:
@@ -1381,9 +2068,13 @@ func _toggle(value: bool) -> void:
 		if current.scene.get_ref() == scene: sessions.preview(current)
 
 func _deactivate() -> void:
+	_plan_selection = ""
+	if is_instance_valid(_plan_panel): _plan_panel.hide()
+	if is_instance_valid(_generation_panel): _generation_panel.hide()
+	clear_terrain_generation_preview()
 	cancel_section_selection()
 	clear_terrain_generation_preview()
-	if is_instance_valid(_generation_dialog): _generation_dialog.hide()
+	if is_instance_valid(_generation_panel): _generation_panel.hide()
 	if _trace.recording: _stop_trace()
 	if _compact_trace.recording: _stop_compact_trace()
 	_clear_experiment()
@@ -1414,9 +2105,10 @@ func _deactivate() -> void:
 	_update_overlay()
 
 func scene_changed(root: Node) -> void:
+	_panel_host.scene_changed()
 	cancel_section_selection()
 	clear_terrain_generation_preview()
-	if is_instance_valid(_generation_dialog): _generation_dialog.hide()
+	if is_instance_valid(_generation_panel): _generation_panel.hide()
 	clear_compact_extension_preview()
 	_clear_compact_grid_overlay()
 	if _trace.recording: _stop_trace()
@@ -1442,9 +2134,18 @@ func scene_changed(root: Node) -> void:
 	edit_region = Rect2i()
 	if active: _target_changed(target_choice.selected)
 	_refresh_experiment_gate()
+	if _material_mode: _show_material_workspace()
 
 func _target_changed(index: int) -> void:
+	if is_instance_valid(_terrain_workspace):
+		_terrain_workspace.hide(); _tools_workspace.show()
+		if active: sidebar.show()
+		_workspace_tools_button.set_pressed_no_signal(true); _workspace_terrain_button.set_pressed_no_signal(false)
 	cancel_stroke()
+	_plan_selection = ""
+	if is_instance_valid(_plan_panel): _plan_panel.hide()
+	if is_instance_valid(_generation_panel): _generation_panel.hide()
+	clear_terrain_generation_preview()
 	if _trace.recording: _stop_trace()
 	if _compact_trace.recording: _stop_compact_trace()
 	create_region = false
@@ -1476,9 +2177,12 @@ func _target_changed(index: int) -> void:
 	_refresh_scope()
 	_tool_changed()
 	_refresh_experiment_gate()
+	if _material_mode: _show_material_workspace()
 
 func _refresh_target_actions() -> void:
 	if is_instance_valid(_generation_button): _generation_button.visible = _compact_active()
+	if is_instance_valid(_plan_button): _plan_button.visible = _compact_active()
+	if is_instance_valid(_workspace_terrain_button): _workspace_terrain_button.disabled = not _compact_active()
 	if is_instance_valid(create_ground_button): create_ground_button.visible = target_choice.selected == 0 and not _compact_active()
 	if is_instance_valid(open_canvas_button): open_canvas_button.visible = target_choice.selected == 1 or not _compact_active()
 	if is_instance_valid(_terrain_diagnostics_button): _terrain_diagnostics_button.visible = _compact_active()
@@ -1527,6 +2231,7 @@ func _category_changed(index: int, stop_scene_brush := true) -> void:
 		_tool_buttons.append(button)
 		_target_buttons.append(button)
 	object_parameters.visible = index == 3
+	if index == 3: _sync_object_brush_controls()
 	category.icon = _editor_icon([&"HeightMapShape3D",&"Paint",&"GradientTexture2D",&"MeshInstance3D"][index])
 	object_shelf_toggle.visible = index == 3
 	favorites_box.visible = index == 3 and object_shelf_toggle.button_pressed
@@ -1616,13 +2321,23 @@ func _refresh_palette_swatch() -> void:
 
 
 func _open_material_pattern() -> void:
-	if not _compact_active() or palette.selected < 0 or not is_instance_valid(material_pattern_dialog):
-		return
+	if not _compact_active() or palette.selected < 0 or not is_instance_valid(material_pattern_dialog) or plugin == null: return
+	if not _material_mode and not can_leave_panel(): return
 	var index := int(palette.get_selected_metadata())
 	var role: String = entry.resource.surface_role_for_palette(index)
 	var id: String = entry.resource.material_id_for_palette(index)
+	if not _material_mode:
+		_material_bound_map = weakref(map); _material_bound_index = index; _material_bound_id = id
+		_material_choices.clear()
+		for slot in entry.resource.palette.size():
+			var slot_role: String = entry.resource.surface_role_for_palette(slot)
+			var slot_id: String = entry.resource.material_id_for_palette(slot)
+			if not slot_role.is_empty() and not _material_choices.any(func(choice): return choice.id == slot_id):
+				_material_choices.append({"id": slot_id, "role": slot_role, "index": slot})
+		material_pattern_dialog.set_variant_choices(_material_choices)
 	if role.is_empty() or not material_pattern_dialog.open_variant(id, role):
-		_status("Паттерн выбранного материала не найден или повреждён.")
+		_status("Рисунок выбранного материала не найден или повреждён."); return
+	_show_material_workspace()
 
 
 func _on_material_pattern_saved(pattern: TerrainPattern, id: String) -> void:
@@ -1633,9 +2348,11 @@ func _on_material_pattern_saved(pattern: TerrainPattern, id: String) -> void:
 
 
 func _on_material_pattern_created(id: String, role: String) -> void:
-	if _compact_active() and palette.selected >= 0:
-		set_compact_surface_material(int(palette.get_selected_metadata()), role, id)
-	_status("Создан вариант %s. Выбранному материалу карты он назначен." % id)
+	var assigned := false
+	if _compact_active() and _material_bound_map != null and _material_bound_map.get_ref() == map and _material_bound_index > 0:
+		if entry.resource.surface_role_for_palette(_material_bound_index) == role and entry.resource.material_id_for_palette(_material_bound_index) == _material_bound_id:
+			assigned = set_compact_surface_material(_material_bound_index, role, id)
+	_status("Создан вариант %s. Он назначен исходному материалу карты." % id if assigned else "Создан вариант %s. Выберите его в материалах нужной карты." % id)
 
 func set_compact_surface_role(palette_index: int, role: String) -> bool:
 	return set_compact_surface_material(palette_index, role, role)
@@ -1798,8 +2515,8 @@ func save_all(defer_scene_save := false) -> bool:
 	# native editor's _apply_changes hook has not run yet (toolbar Save).
 	clear_compact_extension_preview()
 	clear_terrain_generation_preview()
-	if is_instance_valid(_generation_dialog) and _generation_dialog.visible:
-		_generation_dialog.set_pending("Предпросмотр закрыт перед сохранением. Обновите его для применения.")
+	if is_instance_valid(_generation_panel) and _generation_panel.visible:
+		_generation_panel.set_pending("Предпросмотр закрыт перед сохранением. Обновите его для применения.")
 	var saved := sessions.save_all(scene,defer_scene_save)
 	_status("Завершаю штатное сохранение сцены…" if saved and defer_scene_save else "Карта и изменённые объекты сохранены." if saved else "Сохранение остановлено: " + sessions.error)
 	if saved and defer_scene_save: saved = _finish_native_scene_save()
@@ -1892,6 +2609,7 @@ func _plane_cell(position: Vector2) -> Vector2i:
 	if point == null: return Vector2i(-1,-1)
 	var cell := Vector2i(floori(point.x),floori(point.z))
 	var footprint: Vector2i = map.authored_size_blocks if create_region or entry.is_empty() or _compact_active() else Vector2i(entry.resource.size_blocks.x,entry.resource.size_blocks.z)
+	if not _plan_selection.is_empty() and _compact_active(): footprint = Vector2i(entry.resource.width / 16, entry.resource.depth / 16)
 	return cell if cell.x >= 0 and cell.y >= 0 and cell.x < footprint.x and cell.y < footprint.y else Vector2i(-1,-1)
 
 func _pick_object(position: Vector2) -> void:
@@ -1915,12 +2633,27 @@ func _pick_object(position: Vector2) -> void:
 	else: _status("Нужен voxel-объект. Простые 3D-формы автоматически не преобразуются.")
 
 func forward_input(next_camera: Camera3D, event: InputEvent) -> int:
+	if _panel_host.blocks_viewport_tools():
+		return _panel_host.forward_input(event,get_viewport().gui_get_focus_owner())
 	if not active: return EditorPlugin.AFTER_GUI_INPUT_PASS
 	var received_usec := Time.get_ticks_usec() if _trace.recording and event is InputEventMouse else 0
 	var scheduled_usec := int(event.get_meta("ember_scheduled_usec",0)) if received_usec > 0 else 0
 	camera = next_camera
 	if _section_mode: return _forward_section_selection(event)
-	if _compact_active() and category.selected != 3:
+	# A dock is nonmodal: camera input still reaches Godot, but inspecting a
+	# recipe must not paint the terrain underneath its private preview.
+	if is_instance_valid(_terrain_workspace) and _terrain_workspace.visible and not selecting:
+		if event is InputEventKey and event.pressed and not event.echo:
+			var focus := get_viewport().gui_get_focus_owner()
+			if focus is LineEdit or focus is TextEdit: return EditorPlugin.AFTER_GUI_INPUT_PASS
+			if event.is_command_or_control_pressed() and event.keycode == KEY_S:
+				save_all(); return EditorPlugin.AFTER_GUI_INPUT_STOP
+			if event.keycode == KEY_ESCAPE:
+				if is_instance_valid(_generation_panel) and _generation_panel.visible: _close_generation_panel()
+				else: _show_workspace(false)
+				return EditorPlugin.AFTER_GUI_INPUT_STOP
+		return EditorPlugin.AFTER_GUI_INPUT_PASS
+	if _compact_active() and (category.selected != 3 or not _plan_selection.is_empty()):
 		return _forward_compact(event)
 	if event is InputEventKey and (Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) or Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE)): return EditorPlugin.AFTER_GUI_INPUT_PASS
 	if event is InputEventKey and event.alt_pressed: return EditorPlugin.AFTER_GUI_INPUT_PASS
@@ -1935,6 +2668,7 @@ func forward_input(next_camera: Camera3D, event: InputEvent) -> int:
 			selecting = false
 			picking_object = false
 			region_preview = Rect2i()
+			if not _plan_selection.is_empty(): _plan_selection = ""; _refresh_terrain_plan(true)
 			_update_overlay()
 			return EditorPlugin.AFTER_GUI_INPUT_STOP
 		if event.keycode in [KEY_BRACKETLEFT,KEY_BRACKETRIGHT]:
@@ -2017,6 +2751,7 @@ func _forward_compact(event: InputEvent) -> int:
 	var focused := get_viewport().gui_get_focus_owner()
 	if focused is LineEdit or focused is TextEdit:
 		return EditorPlugin.AFTER_GUI_INPUT_PASS
+	if _plan_selection in ["add_river","add_road","path_line"]: return _forward_plan_path(event)
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.is_command_or_control_pressed() and event.keycode in [KEY_Z,KEY_Y]:
 			if _compact_brush.active():
@@ -2033,6 +2768,7 @@ func _forward_compact(event: InputEvent) -> int:
 			cancel_stroke()
 			selecting = false
 			region_preview = Rect2i()
+			if not _plan_selection.is_empty(): _plan_selection = ""; _refresh_terrain_plan(true)
 			_update_overlay()
 			return EditorPlugin.AFTER_GUI_INPUT_STOP
 		if event.keycode in [KEY_BRACKETLEFT,KEY_BRACKETRIGHT]:
@@ -2080,6 +2816,7 @@ func _forward_compact(event: InputEvent) -> int:
 				selecting = false
 				region_preview = Rect2i()
 				_refresh_scope()
+				_finish_terrain_plan_selection(edit_region)
 			return EditorPlugin.AFTER_GUI_INPUT_STOP
 		if event.pressed:
 			var press_pick_started := Time.get_ticks_usec() if _compact_trace.recording else 0
@@ -2608,12 +3345,120 @@ func _draw_section_selection(overlay: Control) -> void:
 			overlay.draw_polyline(polygon, colour, 2, true)
 
 
+func _path_pick(position: Vector2) -> Vector2:
+	var hit := _pick_compact(position)
+	if hit.is_empty(): return Vector2(-1,-1)
+	var projection := map._visual_surface_projection as EmberTerrainPilotProjection
+	var cell: Vector2i = hit.cell
+	var local: Vector3 = projection.to_local(hit.world)
+	# Pick the visible water plane rather than a shifted point on the bed.
+	for i in 3:
+		var index: int = entry.resource.column_index(cell.x,cell.y)
+		var level: int = entry.resource.column_value("water_levels",index)
+		if level <= entry.resource.column_value("heights",index): break
+		var origin := projection.to_local(camera.project_ray_origin(position))
+		var ray := projection.global_basis.inverse()*camera.project_ray_normal(position)
+		var point: Variant = Plane(Vector3.UP,float(level+entry.resource.origin_y)).intersects_ray(origin,ray)
+		if point == null: break
+		var next := Vector2i(floori(point.x),floori(point.z))
+		if not entry.resource.has_column(next.x,next.y): break
+		local = point; cell = next
+	return (Vector2(local.x,local.z)/16.0).snapped(Vector2.ONE*0.5)
+
+func _forward_plan_path(event: InputEvent) -> int:
+	if event is InputEventMouse and (event.alt_pressed or event.button_mask & (MOUSE_BUTTON_MASK_RIGHT|MOUSE_BUTTON_MASK_MIDDLE)): return EditorPlugin.AFTER_GUI_INPUT_PASS
+	if event is InputEventMouseButton and event.button_index in [MOUSE_BUTTON_RIGHT,MOUSE_BUTTON_MIDDLE]: return EditorPlugin.AFTER_GUI_INPUT_PASS
+	if event is InputEventKey:
+		if event.alt_pressed or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) or Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE): return EditorPlugin.AFTER_GUI_INPUT_PASS
+		if not event.pressed or event.echo: return EditorPlugin.AFTER_GUI_INPUT_PASS
+		if event.is_command_or_control_pressed() and event.keycode in [KEY_Z,KEY_Y]: _open_terrain_plan(); return EditorPlugin.AFTER_GUI_INPUT_PASS
+		if event.keycode == KEY_ESCAPE: _open_terrain_plan(); return EditorPlugin.AFTER_GUI_INPUT_STOP
+		if event.keycode in [KEY_ENTER,KEY_KP_ENTER]: _finish_plan_path(); _update_overlay(); return EditorPlugin.AFTER_GUI_INPUT_STOP
+		if event.keycode == KEY_BACKSPACE:
+			if not _path_points.is_empty(): _path_points.resize(_path_points.size()-1)
+			_update_overlay(); return EditorPlugin.AFTER_GUI_INPUT_STOP
+		return EditorPlugin.AFTER_GUI_INPUT_PASS
+	if event is InputEventMouseMotion:
+		_path_hover = _path_pick(event.position); _update_overlay(); return EditorPlugin.AFTER_GUI_INPUT_STOP
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			var point := _path_pick(event.position)
+			if point.x < 0: _plan_panel.set_status("На этом месте нет земли. Намечайте линию внутри созданных участков."); return EditorPlugin.AFTER_GUI_INPUT_STOP
+			if _path_points.size() >= 32: _plan_panel.set_status("Не больше 32 точек; Enter завершает линию."); return EditorPlugin.AFTER_GUI_INPUT_STOP
+			if not _path_points.is_empty() and point.distance_to(_path_points[-1]) < 1: return EditorPlugin.AFTER_GUI_INPUT_STOP
+			_path_points.append(point); _path_hover = Vector2(-1,-1)
+			_plan_panel.set_status("Точек: %d · Enter — сохранить, Backspace — убрать последнюю, Esc — отменить." % _path_points.size())
+			_update_overlay()
+		return EditorPlugin.AFTER_GUI_INPUT_STOP
+	return EditorPlugin.AFTER_GUI_INPUT_PASS
+
+func _draw_plan_path(overlay: Control, points: PackedVector2Array, color: Color, cache_key: String, direction := true) -> void:
+	if points.is_empty(): return
+	var cached: Dictionary = _path_draw_cache.get(cache_key,{})
+	if cached.get("points") != points:
+		cached = {"points":points.duplicate(),"samples":TerrainPlan.Influence.path_curve(points).get_baked_points()}; _path_draw_cache[cache_key] = cached
+	var pixels := PackedVector2Array()
+	for point: Vector2 in cached.samples:
+		var cell := Vector2i(point*16.0)
+		if not entry.resource.has_column(cell.x,cell.y): continue
+		var index: int = entry.resource.column_index(cell.x,cell.y)
+		var height: int = maxi(entry.resource.column_value("heights",index),entry.resource.column_value("water_levels",index))+entry.resource.origin_y
+		var world := map._visual_surface_projection.to_global(Vector3(point.x*16.0,height+2,point.y*16.0))
+		if camera.is_position_behind(world): pixels.clear(); break
+		pixels.append(camera.unproject_position(world))
+	if pixels.size() >= 2:
+		overlay.draw_polyline(pixels,color,3,true)
+		if direction:
+			var last := pixels[-1]; var dir := (last-pixels[maxi(0,pixels.size()-4)]).normalized()
+			overlay.draw_line(last,last-dir.rotated(0.55)*12,color,2,true); overlay.draw_line(last,last-dir.rotated(-0.55)*12,color,2,true)
+	for point in points:
+		var cell := Vector2i(point*16.0)
+		if not entry.resource.has_column(cell.x,cell.y): continue
+		var index: int = entry.resource.column_index(cell.x,cell.y)
+		var height: int = maxi(entry.resource.column_value("heights",index),entry.resource.column_value("water_levels",index))+entry.resource.origin_y
+		var world := map._visual_surface_projection.to_global(Vector3(point.x*16,height+2,point.y*16))
+		if not camera.is_position_behind(world): overlay.draw_circle(camera.unproject_position(world),4,color)
+
+func _draw_terrain_plan(overlay: Control) -> void:
+	if _generation_context.has("candidate"):
+		var candidate: EmberTerrainPilotResource = _generation_context.candidate
+		for point: Vector2i in _generation_context.get("protected_blocks", []):
+			var cell := point * 16 + Vector2i(8, 8)
+			var height := candidate.origin_y + candidate.column_value("heights", candidate.column_index(cell.x, cell.y))
+			var world := map._visual_surface_projection.to_global(Vector3(cell.x, height + 0.5, cell.y))
+			if camera.is_position_behind(world): continue
+			var pixel := camera.unproject_position(world)
+			overlay.draw_line(pixel + Vector2(-3, -3), pixel + Vector2(3, 3), Color(1, 0.75, 0.3), 2)
+			overlay.draw_line(pixel + Vector2(-3, 3), pixel + Vector2(3, -3), Color(1, 0.75, 0.3), 2)
+	if _plan_selection in ["add_river","add_road","path_line"]:
+		var points := _path_points.duplicate()
+		if _path_hover.x >= 0 and (points.is_empty() or _path_hover.distance_to(points[-1]) >= 1): points.append(_path_hover)
+		_draw_plan_path(overlay,points,Color(0.3,0.9,1),"draft",_plan_path_kind() == "river")
+	var plan: Resource = TerrainPlan.read(map)
+	if plan == null: return
+	for region: Dictionary in plan.regions:
+		if region.get("kind") in ["river","road"]:
+			_draw_plan_path(overlay,region.points_m,Color(1,0.75,0.3) if region.id == _plan_selected_id else Color(0.4,0.75,0.9,0.65),region.id,region.kind == "river")
+			continue
+		var rect: Rect2i = region.bounds
+		var points := PackedVector2Array()
+		for corner in [rect.position, Vector2i(rect.end.x, rect.position.y), rect.end, Vector2i(rect.position.x, rect.end.y), rect.position]:
+			var world := _region_frame() * Vector3(corner.x, _region_height(), corner.y)
+			if camera.is_position_behind(world): points.clear(); break
+			points.append(camera.unproject_position(world))
+		if points.is_empty(): continue
+		var selected: bool = region.id == _plan_selected_id
+		var color := Color(1.0, 0.75, 0.3, 0.95) if selected else Color(0.65, 0.9, 0.7, 0.6)
+		overlay.draw_polyline(points, color, 2.5 if selected else 1.5, true)
+		overlay.draw_string(ThemeDB.fallback_font, points[0] + Vector2(4, -5), region.name, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, color)
+
 func draw_overlay(overlay: Control) -> void:
 	if not active or not is_instance_valid(camera): return
 	if _section_mode:
 		_draw_section_selection(overlay)
 		return
 	if _compact_active():
+		_draw_terrain_plan(overlay)
 		var selected_rect := region_preview if selecting and region_preview.has_area() else edit_region
 		if selected_rect.has_area():
 			var outline := PackedVector2Array()
@@ -2793,8 +3638,10 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT: cancel_stroke()
 
 func _exit_tree() -> void:
+	_panel_host.release()
 	clear_terrain_generation_preview()
-	if is_instance_valid(_generation_dialog): _generation_dialog.queue_free()
+	if is_instance_valid(_plan_panel): _plan_panel.queue_free()
+	if is_instance_valid(_generation_panel): _generation_panel.queue_free()
 	if is_instance_valid(_section_error_dialog): _section_error_dialog.queue_free()
 	clear_compact_extension_preview()
 	_clear_compact_grid_overlay()
@@ -2802,4 +3649,5 @@ func _exit_tree() -> void:
 	_set_working_water(false)
 	cancel_stroke()
 	_clear_experiment()
+	if is_instance_valid(material_pattern_dialog) and material_pattern_dialog.get_parent() == null: material_pattern_dialog.free()
 	sessions.release()

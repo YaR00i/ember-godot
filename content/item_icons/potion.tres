@@ -1,0 +1,40 @@
+[gd_resource type="Resource" script_class="EmberItemIconResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_item_icon_resource.gd" id="1_source"]
+
+[resource]
+script = ExtResource("1_source")
+icon_id = "potion"
+definition = {
+  "id": "potion",
+  "nameRu": "Флакон",
+  "size": 16,
+  "palette": {
+    ".": "",
+    "K": "#1c100c",
+    "B": "#4a2c1c",
+    "U": "#d8dce0",
+    "A": "#8a9098",
+    "P": "#8b3048",
+    "R": "#c45c26",
+    "L": "#ffb040"
+  },
+  "rows": [
+    "................",
+    "......KK........",
+    "......BB........",
+    ".....KUUK.......",
+    ".....U..U.......",
+    "....U.LL.U......",
+    "....U.RP.U......",
+    "....U.PP.U......",
+    "....U.PP.U......",
+    "....U.PR.U......",
+    ".....U..U.......",
+    "......UU........",
+    "................",
+    "................",
+    "................",
+    "................"
+  ]
+}

@@ -35,6 +35,7 @@ static func _voxel_snapshot(selected: Object, prop: EmberVoxelProp) -> Dictionar
 	var source_paths := EmberVoxelPrefab.source_paths(model_id) if not model_id.is_empty() else {"json": "", "vox": ""}
 	var json_path := str(source_paths.get("json", ""))
 	var vox_path := str(source_paths.get("vox", ""))
+	var source_owner := str(source_paths.get("owner", ""))
 	var prefab := EmberVoxelPrefab.load_json(model_id) if not model_id.is_empty() else {}
 	var model := EmberVoxelPrefab.model_of(prefab)
 	var map := _map_owner(prop)
@@ -55,7 +56,7 @@ static func _voxel_snapshot(selected: Object, prop: EmberVoxelProp) -> Dictionar
 		prefab_state = "нужна пересборка"
 		_diag(diagnostics, "warning", "Voxel source изменён после сборки prefab.")
 
-	components.append(_renderer_component(prop, json_path, vox_path))
+	components.append(_renderer_component(prop, json_path, vox_path, source_owner))
 	components.append(_collider_component(prop, model, diagnostics))
 	var light_component := _light_component(prop, model, map, diagnostics)
 	if not light_component.is_empty():
@@ -84,6 +85,8 @@ static func _voxel_snapshot(selected: Object, prop: EmberVoxelProp) -> Dictionar
 		"selectedIsOwner": selected == prop,
 		"prefabState": prefab_state,
 		"sources": {
+			"owner": source_owner,
+			"source": str(source_paths.get("source", json_path)),
 			"json": json_path,
 			"vox": vox_path,
 			"prefab": EmberVoxelPrefab.prefab_path(model_id) if not model_id.is_empty() else "",
@@ -134,7 +137,7 @@ static func _standalone_volume_component(
 	}
 
 
-static func _renderer_component(prop: EmberVoxelProp, json_path: String, vox_path: String) -> Dictionary:
+static func _renderer_component(prop: EmberVoxelProp, json_path: String, vox_path: String, source_owner: String) -> Dictionary:
 	var mesh_instance := prop.get_node_or_null("Mesh") as MeshInstance3D
 	var mesh := mesh_instance.mesh if mesh_instance else null
 	var surfaces: Array[String] = []
@@ -142,7 +145,9 @@ static func _renderer_component(prop: EmberVoxelProp, json_path: String, vox_pat
 		for index in mesh.get_surface_count():
 			var surface_name: String = mesh.surface_get_name(index)
 			surfaces.append(surface_name if not surface_name.is_empty() else "surface_%d" % index)
-	var source_kind := ".vox + .json" if not vox_path.is_empty() else ".json"
+	var source_kind := "Native source отсутствует"
+	if source_owner == "godot":
+		source_kind = "Godot Resource (.%s)" % json_path.get_extension()
 	return {
 		"id": "renderer",
 		"title": "Voxel Renderer",
@@ -308,7 +313,7 @@ static func _interact_component(
 				"Цепочка не содержит события выбранного задания; маркер показывает общий статус.",
 			)
 	if not interact.trigger_id.is_empty():
-		var trigger_ok := _region_exists(map.map_id if map else "", interact.trigger_id)
+		var trigger_ok := _region_exists(map.map_id if map else "", interact.trigger_id, map)
 		rows.append(_reference_row("Trigger", interact.trigger_id, trigger_ok))
 		if not trigger_ok:
 			_diag(diagnostics, "error", "Trigger не найден: %s" % interact.trigger_id)
@@ -331,7 +336,7 @@ static func _interact_component(
 		if not shop_ok:
 			_diag(diagnostics, "error", "Shop не найден: %s" % interact.shop_id)
 	if not interact.target_map_id.is_empty():
-		var map_ok := FileAccess.file_exists(EmberPack.map_path(interact.target_map_id))
+		var map_ok := EmberInteractionContent.map_exists(interact.target_map_id)
 		rows.append(_reference_row("Target map", interact.target_map_id, map_ok))
 		if not map_ok:
 			_diag(diagnostics, "error", "Target map не найдена: %s" % interact.target_map_id)
@@ -441,19 +446,12 @@ static func _reference_row(label: String, value: String, ok: bool) -> Dictionary
 	}
 
 
-static func _region_exists(map_id: String, region_id: String) -> bool:
+static func _region_exists(map_id: String, region_id: String, live_map: EmberMapLoader = null) -> bool:
 	if map_id.is_empty() or region_id.is_empty():
 		return false
-	var parsed: Variant = EmberPack.parse_json_file(EmberPack.map_path(map_id))
-	if typeof(parsed) != TYPE_DICTIONARY:
-		return false
-	var regions: Variant = (parsed as Dictionary).get("regions", [])
-	if typeof(regions) != TYPE_ARRAY:
-		return false
-	for raw_region in regions:
-		if typeof(raw_region) == TYPE_DICTIONARY and str(raw_region.get("id", "")) == region_id:
-			return true
-	return false
+	if live_map != null and live_map.map_id == map_id:
+		return live_map.find_region(region_id) != null
+	return not EmberInteractionContent.region_definition(map_id, region_id).is_empty()
 
 
 static func _map_owner(node: Node) -> EmberMapLoader:

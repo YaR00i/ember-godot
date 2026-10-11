@@ -1,11 +1,16 @@
 extends SceneTree
 ## Defeat locks explore input; respawn reuses player_start and existing save owner.
 
-const SANDBOX_SCENE := "res://scenes/agent_sandbox.tscn"
+const Fixture = preload("res://tools/fixtures/ember_party_test_fixture.gd")
+var _setup: Dictionary
 const ExploreState = preload("res://scripts/ember_explore_state.gd")
 
 
 func _init() -> void:
+	_setup = Fixture.prepare(self)
+	if _setup.refused:
+		quit.call_deferred(2)
+		return
 	_run_and_quit.call_deferred()
 
 
@@ -15,8 +20,12 @@ func _run_and_quit() -> void:
 
 func _run() -> int:
 	var errors: Array[String] = []
+	if _setup.error != OK or not _setup.progress_isolated:
+		printerr("FAIL native party fixture preparation")
+		return 1
 	_test_state_contract(errors)
 	await _test_live_respawn(errors)
+	Fixture.verify_sources(_setup, errors)
 	if not errors.is_empty():
 		printerr("FAIL defeat/respawn")
 		for error in errors:
@@ -33,8 +42,9 @@ func _test_state_contract(errors: Array[String]) -> void:
 	var state := ExploreState.new()
 	state.persistence_enabled = false
 	state.reset_new_game()
+	state.set_world_context(_setup.map_id, null, 16.0)
 	state.inventory = {"coin": 23, "herb": 1}
-	state.equipment = EmberEquipment.normalize({"body": "mourning_mail"})
+	state.equipment = EmberEquipment.normalize({"armor": Fixture.ARMOR})
 	state.flags = {"quest_done": true}
 	state.hp = 5.0
 	var hit := state.apply_damage(20.0, false)
@@ -67,8 +77,9 @@ func _test_live_respawn(errors: Array[String]) -> void:
 	state.persistence_enabled = false
 	state.restore_enabled = false
 	state.reset_new_game()
-	if change_scene_to_file(SANDBOX_SCENE) != OK:
-		errors.append("could not start agent_sandbox")
+	state.set_world_context(_setup.map_id, null, 16.0)
+	if change_scene_to_file(_setup.scene.resource_path) != OK:
+		errors.append("could not start native fixture")
 		return
 	await process_frame
 	await process_frame
@@ -77,7 +88,7 @@ func _test_live_respawn(errors: Array[String]) -> void:
 	var player := current_scene.get_node_or_null("Player") as CharacterBody3D
 	var map := current_scene.get_node_or_null("Map") as EmberMapLoader
 	if player == null or map == null:
-		errors.append("agent_sandbox lost Player or Map")
+		errors.append("native fixture lost Player or Map")
 		return
 	state.inventory = {"coin": 23, "herb": 1}
 	state.flags = {"quest_done": true}

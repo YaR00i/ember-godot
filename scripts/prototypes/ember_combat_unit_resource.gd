@@ -220,6 +220,12 @@ func content_signature() -> String:
 	])
 
 
+func behavior_summary() -> String:
+	var data := to_definition()
+	var profile := AiProfileCatalog.resource(ai_profile_id)
+	return "%s · %s · уровень %d. HP %d, MP %d; перемещение %d, прыжок %d.\nПроизводные: уклонение %d, критический шанс %d%%. Приёмов: %d.\nИИ: %s. Лут: %s. Общие записи редактируются в своих разделах; здесь выбираются ссылки." % ["Герой" if team == Team.HERO else "Враг", creature_type_label(), combat_level, max_hp, max_mp, move_range, jump_height, data.eva, data.crit, action_ids.size(), profile.display_name if profile != null else "не назначен", loot_table.display_name if loot_table != null else "не назначен"]
+
+
 func _action_signature() -> String:
 	var signatures := PackedStringArray()
 	for raw_id in action_ids:

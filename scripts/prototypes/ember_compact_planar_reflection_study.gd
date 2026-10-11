@@ -178,6 +178,7 @@ var _shore_texture: ImageTexture
 var _contact_texture: ImageTexture
 var _phase_texture: ImageTexture
 var _water_regions: RefCounted
+var runtime_water_activity_enabled := true # Runtime experiment switch; no authored setting.
 var _region_projection_id := 0
 var _region_staged := false
 var _fields_build_count := 0
@@ -347,8 +348,7 @@ func _process(_delta: float) -> void:
 	position.y = 2.0 * _water_height - position.y
 	_camera.global_transform = Transform3D(Basis(right, up, backward), position)
 	var reflection_view := Projection(_camera.get_camera_projection()) * Projection(_camera.get_camera_transform().affine_inverse())
-	_material.set_shader_parameter("reflection_view_projection", reflection_view)
-	if _water_regions != null and scene_reflection > 0.0: _water_regions.set_water_parameter("reflection_view_projection", reflection_view)
+	_set_water_parameter_if_changed("reflection_view_projection", reflection_view, scene_reflection > 0.0)
 
 
 func _refresh_editor_preview() -> void:
@@ -742,15 +742,21 @@ func _upload_surface_contacts() -> void:
 			wakes[wake_count] = Vector4(point.x / 16.0, point.z / 16.0, float(sample["age"]), float(sample.get("strength", 1.0)))
 			wake_details[wake_count] = Vector4(forward.x, forward.y, float(sample["life"]), float(sample["radius"]))
 			wake_count += 1
-	_material.set_shader_parameter("object_shapes", shapes)
-	_material.set_shader_parameter("object_shape_meta", metadata)
-	_material.set_shader_parameter("object_shape_count", count)
-	_material.set_shader_parameter("reaction_samples", wakes)
-	_material.set_shader_parameter("reaction_details", wake_details)
-	_material.set_shader_parameter("reaction_count", wake_count)
-	if _water_regions != null:
-		for key in ["object_shapes", "object_shape_meta", "object_shape_count", "reaction_samples", "reaction_details", "reaction_count"]:
-			_water_regions.set_water_parameter(key, _material.get_shader_parameter(key))
+	_set_water_parameter_if_changed("object_shapes", shapes)
+	_set_water_parameter_if_changed("object_shape_meta", metadata)
+	_set_water_parameter_if_changed("object_shape_count", count)
+	_set_water_parameter_if_changed("reaction_samples", wakes)
+	_set_water_parameter_if_changed("reaction_details", wake_details)
+	_set_water_parameter_if_changed("reaction_count", wake_count)
+
+
+func _set_water_parameter_if_changed(key: String, value: Variant, regional := true) -> void:
+	# Read the base material so rebind/Undo and direct preview edits stay visible.
+	if _material.get_shader_parameter(key) != value:
+		_material.set_shader_parameter(key, value)
+	# Regions own separate caches; a newly bound region still receives its value.
+	if regional and _water_regions != null:
+		_water_regions.set_water_parameter(key, value)
 
 
 func _toggle_reaction_preview() -> void:
@@ -858,11 +864,36 @@ func _refresh_sea_swash() -> void:
 	if fixed_time < 0.0 and now < _sea_update_ms: return
 	_sea_update_ms = now + 50
 	var simulation_time := fixed_time if fixed_time >= 0.0 else float(now) / 1000.0
+	_refresh_region_activity(fixed_time)
 	_sea_swash.advance(simulation_time,
 		sea_swash_height, sea_swash_period, sea_swash_reach, water_level_offset_voxels, sand_drying_seconds,
 		sea_approach_distance, sea_approach_strength)
 	_material.set_shader_parameter("sea_swash_time", simulation_time)
 	if _water_regions != null: _water_regions.set_water_parameter("sea_swash_time", simulation_time)
+
+
+func _refresh_region_activity(fixed_time: float) -> void:
+	if _water_regions == null: return
+	if Engine.is_editor_hint() or fixed_time >= 0.0:
+		_water_regions.set_runtime_activity(false)
+		return
+	var map := water_settings_map()
+	var projection := map.get("_visual_surface_projection") as EmberTerrainPilotProjection if is_instance_valid(map) else null
+	var observers := PackedVector2Array()
+	if projection != null:
+		var camera := get_viewport().get_camera_3d()
+		var player := get_parent().get_node_or_null("Player") as Node3D
+		for observer in [camera, player]:
+			if not is_instance_valid(observer): continue
+			var point := projection.to_local(observer.global_position)
+			observers.append(Vector2(point.x, point.z))
+		# Convert world metres conservatively for scaled/rotated terrain instances.
+		var metres_per_cell := minf(projection.global_basis.x.length(), projection.global_basis.z.length())
+		var metre_world := map.imported_tile_size * minf(map.global_basis.x.length(), map.global_basis.z.length())
+		_water_regions.set_runtime_activity(runtime_water_activity_enabled, observers,
+			48.0 * metre_world / maxf(metres_per_cell, 0.0001), 8.0 * metre_world / maxf(metres_per_cell, 0.0001))
+	else:
+		_water_regions.set_runtime_activity(false)
 
 
 func _refresh_wave_obstacles() -> void:

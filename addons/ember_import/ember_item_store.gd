@@ -1,12 +1,13 @@
 @tool
 class_name EmberItemStore
 extends RefCounted
-## Validation/writer boundary for Godot-native items. Legacy catalog entries
-## are immutable until an explicit per-item migration creates an override.
+## Validation/writer boundary for the shared Godot-native item catalog.
 
 const Catalog = preload("res://scripts/ember_item_catalog.gd")
-const KINDS := ["material", "consumable", "weapon_jrpg", "weapon_arena", "armor", "accessory", "key"]
-const SLOTS := ["none", "weapon", "head", "body", "accessory"]
+const KINDS := ["material", "consumable", "weapon_jrpg", "armor", "shoes", "accessory", "key"]
+const LEGACY_KINDS := ["weapon_arena"]
+const SLOTS := ["none", "weapon", "armor", "shoes", "accessory"]
+const LEGACY_SLOTS := ["head", "body"]
 const RARITIES := ["common", "uncommon", "rare", "epic"]
 const USE_TARGETS := ["explore", "arena", "both"]
 
@@ -20,7 +21,7 @@ static func owner(item_id: String) -> String:
 
 
 static func source_path(item_id: String) -> String:
-	return Catalog.native_path(item_id) if owner(item_id) == "native" else EmberPack.item_catalog_path()
+	return Catalog.native_path(item_id) if owner(item_id) == "native" else ""
 
 
 static func ids() -> Array[String]:
@@ -50,6 +51,7 @@ static func normalized_document(raw: Dictionary) -> Dictionary:
 	result["nameRu"] = str(raw.get("nameRu", "")).strip_edges()
 	result["kind"] = str(raw.get("kind", "material")).strip_edges()
 	result["slot"] = str(raw.get("slot", "none")).strip_edges()
+	if result.kind == "armor" and result.slot == "body": result.slot = "armor"
 	result["rarity"] = str(raw.get("rarity", "common")).strip_edges()
 	result["useIn"] = str(raw.get("useIn", "explore")).strip_edges()
 	result["stackMax"] = maxi(1, roundi(float(raw.get("stackMax", 1))))
@@ -67,6 +69,14 @@ static func normalized_document(raw: Dictionary) -> Dictionary:
 			if not tag.is_empty() and tag not in tags:
 				tags.append(tag)
 	result["tags"] = tags
+	for key in ["hpBonus", "mpBonus", "combatDelay"]:
+		if raw.has(key): result[key] = int(raw[key])
+	if raw.has("allowedHeroIds") and typeof(raw.allowedHeroIds) in [TYPE_ARRAY, TYPE_PACKED_STRING_ARRAY]:
+		var allowed: Array[String] = []
+		for raw_id in raw.allowedHeroIds:
+			var hero_id := str(raw_id).strip_edges()
+			if not hero_id.is_empty() and hero_id not in allowed: allowed.append(hero_id)
+		result["allowedHeroIds"] = allowed
 	return result
 
 
@@ -77,10 +87,16 @@ static func validation_errors(raw: Dictionary) -> Array[String]:
 		errors.append("ID: только a-z, 0-9, _ и -, первый символ — буква или цифра.")
 	if str(value.get("nameRu", "")).is_empty():
 		errors.append("Укажите русское название предмета.")
-	if str(value.get("kind", "")) not in KINDS:
+	if str(value.get("kind", "")) not in KINDS + LEGACY_KINDS:
 		errors.append("Выберите поддерживаемый тип предмета.")
-	if str(value.get("slot", "")) not in SLOTS:
+	if str(value.get("slot", "")) not in SLOTS + LEGACY_SLOTS:
 		errors.append("Выберите поддерживаемый слот.")
+	if str(value.get("kind", "")) == "armor" and str(value.get("slot", "")) not in ["armor", "head"]:
+		errors.append("Броне нужен слот брони. Старый головной убор хранится в сумке до изменения типа.")
+	if raw.has("allowedHeroIds") and typeof(raw.allowedHeroIds) not in [TYPE_ARRAY, TYPE_PACKED_STRING_ARRAY]:
+		errors.append("Список героев должен содержать ID; пустой список разрешает экипировку всем.")
+	if raw.has("combatDelay") and int(value.get("combatDelay", 100)) < 1:
+		errors.append("Задержка применения в бою должна быть не меньше 1.")
 	if str(value.get("rarity", "")) not in RARITIES:
 		errors.append("Выберите редкость.")
 	if str(value.get("useIn", "")) not in USE_TARGETS:
@@ -105,16 +121,7 @@ static func write_document(raw: Dictionary) -> int:
 	if not errors.is_empty():
 		push_error("Ember item: %s" % " ".join(errors))
 		return ERR_INVALID_DATA
-	if owner(str(value.get("id", ""))) == "legacy":
-		return ERR_UNAUTHORIZED
 	return Catalog.write_native(value)
-
-
-static func migrate_to_native(item_id: String) -> int:
-	if owner(item_id) != "legacy":
-		return ERR_ALREADY_EXISTS
-	var current := document(item_id)
-	return ERR_DOES_NOT_EXIST if current.is_empty() else Catalog.write_native(current)
 
 
 static func snapshot(item_id: String) -> Dictionary:

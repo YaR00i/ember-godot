@@ -14,7 +14,8 @@ func build(model: Dictionary, voxel_size: float) -> ArrayMesh:
 	var colors := VoxMesher._model_colors(model)
 	var plane := size.x * size.z
 	var height := maxi(1, mini(8, 65536 / maxi(1, plane)))
-	var key: Array = [size, voxel_size, colors, height]
+	var parameters := VoxMesher.MaterialProfiles.palette_parameters(model.get("material", {}), colors.size())
+	var key: Array = [size, voxel_size, colors, height, parameters]
 	if key != _key:
 		_parts.clear()
 		_key = key
@@ -45,7 +46,7 @@ func build(model: Dictionary, voxel_size: float) -> ArrayMesh:
 			filled[index] = 1 if voxels[index] > 0 else 0
 		for index in dirty:
 			var part := _parts[index]
-			part.mesh = VoxMesher._build_culled(size.x,size.y,size.z,filled,indices,colors,transparency,voxel_size,Vector3i(0,part.y,0),Vector3i(size.x,part.height,size.z))
+			part.mesh = VoxMesher._build_culled(size.x,size.y,size.z,filled,indices,colors,transparency,voxel_size,Vector3i(0,part.y,0),Vector3i(size.x,part.height,size.z),Vector3i.ZERO,parameters)
 			rebuilt += 1
 	# Always assemble fresh arrays. Published/runtime mesh mutations cannot poison
 	# cached pieces or weaken the independent source-vs-instance safety check.
@@ -54,6 +55,7 @@ func build(model: Dictionary, voxel_size: float) -> ArrayMesh:
 		var vertices := PackedVector3Array()
 		var normals := PackedVector3Array()
 		var palette := PackedColorArray()
+		var custom := PackedFloat32Array()
 		var indices := PackedInt32Array()
 		for part in _parts:
 			var piece: ArrayMesh = part.mesh
@@ -65,7 +67,9 @@ func build(model: Dictionary, voxel_size: float) -> ArrayMesh:
 				vertices.append_array(arrays[Mesh.ARRAY_VERTEX])
 				normals.append_array(arrays[Mesh.ARRAY_NORMAL])
 				palette.append_array(arrays[Mesh.ARRAY_COLOR])
+				if arrays[Mesh.ARRAY_CUSTOM0] != null:
+					custom.append_array(arrays[Mesh.ARRAY_CUSTOM0])
 				for index in arrays[Mesh.ARRAY_INDEX]:
 					indices.append(index + offset)
-		VoxMesher._append_array_mesh_surface(mesh,vertices,normals,palette,indices,channel)
+		VoxMesher._append_array_mesh_surface(mesh,vertices,normals,palette,indices,channel,custom)
 	return mesh

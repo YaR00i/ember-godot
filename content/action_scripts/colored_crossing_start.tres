@@ -9,7 +9,7 @@ document = {
 "id": "colored_crossing_start",
 "nameRu": "Начать засаду у цветной переправы",
 "steps": [{
-"dialogueId": "sandbox_notice_talk",
+"dialogueId": "colored_crossing_intro",
 "type": "talk"
 }, {
 "encounterId": "colored_crossing_demo",

@@ -45,10 +45,11 @@ var playtime_seconds := 0.0
 var party_follow_mode := "formation"
 var exploration_leader_id := EmberPartyState.LEADER_ID
 
-var _map_id := "fan_town"
+var _map_id := EmberMapTransition.DEFAULT_MAP_ID
 var _player: Node3D
 var _tile_size := 16.0
 var _restore_pending := false
+var _saved_spawn_at_entry := false
 var _saved_map_id := ""
 var _saved_x: Variant = null
 var _saved_y: Variant = null
@@ -59,6 +60,13 @@ var _item_definitions_cache_ready := false
 
 
 func _ready() -> void:
+	if not Engine.is_editor_hint() and EmberCombatTransition.isolated_editor_process_requested():
+		persistence_enabled = false
+		restore_enabled = false
+		storage_root = "user://ember-library-lab/%d/saves" % OS.get_process_id()
+		legacy_storage_root = "user://ember-library-lab/%d/legacy" % OS.get_process_id()
+		reset_new_game()
+		return
 	active_slot = _manual_slot(ProjectSettings.get_setting("ember/save_slot", DEFAULT_SLOT))
 	if not load_latest_available():
 		reset_new_game()
@@ -80,6 +88,7 @@ func reset_new_game() -> void:
 	flags = {}
 	playtime_seconds = 0.0
 	_restore_pending = false
+	_saved_spawn_at_entry = false
 	_saved_map_id = ""
 	_saved_x = null
 	_saved_y = null
@@ -147,7 +156,11 @@ func start_scene_path_for(current_scene_path: String) -> String:
 	if current_scene_path != main_scene:
 		return ""
 	var target := EmberMapTransition.scene_path(_saved_map_id)
-	if target == current_scene_path or not ResourceLoader.exists(target):
+	if not ResourceLoader.exists(target):
+		_restore_pending = false
+		_saved_spawn_at_entry = false
+		return ""
+	if target == current_scene_path:
 		return ""
 	return target
 
@@ -155,6 +168,10 @@ func start_scene_path_for(current_scene_path: String) -> String:
 func consume_saved_spawn(map_id: String, tile_size: float) -> Variant:
 	if not restore_enabled or not _restore_pending or map_id != _saved_map_id:
 		return null
+	if _saved_spawn_at_entry:
+		_restore_pending = false
+		_saved_spawn_at_entry = false
+		return null # ExploreScene uses its authored native entry.
 	var ts := maxf(1.0, tile_size)
 	var x := (
 		float(_saved_x)
@@ -171,10 +188,17 @@ func consume_saved_spawn(map_id: String, tile_size: float) -> Variant:
 	return Vector3(x, elev, y)
 
 
+func has_pending_spawn_restore() -> bool:
+	## A loaded save has not reached its scene/player yet. The outgoing scene
+	## must not autosave its old world position over this pending restore.
+	return _restore_pending
+
+
 func arm_saved_spawn_restore() -> void:
 	## Battle return reloads the authored map scene. Reuse the same saved-position
 	## contract as startup restore so the player returns beside the source object.
 	_restore_pending = not _saved_map_id.is_empty()
+	_resolve_saved_location()
 
 
 func chest_is_opened(map_id: String, region_id: String) -> bool:
@@ -339,11 +363,11 @@ func party_member_view(hero_id: String) -> Dictionary:
 	return EmberPartyState.member_view(party, hero_id, _items())
 
 
-func equip_item(item_id: String) -> Dictionary:
-	return equip_item_for_member(EmberPartyState.LEADER_ID, item_id)
+func equip_item(item_id: String, slot := "") -> Dictionary:
+	return equip_item_for_member(EmberPartyState.LEADER_ID, item_id, slot)
 
 
-func equip_item_for_member(hero_id: String, item_id: String) -> Dictionary:
+func equip_item_for_member(hero_id: String, item_id: String, slot := "") -> Dictionary:
 	if hero_id not in active_hero_ids:
 		return {"ok": false, "reason": "missing_hero", "inventory": inventory.duplicate(true)}
 	_sync_party_from_compatibility()
@@ -359,6 +383,7 @@ func equip_item_for_member(hero_id: String, item_id: String) -> Dictionary:
 		member.get("equipment", {}),
 		item_id.strip_edges(),
 		items,
+		slot,
 	)
 	_apply_equipment_result(hero_id, result)
 	return result
@@ -631,18 +656,20 @@ func save_autosave() -> bool:
 func delete_slot(slot := active_slot) -> Dictionary:
 	var clean_slot := _manual_slot(slot)
 	return _archive_and_remove_saves(
-		[save_path(clean_slot), legacy_save_path(clean_slot)],
+		[save_path(clean_slot), legacy_save_path(clean_slot), save_path(clean_slot) + ".previous"],
 		"manual_%d" % clean_slot,
 	)
 
 
 func delete_autosave() -> Dictionary:
-	return _archive_and_remove_saves([autosave_path()], "autosave")
+	return _archive_and_remove_saves([autosave_path(), autosave_path() + ".previous"], "autosave")
 
 
 func load_slot(slot := active_slot) -> bool:
 	active_slot = _manual_slot(slot)
 	var path := save_path(active_slot)
+	if FileAccess.file_exists(path + ".previous") and not _recover_save_file(path):
+		return false
 	if not FileAccess.file_exists(path):
 		return _migrate_legacy_slot(active_slot)
 	return _load_v2_path(path, "manual", active_slot)
@@ -672,6 +699,7 @@ func adopt_loaded_save(source: EmberExploreState) -> void:
 	playtime_seconds = source.playtime_seconds
 	_map_id = source._map_id
 	_restore_pending = source._restore_pending
+	_saved_spawn_at_entry = source._saved_spawn_at_entry
 	_saved_map_id = source._saved_map_id
 	_saved_x = source._saved_x
 	_saved_y = source._saved_y
@@ -708,7 +736,7 @@ func load_latest_available() -> bool:
 
 
 func _load_v2_path(path: String, expected_kind: String, expected_slot: int) -> bool:
-	if not FileAccess.file_exists(path):
+	if not _recover_save_file(path):
 		return false
 	var raw: Variant = EmberPack.parse_json_file(path)
 	if typeof(raw) != TYPE_DICTIONARY:
@@ -738,8 +766,7 @@ func _apply_v2_payload(data: Dictionary, pending_restore: bool) -> void:
 	party = normalized.get("party", {}).duplicate(true)
 	battle_strategy = EmberPartyState.normalize_battle_strategy(data.get("battleStrategy", []))
 	active_hero_ids = EmberPartyState.normalize_active_hero_ids(data.get("activeHeroIds", null))
-	for item_id in normalized.get("returnedItems", []):
-		inventory = EmberEconomy.grant_items(inventory, [str(item_id)], items)
+	_return_unequipped_items(normalized.get("returnedItems", []), items)
 	playtime_seconds = maxf(0.0, float(data.get("playtimeSeconds", 0.0)))
 	_sync_compatibility_from_party()
 	_remember_saved_payload(data, pending_restore)
@@ -761,7 +788,7 @@ func capture_save(save_kind := "manual", slot := active_slot) -> Dictionary:
 		"savedAtMs": int(Time.get_unix_time_from_system() * 1000.0),
 		"timeZoneBiasMinutes": int(Time.get_time_zone_from_system().get("bias", 0)),
 		"playtimeSeconds": maxf(0.0, playtime_seconds),
-		"mapId": _map_id if not _map_id.is_empty() else "fan_town",
+		"mapId": _map_id if not _map_id.is_empty() else EmberMapTransition.DEFAULT_MAP_ID,
 		"tile": {"tx": tx, "ty": ty},
 		"x": pos.x,
 		"y": pos.z,
@@ -860,15 +887,100 @@ func _apply_equipment_result(hero_id: String, result: Dictionary) -> void:
 
 
 func _write_payload(path: String, payload: Dictionary) -> bool:
+	if not _preserve_equipment_migration_source(path): return false
 	if not _ensure_parent_directory(path):
 		return false
+	if FileAccess.file_exists(path + ".previous") and not _recover_save_file(path):
+		return false
+	var staged := "%s.%d-%d.tmp" % [path, OS.get_process_id(), Time.get_ticks_usec()]
+	var bytes := JSON.stringify(payload, "  ").to_utf8_buffer()
+	var error := _store_staged_save(staged, bytes)
+	if error == OK:
+		var check := FileAccess.open(staged, FileAccess.READ)
+		if check == null:
+			error = FileAccess.get_open_error()
+		else:
+			if check.get_buffer(check.get_length()) != bytes:
+				error = ERR_FILE_CORRUPT
+			check.close()
+	if error == OK:
+		error = _publish_staged_save(staged, path)
+	if error != OK:
+		if FileAccess.file_exists(staged):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(staged))
+		push_error("ember save: cannot publish %s (%s)" % [path, error_string(error)])
+		return false
+	return true
+
+
+func _store_staged_save(path: String, bytes: PackedByteArray) -> Error:
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
-		push_error("ember save: cannot write %s" % path)
-		return false
-	file.store_string(JSON.stringify(payload, "  "))
+		return FileAccess.get_open_error()
+	var stored := file.store_buffer(bytes)
+	file.flush()
+	var error := file.get_error()
 	file.close()
-	return true
+	return error if stored else ERR_FILE_CANT_WRITE
+
+
+func _rename_save_file(from: String, to: String) -> Error:
+	# Callers never overwrite an existing destination: Windows DirAccess.rename
+	# deletes that destination before moving, so the previous save lives beside it.
+	return DirAccess.rename_absolute(ProjectSettings.globalize_path(from), ProjectSettings.globalize_path(to))
+
+
+func _publish_staged_save(staged: String, path: String) -> Error:
+	var previous := path + ".previous"
+	var had_previous := FileAccess.file_exists(path)
+	if FileAccess.file_exists(previous):
+		var cleanup_error := DirAccess.remove_absolute(ProjectSettings.globalize_path(previous))
+		if cleanup_error != OK:
+			return cleanup_error
+	if had_previous:
+		var preserve_error := _rename_save_file(path, previous)
+		if preserve_error != OK:
+			return preserve_error
+	var publish_error := _rename_save_file(staged, path)
+	if publish_error != OK:
+		if had_previous:
+			# If rollback also fails, retain .previous for the next read/restart.
+			_recover_save_file(path)
+		return publish_error
+	if had_previous:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(previous))
+	return OK
+
+
+func _preserve_equipment_migration_source(path: String) -> bool:
+	if not FileAccess.file_exists(path): return true
+	var source: Variant = EmberPack.parse_json_file(path)
+	if not source is Dictionary or not source.get("party", {}) is Dictionary: return true
+	var old_layout := false
+	for member in source.get("party", {}).values():
+		if member is Dictionary and EmberEquipment.has_legacy_slots(member.get("equipment", {})):
+			old_layout = true
+			break
+	if not old_layout: return true
+	var sha := FileAccess.get_sha256(path)
+	var backup := path.get_base_dir().path_join("equipment_migration_backups").path_join(path.get_file() + "-" + sha + ".json")
+	if FileAccess.file_exists(backup): return FileAccess.get_sha256(backup) == sha
+	if not _ensure_parent_directory(backup): return false
+	var file := FileAccess.open(backup, FileAccess.WRITE)
+	if file == null: return false
+	file.store_buffer(FileAccess.get_file_as_bytes(path))
+	var error := file.get_error()
+	file.close()
+	return error == OK and FileAccess.get_sha256(backup) == sha
+
+
+func _recover_save_file(path: String) -> bool:
+	if FileAccess.file_exists(path):
+		return true
+	var previous := path + ".previous"
+	if not FileAccess.file_exists(previous):
+		return false
+	return _rename_save_file(previous, path) == OK
 
 
 func _archive_and_remove_saves(paths: Array[String], archive_stem: String) -> Dictionary:
@@ -887,7 +999,7 @@ func _archive_and_remove_saves(paths: Array[String], archive_stem: String) -> Di
 	var archived: Array[String] = []
 	for index in existing.size():
 		var source := existing[index]
-		var suffix := "" if index == 0 else "_legacy"
+		var suffix := "" if index == 0 else ("_recovery" if source.ends_with(".previous") else "_legacy")
 		var archive_path := archive_dir.path_join("%s%s_%d.json" % [archive_stem, suffix, stamp])
 		while FileAccess.file_exists(archive_path):
 			stamp += 1
@@ -962,12 +1074,13 @@ func _migrate_legacy_slot(slot: int) -> bool:
 	party[EmberPartyState.LEADER_ID] = leader
 	var normalized := EmberPartyState.normalize(party, items)
 	party = normalized.get("party", {}).duplicate(true)
-	for item_id in normalized.get("returnedItems", []):
-		inventory = EmberEconomy.grant_items(inventory, [str(item_id)], items)
+	_return_unequipped_items(normalized.get("returnedItems", []), items)
 	leader = party.get(EmberPartyState.LEADER_ID, {})
-	var old_max := _stage_player_hp(str(legacy.get("mapId", _map_id)))
+	var old_max: float
 	if _is_finite_number(legacy.get("maxHp", null)) and float(legacy.get("maxHp", 0.0)) > 0.0:
-		old_max = float(legacy.get("maxHp", old_max))
+		old_max = float(legacy["maxHp"])
+	else:
+		old_max = _stage_player_hp(str(legacy.get("mapId", _map_id)))
 	var old_hp := old_max
 	if _is_finite_number(legacy.get("hp", null)):
 		old_hp = clampf(float(legacy.get("hp", old_max)), 0.0, old_max)
@@ -975,7 +1088,12 @@ func _migrate_legacy_slot(slot: int) -> bool:
 	leader["hp"] = clampi(roundi(float(leader_max) * old_hp / maxf(1.0, old_max)), 0, leader_max)
 	party[EmberPartyState.LEADER_ID] = leader
 	playtime_seconds = maxf(0.0, float(legacy.get("playtimeSeconds", 0.0)))
-	_remember_saved_payload(legacy, true)
+	# Preserve the historical location in the converted file; relocation is a
+	# runtime load decision applied below, never old coordinates on a new map.
+	var migration_source := legacy.duplicate(true)
+	if not migration_source.has("mapId"):
+		migration_source.mapId = EmberMapTransition.RETIRED_MAP_IDS[0]
+	_remember_saved_payload(migration_source, false)
 	_sync_compatibility_from_party()
 	var payload := capture_save("manual", clean_slot)
 	payload["migratedFromVersion"] = LEGACY_SAVE_VERSION
@@ -990,7 +1108,7 @@ func _migrate_legacy_slot(slot: int) -> bool:
 
 
 func _metadata_for_path(path: String, kind: String, slot: int) -> Dictionary:
-	if not FileAccess.file_exists(path):
+	if not _recover_save_file(path):
 		return _empty_metadata(kind, slot)
 	var raw: Variant = EmberPack.parse_json_file(path)
 	if typeof(raw) != TYPE_DICTIONARY:
@@ -1030,7 +1148,7 @@ func _metadata_from_payload(data: Dictionary, kind: String, slot: int) -> Dictio
 		"savedAtMs": saved_at_ms,
 		"savedAtText": Time.get_datetime_string_from_unix_time(display_unix, true) if saved_at_ms > 0 else "",
 		"playtimeSeconds": maxf(0.0, float(data.get("playtimeSeconds", 0.0))),
-		"mapId": str(data.get("mapId", "fan_town")),
+		"mapId": str(data.get("mapId", EmberMapTransition.DEFAULT_MAP_ID)),
 		"partyCount": party_count,
 		"aliveCount": alive_count,
 		"leaderHp": leader_hp,
@@ -1061,15 +1179,22 @@ func _sync_party_from_compatibility() -> void:
 	if party.is_empty():
 		party = EmberPartyState.new_game(items)
 	var leader: Dictionary = party.get(EmberPartyState.LEADER_ID, {})
-	leader["equipment"] = EmberEquipment.normalize(equipment)
+	# Preserve raw legacy keys until Party normalization returns retired items.
+	leader["equipment"] = equipment.duplicate(true)
 	var derived := EmberPartyState.derived_stats(EmberPartyState.LEADER_ID, leader, items)
 	leader["hp"] = clampi(roundi(hp), 0, int(derived.get("maxHp", 1)))
 	party[EmberPartyState.LEADER_ID] = leader
 	var normalized := EmberPartyState.normalize(party, items)
 	party = normalized.get("party", {}).duplicate(true)
-	for item_id in normalized.get("returnedItems", []):
-		inventory = EmberEconomy.grant_items(inventory, [str(item_id)], items)
+	_return_unequipped_items(normalized.get("returnedItems", []), items)
 	_sync_compatibility_from_party()
+
+
+func _return_unequipped_items(item_ids: Array, _catalog: Dictionary) -> void:
+	for raw_id in item_ids:
+		var item_id := str(raw_id)
+		# A recovery is not a loot grant. Stack caps cannot destroy owned instances.
+		inventory[item_id] = int(inventory.get(item_id, 0)) + 1
 
 
 func _sync_compatibility_from_party() -> void:
@@ -1121,6 +1246,21 @@ func _remember_saved_payload(data: Dictionary, pending: bool) -> void:
 	var raw_tile: Variant = data.get("tile", {})
 	_saved_tile = raw_tile.duplicate(true) if typeof(raw_tile) == TYPE_DICTIONARY else {"tx": 0, "ty": 0}
 	_restore_pending = pending
+	_saved_spawn_at_entry = false
+	if pending: _resolve_saved_location()
+
+
+func _resolve_saved_location() -> void:
+	var destination := EmberMapTransition.saved_destination(_saved_map_id)
+	if not bool(destination.at_entry): return
+	_saved_map_id = str(destination.map_id)
+	_map_id = _saved_map_id
+	_saved_spawn_at_entry = true
+	_saved_x = null
+	_saved_y = null
+	_saved_elev = null
+	_saved_tile = {}
+
 
 
 func _parse_shop_stock(raw: Variant) -> Dictionary:
@@ -1146,7 +1286,7 @@ func _parse_string_array(raw: Variant) -> Array:
 
 
 func _parse_equipment(raw: Variant) -> Dictionary:
-	return EmberEquipment.normalize(raw)
+	return raw.duplicate(true) if raw is Dictionary else {}
 
 
 func _parse_flags(raw: Variant) -> Dictionary:
@@ -1187,10 +1327,6 @@ func _normalize_flag_value(value: Variant) -> Variant:
 		if is_equal_approx(float(value), float(rounded)):
 			return rounded
 	return value
-
-
-func _empty_equipment() -> Dictionary:
-	return EmberEquipment.empty()
 
 
 func _stage_player_hp(map_id: String) -> float:

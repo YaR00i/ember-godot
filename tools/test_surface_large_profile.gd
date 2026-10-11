@@ -1,13 +1,14 @@
 extends SceneTree
+const MixedFixture = preload("res://tools/fixtures/ember_mixed_editor_test_fixture.gd")
 ## Reproducible performance gate for the current dense Surface contract.
-## It reads the authored sandbox Surface, but writes only disposable user:// data.
+## It reads the synthetic 24x24 Surface, but writes only disposable user:// data.
 
 const Workspace = preload("res://addons/ember_import/ember_voxel_sculpt_workspace.gd")
 const PerfPolicy = preload("res://addons/ember_import/ember_voxel_editor_perf_policy.gd")
 const Selection = preload("res://addons/ember_import/ember_voxel_selection.gd")
 const Model = preload("res://addons/ember_import/ember_voxel_sculpt_model.gd")
 const NativePreview = preload("res://addons/ember_import/ember_voxel_tools_preview.gd")
-const PROFILE_SOURCE := "res://content/world_surfaces/agent_sandbox_surface.tres"
+const PROFILE_SOURCE := "res://content/world_surfaces/editor_profile_surface.tres"
 const PROFILE_SAVE := "user://ember_large_surface_profile.tres"
 const PROFILE_JSON := "user://ember_large_surface_profile.json"
 const PROFILE_IMAGE := "user://ember_large_surface_profile.png"
@@ -18,6 +19,9 @@ var _errors: Array[String] = []
 
 
 func _init() -> void:
+	if not MixedFixture.prepare_profile(self):
+		quit(2)
+		return
 	_run.call_deferred()
 
 

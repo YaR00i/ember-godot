@@ -3,6 +3,8 @@ extends RefCounted
 ## Process-local map transition handoff. The authored targetMapId/targetRegionId
 ## remains in the existing Ember schema; no Godot-only save format is created.
 
+const DEFAULT_MAP_ID := "landscape_compact"
+const RETIRED_MAP_IDS := ["fan_town", "fan_town_house", "fan_town_inn", "fan_town_mage", "fan_town_smith", "agent_sandbox", "agent_sandbox_interior"]
 const RETURN_TRIGGER_GUARD_MS := 1200
 
 static var _pending_map_id := ""
@@ -14,6 +16,18 @@ static var _blocked_until_frame := 0
 
 static func scene_path(map_id: String) -> String:
 	return "res://scenes/%s.tscn" % map_id
+
+static func saved_destination(map_id: String) -> Dictionary:
+	var clean := map_id.strip_edges()
+	var path := scene_path(clean)
+	if not clean.is_empty() and clean not in RETIRED_MAP_IDS and ResourceLoader.exists(path):
+		return {"map_id": clean, "at_entry": false}
+	# Retired maps must never reopen, even while their archived scenes are still
+	# physically present. An unavailable fallback remains a controlled load error.
+	if clean in RETIRED_MAP_IDS or ResourceLoader.exists(scene_path(DEFAULT_MAP_ID)):
+		return {"map_id": DEFAULT_MAP_ID, "at_entry": true}
+	return {"map_id": clean, "at_entry": false}
+
 
 
 static func prepare(map_id: String, region_id: String) -> void:

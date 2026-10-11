@@ -1,6 +1,6 @@
 class_name EmberExplorePauseMenu
 extends Control
-## Shared exploration menu for every map driven by fan_town.gd.
+## Shared exploration menu for every map driven by ember_explore_scene.gd.
 ## It owns presentation and SceneTree pause only; EmberExploreState remains the
 ## save owner, and modal explore UIs keep first refusal on Escape.
 
@@ -50,7 +50,11 @@ func open_menu() -> void:
 	_feedback.text = ""
 	_refresh_save_metadata()
 	get_tree().paused = true
-	_resume_button.call_deferred("grab_focus")
+	_focus_resume.call_deferred()
+
+func _focus_resume() -> void:
+	if is_inside_tree() and is_open(): _resume_button.grab_focus()
+
 
 
 func close_menu() -> void:
@@ -75,19 +79,49 @@ func _save_game(slot := -1) -> void:
 
 func _load_game(slot: int) -> void:
 	var state := _progress()
-	if state == null or not state.load_slot(slot):
+	if state == null:
 		_feedback.text = "Не удалось загрузить слот %d." % (slot + 1)
 		return
-	var target_path := state.resume_scene_path()
+	# Validate with the same detached save owner as combat before changing live
+	# progress; arm restore before scene removal and roll back on transition error.
+	var staged := EmberExploreState.new()
+	staged.active_slot = state.active_slot
+	staged.storage_root = state.storage_root
+	staged.legacy_storage_root = state.legacy_storage_root
+	staged.persistence_enabled = state.persistence_enabled
+	staged.restore_enabled = state.restore_enabled
+	if not staged.load_slot(slot):
+		staged.free()
+		_feedback.text = "Не удалось загрузить слот %d." % (slot + 1)
+		return
+	var target_path := staged.resume_scene_path()
 	if target_path.is_empty() or not ResourceLoader.exists(target_path):
+		staged.free()
 		_feedback.text = "Сохранённая локация пока недоступна."
 		return
-	get_tree().paused = false
+	var target := ResourceLoader.load(target_path) as PackedScene
+	if target == null or not target.can_instantiate():
+		staged.free()
+		_feedback.text = "Не удалось открыть сохранённую локацию."
+		return
+	var tree := get_tree()
+	var previous := EmberExploreState.new()
+	previous.adopt_loaded_save(state)
+	var previous_leader := state.exploration_leader_id
+	# SceneTree removes the outgoing scene during change_scene_to_packed, so
+	# arm pending restore first: its exit autosave must not overwrite loaded data.
+	state.adopt_loaded_save(staged)
+	var error := tree.change_scene_to_packed(target)
+	staged.free()
+	if error != OK:
+		state.adopt_loaded_save(previous)
+		state.set_exploration_leader(previous_leader)
+		previous.free()
+		_feedback.text = "Не удалось открыть сохранённую локацию."
+		return
+	previous.free()
+	tree.paused = false
 	_overlay.visible = false
-	if get_tree().current_scene != null and get_tree().current_scene.scene_file_path == target_path:
-		get_tree().reload_current_scene()
-	else:
-		get_tree().change_scene_to_file(target_path)
 
 
 func _request_delete_slot(slot: int) -> void:

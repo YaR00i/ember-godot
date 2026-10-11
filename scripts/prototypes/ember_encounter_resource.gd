@@ -66,6 +66,8 @@ func validation_errors() -> Array[String]:
 	_validate_action("После поражения", defeat_action_script_id, errors)
 	if victory_xp <= 0:
 		errors.append("После победы: укажите положительный XP для всей активной партии.")
+	if victory_rule != VictoryRule.ALL_ENEMIES_DEFEATED or defeat_rule != DefeatRule.ALL_HEROES_DEFEATED:
+		errors.append("Выберите поддерживаемые условия: все враги побеждены / все герои побеждены.")
 	return errors
 
 
@@ -179,6 +181,10 @@ func _validate_roster(
 		else:
 			for unit_error in unit.validation_errors(Combat.action_ids()):
 				errors.append("%s · %s: %s" % [title, unit_id, unit_error])
+
+
+func behavior_summary() -> String:
+	return "Героев: %d, врагов: %d. Поле: %s.\nПорядок участников задаёт порядок точек расстановки. В игре участвует текущая активная группа из разрешённых героев.\nПобеда — все враги побеждены; поражение — все герои. XP: %d каждому активному герою при победе. Предметы идут из лута врагов и цепочки после боя.\n%s Поле владеет клетками/высотами, сцена арены — оформлением." % [party_unit_ids.size(), enemy_unit_ids.size(), battlefield.display_name if battlefield != null else "не выбрано", victory_xp, "Можно повторять." if repeatable else "Повтор блокируется установленным флагом победы; без указанного флага блокировки нет."]
 
 
 func _validate_action(title: String, action_id: String, errors: Array[String]) -> void:

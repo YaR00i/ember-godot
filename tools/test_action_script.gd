@@ -1,10 +1,20 @@
 extends SceneTree
-## Action-list vertical slice over real JOI content and agent_sandbox wiring.
 
-const SANDBOX_SCENE := "res://scenes/agent_sandbox.tscn"
+const Content = preload("res://tools/fixtures/ember_interaction_test_fixture.gd")
+var _setup: Dictionary = {}
+var _source: PackedScene
+var _scene_path := ""
+var _destination: PackedScene
+var _destination_id := ""
+## Action-list vertical slice on synthetic native Resources and exploration.
+
 
 
 func _init() -> void:
+	_setup = Content.prepare(self)
+	if _setup.refused:
+		quit.call_deferred(2)
+		return
 	_run_and_quit.call_deferred()
 
 
@@ -14,21 +24,26 @@ func _run_and_quit() -> void:
 
 func _run() -> int:
 	var errors: Array[String] = []
+	if _setup.error != OK or not _setup.progress_isolated:
+		printerr("FAIL interaction fixture/progress setup")
+		return 1
 	var runtime_progress := root.get_node_or_null("EmberExploreProgress") as EmberExploreState
 	if runtime_progress:
 		runtime_progress.persistence_enabled = false
 		runtime_progress.restore_enabled = false
 		runtime_progress.reset_new_game()
+	_prepare_map()
 	_test_queue_contract(errors)
 	_test_typed_dialogue_flags(errors)
 	await _test_live_chain(errors)
+	Content.verify_sources(_setup, errors)
 	if not errors.is_empty():
 		printerr("FAIL action scripts")
 		for error in errors:
 			printerr(" - ", error)
 		return 1
 	print("PASS action scripts")
-	print("  sandbox_chain: talk -> visible coin reward -> typed flag -> real wait")
+	print("  interaction_chain: talk -> visible coin reward -> typed flag -> real wait")
 	print("  open_shop resumes after close; change_map preserves target region")
 	print("  script-only region joins the existing F interaction path")
 	print("  mutations stay in EmberExploreState and save once per completed chain")
@@ -36,9 +51,9 @@ func _run() -> int:
 
 
 func _test_queue_contract(errors: Array[String]) -> void:
-	var built := EmberActionScript.queue_for("sandbox_chain")
+	var built := EmberActionScript.queue_for("interaction_chain")
 	if not bool(built.get("ok", false)):
-		errors.append("sandbox_chain could not be resolved")
+		errors.append("interaction_chain could not be resolved")
 		return
 	var steps: Array = built.get("steps", [])
 	var types: Array[String] = []
@@ -46,14 +61,14 @@ func _test_queue_contract(errors: Array[String]) -> void:
 		if typeof(raw_step) == TYPE_DICTIONARY:
 			types.append(str(raw_step.get("type", "")))
 	if types != ["talk", "give_item", "set_flag", "wait"]:
-		errors.append("sandbox_chain action order diverged: %s" % [types])
-	elif str(steps[0].get("dialogueId", "")) != "sandbox_notice_talk":
+		errors.append("interaction_chain action order diverged: %s" % [types])
+	elif str(steps[0].get("dialogueId", "")) != "interaction_notice_talk":
 		errors.append("talk did not retain its authored dialogueId")
 	elif str(steps[1].get("itemId", "")) != "coin" or int(steps[1].get("count", 0)) != 1:
 		errors.append("give_item did not retain coin x1")
 	elif steps[2].get("value", null) != true:
 		errors.append("set_flag did not retain its typed bool value")
-	var direct := EmberActionScript.queue_for("sandbox_notice_talk")
+	var direct := EmberActionScript.queue_for("interaction_notice_talk")
 	var direct_steps: Array = direct.get("steps", [])
 	if not bool(direct.get("ok", false)) or direct_steps.size() != 1:
 		errors.append("direct scene ref did not normalize to one talk step")
@@ -81,8 +96,8 @@ func _test_typed_dialogue_flags(errors: Array[String]) -> void:
 
 
 func _test_live_chain(errors: Array[String]) -> void:
-	if change_scene_to_file(SANDBOX_SCENE) != OK:
-		errors.append("could not start agent_sandbox runtime scene")
+	if change_scene_to_file(_scene_path) != OK:
+		errors.append("could not start fixture_map runtime scene")
 		return
 	await process_frame
 	await process_frame
@@ -90,35 +105,36 @@ func _test_live_chain(errors: Array[String]) -> void:
 	var ui := sandbox.get_node_or_null("CanvasLayer/InteractionUI") as EmberInteractionUi
 	var player := sandbox.get_node_or_null("Player") as EmberPlayer
 	var region := sandbox.get_node_or_null("Map/Regions/chain_demo") as EmberRegion
-	var quest_interact := sandbox.get_node_or_null("Map/Props/sbx_quest_sign/Interact") as EmberInteract
+	var quest_interact := sandbox.get_node_or_null("Map/Props/quest_start/Interact") as EmberInteract
 	if (
 		ui == null
 		or player == null
 		or region == null
 		or quest_interact == null
 	):
-		errors.append("agent_sandbox lost Player/UI/chain_demo/quest-giver wiring")
+		errors.append("fixture_map lost Player/UI/chain_demo/quest-giver wiring")
 		return
 	if not quest_interact.is_in_group("ember_interact"):
 		errors.append("bound quest marker did not join the executable F group")
-	elif quest_interact.resolved_action_script_id() != "sandbox_notice":
+	elif quest_interact.resolved_action_script_id() != "interaction_notice":
 		errors.append("quest marker did not resolve its bound notice action")
-	if region.script_id != "sandbox_chain":
-		errors.append("chain_demo did not import sandbox_chain from the map")
+	if region.script_id != "interaction_chain":
+		errors.append("chain_demo did not import interaction_chain from the map")
 	if not region.is_in_group("ember_interact"):
 		errors.append("script-only region did not join ember_interact")
 	player.global_position = region.global_position
 	if player._nearest_prompt() != "Действие":
 		errors.append("script-only chain_demo region did not expose F: Действие")
 
-	var state := EmberExploreState.new()
-	state.persistence_enabled = false
-	state.restore_enabled = false
-	state.reset_new_game()
-	ui.economy_state = state
+	var state := root.get_node("EmberExploreProgress") as EmberExploreState
+	state.persistence_enabled = true
+	if ui.economy_state != state:
+		errors.append("action UI bypassed the real progress autoload")
+	var saves := {"count": 0}
+	state.saved.connect(func(_path: String) -> void: saves.count += 1)
 	player._try_interact()
 	if str(ui.view_state().get("mode", "")) != "dialogue":
-		errors.append("F in chain_demo region did not open sandbox_chain dialogue")
+		errors.append("F in chain_demo region did not open interaction_chain dialogue")
 	elif int(state.inventory.get("coin", -1)) != EmberExploreState.STARTING_COINS:
 		errors.append("give_item ran before the dialogue completed")
 	ui.advance()
@@ -129,14 +145,21 @@ func _test_live_chain(errors: Array[String]) -> void:
 	elif not str(reward_view.get("body", "")).contains("Монета") or not str(reward_view.get("body", "")).contains("+1"):
 		errors.append("reward card does not explain the granted coin")
 	if int(state.inventory.get("coin", -1)) != EmberExploreState.STARTING_COINS + 1:
-		errors.append("sandbox_chain did not grant exactly one coin")
-	if state.flags.has("sandbox_chain_done"):
+		errors.append("interaction_chain did not grant exactly one coin")
+	if state.flags.has("interaction_chain_done"):
 		errors.append("steps after reward ran before F continued the chain")
+	if saves.count != 0: errors.append("chain saved before its reward continuation")
 	ui.advance()
 	if ui.is_open():
-		errors.append("completed sandbox_chain left the reward overlay open")
-	if state.flags.get("sandbox_chain_done", false) != true:
-		errors.append("sandbox_chain did not set sandbox_chain_done")
+		errors.append("completed interaction_chain left the reward overlay open")
+	if state.flags.get("interaction_chain_done", false) != true:
+		errors.append("interaction_chain did not set interaction_chain_done")
+	if saves.count != 1: errors.append("completed chain did not save exactly once")
+	var reopened := EmberExploreState.new()
+	reopened.storage_root = state.storage_root
+	if not reopened.load_autosave() or reopened.flags.get("interaction_chain_done") != true or int(reopened.inventory.get("coin", 0)) != EmberExploreState.STARTING_COINS + 1:
+		errors.append("completed action reward/flag did not survive save reopen")
+	reopened.free()
 
 	ui._script_queue = [
 		{"type": "wait", "sec": 0.05},
@@ -155,7 +178,7 @@ func _test_live_chain(errors: Array[String]) -> void:
 		errors.append("wait did not resume the remaining queue")
 
 	ui._script_queue = [
-		{"type": "open_shop", "shopId": "village_kiosk"},
+		{"type": "open_shop", "shopId": "interaction_shop"},
 		{"type": "set_flag", "flag": "shop_chain_finished", "value": true},
 	]
 	ui._script_active = true
@@ -171,17 +194,17 @@ func _test_live_chain(errors: Array[String]) -> void:
 	elif ui.is_open():
 		errors.append("completed post-shop queue left its overlay open")
 	ui.economy_state = null
-	state.free()
+	state.persistence_enabled = false
 
 	ui._script_queue = [
-		{"type": "change_map", "targetMapId": "agent_sandbox_interior", "targetRegionId": "start"},
+		{"type": "change_map", "targetMapId": _destination_id, "targetRegionId": "entry"},
 	]
 	ui._script_active = true
 	ui._script_mutated = false
 	ui._advance_script_queue()
 	await process_frame
 	await process_frame
-	if current_scene == null or current_scene.name != "AgentSandboxInterior":
+	if current_scene == null or current_scene.scene_file_path != EmberMapTransition.scene_path(_destination_id):
 		errors.append("change_map action did not enter the authored map scene")
 	else:
 		var interior_map := current_scene.get_node_or_null("Map") as EmberMapLoader
@@ -189,6 +212,14 @@ func _test_live_chain(errors: Array[String]) -> void:
 		if interior_map == null or interior_player == null:
 			errors.append("change_map action target lost Map/Player wiring")
 		elif Vector2(interior_player.global_position.x, interior_player.global_position.z).distance_to(
-			Vector2(interior_map.region_world("start").x, interior_map.region_world("start").z)
+			Vector2(interior_map.region_world("entry").x, interior_map.region_world("entry").z)
 		) > 0.1:
-			errors.append("change_map action did not preserve targetRegionId=start")
+			errors.append("change_map action did not preserve nested targetRegionId=entry")
+
+
+func _prepare_map() -> void:
+	var id := "interaction_fixture_%d" % OS.get_process_id()
+	_source = Content.save_map(id, _setup.directory)
+	_scene_path = EmberMapTransition.scene_path(id)
+	_destination_id = "interaction_destination_%d" % OS.get_process_id()
+	_destination = Content.Maps.save_map(_destination_id, _setup.directory)

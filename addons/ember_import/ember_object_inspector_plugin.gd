@@ -18,9 +18,7 @@ var _standalone_chain_remove_callback: Callable
 var _standalone_bounds_save_callback: Callable
 var _dialogue_save_callback: Callable
 var _shop_save_callback: Callable
-var _shop_migrate_callback: Callable
 var _item_save_callback: Callable
-var _item_migrate_callback: Callable
 var _quest_save_callback: Callable
 
 
@@ -37,9 +35,7 @@ func configure(
 	standalone_bounds_save_callback: Callable = Callable(),
 	dialogue_save_callback: Callable = Callable(),
 	shop_save_callback: Callable = Callable(),
-	shop_migrate_callback: Callable = Callable(),
 	item_save_callback: Callable = Callable(),
-	item_migrate_callback: Callable = Callable(),
 	quest_save_callback: Callable = Callable(),
 ) -> void:
 	_rebuild_callback = rebuild_callback
@@ -54,9 +50,7 @@ func configure(
 	_standalone_bounds_save_callback = standalone_bounds_save_callback
 	_dialogue_save_callback = dialogue_save_callback
 	_shop_save_callback = shop_save_callback
-	_shop_migrate_callback = shop_migrate_callback
 	_item_save_callback = item_save_callback
-	_item_migrate_callback = item_migrate_callback
 	_quest_save_callback = quest_save_callback
 
 
@@ -97,12 +91,8 @@ func build_panel(object: Object) -> EmberObjectInspectorPanel:
 		panel.dialogue_save_requested.connect(_on_dialogue_save_requested)
 	if _shop_save_callback.is_valid():
 		panel.shop_save_requested.connect(_on_shop_save_requested)
-	if _shop_migrate_callback.is_valid():
-		panel.shop_migrate_requested.connect(_on_shop_migrate_requested)
 	if _item_save_callback.is_valid():
 		panel.item_save_requested.connect(_on_item_save_requested)
-	if _item_migrate_callback.is_valid():
-		panel.item_migrate_requested.connect(_on_item_migrate_requested)
 	if _quest_save_callback.is_valid():
 		panel.quest_save_requested.connect(_on_quest_save_requested)
 	return panel
@@ -168,19 +158,9 @@ func _on_shop_save_requested(document: Dictionary) -> void:
 		_shop_save_callback.call(document)
 
 
-func _on_shop_migrate_requested(shop_id: String) -> void:
-	if _shop_migrate_callback.is_valid():
-		_shop_migrate_callback.call(shop_id)
-
-
 func _on_item_save_requested(document: Dictionary) -> void:
 	if _item_save_callback.is_valid():
 		_item_save_callback.call(document)
-
-
-func _on_item_migrate_requested(item_id: String) -> void:
-	if _item_migrate_callback.is_valid():
-		_item_migrate_callback.call(item_id)
 
 
 func _on_quest_save_requested(interact: EmberInteract, document: Dictionary) -> void:

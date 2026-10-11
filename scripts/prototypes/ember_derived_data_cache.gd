@@ -3,12 +3,16 @@ extends RefCounted
 ## Bounded atomic binary transport for disposable derived data. Callers own
 ## content keys, payload versions and validation. No Resources or live history.
 const HEADER_BYTES := 48
+const PACKAGED_ROOT := "res://ember-prepared"
 
 var directory := ""
 var magic := "EDCACHE1"
 var format_version := 1
 var extension := ".edc"
 var max_bytes := 32 * 1024 * 1024
+var packaged_directory := ""
+var packaged_for_directory := "" # Isolated test/custom caches never inherit shipped data.
+var packaged_hits := 0
 var read_us := 0
 var write_us := 0
 var read_bytes := 0
@@ -40,8 +44,17 @@ func read(key: String) -> Dictionary:
 
 
 func _read(key: String) -> Dictionary:
-	if directory.is_empty() or not FileAccess.file_exists(path(key)): return {}
-	var file := FileAccess.open(path(key), FileAccess.READ)
+	var result := _read_file(path(key), key) if not directory.is_empty() else {}
+	if not result.is_empty(): return result
+	if Engine.is_editor_hint() or directory != packaged_for_directory or packaged_directory.is_empty(): return {}
+	result = _read_file(packaged_directory.path_join(key + extension), key)
+	if not result.is_empty(): packaged_hits += 1
+	return result
+
+
+func _read_file(file_path: String, key: String) -> Dictionary:
+	if not FileAccess.file_exists(file_path): return {}
+	var file := FileAccess.open(file_path, FileAccess.READ)
 	if file == null: failures += 1; return {}
 	var size := file.get_length()
 	if size < HEADER_BYTES or size > max_bytes: invalid += 1; return {}

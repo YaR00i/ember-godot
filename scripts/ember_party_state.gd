@@ -389,6 +389,7 @@ static func combat_hero_ids(combat_state: Dictionary) -> Array[String]:
 
 
 static func equipment_allowed(item: Dictionary, hero_id: String) -> bool:
+	if str(item.get("kind", "")) == "accessory": return true
 	var raw_allowed: Variant = item.get("allowedHeroIds", [])
 	if raw_allowed is PackedStringArray:
 		return raw_allowed.is_empty() or hero_id in raw_allowed
@@ -420,16 +421,18 @@ static func _unit_resource(hero_id: String) -> EmberCombatUnitResource:
 
 
 static func _normalize_equipment(raw: Variant, hero_id: String, items: Dictionary) -> Dictionary:
-	var equipment := EmberEquipment.normalize(raw)
+	var imported := EmberEquipment.import_saved(raw)
+	var equipment: Dictionary = imported.equipment
 	var result := EmberEquipment.empty()
 	var returned_items: Array[String] = []
+	returned_items.assign(imported.returnedItems)
 	for slot in EmberEquipment.SLOTS:
 		var value: Variant = equipment.get(slot, null)
 		if value == null or str(value).strip_edges().is_empty():
 			continue
 		var item_id := str(value).strip_edges()
 		var item: Dictionary = items.get(item_id, {})
-		if item.is_empty() or EmberEquipment.slot_for_item(item) != slot or not equipment_allowed(item, hero_id):
+		if item.is_empty() or slot not in EmberEquipment.slots_for_item(item) or not equipment_allowed(item, hero_id):
 			returned_items.append(item_id)
 			continue
 		result[slot] = item_id

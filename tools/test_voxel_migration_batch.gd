@@ -1,10 +1,10 @@
 extends SceneTree
-## Batch action gate: two untouched legacy fixtures migrate as one Undo/Redo
-## transaction and always return to their exact pre-test Resource state.
+## Isolated batch gate: two synthetic fixtures migrate as one Undo/Redo action.
+## Launch with python tools/run_voxel_migration_tests.py, never on author data.
 
 const Store = preload("res://addons/ember_import/ember_voxel_model_store.gd")
 const Actions = preload("res://addons/ember_import/ember_object_inspector_actions.gd")
-const CANDIDATES := ["vox_fan_bed", "vox_fan_armor_stand", "vox_fan_bar"]
+const Guard = preload("res://tools/voxel_migration_test_guard.gd")
 
 
 func _init() -> void:
@@ -12,10 +12,12 @@ func _init() -> void:
 
 
 func _run() -> int:
+	if not Guard.check():
+		return 1
 	var errors: Array[String] = []
 	var ids: Array[String] = []
-	for model_id in CANDIDATES:
-		if Store.owner(model_id) == "legacy_import":
+	for model_id in Guard.IDS:
+		if _import_owner(model_id) == "legacy_import":
 			ids.append(model_id)
 		if ids.size() == 2:
 			break
@@ -33,7 +35,7 @@ func _run() -> int:
 			EmberVoxelPrefab.mesh_path(model_id, true),
 		]:
 			derived_snapshots.append(_file_snapshot(path))
-		source_hashes[model_id] = _source_hashes(EmberVoxelPrefab.source_paths(model_id))
+		source_hashes[model_id] = _source_hashes(EmberVoxelLegacyImporter.source_paths(model_id))
 	var undo := UndoRedo.new()
 	var actions := Actions.new() as EmberObjectInspectorActions
 	actions.configure(undo)
@@ -48,6 +50,8 @@ func _run() -> int:
 			errors.append("batch did not create one Undo action")
 		undo.undo()
 		_validate_owners(ids, "legacy_import", errors)
+		if undo.has_undo():
+			errors.append("batch migration created more than one Undo action")
 		undo.redo()
 		_validate_owners(ids, "godot", errors)
 		undo.undo()
@@ -55,7 +59,7 @@ func _run() -> int:
 	if changes.size() != ids.size() * 4:
 		errors.append("batch refresh emitted %d changes instead of %d" % [changes.size(), ids.size() * 4])
 	for index in ids.size():
-		if _source_hashes(EmberVoxelPrefab.source_paths(ids[index])) != source_hashes[ids[index]]:
+		if _source_hashes(EmberVoxelLegacyImporter.source_paths(ids[index])) != source_hashes[ids[index]]:
 			errors.append("batch changed frozen JOI source for %s" % ids[index])
 		if Store.restore_snapshot(snapshots[index]) != OK:
 			errors.append("could not restore Resource snapshot for %s" % ids[index])
@@ -80,8 +84,18 @@ func _run() -> int:
 
 func _validate_owners(ids: Array[String], expected: String, errors: Array[String]) -> void:
 	for model_id in ids:
-		if Store.owner(model_id) != expected:
+		if _import_owner(model_id) != expected:
 			errors.append("%s owner is not %s" % [model_id, expected])
+		if expected == "godot":
+			var resource := EmberVoxelCatalog.native_resource(model_id)
+			if resource == null or not resource.validation_errors().is_empty():
+				errors.append("%s native Resource is invalid" % model_id)
+			var packed := ResourceLoader.load(
+				EmberVoxelPrefab.prefab_path(model_id), "", ResourceLoader.CACHE_MODE_REPLACE
+			) as PackedScene
+			var report := EmberVoxelPrefab.validate_packed(model_id, packed)
+			if not bool(report.get("ok", false)):
+				errors.append("%s derived prefab is invalid" % model_id)
 
 
 func _source_hashes(paths: Dictionary) -> Dictionary:
@@ -114,3 +128,9 @@ func _restore_file_snapshot(snapshot: Dictionary) -> int:
 		file.store_buffer(snapshot.get("bytes", PackedByteArray()))
 		return OK
 	return DirAccess.remove_absolute(absolute) if FileAccess.file_exists(absolute) else OK
+
+
+func _import_owner(model_id: String) -> String:
+	var native_owner := Store.owner(model_id)
+	if not native_owner.is_empty(): return native_owner
+	return "legacy_import" if Store.can_import_legacy(model_id) else ""

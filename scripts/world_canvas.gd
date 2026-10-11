@@ -1,4 +1,4 @@
-extends "res://scripts/fan_town.gd"
+extends "res://scripts/ember_explore_scene.gd"
 ## Isolated, non-story authoring scene. Continue the existing play controller.
 ## No duplicate floor: finish native ground/water preparation before play.
 const STORAGE_ROOT := "user://ember-world-canvas-v1"

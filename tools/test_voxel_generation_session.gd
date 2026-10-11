@@ -29,6 +29,17 @@ func _run() -> void:
 	var panel := GenerationPanel.new()
 	root.add_child(panel)
 	panel.open_for({"root": scene, "parent": scene, "undo": undo, "world_size": 1.0})
+	# Keep the retired dialog's small-window gate on the actual creation owner.
+	root.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
+	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for viewport_size in [Vector2i(1280, 900), Vector2i(1280, 720)]:
+		root.size = viewport_size
+		for frame in 3: await process_frame
+		check(panel.get_combined_minimum_size().x <= viewport_size.x
+			and panel.get_combined_minimum_size().y <= viewport_size.y,
+			"generation panel fits %s without forcing a larger window" % viewport_size)
+		check(panel._generate.get_global_rect().end.y <= panel.get_global_rect().end.y,
+			"generation action remains inside the panel")
 	var starting_version: int = panel.recipe.parameters.generation_version
 	var starting_thickness: int = panel.recipe.parameters.branch_thickness
 	check(starting_version == Generator.LargeTreeProvider.LATEST_VERSIONS[0], "new workshop uses current savanna without upgrading loaded recipes")
@@ -45,6 +56,7 @@ func _run() -> void:
 	check(panel.recipe.parameters.height == 64, "parameter Redo")
 	panel._change_parameter("generation_version", 1)
 	check(not panel.controls.crown_shape.visible and not panel.controls.foliage_amount.get_parent().visible
+		and not panel.controls.branch_thickness.get_parent().visible
 		and panel.controls.leaf_density.get_parent().visible, "classic shows only applicable leaf controls")
 	panel.history.undo()
 	check(panel.recipe.parameters.generation_version == starting_version, "classic setting Undo")
@@ -134,6 +146,8 @@ func _run() -> void:
 	check(loaded != null and loaded.voxels == first.creation.source.voxels, "preview source equals published source")
 	var recipe_path: String = first.creation.recipe_path(first.creation.source.model_id, panel.session.recipe_directory)
 	var stored := ResourceLoader.load(recipe_path, "", ResourceLoader.CACHE_MODE_IGNORE_DEEP)
+	check(stored != null and stored.parameters.generation_version == first.creation.recipe.parameters.generation_version,
+		"published recipe preserves the generator revision on reopen")
 	var rebuilt := Generator.build(stored, Color.WHITE, {}, "Roundtrip") if stored != null else {"error": "missing"}
 	check(not rebuilt.has("error") and rebuilt.geometry.voxels == first.creation.source.voxels and rebuilt.geometry.palette == first.creation.source.palette, "save/reopen skeleton reproduces exact voxels and palette")
 	undo.undo()

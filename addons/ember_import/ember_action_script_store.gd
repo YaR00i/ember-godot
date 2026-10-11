@@ -1,8 +1,7 @@
 @tool
 class_name EmberActionScriptStore
 extends RefCounted
-## Canonical action-chain projection/writer. Native Godot Resources are
-## preferred; legacy JOI scripts/*.json remain fallback until migrated.
+## Canonical native-only action projection/writer; schema stays unchanged.
 
 const Catalog = preload("res://scripts/ember_action_catalog.gd")
 
@@ -30,11 +29,7 @@ static func owner(script_id: String) -> String:
 
 
 static func source_path(script_id: String) -> String:
-	return (
-		Catalog.native_path(script_id)
-		if owner(script_id) == "native"
-		else EmberPack.script_path(script_id)
-	)
+	return Catalog.native_path(script_id) if owner(script_id) == "native" else ""
 
 
 static func snapshot(script_id: String) -> Dictionary:
@@ -43,13 +38,6 @@ static func snapshot(script_id: String) -> Dictionary:
 
 static func restore_snapshot(snapshot_value: Dictionary) -> int:
 	return Catalog.restore(snapshot_value)
-
-
-static func migrate_to_native(script_id: String) -> int:
-	var current := document(script_id)
-	if current.is_empty():
-		return ERR_DOES_NOT_EXIST
-	return Catalog.write_native(current)
 
 
 static func exists(script_id: String) -> bool:
@@ -194,21 +182,14 @@ static func write_document(raw: Dictionary) -> int:
 		push_error("Ember action chain: %s" % " ".join(errors))
 		return ERR_INVALID_DATA
 	var value := normalized_document(raw)
-	# Existing legacy scripts keep their owner until explicit migration. New
-	# documents and already migrated chains are native Resources.
-	return (
-		Catalog.write_legacy(value)
-		if owner(str(value.id)) == "legacy"
-		else Catalog.write_native(value)
-	)
+	return Catalog.write_native(value)
 
 
 static func delete_document(script_id: String) -> int:
 	var clean_id := script_id.strip_edges()
 	if not valid_id(clean_id):
 		return ERR_INVALID_PARAMETER
-	var native_error := Catalog.delete_native(clean_id)
-	return native_error if native_error != OK else Catalog.delete_legacy(clean_id)
+	return Catalog.delete_native(clean_id)
 
 
 static func _normalized_step(raw: Dictionary) -> Dictionary:

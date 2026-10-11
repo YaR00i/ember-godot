@@ -1,8 +1,7 @@
 @tool
 class_name EmberShopStore
 extends RefCounted
-## Validation/writer boundary for Godot-native shops. Legacy catalog entries are
-## never edited; an explicit migration creates the native override first.
+## Validation/writer boundary for the shared native-only shop catalog.
 
 const Catalog = preload("res://scripts/ember_shop_catalog.gd")
 
@@ -16,11 +15,7 @@ static func owner(shop_id: String) -> String:
 
 
 static func source_path(shop_id: String) -> String:
-	return (
-		Catalog.native_path(shop_id)
-		if owner(shop_id) == "native"
-		else EmberPack.shop_catalog_path()
-	)
+	return Catalog.native_path(shop_id) if owner(shop_id) == "native" else ""
 
 
 static func ids() -> Array[String]:
@@ -89,16 +84,7 @@ static func write_document(raw: Dictionary) -> int:
 	if not errors.is_empty():
 		push_error("Ember shop: %s" % " ".join(errors))
 		return ERR_INVALID_DATA
-	if owner(str(value.get("id", ""))) == "legacy":
-		return ERR_UNAUTHORIZED
 	return Catalog.write_native(value)
-
-
-static func migrate_to_native(shop_id: String) -> int:
-	if owner(shop_id) != "legacy":
-		return ERR_ALREADY_EXISTS
-	var current := document(shop_id)
-	return ERR_DOES_NOT_EXIST if current.is_empty() else Catalog.write_native(current)
 
 
 static func snapshot(shop_id: String) -> Dictionary:

@@ -32,6 +32,7 @@ const CAMERA_MENU_LOCK_VERTICAL := 4
 var _state: Dictionary
 var _encounter_mode := "grid"
 var _authored_encounter: EmberEncounterResource
+var _library_test := false
 var _party_snapshot: Dictionary = {}
 var _active_hero_ids_snapshot: Array[String] = []
 var _inventory_snapshot: Dictionary = {}
@@ -151,21 +152,30 @@ var _deployment_ready_edit: Button
 
 
 func _ready() -> void:
+	_library_test = not Engine.is_editor_hint() and EmberCombatTransition.library_test_requested()
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	get_tree().paused = false
 	if (
 		request_fullscreen
+		and not _library_test
 		and not Engine.is_editor_hint()
 		and not Engine.is_embedded_in_editor()
 		and DisplayServer.get_name() != "headless"
 	):
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 	_authored_encounter = EmberCombatTransition.consume_encounter()
+	if _library_test:
+		var request := EmberCombatTransition.library_test_request(OS.get_cmdline_user_args())
+		if not request.get("ok", false):
+			printerr("Не удалось открыть тест встречи: ", request.get("error", ""))
+			get_tree().quit(2)
+			return
+		_authored_encounter = request.encounter
 	_party_snapshot = EmberCombatTransition.active_party_snapshot()
 	_active_hero_ids_snapshot = EmberCombatTransition.active_hero_ids_snapshot()
 	_inventory_snapshot = EmberCombatTransition.active_inventory_snapshot()
 	_strategy_snapshot = EmberCombatTransition.active_strategy_snapshot()
-	if _strategy_snapshot.is_empty():
+	if _strategy_snapshot.is_empty() and not _library_test:
 		var progress := get_node_or_null("/root/EmberExploreProgress") as EmberExploreState
 		if progress != null:
 			_strategy_snapshot = progress.combat_strategy_snapshot()
@@ -198,6 +208,9 @@ func _ready() -> void:
 	else:
 		_mode_picker.select(1)
 	_reset_lab()
+	if _library_test:
+		DisplayServer.window_set_title("Ember · Тест: " + _authored_encounter.display_name)
+		print("EMBER_LIBRARY_LAB_READY ", _authored_encounter.encounter_id)
 	call_deferred("_fade_in")
 
 
@@ -377,7 +390,7 @@ func _build_deployment_ready_panel() -> void:
 	title.modulate = Color("8cf7ff")
 	content.add_child(title)
 	var hint := Label.new()
-	hint.text = "Сохранённая стратегия уже применена."
+	hint.text = "Стартовая расстановка встречи готова." if _library_test else "Сохранённая стратегия уже применена."
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.modulate = COLOR_MUTED
 	content.add_child(hint)
@@ -2633,7 +2646,7 @@ func _refresh_result_overlay() -> void:
 		_defeat_load_open = false
 		_result_load_panel.visible = false
 		return
-	if outcome != "defeat" or _authored_encounter == null:
+	if outcome != "defeat" or _authored_encounter == null or _library_test:
 		_defeat_load_open = false
 	_result_title.text = "ПОБЕДА" if outcome == "victory" else "ПОРАЖЕНИЕ"
 	_result_title.modulate = COLOR_ACCENT if outcome == "victory" else COLOR_ENEMY
@@ -2650,6 +2663,7 @@ func _refresh_result_overlay() -> void:
 	)
 	if _authored_encounter != null:
 		var report := CombatResult.build(_authored_encounter, _state, outcome)
+		if _library_test: _result_body.text = "Тест встречи завершён. Расчёт XP и предметов показан для проверки; награды не выдаются, игровой прогресс не изменяется. Можно повторить бой или закрыть тест."
 		var detail_lines: Array[String] = []
 		var defeated: Array = report.get("defeatedEnemyIds", [])
 		if not defeated.is_empty():
@@ -2672,21 +2686,22 @@ func _refresh_result_overlay() -> void:
 			var reward: Dictionary = raw_reward
 			reward_parts.append("%s ×%d" % [reward.get("nameRu", reward.get("itemId", "?")), reward.get("count", 1)])
 		if not reward_parts.is_empty():
-			detail_lines.append("Награда после возврата: %s" % ", ".join(reward_parts))
+			detail_lines.append(("Расчёт предметов: %s" if _library_test else "Награда после возврата: %s") % ", ".join(reward_parts))
 		if not detail_lines.is_empty():
 			_result_body.text += "\n\n" + "\n".join(detail_lines)
 	_result_load_panel.visible = _defeat_load_open
 	if _defeat_load_open:
 		_refresh_defeat_load_choices()
 	_result_continue.visible = (
-		outcome == "victory" and _authored_encounter != null and not _defeat_load_open
+		(outcome == "victory" or _library_test) and _authored_encounter != null and not _defeat_load_open
 	)
 	_result_load.visible = (
-		outcome == "defeat" and _authored_encounter != null and not _defeat_load_open
+		outcome == "defeat" and _authored_encounter != null and not _defeat_load_open and not _library_test
 	)
 	_result_retry.visible = (
-		(outcome == "defeat" or _authored_encounter == null) and not _defeat_load_open
+		(outcome == "defeat" or _authored_encounter == null or _library_test) and not _defeat_load_open
 	)
+	_result_continue.text = "Закрыть тест · Enter" if _library_test else "Продолжить · Enter"
 	_set_result_buttons_disabled(_transition_in_progress)
 	if _defeat_load_open and not _transition_in_progress:
 		_focus_first_defeat_save()
@@ -2998,6 +3013,9 @@ func _refresh_mode_copy() -> void:
 		_source_note.text = _authored_encounter.intro_text
 		_footer.text = "M движение · цифры: команды/категории · G защита · Esc назад/пауза"
 		_scope_label.text = "Авторская встреча. После подтверждения результата исход и награда применяются один раз, затем загружается исходная локация."
+		if _library_test:
+			_title_label.text = "ТЕСТ · %s" % _authored_encounter.display_name.to_upper()
+			_scope_label.text = "Тест из библиотеки: используются сохранённые данные. XP и предметы только для проверки, игровой прогресс не меняется."
 		return
 	if _encounter_mode == "terrain":
 		_title_label.text = "EMBER COMBAT LAB · E3"
@@ -3216,6 +3234,9 @@ func _field_for_mode() -> EmberBattlefieldResource:
 
 
 func _return_from_encounter() -> void:
+	if _library_test:
+		_quit_game()
+		return
 	if _authored_encounter == null or _transition_in_progress:
 		return
 	var outcome := Combat.outcome(_state)
@@ -3243,6 +3264,7 @@ func _retry_encounter() -> void:
 
 
 func _open_defeat_load_choices() -> void:
+	if _library_test: return
 	if (
 		_transition_in_progress
 		or _authored_encounter == null
@@ -3262,6 +3284,7 @@ func _close_defeat_load_choices() -> void:
 
 
 func _refresh_defeat_load_choices() -> void:
+	if _library_test: return
 	if _result_load_buttons.size() != EmberExploreState.MANUAL_SLOT_COUNT + 1:
 		return
 	var progress := get_node_or_null("/root/EmberExploreProgress") as EmberExploreState
@@ -3304,6 +3327,7 @@ func _focus_first_defeat_save() -> void:
 
 
 func _load_defeat_save(save_kind: String, slot: int) -> void:
+	if _library_test: return
 	if (
 		_transition_in_progress
 		or _authored_encounter == null
@@ -3670,12 +3694,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		if (
 			event.keycode == KEY_R
 			and not _defeat_load_open
-			and (outcome == "defeat" or _authored_encounter == null)
+			and (outcome == "defeat" or _authored_encounter == null or _library_test)
 		):
 			_retry_encounter()
 			get_viewport().set_input_as_handled()
 			return
-		if event.keycode == KEY_ENTER and outcome == "victory" and _authored_encounter != null:
+		if event.keycode == KEY_ENTER and (outcome == "victory" or _library_test) and _authored_encounter != null:
 			_return_from_encounter()
 			get_viewport().set_input_as_handled()
 		return

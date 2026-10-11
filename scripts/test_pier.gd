@@ -1,4 +1,4 @@
-extends "res://scripts/fan_town.gd"
+extends "res://scripts/ember_explore_scene.gd"
 ## Native, non-story exploration fixture. Geometry belongs to test_pier.tscn.
 
 const STORAGE_ROOT := "user://ember-test-pier-v2"

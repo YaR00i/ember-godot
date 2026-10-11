@@ -6,14 +6,12 @@ var _target_ref: WeakRef
 var _section: OptionButton
 var source_directory := EmberVoxelCatalog.NATIVE_DIR
 var prefab_directory := EmberVoxelPrefab.PREFAB_DIR
+var can_commit := Callable()
+var _dock_layout := false
 
-func open_split(prop: EmberVoxelProp, scene: Node, undo: Object) -> void:
-	_root = scene
-	_undo = undo
-	_target_ref = weakref(prop)
-	title = "Разрезать voxel-объект на секции"
-	size = Vector2i(680,620)
-	get_ok_button().text = "Разрезать на отдельные объекты"
+func _init() -> void:
+	super._init()
+	_heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_title.hide()
 	_kind.hide()
 	_density.hide()
@@ -22,22 +20,50 @@ func open_split(prop: EmberVoxelProp, scene: Node, undo: Object) -> void:
 	for control in _sizes:
 		control.get_parent().hide()
 	_section = OptionButton.new()
+	_section.fit_to_longest_item = false; _section.clip_text = true
+	_section.tooltip_text = "Размер секции по X/Z в вокселях. Каждая секция сохраняет полную высоту исходника."
 	for step in [32,64,128]:
 		_section.add_item("Секции %d × %d vox · полная высота" % [step,step],step)
 	_section.select(1)
-	_section.item_selected.connect(func(_index: int):
-		get_ok_button().disabled = true
-		_status.text = "Размер изменён. Обновите предпросмотр."
-	)
+	_section.item_selected.connect(_invalidate_split.unbind(1))
 	_status.get_parent().add_child(_section)
 	_status.get_parent().move_child(_section,0)
-	_prepare()
-	popup_centered()
+
+func use_dock_layout() -> void:
+	_dock_layout = true; super.use_dock_layout(); pin_preview_action()
+
+func open_split(prop: EmberVoxelProp, scene: Node, undo: Object) -> void:
+	_root = scene; _undo = undo; _target_ref = weakref(prop)
+	title = "Разрезать voxel-объект на секции"; _heading.text = title
+	get_ok_button().text = "Разрезать" if _dock_layout else "Разрезать на отдельные объекты"
+	get_ok_button().tooltip_text = "Заменить исходник группой отдельных секций одной отменяемой командой."
+	_section.select(1); _invalidate_split(); show()
+	if not _dock_layout:
+		size = Vector2(680,620); _prepare(); popup_centered()
+
+func matches_context(prop: Node, scene: Node) -> bool:
+	return _root == scene and _target_ref != null and _target_ref.get_ref() == prop
+
+func is_dirty() -> bool:
+	return _root != null and _target_ref != null
+
+func _invalidate_split() -> void:
+	_splitter = null
+	if is_instance_valid(_preview): _preview.free()
+	_preview = null; get_ok_button().disabled = true; _status.tooltip_text = ""
+	_status.text = "До подтверждения исходник и файлы сохраняются. Обновите предпросмотр."
+
+func cancel_edit() -> void:
+	_splitter = null; _target_ref = null; super.cancel_edit()
 
 func _prepare() -> void:
 	if _target_ref == null or _section == null:
 		return
 	get_ok_button().disabled = true
+	if is_instance_valid(_preview): _preview.free()
+	_preview = null; _splitter = null
+	if can_commit.is_valid() and not can_commit.call():
+		_status.text = "Сначала сохраните или отмените правки Canvas. Затем обновите предпросмотр."; return
 	_splitter = Split.new()
 	_splitter.source_directory = source_directory
 	_splitter.prefab_directory = prefab_directory
@@ -88,13 +114,18 @@ func _prepare() -> void:
 	get_ok_button().disabled = false
 
 func _commit() -> void:
+	get_ok_button().disabled = true
+	if can_commit.is_valid() and not can_commit.call():
+		_status.text = "Сначала сохраните или отмените правки Canvas. Затем обновите предпросмотр."; return
+	if _splitter == null:
+		_status.text = "Обновите предпросмотр."; return
 	var group: Node3D = _splitter.commit(_undo)
 	if group == null:
 		_status.text = _splitter.error
 		return
-	hide()
+	cancel_edit()
 	if Engine.is_editor_hint():
 		EditorInterface.get_selection().clear()
 		EditorInterface.get_selection().add_node(group)
 		preload("res://addons/ember_import/ember_editor_filesystem.gd").request()
-	queue_free()
+	if not _dock_layout: queue_free()

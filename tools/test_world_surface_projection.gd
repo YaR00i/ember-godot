@@ -1,4 +1,5 @@
 extends SceneTree
+const MixedFixture = preload("res://tools/fixtures/ember_mixed_editor_test_fixture.gd")
 ## Shared chunk projection plus EmberMapLoader world wiring. The G3 sandbox
 ## pilot derives visual, collision and route heights from one Surface Resource.
 
@@ -13,6 +14,9 @@ const WAKE_SHADER_PATH := "res://shaders/ember_water_wake.gdshader"
 
 
 func _init() -> void:
+	if not MixedFixture.prepare(self):
+		quit(2)
+		return
 	_run_and_quit.call_deferred()
 
 
@@ -344,15 +348,21 @@ func _test_map_wiring(errors: Array[String]) -> void:
 
 
 func _test_saved_map_fallback(errors: Array[String]) -> void:
-	var canonical_path := VoxelModel.world_surface_path("agent_sandbox")
-	if canonical_path != "res://content/world_surfaces/agent_sandbox_surface.tres":
+	var canonical_path := VoxelModel.world_surface_path("editor_fixture_b")
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(canonical_path.get_base_dir()))
+	var saved_surface := MixedFixture.physics_surface()
+	if ResourceSaver.save(saved_surface, canonical_path) != OK:
+		errors.append("native physics fixture could not save")
+		return
+	if canonical_path != "res://content/world_surfaces/editor_fixture_b_surface.tres":
 		errors.append("runtime canonical Surface path drifted from editor authoring")
 		return
 	if not ResourceLoader.exists(canonical_path):
-		errors.append("agent_sandbox canonical Surface fixture is missing")
+		errors.append("editor_fixture_b canonical Surface fixture is missing")
 		return
 	var map := MapLoader.new()
-	map.map_id = "agent_sandbox"
+	map.map_id = "editor_fixture_b"
+	map.visual_surface = ResourceLoader.load(canonical_path, "", ResourceLoader.CACHE_MODE_IGNORE) as VoxelModel
 	map.imported_tile_size = 16.0
 	map.authored_size_blocks = Vector2i(24, 24)
 	map.use_visual_surface_physics = true
@@ -366,12 +376,21 @@ func _test_saved_map_fallback(errors: Array[String]) -> void:
 	var terrain_collision := StaticBody3D.new()
 	terrain_collision.name = "Collision"
 	terrain.add_child(terrain_collision)
+	var native_scene := Node3D.new()
+	map.name = "Map"
+	native_scene.add_child(map)
+	MixedFixture.Content.Maps._set_owner(native_scene, native_scene)
+	var packed_fixture := PackedScene.new()
+	if packed_fixture.pack(native_scene) != OK or ResourceSaver.save(packed_fixture, "res://scenes/editor_fixture_b.tscn") != OK:
+		errors.append("native physics map save failed")
+	native_scene.remove_child(map)
+	native_scene.free()
 	root.add_child(map)
 	await process_frame
 	var resolved := map.call("resolved_visual_surface") as VoxelModel
 	var projection := map.get_node_or_null("DerivedVoxelWorldSurface")
 	if resolved == null or resolved.resource_path != canonical_path:
-		errors.append("map without a saved .tscn link did not resolve its canonical Surface")
+		errors.append("map did not resolve its saved native Surface link")
 	elif projection == null or projection.call("surface") != resolved:
 		errors.append("canonical saved Surface did not reach the runtime projection")
 	else:
@@ -438,7 +457,7 @@ func _test_saved_map_fallback(errors: Array[String]) -> void:
 		var collider := hit.get("collider") as Node
 		if collider == null or not (projection as Node).is_ancestor_of(collider):
 			errors.append("PhysicsServer ray did not hit the derived sandbox Surface collision")
-	var packed := load("res://scenes/agent_sandbox.tscn") as PackedScene
+	var packed := load("res://scenes/editor_fixture_b.tscn") as PackedScene
 	var reopened := packed.instantiate() if packed != null else null
 	var reopened_map := reopened.get_node_or_null("Map") as EmberMapLoader if reopened != null else null
 	if (
@@ -446,7 +465,7 @@ func _test_saved_map_fallback(errors: Array[String]) -> void:
 		or reopened_map.authored_size_blocks != Vector2i(24, 24)
 		or not reopened_map.use_visual_surface_physics
 	):
-		errors.append("agent_sandbox did not persist its physical Surface ownership flags")
+		errors.append("editor_fixture_b did not persist its physical Surface ownership flags")
 	if reopened != null:
 		reopened.free()
 	map.queue_free()

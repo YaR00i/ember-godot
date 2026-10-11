@@ -4,15 +4,24 @@ extends SceneTree
 
 const Followers := preload("res://scripts/ember_party_followers.gd")
 const HeroScale := preload("res://scripts/ember_exploration_hero_scale.gd")
-const SANDBOX_SCENE := preload("res://scenes/agent_sandbox.tscn")
+const Fixture = preload("res://tools/fixtures/ember_party_test_fixture.gd")
+var _setup: Dictionary
 
 
 func _init() -> void:
+	_setup = Fixture.prepare(self)
+	if _setup.refused:
+		quit.call_deferred(2)
+		return
 	_run_and_quit.call_deferred()
 
 
 func _run_and_quit() -> void:
 	var errors: Array[String] = []
+	if _setup.error != OK or not _setup.progress_isolated:
+		printerr("FAIL native party fixture preparation")
+		quit(1)
+		return
 	var toggle_micros := 0
 	var leader_switch_micros := 0
 	var progress := root.get_node_or_null("EmberExploreProgress") as EmberExploreState
@@ -20,7 +29,7 @@ func _run_and_quit() -> void:
 		progress.persistence_enabled = false
 		progress.restore_enabled = false
 		progress.reset_new_game()
-	var sandbox := SANDBOX_SCENE.instantiate()
+	var sandbox: Node3D = _setup.scene.instantiate()
 	root.add_child(sandbox)
 	await process_frame
 	await physics_frame
@@ -30,6 +39,10 @@ func _run_and_quit() -> void:
 	if player == null or followers == null or toggle == null:
 		errors.append("exploration scene lost leader/followers/toggle wiring")
 	else:
+		if player.progress_state != progress or followers.progress_state != progress:
+			errors.append("leader/followers do not share the real progress owner")
+		if sandbox.find_children("*", "CharacterBody3D", true, false).size() != 1:
+			errors.append("party spawned more than one player physics controller")
 		var player_shape := (player.get_node_or_null("Shape") as CollisionShape3D).shape as CapsuleShape3D
 		if player_shape == null or not is_equal_approx(player_shape.height, HeroScale.height("protagonist", player.tile_size)):
 			errors.append("leader collision is not 1.8 authored blocks high")
@@ -52,15 +65,15 @@ func _run_and_quit() -> void:
 		var formation_targets := [followers.target_for(0), followers.target_for(1), followers.target_for(2)]
 		if formation_targets[0].distance_to(formation_targets[1]) < player.tile_size * 0.5:
 			errors.append("formation did not spread companions around the leader trail")
-		var progress_signal_count := 0
-		var count_progress_signal := func() -> void: progress_signal_count += 1
+		var progress_signal_count := {"value": 0}
+		var count_progress_signal := func() -> void: progress_signal_count.value += 1
 		progress.progress_changed.connect(count_progress_signal)
 		var toggle_started := Time.get_ticks_usec()
 		for probe in 40:
 			followers.toggle_mode()
 		toggle_micros = Time.get_ticks_usec() - toggle_started
 		progress.progress_changed.disconnect(count_progress_signal)
-		if progress_signal_count != 0:
+		if progress_signal_count.value != 0:
 			errors.append("formation toggle still fans out through gameplay progress listeners")
 		if toggle_micros > 100000:
 			errors.append("40 presentation-only formation toggles took %d us" % toggle_micros)
@@ -96,6 +109,9 @@ func _run_and_quit() -> void:
 		):
 			errors.append("exploration damage did not follow the currently controlled hero")
 		followers.set_mode(Followers.MODE_TRAIN)
+		# Keep the measured 52-unit trail inside the small native ground.
+		player.global_position = Vector3(32, 6, 60)
+		followers.reset_to_leader()
 		for step in 104:
 			player.global_position.z -= 0.5
 			await physics_frame
@@ -131,6 +147,7 @@ func _run_and_quit() -> void:
 		if player.controlled_hero_id != "mira" or progress.next_exploration_leader() != "mira" or player.global_position != old_position:
 			errors.append("removed leader/solo Tab moved player or selected absent hero")
 	sandbox.free()
+	Fixture.verify_sources(_setup, errors)
 	if not errors.is_empty():
 		printerr("FAIL party followers")
 		for error in errors:

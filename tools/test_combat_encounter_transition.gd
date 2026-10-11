@@ -2,11 +2,19 @@ extends SceneTree
 ## Scene lifecycle gate: exploration -> authored encounter -> exploration ->
 ## outcome action. No outgoing Node/UI reference is allowed to survive.
 
-const SOURCE_SCENE := "res://scenes/agent_sandbox.tscn"
+const Fixture = preload("res://tools/fixtures/ember_exploration_test_fixture.gd")
 const ENCOUNTER_ID := "colored_crossing_demo"
+var _source_scene := ""
+var _source: PackedScene
+var _directory := ""
+var _setup: Dictionary = {}
 
 
 func _init() -> void:
+	_directory = "user://ember-tests/encounter-transition-%d-%d" % [OS.get_process_id(), Time.get_ticks_usec()]
+	# Wallet is still legacy-only; the fixture supplies its display definition,
+	# not any historical map/model/shop/action data. Other items are native.
+	_setup = Fixture.prepare(self, _directory)
 	call_deferred("_run")
 
 
@@ -19,6 +27,19 @@ func _run() -> void:
 		return
 	progress.persistence_enabled = false
 	progress.restore_enabled = false
+	if _setup.error != OK or not _setup.progress_isolated:
+		printerr("FAIL encounter transition: fixture/progress isolation failed")
+		quit(1)
+		return
+	var map_id := "encounter_fixture_%d" % OS.get_process_id()
+	_source = Fixture.save_map(map_id, _directory)
+	if _source == null:
+		printerr("FAIL encounter transition: could not save/reopen native source fixture")
+		quit(1)
+		return
+	_source_scene = EmberMapTransition.scene_path(map_id)
+	var fixture_path := _directory.path_join(map_id + ".tscn")
+	var fixture_hash := FileAccess.get_sha256(fixture_path)
 	progress.reset_new_game()
 	var persistent_mira: Dictionary = progress.party.get("mira", {})
 	persistent_mira["hp"] = 11
@@ -28,11 +49,19 @@ func _run() -> void:
 	var transition_strategy: Array[String] = ["sena", "orik", "mira", "protagonist"]
 	progress.set_battle_strategy(transition_strategy)
 	EmberCombatTransition.clear_for_test()
-	if change_scene_to_file(SOURCE_SCENE) != OK:
+	if change_scene_to_file(_source_scene) != OK:
 		errors.append("could not open exploration fixture")
 	else:
 		await scene_changed
 		await process_frame
+		# Real autosave/position handoff, exclusively in this fixture's storage.
+		progress.persistence_enabled = true
+		progress.restore_enabled = true
+		var source_player := current_scene.get_node("Player") as EmberPlayer
+		source_player.global_position = Vector3(43.25, 5.0, 27.5)
+		var departure := Vector2(source_player.global_position.x, source_player.global_position.z)
+		if not progress.save_autosave():
+			errors.append("could not capture isolated pre-battle position")
 		var before_coins := int(progress.inventory.get("coin", 0))
 		var before_herbs := int(progress.inventory.get("herb", 0))
 		var before_tea := int(progress.inventory.get("qingxin_tea", 0))
@@ -118,8 +147,11 @@ func _run() -> void:
 						errors.append("victory XP was not applied exactly once to %s" % hero_id)
 				if int(progress.party_member_view("orik").get("hp", -1)) != 1:
 					errors.append("fallen Orik did not return from victory at 1 HP")
-				if current_scene.scene_file_path != SOURCE_SCENE:
+				if current_scene.scene_file_path != _source_scene:
 					errors.append("battle returned to the wrong scene")
+				var returned_player := current_scene.get_node_or_null("Player") as EmberPlayer
+				if returned_player == null or not Vector2(returned_player.global_position.x, returned_player.global_position.z).is_equal_approx(departure):
+					errors.append("battle return lost the saved departure position")
 				if not bool(progress.flags.get("colored_crossing_won", false)):
 					errors.append("victory result flag was not applied")
 				if int(progress.flags.get("combat_victories", 0)) != 1:
@@ -155,12 +187,17 @@ func _run() -> void:
 		quit(1)
 		return
 	await _test_active_transition(progress, errors)
+	if FileAccess.get_sha256(fixture_path) != fixture_hash:
+		errors.append("combat round-trip changed the saved source fixture")
 	if not errors.is_empty():
 		for message in errors:
 			printerr("FAIL active encounter transition: ", message)
 		quit(1)
 		return
 	print("PASS encounter transition")
+	print("  saved/reopened native exploration fixture; no historical map/model/JOI input")
+	print("  isolated progress before autoload readiness; native item catalog, no item JSON input")
+	print("  actual fixture autosave restores departure XZ; saved source scene remains unchanged")
 	print("  radial battle HUD -> victory modal -> Continue returns to exploration")
 	print("  party XP/level-up, fallen-at-1 rule and spent inventory return once")
 	print("  repeated Continue cannot apply progression or grant rewards twice")

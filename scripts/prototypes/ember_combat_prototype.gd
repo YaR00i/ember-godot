@@ -576,6 +576,7 @@ static func preview(
 		"ok": true,
 		"stateTurn": int(state.get("turn", 1)),
 		"stateHash": hash(state),
+		"statusRulesHash": StatusRules.content_hash(),
 		"actorId": actor_id,
 		"actionId": action_id,
 		"targetId": resolved_target_id,
@@ -635,6 +636,10 @@ static func preview(
 	if power > 0 and _has_status(actor, "overheated"):
 		power += 2
 		(result["notes"] as Array).append("Накал усиливает силу приёма на +2.")
+	if power > 0:
+		var bonus := StatusRules.power_bonus(actor)
+		power = maxi(0, power + bonus)
+		if bonus != 0: (result["notes"] as Array).append("Активные статусы меняют силу приёма на %+d." % bonus)
 	var field_bonus := _field_power_bonus(state, actor, element_id)
 	if field_bonus > 0:
 		power += field_bonus
@@ -734,13 +739,13 @@ static func preview(
 		"gust":
 			_set_push(state, result, actor, target, int(action.get("force", 0)))
 		"guard":
-			_set_status(result, target_id, "guard", 1)
+			_set_status(result, target_id, "guard", 1, state)
 		"defend":
-			_set_status(result, target_id, "guard", 2 if target_id == actor_id else 1)
+			_set_status(result, target_id, "guard", 2 if target_id == actor_id else 1, state)
 			result["reaction"] = "Оборона"
 			(result["notes"] as Array).append("Ход завершается без атаки.")
 		"held_guard":
-			_set_status(result, actor_id, "guard", 2)
+			_set_status(result, actor_id, "guard", 2, state)
 			result["reaction"] = "Удержание и оборона"
 			(result["notes"] as Array).append("Цель остаётся поднятой; носитель защищается.")
 		"held_lower":
@@ -798,7 +803,7 @@ static func preview(
 				(result["moves"] as Dictionary)[target_id] = target_origin
 				result["reaction"] = "Цель опущена"
 			elif lift_choice == "hold":
-				_set_status(result, actor_id, "guard", 2)
+				_set_status(result, actor_id, "guard", 2, state)
 				result["setHold"] = {"carrierId": actor_id, "targetId": target_id}
 				result["reaction"] = "Цель оставлена поднятой"
 				(result["notes"] as Array).append("Цель больше не занимает исходную клетку.")
@@ -843,6 +848,8 @@ static func commit(state: Dictionary, resolved: Dictionary) -> Dictionary:
 	if resolved.has("stateTurn") and int(resolved.get("stateTurn", -1)) != int(state.get("turn", 1)):
 		return state.duplicate(true)
 	if resolved.has("stateHash") and int(resolved.get("stateHash", 0)) != hash(state):
+		return state.duplicate(true)
+	if resolved.has("statusRulesHash") and int(resolved.statusRulesHash) != StatusRules.content_hash():
 		return state.duplicate(true)
 	var partner_id := str(resolved.get("partnerId", ""))
 	if not partner_id.is_empty():
@@ -1237,6 +1244,7 @@ static func _ai_pursuit_preview(
 		"stateHash": hash(state),
 		"actorId": actor_id,
 		"actionId": "",
+		"statusRulesHash": StatusRules.content_hash(),
 		"targetId": target_id,
 		"mpCost": 0,
 		"mpBefore": int(actor.get("mp", 0)),
@@ -1610,14 +1618,6 @@ static func _is_frozen(state: Dictionary, unit: Dictionary) -> bool:
 	return false
 
 
-static func _has_elemental_setup(state: Dictionary, unit: Dictionary) -> bool:
-	return (
-		_is_wet(state, unit)
-		or _has_status(unit, "frozen")
-		or _has_status(unit, "burning")
-	)
-
-
 static func _has_reaction_setup(
 	state: Dictionary,
 	target: Dictionary,
@@ -1703,8 +1703,8 @@ static func _add_fixed_damage(resolved: Dictionary, unit_id: String, amount: int
 	DamageRules.add_fixed_damage(resolved, unit_id, amount)
 
 
-static func _set_status(resolved: Dictionary, unit_id: String, status_id: String, duration: int) -> void:
-	StatusRules.set_status(resolved, unit_id, status_id, duration)
+static func _set_status(resolved: Dictionary, unit_id: String, status_id: String, duration: int, state: Dictionary = {}) -> void:
+	StatusRules.set_status(resolved, unit_id, status_id, duration, unit_definition(state, unit_id).get("statuses", {}))
 
 
 static func _set_hostile_status(
@@ -1869,11 +1869,14 @@ static func _apply_guard_preview(state: Dictionary, resolved: Dictionary) -> voi
 	for raw_id in damage.keys():
 		var unit_id := str(raw_id)
 		var unit := unit_definition(state, unit_id)
+		damage[unit_id] = StatusRules.damage_amount(unit, int(damage[unit_id]), false)
 		if not _has_status(unit, "guard"):
+			StatusRules.remove_after_damage(resolved, unit, int(damage[unit_id]))
 			continue
 		damage[unit_id] = ceili(float(damage[unit_id]) * 0.5)
 		_remove_status(resolved, unit_id, "guard")
 		(resolved.get("notes", []) as Array).append("Защита уменьшает входящий урон.")
+		StatusRules.remove_after_damage(resolved, unit, int(damage[unit_id]))
 	resolved["damage"] = damage
 
 

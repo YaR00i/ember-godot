@@ -311,13 +311,6 @@ static func cell_for_local_point(
 func _surface_grid_for_map(map: EmberMapLoader) -> Dictionary:
 	if not is_instance_valid(map):
 		return {}
-	# Existing imported maps retain their authored legacy height grid for picking.
-	if map.hydrate_legacy_regions:
-		var path := EmberPack.map_path(map.map_id)
-		if FileAccess.file_exists(path):
-			var raw: Variant = EmberPack.parse_json_file(path)
-			if typeof(raw) == TYPE_DICTIONARY:
-				return EmberTileMesher.surface_grid(raw as Dictionary)
 	var surface := map.resolved_visual_surface()
 	if surface != null:
 		return {

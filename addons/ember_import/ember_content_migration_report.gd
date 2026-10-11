@@ -15,7 +15,6 @@ const ItemStore = preload("res://addons/ember_import/ember_item_store.gd")
 const ShopCatalog = preload("res://scripts/ember_shop_catalog.gd")
 const ShopStore = preload("res://addons/ember_import/ember_shop_store.gd")
 const VnAssets = preload("res://scripts/ember_vn_assets.gd")
-const VoxelBatches = preload("res://addons/ember_import/ember_voxel_migration_batches.gd")
 const DOMAIN_ORDER := ["voxel", "action", "dialogue", "item", "shop", "vn"]
 
 
@@ -88,20 +87,6 @@ static func _matches_state_filter(entry: Dictionary, state_filter: String) -> bo
 			return entry_needs_attention(entry)
 		"scene_used":
 			return int(entry.get("reference_count", 0)) > 0
-		"sandbox_batch":
-			return VoxelBatches.entry_matches(entry, "sandbox")
-		"sandbox_pending":
-			return (
-				str(entry.get("owner", "")) == "legacy"
-				and _matches_state_filter(entry, "sandbox_batch")
-			)
-		"fan_town_ready_batch":
-			return VoxelBatches.entry_matches(entry, "fan_town_ready")
-		"fan_town_ready_pending":
-			return (
-				str(entry.get("owner", "")) == "legacy"
-				and _matches_state_filter(entry, "fan_town_ready_batch")
-			)
 		_:
 			return true
 

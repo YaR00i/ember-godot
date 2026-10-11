@@ -1,17 +1,24 @@
 @tool
-extends ConfirmationDialog
+extends VBoxContainer
 ## Bounded native preview for exact voxel placement. The authored scene is only
 ## touched by Session.commit() after confirmation.
 
 const Context = preload("res://addons/ember_import/ember_voxel_canvas_context.gd")
 const Math = preload("res://addons/ember_import/ember_voxel_placement_math.gd")
 signal applied(target: Node3D)
+signal edit_closed
 
+var parameters_panel: VBoxContainer
+var _parameter_scroll: ScrollContainer
+var _apply_button: Button
+var _title: Label
+var _preview_viewport: SubViewport
 var placement: RefCounted
 var _grid: OptionButton
 var _grid_help: Label
 var _pivot: OptionButton
 var _custom: Array[SpinBox] = []
+var _custom_fields: VBoxContainer
 var _coordinates: Array[SpinBox] = []
 var _offsets: Array[SpinBox] = []
 var _rotations: Array[SpinBox] = []
@@ -32,174 +39,102 @@ var _updating := false
 
 
 func _init() -> void:
-	title = "Точная voxel-расстановка"
-	size = Vector2i(720,640)
-	get_ok_button().text = "Применить"
-	get_ok_button().disabled = true
-	get_cancel_button().text = "Отмена"
-	dialog_hide_on_ok = false
-	var layout := HBoxContainer.new()
-	layout.add_theme_constant_override("separation",12)
-	add_child(layout)
-	var scroll := ScrollContainer.new()
-	scroll.name = "PlacementScroll"
-	scroll.custom_minimum_size = Vector2(350,460)
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	layout.add_child(scroll)
-	var box := VBoxContainer.new()
-	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(box)
-	var intro := Label.new()
-	intro.text = "XYZ — мировые оси. Расстановка не меняет масштаб или наклон скрыто."
-	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(intro)
-	_grid = OptionButton.new()
-	_grid.tooltip_text = "Общая мировая сетка с началом координат 0. Размер шага взят из фактического voxel выбранной детали."
+	size_flags_vertical = Control.SIZE_EXPAND_FILL
+	parameters_panel = VBoxContainer.new(); parameters_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_title = Label.new(); _title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; parameters_panel.add_child(_title)
+	_parameter_scroll = ScrollContainer.new(); _parameter_scroll.name = "PlacementScroll"
+	_parameter_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_parameter_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL; parameters_panel.add_child(_parameter_scroll)
+	var box := VBoxContainer.new(); box.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _parameter_scroll.add_child(box)
+	_label(box, "Координаты по мировым осям.")
+	_grid = OptionButton.new(); _grid.clip_text = true; _grid.fit_to_longest_item = false
+	_grid.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_grid.tooltip_text = "Мировая сетка с началом 0. Размер шага взят из фактического voxel выбранной детали."
 	box.add_child(_grid)
-	_grid_help = Label.new()
-	_grid_help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(_grid_help)
-	var pivot_row := HBoxContainer.new()
-	box.add_child(pivot_row)
-	var pivot_label := Label.new()
-	pivot_label.text = "Опорная точка"
-	pivot_label.custom_minimum_size.x = 120
-	pivot_row.add_child(pivot_label)
-	_pivot = OptionButton.new()
-	_pivot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_pivot.add_item("Центр",0)
-	_pivot.add_item("Нижний угол",1)
-	_pivot.add_item("Своя · vox",2)
-	pivot_row.add_child(_pivot)
-	var custom_grid := GridContainer.new()
-	custom_grid.columns = 4
-	box.add_child(custom_grid)
-	var custom_label := Label.new()
-	custom_label.text = "Своя точка"
-	custom_grid.add_child(custom_label)
+	_grid_help = _label(box, "")
+	_label(box, "Опорная точка")
+	_pivot = OptionButton.new(); _pivot.add_item("Центр",0); _pivot.add_item("Нижний угол",1); _pivot.add_item("Своя · vox",2)
+	box.add_child(_pivot)
+	_custom_fields = VBoxContainer.new(); box.add_child(_custom_fields); _custom_fields.hide()
+	_label(_custom_fields, "Своя точка · XYZ в вокселях")
 	for axis in ["X","Y","Z"]:
+		var row := HBoxContainer.new(); _custom_fields.add_child(row); _label(row, axis)
 		var number := _number(-1000000,1000000,0.01)
 		number.tooltip_text = "%s вокселей от исходного угла модели; для сборки — от нижнего угла по мировой сетке." % axis
-		custom_grid.add_child(number)
-		_custom.append(number)
-	var values := GridContainer.new()
-	values.columns = 3
-	values.name = "PositionGrid"
-	box.add_child(values)
-	for heading in ["Ось","Координата · vox","Смещение · vox"]:
-		var label := Label.new()
-		label.text = heading
-		values.add_child(label)
+		row.add_child(number); _custom.append(number)
 	for axis in ["X","Y","Z"]:
-		var label := Label.new()
-		label.text = axis
-		values.add_child(label)
-		var coordinate := _number(-1000000,1000000,0.001)
-		coordinate.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		values.add_child(coordinate)
-		_coordinates.append(coordinate)
-		var offset := _number(-1000000,1000000,0.001)
-		offset.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		values.add_child(offset)
-		_offsets.append(offset)
-	var snap_row := HBoxContainer.new()
-	box.add_child(snap_row)
-	_snap_enabled = CheckBox.new()
-	_snap_enabled.text = "Привязка при вводе"
-	_snap_enabled.button_pressed = true
-	snap_row.add_child(_snap_enabled)
-	var step_label := Label.new()
-	step_label.text = "Шаг · vox"
-	snap_row.add_child(step_label)
-	_snap_step = _number(0.001,1024,0.001)
-	_snap_step.value = 1
-	snap_row.add_child(_snap_step)
-	var snap_now := Button.new()
-	snap_now.text = "Привязать сейчас"
-	snap_now.tooltip_text = "Привязать выбранную опорную точку к ближайшему шагу мировой сетки."
-	snap_now.pressed.connect(_snap_now)
-	box.add_child(snap_now)
-	var rotation_title := Label.new()
-	rotation_title.text = "Поворот от исходного положения · градусы"
-	box.add_child(rotation_title)
-	var rotations := GridContainer.new()
-	rotations.columns = 4
-	box.add_child(rotations)
+		_label(box, "Ось " + axis)
+		var coordinate := _number(-1000000,1000000,0.001); _field(box,"Координата · vox",coordinate); _coordinates.append(coordinate)
+		var offset := _number(-1000000,1000000,0.001); _field(box,"Смещение · vox",offset); _offsets.append(offset)
+	_snap_enabled = CheckBox.new(); _snap_enabled.text = "Привязка при вводе"; _snap_enabled.button_pressed = true; box.add_child(_snap_enabled)
+	_snap_step = _number(0.001,1024,0.001); _snap_step.value = 1; _field(box,"Шаг · vox",_snap_step)
+	var snap_now := Button.new(); snap_now.text = "Привязать сейчас"
+	snap_now.tooltip_text = "Привязать опорную точку к ближайшему шагу мировой сетки."
+	snap_now.pressed.connect(_snap_now); box.add_child(snap_now)
+	_label(box,"Поворот от исходного положения · градусы")
 	for axis in ["X","Y","Z"]:
-		var label := Label.new()
-		label.text = axis
-		rotations.add_child(label)
-		var number := _number(-360000,360000,0.1)
-		number.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		rotations.add_child(number)
-		_rotations.append(number)
-		var minus := Button.new()
-		minus.text = "−90°"
-		minus.pressed.connect(_rotate_quarter.bind(_rotations.size()-1,-90.0))
-		rotations.add_child(minus)
-		var plus := Button.new()
-		plus.text = "+90°"
-		plus.pressed.connect(_rotate_quarter.bind(_rotations.size()-1,90.0))
-		rotations.add_child(plus)
-	_context_enabled = CheckBox.new()
-	_context_enabled.text = "Показать окружение"
-	_context_enabled.button_pressed = true
-	box.add_child(_context_enabled)
-	_status = Label.new()
-	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(_status)
-	var viewport_container := SubViewportContainer.new()
-	viewport_container.name = "PlacementPreview"
-	viewport_container.stretch = true
-	viewport_container.custom_minimum_size = Vector2(330,460)
-	viewport_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	viewport_container.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	layout.add_child(viewport_container)
-	var viewport := SubViewport.new()
-	viewport.own_world_3d = true
-	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-	viewport.msaa_3d = Viewport.MSAA_2X
-	viewport_container.add_child(viewport)
-	_world = Node3D.new()
-	viewport.add_child(_world)
-	_context = Context.new()
-	_world.add_child(_context)
-	_selected_preview = Node3D.new()
-	_world.add_child(_selected_preview)
-	_camera = Camera3D.new()
-	_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	_camera.current = true
-	_camera.far = 100000
-	_world.add_child(_camera)
-	var light := DirectionalLight3D.new()
-	light.rotation_degrees = Vector3(-55,-35,0)
-	light.light_energy = 1.2
-	_world.add_child(light)
-	var fill := DirectionalLight3D.new()
-	fill.rotation_degrees = Vector3(35,145,0)
-	fill.light_energy = 0.35
-	_world.add_child(fill)
+		var row := HBoxContainer.new(); box.add_child(row); _label(row,axis)
+		var number := _number(-360000,360000,0.1); row.add_child(number); _rotations.append(number)
+		var minus := Button.new(); minus.text = "−90°"; minus.pressed.connect(_rotate_quarter.bind(_rotations.size()-1,-90.0)); row.add_child(minus)
+		var plus := Button.new(); plus.text = "+90°"; plus.pressed.connect(_rotate_quarter.bind(_rotations.size()-1,90.0)); row.add_child(plus)
+	_context_enabled = CheckBox.new(); _context_enabled.text = "Показать окружение"; _context_enabled.button_pressed = true; box.add_child(_context_enabled)
+	_status = _label(box,"")
+	var actions := HBoxContainer.new(); parameters_panel.add_child(actions)
+	_apply_button = Button.new(); _apply_button.text = "Применить"; _apply_button.disabled = true
+	_apply_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _apply_button.pressed.connect(_commit); actions.add_child(_apply_button)
+	var cancel := Button.new(); cancel.text = "Отмена"; cancel.pressed.connect(cancel_edit); actions.add_child(cancel)
+	_label(self,"Предпросмотр точной расстановки · жёлтая точка — опора. Сцена меняется только после «Применить».")
+	var viewport_container := SubViewportContainer.new(); viewport_container.name = "PlacementPreview"; viewport_container.stretch = true
+	viewport_container.custom_minimum_size = Vector2(320,230)
+	viewport_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL; viewport_container.size_flags_vertical = Control.SIZE_EXPAND_FILL; add_child(viewport_container)
+	_preview_viewport = SubViewport.new(); _preview_viewport.own_world_3d = true
+	_preview_viewport.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE; _preview_viewport.msaa_3d = Viewport.MSAA_2X; viewport_container.add_child(_preview_viewport)
+	_world = Node3D.new(); _preview_viewport.add_child(_world)
+	_context = Context.new(); _world.add_child(_context)
+	_selected_preview = Node3D.new(); _world.add_child(_selected_preview)
+	_camera = Camera3D.new(); _camera.projection = Camera3D.PROJECTION_ORTHOGONAL; _camera.current = true; _camera.far = 100000; _world.add_child(_camera)
+	var light := DirectionalLight3D.new(); light.rotation_degrees = Vector3(-55,-35,0); light.light_energy = 1.2; _world.add_child(light)
+	var fill := DirectionalLight3D.new(); fill.rotation_degrees = Vector3(35,145,0); fill.light_energy = 0.35; _world.add_child(fill)
 	_pivot_preview = MeshInstance3D.new()
-	var pivot_mesh := SphereMesh.new()
-	pivot_mesh.radius = 0.5
-	pivot_mesh.height = 1.0
-	var pivot_material := StandardMaterial3D.new()
-	pivot_material.albedo_color = Color("ffd35c")
-	pivot_material.emission_enabled = true
-	pivot_material.emission = Color("ff9b31")
-	pivot_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	pivot_mesh.material = pivot_material
-	_pivot_preview.mesh = pivot_mesh
-	_world.add_child(_pivot_preview)
-	_grid.item_selected.connect(_grid_changed.unbind(1))
-	_pivot.item_selected.connect(_pivot_changed.unbind(1))
+	var pivot_mesh := SphereMesh.new(); pivot_mesh.radius = 0.5; pivot_mesh.height = 1.0
+	var pivot_material := StandardMaterial3D.new(); pivot_material.albedo_color = Color("ffd35c"); pivot_material.emission_enabled = true
+	pivot_material.emission = Color("ff9b31"); pivot_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	pivot_mesh.material = pivot_material; _pivot_preview.mesh = pivot_mesh; _world.add_child(_pivot_preview)
+	_grid.item_selected.connect(_grid_changed.unbind(1)); _pivot.item_selected.connect(_pivot_changed.unbind(1))
 	for index in _custom.size():
 		_custom[index].value_changed.connect(_custom_changed.unbind(1))
 		_coordinates[index].value_changed.connect(_coordinate_changed.bind(index))
 		_offsets[index].value_changed.connect(_offset_changed.bind(index))
 		_rotations[index].value_changed.connect(_rotation_changed.unbind(1))
 	_context_enabled.toggled.connect(_context_toggled)
-	confirmed.connect(_commit)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE and is_instance_valid(parameters_panel): parameters_panel.free()
+
+
+func _label(parent: Node,text: String) -> Label:
+	var label := Label.new(); label.text = text; label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	if parent is HBoxContainer: label.custom_minimum_size.x = 20
+	parent.add_child(label); return label
+
+
+func _field(parent: Node,text: String,number: SpinBox) -> void:
+	_label(parent,text); parent.add_child(number)
+
+
+func get_apply_button() -> Button:
+	return _apply_button
+
+
+func is_dirty() -> bool:
+	return placement != null and not _planned_world.is_equal_approx(placement.initial_world())
+
+
+func cancel_edit() -> void:
+	placement = null; _preview_relatives.clear(); _context.clear()
+	for child in _selected_preview.get_children(): child.free()
+	_apply_button.disabled = true; hide(); edit_closed.emit()
 
 
 func open_for(session: RefCounted) -> bool:
@@ -212,6 +147,7 @@ func open_for(session: RefCounted) -> bool:
 		_grid.add_item(placement.grid_label(index),index)
 	_grid.select(0)
 	_pivot.select(0)
+	_custom_fields.hide()
 	for number in _custom:
 		number.value = 0
 	for number in _rotations:
@@ -222,7 +158,8 @@ func open_for(session: RefCounted) -> bool:
 	_desired_world = placement.initial_world()*_pivot_local
 	_sync_fields()
 	_update_plan()
-	popup_centered(Vector2i(720,640))
+	_title.text = "Точная расстановка · %s" % placement.target().name
+	show()
 	return true
 
 
@@ -232,6 +169,7 @@ func _number(minimum: float,maximum: float,step: float) -> SpinBox:
 	number.max_value = maximum
 	number.allow_greater = true
 	number.allow_lesser = true
+	number.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	number.step = step
 	number.custom_arrow_step = step
 	number.update_on_text_changed = false
@@ -247,6 +185,7 @@ func _grid_changed() -> void:
 func _pivot_changed() -> void:
 	if _updating or placement == null:
 		return
+	_custom_fields.visible = _pivot.get_selected_id() == 2
 	_preserve_transform_with_new_pivot()
 
 
@@ -321,7 +260,8 @@ func _sync_fields() -> void:
 		_coordinates[index].set_value_no_signal(coordinates[index])
 		_offsets[index].set_value_no_signal(coordinates[index]-initial[index])
 	var steps: Vector3 = placement.grid_steps(grid_index)
-	_grid_help.text = "1 vox выбранной мировой сетки: X %s, Y %s, Z %s единиц сцены. Начало координат мира = 0; ориентация детали не выравнивается." % [str(snappedf(steps.x,0.0001)),str(snappedf(steps.y,0.0001)),str(snappedf(steps.z,0.0001))]
+	_grid_help.text = "Размер vox: X %s · Y %s · Z %s" % [str(snappedf(steps.x,0.0001)),str(snappedf(steps.y,0.0001)),str(snappedf(steps.z,0.0001))]
+	_grid.tooltip_text = placement.grid_label(grid_index) + "\nНачало мировой сетки = 0. Масштаб и исходный наклон сохраняются."
 	_updating = false
 
 
@@ -332,7 +272,7 @@ func _update_plan() -> void:
 	var result: Dictionary = placement.plan(_pivot_local,coordinates,_vector(_rotations),_grid.get_selected_id())
 	if not result.get("ok",false):
 		_status.text = result.get("error","Предпросмотр не построен.")
-		get_ok_button().disabled = true
+		_apply_button.disabled = true
 		return
 	_planned_world = result.world
 	for entry in _preview_relatives:
@@ -343,7 +283,7 @@ func _update_plan() -> void:
 	_frame_camera()
 	var rotation := _vector(_rotations)
 	_status.text = "%s · опорная точка в мире %s · Δ поворот %s. До «Применить» сцена и voxel-файлы не меняются." % [placement.target().name,result.pivot_world,rotation]
-	get_ok_button().disabled = false
+	_apply_button.disabled = false
 
 
 func _build_preview() -> void:
@@ -416,11 +356,11 @@ func _context_toggled(enabled: bool) -> void:
 func _commit() -> void:
 	if not placement.commit():
 		_status.text = placement.error
-		get_ok_button().disabled = true
+		_apply_button.disabled = true
 		return
 	var selected: Node3D = placement.target()
-	hide()
 	applied.emit(selected)
+	cancel_edit()
 
 
 func _vector(values: Array[SpinBox]) -> Vector3:

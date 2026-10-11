@@ -1,11 +1,16 @@
 extends SceneTree
+const MixedFixture = preload("res://tools/fixtures/ember_mixed_editor_test_fixture.gd")
 ## Stored authored fields and runtime material ownership. Fixtures use user://.
 const Lights = preload("res://scripts/ember_lights.gd")
 const Materials = preload("res://scripts/ember_voxel_surface_materials.gd")
 const Prefab = preload("res://scripts/ember_voxel_prefab.gd")
 var errors: Array[String] = []
 
-func _init() -> void: _run.call_deferred()
+func _init() -> void:
+	if not MixedFixture.prepare(self):
+		quit(2)
+		return
+	_run.call_deferred()
 
 func check(value: bool, message: String) -> void:
 	if not value: errors.append(message)
@@ -108,14 +113,9 @@ func _run() -> void:
 	check(Materials.water_material().shader != Prefab.voxel_transparent_material().shader,"water lost its shader owner")
 	check(Materials.water_material().get_shader_parameter("preview_time") == -1.0,"QA freeze escaped into production material")
 	var water := Materials.water_material()
-	check(water.get_shader_parameter("ripple_alpha") == 0.0,"legacy water ripples became visible")
-	check(water.get_shader_parameter("network_cell_size") == 16.0,"accepted water network scale changed")
-	check(water.get_shader_parameter("network_width") == 0.08,"accepted water network width changed")
-	check(water.get_shader_parameter("flow_network_strength") == 0.6,"accepted flowing water network strength changed")
-	check(water.get_shader_parameter("flow_network_deep_ratio") == 0.32,"accepted deep-water network ratio changed")
-	check(water.get_shader_parameter("flow_network_warp") == 0.1,"accepted flowing water warp changed")
-	check(water.get_shader_parameter("flow_pixel_density") == 32.0,"accepted flowing water pixel density changed")
-	check(Materials.water_material().get_shader_parameter("patch_cell_size") == 40.0,"accepted broad water scale changed")
+	var canonical_water := ResourceLoader.load("res://materials/ember_voxel_surface_water.tres", "", ResourceLoader.CACHE_MODE_IGNORE) as ShaderMaterial
+	for parameter in ["ripple_alpha", "network_cell_size", "network_width", "flow_network_strength", "flow_network_deep_ratio", "flow_network_warp", "flow_pixel_density", "patch_cell_size"]:
+		check(water.get_shader_parameter(parameter) == canonical_water.get_shader_parameter(parameter), "water constructor diverged from authored native material: " + parameter)
 	var scene := make_fixture()
 	var sun := scene.get_node("Map/Look/Sun") as DirectionalLight3D
 	var environment := (scene.get_node("Map/Look/WorldEnvironment") as WorldEnvironment).environment
@@ -208,9 +208,24 @@ func _run() -> void:
 	check(env_snapshot == before_environment,"pack/save/reopen changed authored Environment")
 	root.add_child(reopened)
 	check(Lights._diorama_environments[loaded_environment.get_instance_id()].signature[0],"reopened map did not reapply effect")
-	for authored in ["res://scenes/world_canvas.tscn","res://scenes/test_pier.tscn","res://scenes/fan_town.tscn"]:
-		if not ResourceLoader.exists(authored): continue
+	var fixture_hashes := {}
+	for index in 3:
+		var fixture := make_fixture()
+		if index > 0:
+			var fixture_moon := DirectionalLight3D.new()
+			fixture_moon.name = "Moon"
+			fixture_moon.light_energy = 0.5
+			fixture.get_node("Map/Look").add_child(fixture_moon)
+			fixture_moon.owner = fixture
+		var packed_fixture := PackedScene.new()
+		check(packed_fixture.pack(fixture) == OK, "diorama map fixture pack failed")
+		fixture.free()
+		var fixture_path := "res://scenes/diorama_fixture_%d.tscn" % index
+		check(ResourceSaver.save(packed_fixture, fixture_path) == OK, "diorama map fixture save failed")
+		fixture_hashes[fixture_path] = FileAccess.get_sha256(fixture_path)
+	for authored in fixture_hashes:
 		var map_scene := (load(authored) as PackedScene).instantiate()
+		root.add_child(map_scene)
 		var env_node := map_scene.get_node_or_null("Map/Look/WorldEnvironment") as WorldEnvironment
 		var day_sun := map_scene.get_node_or_null("Map/Look/Sun") as DirectionalLight3D
 		var authored_moon := map_scene.get_node_or_null("Map/Look/Moon") as DirectionalLight3D
@@ -220,8 +235,9 @@ func _run() -> void:
 		check(stored(env_node.environment) == snapshot,"authored Environment mutated " + authored)
 		if authored_moon != null:
 			check(stored(authored_moon) == moon_snapshot,"legacy Moon mutated")
-			check(not Lights._diorama_environments.has(env_node.environment.get_instance_id()),"legacy night created watcher")
+			check(not bool(Lights._diorama_environments[env_node.environment.get_instance_id()].signature[0]),"night fixture activated daytime diorama")
 		map_scene.free()
+		check(FileAccess.get_sha256(authored) == fixture_hashes[authored], "diorama changed saved scene")
 	for i in 20:
 		var temporary := make_fixture()
 		var held_environment := (temporary.get_node("Map/Look/WorldEnvironment") as WorldEnvironment).environment

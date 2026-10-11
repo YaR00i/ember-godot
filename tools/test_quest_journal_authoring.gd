@@ -1,4 +1,5 @@
 extends SceneTree
+const MixedFixture = preload("res://tools/fixtures/ember_mixed_editor_test_fixture.gd")
 ## Quest description/editor/journal vertical slice over the existing flag owner.
 
 const Catalog = preload("res://scripts/ember_quest_catalog.gd")
@@ -7,11 +8,14 @@ const QuestEditor = preload("res://addons/ember_import/ember_quest_editor.gd")
 const ActionEditor = preload("res://addons/ember_import/ember_action_chain_editor.gd")
 const Journal = preload("res://scripts/ember_quest_journal_ui.gd")
 const InspectorPanel = preload("res://addons/ember_import/ember_object_inspector_panel.gd")
-const SOURCE_SCENE := "res://scenes/agent_sandbox.tscn"
+const SOURCE_SCENE := "res://scenes/editor_fixture_b.tscn"
 const TEMP_ID := "ember_test_quest_authoring"
 
 
 func _init() -> void:
+	if not MixedFixture.prepare(self):
+		quit(2)
+		return
 	quit(_run())
 
 
@@ -27,8 +31,9 @@ func _run() -> int:
 	_test_inspector_undo(errors)
 	_test_graph_document_undo(errors)
 	if FileAccess.get_sha256(SOURCE_SCENE) != source_hash:
-		errors.append("quest authoring changed source agent_sandbox.tscn")
+		errors.append("quest authoring changed source editor_fixture_b.tscn")
 	Store.restore_snapshot(old_snapshot)
+	MixedFixture.verify_sources(errors)
 	if not errors.is_empty():
 		printerr("FAIL quest journal authoring")
 		for error in errors:
@@ -104,11 +109,11 @@ func _test_combat_counter_contract(errors: Array[String]) -> void:
 
 
 func _test_projection(errors: Array[String]) -> void:
-	var demo := Catalog.definition("sandbox_notice_quest")
-	if str(demo.get("titleRu", "")) != "Записка у ворот":
+	var demo := Catalog.definition("interaction_quest")
+	if str(demo.get("titleRu", "")) != "Тестовое задание":
 		errors.append("sandbox quest Resource is unavailable")
 	var available := Catalog.projection(demo, {})
-	var active := Catalog.projection(demo, {"sandbox_notice_status": "active"})
+	var active := Catalog.projection(demo, {"interaction_quest_status": "active"})
 	var completed_flags := {}
 	for raw_objective in demo.get("objectives", []):
 		if typeof(raw_objective) == TYPE_DICTIONARY:
@@ -129,21 +134,21 @@ func _test_projection(errors: Array[String]) -> void:
 	var reference_ids: Array[String] = []
 	for reference in references:
 		reference_ids.append(str(reference.get("id", "")))
-	if "sandbox_notice_status" not in reference_ids or "sandbox_notice_read" not in reference_ids:
+	if "interaction_quest_status" not in reference_ids or "interaction_quest_read" not in reference_ids:
 		errors.append("quest flag reference library lost status/objective entries")
 	var events := Store.event_reference_entries()
-	var start := Store.action_for_event(Store.event_token("sandbox_notice_quest", "start"))
+	var start := Store.action_for_event(Store.event_token("interaction_quest", "start"))
 	var objective := Store.action_for_event(
-		Store.event_token("sandbox_notice_quest", "objective", "read_notice")
+		Store.event_token("interaction_quest", "objective", "read")
 	)
-	var complete := Store.action_for_event(Store.event_token("sandbox_notice_quest", "complete"))
+	var complete := Store.action_for_event(Store.event_token("interaction_quest", "complete"))
 	if events.size() < 3:
 		errors.append("quest event library lost start/objective/complete presets")
-	if start.get("flag", "") != "sandbox_notice_status" or start.get("value") != "active":
+	if start.get("flag", "") != "interaction_quest_status" or start.get("value") != "active":
 		errors.append("start preset did not compile to the canonical active status flag")
-	if objective.get("flag", "") != "sandbox_notice_read" or objective.get("value") != true:
+	if objective.get("flag", "") != "interaction_quest_read" or objective.get("value") != true:
 		errors.append("objective preset did not compile to its canonical completion flag")
-	if complete.get("flag", "") != "sandbox_notice_status" or complete.get("value") != "done":
+	if complete.get("flag", "") != "interaction_quest_status" or complete.get("value") != "done":
 		errors.append("complete preset did not compile to the canonical done status flag")
 
 
@@ -228,7 +233,7 @@ func _test_sequence_contract(errors: Array[String]) -> void:
 func _test_editor_and_journal(errors: Array[String]) -> void:
 	var editor := QuestEditor.new() as EmberQuestEditor
 	root.add_child(editor)
-	editor.setup("sandbox_notice_quest", "sandbox_notice_quest", "sandbox_notice_status")
+	editor.setup("interaction_quest", "interaction_quest", "interaction_quest_status")
 	if editor.find_child("QuestTitle", true, false) == null:
 		errors.append("quest editor has no title field")
 	if editor.find_child("AddQuestObjective", true, false) == null:
@@ -241,9 +246,9 @@ func _test_editor_and_journal(errors: Array[String]) -> void:
 		errors.append("quest editor has no guided combat counter controls")
 	var document: Dictionary = editor.call("_document")
 	if (
-		str(document.get("id", "")) != "sandbox_notice_quest"
-		or str(document.get("statusFlagId", "")) != "sandbox_notice_status"
-		or (document.get("objectives", []) as Array).size() != (Catalog.definition("sandbox_notice_quest").get("objectives", []) as Array).size()
+		str(document.get("id", "")) != "interaction_quest"
+		or str(document.get("statusFlagId", "")) != "interaction_quest_status"
+		or (document.get("objectives", []) as Array).size() != (Catalog.definition("interaction_quest").get("objectives", []) as Array).size()
 	):
 		errors.append("quest editor did not preserve canonical definition")
 	editor.free()
@@ -257,12 +262,12 @@ func _test_editor_and_journal(errors: Array[String]) -> void:
 	if action_editor.find_child("AddQuestEventStep", true, false) == null:
 		errors.append("object/action editor has no guided quest-event action")
 	action_editor.call(
-		"_choose_quest_event", Store.event_token("sandbox_notice_quest", "start")
+		"_choose_quest_event", Store.event_token("interaction_quest", "start")
 	)
 	var action_document: Dictionary = action_editor.call("_document")
 	var action_steps: Array = action_document.get("steps", [])
 	var authored_event: Dictionary = action_steps[-1] if not action_steps.is_empty() else {}
-	if authored_event.get("flag", "") != "sandbox_notice_status" or authored_event.get("value") != "active":
+	if authored_event.get("flag", "") != "interaction_quest_status" or authored_event.get("value") != "active":
 		errors.append("guided action editor did not author the quest start as set_flag")
 	action_editor.free()
 
@@ -274,29 +279,29 @@ func _test_editor_and_journal(errors: Array[String]) -> void:
 	journal.progress_state = state
 	root.add_child(journal)
 	journal.open()
-	var card := journal.find_child("Quest_sandbox_notice_quest", true, false)
+	var card := journal.find_child("Quest_interaction_quest", true, false)
 	if card == null:
 		errors.append("available sandbox quest is absent from journal")
 	else:
 		var title := card.find_child("QuestJournalTitle", true, false) as Label
-		if title == null or "Записка у ворот" not in title.text:
+		if title == null or "Тестовое задание" not in title.text:
 			errors.append("journal card lost the authored title")
-	state.set_flag("sandbox_notice_status", "active", false)
-	state.set_flag("sandbox_notice_read", true, false)
+	state.set_flag("interaction_quest_status", "active", false)
+	state.set_flag("interaction_quest_read", true, false)
 	journal.open()
-	card = journal.find_child("Quest_sandbox_notice_quest", true, false)
-	var objective := card.find_child("QuestObjective_read_notice", true, false) as Label if card != null else null
+	card = journal.find_child("Quest_interaction_quest", true, false)
+	var objective := card.find_child("QuestObjective_read", true, false) as Label if card != null else null
 	if objective == null or not objective.text.begins_with("✓"):
 		errors.append("journal did not refresh objective completion from flags")
 	var source := card.find_child("QuestProgressSource", true, false) as Label if card != null else null
-	if source == null or "sandbox_notice_read = true" not in source.text:
+	if source == null or "interaction_quest_read = true" not in source.text:
 		errors.append("journal does not explain which saved flag completed the quest")
-	var reset := card.find_child("ResetQuestProgress_sandbox_notice_quest", true, false) as Button if card != null else null
+	var reset := card.find_child("ResetQuestProgress_interaction_quest", true, false) as Button if card != null else null
 	if reset == null:
 		errors.append("debug journal has no scoped quest reset")
 	else:
 		reset.pressed.emit()
-		if state.flags.has("sandbox_notice_read") or state.flags.has("sandbox_notice_status"):
+		if state.flags.has("interaction_quest_read") or state.flags.has("interaction_quest_status"):
 			errors.append("scoped quest reset did not clear its status/objective flags")
 	var player := EmberPlayer.new()
 	player.quest_journal_ui = journal
@@ -311,9 +316,9 @@ func _test_inspector_undo(errors: Array[String]) -> void:
 	var packed := ResourceLoader.load(SOURCE_SCENE, "", ResourceLoader.CACHE_MODE_REPLACE) as PackedScene
 	var scene := packed.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE) if packed != null else null
 	if scene == null:
-		errors.append("agent_sandbox fixture is unavailable")
+		errors.append("editor_fixture_b fixture is unavailable")
 		return
-	var prop := scene.get_node_or_null("Map/Props/sbx_quest_sign") as EmberVoxelProp
+	var prop := scene.get_node_or_null("Map/Props/quest_sign") as EmberVoxelProp
 	var interact := prop.get_node_or_null("Interact") as EmberInteract if prop != null else null
 	if interact == null:
 		errors.append("sandbox quest marker fixture is unavailable")

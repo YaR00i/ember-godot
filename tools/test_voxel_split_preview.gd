@@ -34,7 +34,7 @@ func _run() -> void:
 	if DisplayServer.get_name() != "headless":
 		RenderingServer.force_draw(false)
 		var path := "user://voxel-split-preview-%d.png" % OS.get_process_id()
-		assert(dialog.get_texture().get_image().save_png(path) == OK)
+		assert(dialog.get_viewport().get_texture().get_image().save_png(path) == OK)
 		print("SPLIT_PREVIEW_CAPTURE ",ProjectSettings.globalize_path(path))
 	print("SPLIT_PREVIEW PASS")
 	dialog.free()

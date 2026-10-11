@@ -383,12 +383,16 @@ vec3 study_water_state_with_detail(vec2 point, float seconds, float river_detail
 	return mix(open_water, study_river_wave(point, seconds, river_detail) * river_wave_mix, channel);
 }
 
-vec3 study_water_state(vec2 point, float seconds) {
-	vec3 state = study_water_state_with_detail(point, seconds, 1.0);
+vec3 study_reaction_state(vec2 point) {
+	if (reaction_count == 0 || reaction_strength <= 0.001) { return vec3(0.0); }
 	float epsilon = 0.0625;
 	vec2 gradient = vec2(study_reaction(point + vec2(epsilon, 0.0), 0.0).x - study_reaction(point - vec2(epsilon, 0.0), 0.0).x,
 		study_reaction(point + vec2(0.0, epsilon), 0.0).x - study_reaction(point - vec2(0.0, epsilon), 0.0).x) / (2.0 * epsilon);
-	return state + vec3(gradient, study_reaction(point, 0.0).x);
+	return vec3(gradient, study_reaction(point, 0.0).x);
+}
+
+vec3 study_water_state(vec2 point, float seconds) {
+	return study_water_state_with_detail(point, seconds, 1.0) + study_reaction_state(point);
 }
 
 float study_wave_amplitude(float depth_voxels, vec2 point) {
@@ -401,13 +405,14 @@ float study_wave_amplitude(float depth_voxels, vec2 point) {
 }
 
 float study_foam_width_scale(vec2 point, float seconds, float wave_height) {
+	if (foam_width_pulse == 0.0 || wave_height_voxels <= 0.0) { return 1.0; }
 	float phase = seconds * 0.85 + study_foam_noise(point * 0.8) * 6.2831853;
 	float breathing = sin(phase) * 0.40 + sin(phase * 0.63 + 1.7) * 0.18;
 	breathing += clamp(wave_height, -1.0, 1.0) * 0.15;
 	return 1.0 + breathing * foam_width_pulse * smoothstep(0.0, 0.5, wave_height_voxels);
 }
 
-float study_shore_foam(vec2 point, float seconds) {
+float study_shore_foam(vec2 point, float seconds, float wave_height) {
 	if (shore_field_available < 0.5 || shore_foam_strength <= 0.001) {
 		return 0.0;
 	}
@@ -417,7 +422,6 @@ float study_shore_foam(vec2 point, float seconds) {
 	}
 	// The wet bank is the fixed root. Only the outer edge breathes with the
 	// arriving wave; narrowing the band must never open a gap at the bank.
-	float wave_height = study_water_state_with_detail(point, seconds, 0.0).z;
 	float wave_active = smoothstep(0.0, 0.5, wave_height_voxels);
 	float root = 0.3;
 	float width = clamp(shore_foam_width_voxels * study_foam_width_scale(point, seconds, wave_height)
@@ -455,7 +459,7 @@ float study_object_distance(vec2 point) {
 	return closest;
 }
 
-float study_object_foam(vec2 point, float seconds) {
+float study_object_foam(vec2 point, float seconds, float wave_height) {
 	if (object_contact_available < 0.5 || object_foam_strength <= 0.001) {
 		return 0.0;
 	}
@@ -463,7 +467,6 @@ float study_object_foam(vec2 point, float seconds) {
 	if (distance_voxels < 0.0 || distance_voxels > 8.0) {
 		return 0.0;
 	}
-	float wave_height = study_water_state_with_detail(point, seconds, 0.0).z;
 	float wave_active = smoothstep(0.0, 0.5, wave_height_voxels);
 	float width = max(0.15, object_foam_width_voxels * study_foam_width_scale(point, seconds, wave_height));
 	float feather = max(fwidth(distance_voxels) * 0.5,
@@ -603,14 +606,17 @@ void fragment() {
 	// A current changes the travelling waves, not the optical material. The
 	// same sun/sky response continues through a river mouth into open water.
 	float glint_strength = water_glint_strength;
-	vec2 slope = study_water_state(water_point, seconds).xy
+	// Optical river detail only changes xy. The same base height supplies both
+	// contact bands, without resampling the wave (or adding wake displacement).
+	vec3 base_wave = study_water_state_with_detail(water_point, seconds, 1.0);
+	vec2 slope = (base_wave + study_reaction_state(water_point)).xy
 		* (study_wave_amplitude(depth_blocks * 16.0, water_point) / 16.0);
 	float coastal_influence = coast.a * (1.0 - smoothstep(15.0, 24.0, abs(coast.r)))
 		* step(0.001, sea_swash_strength);
 	vec2 coastal_slope = coastal_influence > 0.001 ? study_coastal_slope(water_point * 16.0) : slope;
 	slope = mix(slope, coastal_slope, coastal_influence);
 	// Optical detail only; no extra vertex displacement or physical surface.
-	if (detail_weight > 0.0) {
+	if (detail_weight > 0.0 && glint_strength != 0.0) {
 		slope += study_fine_slope(water_point, seconds) * glint_strength * 0.13
 			* smoothstep(0.03, 0.35, depth_blocks) * detail_weight;
 	}
@@ -642,8 +648,11 @@ void fragment() {
 	vec3 transmission = exp(-absorption_per_block * depth_blocks);
 	vec3 water_color = mix(shallow_color, deep_color, depth_mix);
 	// The separate camera provides a stable seabed at grazing angles.
-	vec4 floor_sample = textureLod(floor_refraction, floor_uv, 0.0);
-	vec3 floor_color = mix(water_color, floor_sample.rgb, floor_sample.a);
+	vec3 floor_color = water_color;
+	if (floor_camera_available >= 0.5) {
+		vec4 floor_sample = textureLod(floor_refraction, floor_uv, 0.0);
+		floor_color = mix(water_color, floor_sample.rgb, floor_sample.a);
+	}
 	// The main opaque pass contains characters too. Reconstruct the sampled
 	// point so only objects genuinely behind and below this water surface
 	// can replace the floor; dry silhouettes cannot smear into the water.
@@ -682,25 +691,27 @@ void fragment() {
 	}
 	// Keep the accepted clear-water body. The reflection comes from Godot's
 	// Sky radiance and an optional mirrored scene camera, never a glint mask.
-	float facing = clamp(dot(view_normal, VIEW), 0.0, 1.0);
-	float fresnel = 0.035 + 0.965 * pow(1.0 - facing, planar_fresnel_power);
-	// Project the actual moving water point into the mirrored camera. Screen
-	// coordinates alone slide shore objects across the water as the view moves.
-	vec4 reflection_clip = reflection_view_projection * vec4(water_world_position, 1.0);
-	vec2 mirror_uv = vec2(reflection_clip.x / max(reflection_clip.w, 0.001) * 0.5 + 0.5,
-		0.5 - reflection_clip.y / max(reflection_clip.w, 0.001) * 0.5)
-		+ slope * planar_reflection_distortion;
-	float reflection_valid = reflection_clip.w > 0.0
-		&& all(greaterThanEqual(mirror_uv, vec2(0.0)))
-		&& all(lessThanEqual(mirror_uv, vec2(1.0))) ? 1.0 : 0.0;
-	vec4 mirrored_scene = textureLod(planar_reflection, clamp(mirror_uv, vec2(0.0), vec2(1.0)), 0.0);
-	vec3 surface_color = mix(transmitted_color, mirrored_scene.rgb,
-		clamp(planar_reflection_mix * fresnel * reflection_valid * mirrored_scene.a, 0.0, 1.0));
-	float crest_height = river_flow_enabled > 0.5
-		? study_river_wave(water_point, seconds, 0.0).z : 0.0;
+	vec3 surface_color = transmitted_color;
+	if (planar_reflection_mix > 0.0) {
+		float facing = clamp(dot(view_normal, VIEW), 0.0, 1.0);
+		float fresnel = 0.035 + 0.965 * pow(1.0 - facing, planar_fresnel_power);
+		// Project the actual moving water point into the mirrored camera. Screen
+		// coordinates alone slide shore objects across the water as the view moves.
+		vec4 reflection_clip = reflection_view_projection * vec4(water_world_position, 1.0);
+		vec2 mirror_uv = vec2(reflection_clip.x / max(reflection_clip.w, 0.001) * 0.5 + 0.5,
+			0.5 - reflection_clip.y / max(reflection_clip.w, 0.001) * 0.5)
+			+ slope * planar_reflection_distortion;
+		float reflection_valid = reflection_clip.w > 0.0
+			&& all(greaterThanEqual(mirror_uv, vec2(0.0)))
+			&& all(lessThanEqual(mirror_uv, vec2(1.0))) ? 1.0 : 0.0;
+		vec4 mirrored_scene = textureLod(planar_reflection, clamp(mirror_uv, vec2(0.0), vec2(1.0)), 0.0);
+		surface_color = mix(transmitted_color, mirrored_scene.rgb,
+			clamp(planar_reflection_mix * fresnel * reflection_valid * mirrored_scene.a, 0.0, 1.0));
+	}
 	float crest_footprint = shore_field_available > 0.5
 		? smoothstep(1.0, 6.0, study_shore_distance(water_point)) : 1.0;
 	float phase = study_river_phase(water_point, seconds);
+	float crest_height = river_flow_enabled > 0.5 ? sin(phase) * 0.58 : 0.0;
 	vec2 channel = texture(river_phase_map,
 		(water_point - flow_origin_xz / 16.0) / flow_map_extent_blocks).rg;
 	// Grain travels with a front's phase index, rather than sliding over the
@@ -755,8 +766,8 @@ void fragment() {
 			+ vec2(sin(seconds * 0.18), cos(seconds * 0.21)) * 0.12, fall_state.b, foam_trail_lifetime)
 			* foam_trail_strength * fall_state.a * waterfall_strength * waterfall_foam_strength * detail_weight;
 	}
-	float foam = clamp(study_shore_foam(water_point, seconds) * (1.0 - coastal_weight)
-		+ study_object_foam(water_point, seconds) + crest + mix(river_web, obstacle_web * river_crest_whiteness, obstacle.a) * (1.0 - coastal_weight)
+	float foam = clamp(study_shore_foam(water_point, seconds, base_wave.z) * (1.0 - coastal_weight)
+		+ study_object_foam(water_point, seconds, base_wave.z) + crest + mix(river_web, obstacle_web * river_crest_whiteness, obstacle.a) * (1.0 - coastal_weight)
 		+ study_reaction(water_point, length(fwidth(water_point)) * 0.5).y
 		+ mix(swash.g * sea_foam_strength + sea_web,
 			obstacle_crest * 0.35 * sea_foam_strength + obstacle_sea_web, obstacle.a) * coastal_weight

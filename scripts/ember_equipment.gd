@@ -1,21 +1,20 @@
 class_name EmberEquipment
 extends RefCounted
-## Pure inventory/equipment projection and mutations mirroring JOI
-## emberEquipment.ts. EmberExploreState remains the only mutable owner.
+## Pure inventory/equipment rules. EmberExploreState remains the mutable owner.
 
 const SLOTS: Array[String] = [
 	"weapon",
-	"arena_weapon",
-	"head",
-	"body",
-	"accessory",
+	"armor",
+	"shoes",
+	"accessory1",
+	"accessory2",
 ]
 const SLOT_LABELS := {
 	"weapon": "Оружие",
-	"arena_weapon": "Арена",
-	"head": "Голова",
-	"body": "Тело",
-	"accessory": "Аксессуар",
+	"armor": "Броня",
+	"shoes": "Обувь",
+	"accessory1": "Аксессуар 1",
+	"accessory2": "Аксессуар 2",
 }
 const UNARMED_ATK := 4
 const UNARMED_DEF := 0
@@ -24,10 +23,10 @@ const UNARMED_DEF := 0
 static func empty() -> Dictionary:
 	return {
 		"weapon": null,
-		"arena_weapon": null,
-		"head": null,
-		"body": null,
-		"accessory": null,
+		"armor": null,
+		"shoes": null,
+		"accessory1": null,
+		"accessory2": null,
 	}
 
 
@@ -43,17 +42,50 @@ static func normalize(raw: Variant) -> Dictionary:
 
 
 static func slot_for_item(item: Dictionary) -> String:
+	var slots := slots_for_item(item)
+	return slots[0] if not slots.is_empty() else ""
+
+
+static func slots_for_item(item: Dictionary) -> Array[String]:
 	match str(item.get("kind", "")):
 		"weapon_jrpg":
-			return "weapon"
-		"weapon_arena":
-			return "arena_weapon"
+			return ["weapon"]
 		"armor":
 			var slot := str(item.get("slot", ""))
-			return slot if slot == "head" or slot == "body" else ""
+			# Existing native body armor keeps its meaning without rewriting sources.
+			if slot in ["armor", "body"]: return ["armor"]
+			return []
+		"shoes":
+			return ["shoes"]
 		"accessory":
-			return "accessory"
-	return ""
+			return ["accessory1", "accessory2"]
+	return []
+
+
+static func import_saved(raw: Variant) -> Dictionary:
+	var result := normalize(raw)
+	var returned: Array[String] = []
+	if typeof(raw) != TYPE_DICTIONARY: return {"equipment": result, "returnedItems": returned}
+	for raw_slot in raw:
+		var slot := str(raw_slot)
+		if slot in SLOTS: continue
+		var value: Variant = raw[raw_slot]
+		if value == null or str(value).strip_edges().is_empty(): continue
+		var item_id := str(value).strip_edges()
+		var mapped := str({"body": "armor", "accessory": "accessory1"}.get(slot, ""))
+		if not mapped.is_empty() and result[mapped] == null:
+			result[mapped] = item_id
+		else:
+			# Retired arena_weapon/head and unknown saved slots return every instance.
+			returned.append(item_id)
+	return {"equipment": result, "returnedItems": returned}
+
+
+static func has_legacy_slots(raw: Variant) -> bool:
+	if not raw is Dictionary: return false
+	for slot in ["arena_weapon", "head", "body", "accessory"]:
+		if raw.has(slot): return true
+	return false
 
 
 static func inventory_views(inventory: Dictionary, items: Dictionary) -> Array[Dictionary]:
@@ -96,15 +128,12 @@ static func inventory_views(inventory: Dictionary, items: Dictionary) -> Array[D
 static func combat_stats(equipment: Dictionary, items: Dictionary) -> Dictionary:
 	var eq := normalize(equipment)
 	var explore_atk := UNARMED_ATK
-	var arena_atk := UNARMED_ATK
 	var defense := UNARMED_DEF
 	explore_atk += _stat(items, eq.get("weapon"), "atk")
-	explore_atk += _stat(items, eq.get("accessory"), "atk")
-	arena_atk += _stat(items, eq.get("arena_weapon"), "atk")
-	defense += _stat(items, eq.get("head"), "def")
-	defense += _stat(items, eq.get("body"), "def")
-	defense += _stat(items, eq.get("accessory"), "def")
-	return {"atk": explore_atk, "def": defense, "arenaAtk": arena_atk}
+	for slot in ["accessory1", "accessory2"]: explore_atk += _stat(items, eq.get(slot), "atk")
+	for slot in ["armor", "shoes", "accessory1", "accessory2"]: defense += _stat(items, eq.get(slot), "def")
+	# Compatibility projection only: the same weapon now serves both modes.
+	return {"atk": explore_atk, "def": defense, "arenaAtk": explore_atk}
 
 
 static func equip(
@@ -112,21 +141,30 @@ static func equip(
 	equipment: Dictionary,
 	item_id: String,
 	items: Dictionary,
+	preferred_slot := "",
 ) -> Dictionary:
 	var inv := EmberEconomy.compact_counts(inventory)
 	var eq := normalize(equipment)
 	var item: Dictionary = items.get(item_id, {})
 	if item.is_empty():
 		return _failure("missing_item", inv, eq)
-	var slot := slot_for_item(item)
-	if slot.is_empty():
+	var slots := slots_for_item(item)
+	if slots.is_empty():
 		return _failure("cannot_equip", inv, eq)
+	var slot := preferred_slot
+	if slot.is_empty():
+		slot = slots[0]
+		for candidate in slots:
+			if eq.get(candidate) == null:
+				slot = candidate
+				break
+	if slot not in slots: return _failure("wrong_slot", inv, eq)
 	if int(inv.get(item_id, 0)) < 1:
 		return _failure("not_in_bag", inv, eq)
 	_set_count(inv, item_id, int(inv.get(item_id, 0)) - 1)
 	var previous: Variant = eq.get(slot, null)
 	if previous != null and not str(previous).is_empty():
-		inv = EmberEconomy.grant_items(inv, [str(previous)], items)
+		inv[str(previous)] = int(inv.get(str(previous), 0)) + 1
 	eq[slot] = item_id
 	return {"ok": true, "reason": "", "inventory": inv, "equipment": eq}
 
@@ -144,7 +182,7 @@ static func unequip(
 	var item_id: Variant = eq.get(slot, null)
 	if item_id == null or str(item_id).is_empty():
 		return _failure("empty_slot", inv, eq)
-	inv = EmberEconomy.grant_items(inv, [str(item_id)], items)
+	inv[str(item_id)] = int(inv.get(str(item_id), 0)) + 1
 	eq[slot] = null
 	return {"ok": true, "reason": "", "inventory": inv, "equipment": eq}
 
