@@ -127,6 +127,7 @@ func _test_live_chain(errors: Array[String]) -> void:
 		errors.append("script-only chain_demo region did not expose F: Действие")
 
 	var state := root.get_node("EmberExploreProgress") as EmberExploreState
+	var starting_coins := int(state.inventory.get("coin", 0))
 	state.persistence_enabled = true
 	if ui.economy_state != state:
 		errors.append("action UI bypassed the real progress autoload")
@@ -135,7 +136,7 @@ func _test_live_chain(errors: Array[String]) -> void:
 	player._try_interact()
 	if str(ui.view_state().get("mode", "")) != "dialogue":
 		errors.append("F in chain_demo region did not open interaction_chain dialogue")
-	elif int(state.inventory.get("coin", -1)) != EmberExploreState.STARTING_COINS:
+	elif int(state.inventory.get("coin", -1)) != starting_coins:
 		errors.append("give_item ran before the dialogue completed")
 	ui.advance()
 	ui.advance()
@@ -144,7 +145,7 @@ func _test_live_chain(errors: Array[String]) -> void:
 		errors.append("give_item did not stop on a visible reward card")
 	elif not str(reward_view.get("body", "")).contains("Монета") or not str(reward_view.get("body", "")).contains("+1"):
 		errors.append("reward card does not explain the granted coin")
-	if int(state.inventory.get("coin", -1)) != EmberExploreState.STARTING_COINS + 1:
+	if int(state.inventory.get("coin", -1)) != starting_coins + 1:
 		errors.append("interaction_chain did not grant exactly one coin")
 	if state.flags.has("interaction_chain_done"):
 		errors.append("steps after reward ran before F continued the chain")
@@ -157,7 +158,7 @@ func _test_live_chain(errors: Array[String]) -> void:
 	if saves.count != 1: errors.append("completed chain did not save exactly once")
 	var reopened := EmberExploreState.new()
 	reopened.storage_root = state.storage_root
-	if not reopened.load_autosave() or reopened.flags.get("interaction_chain_done") != true or int(reopened.inventory.get("coin", 0)) != EmberExploreState.STARTING_COINS + 1:
+	if not reopened.load_autosave() or reopened.flags.get("interaction_chain_done") != true or int(reopened.inventory.get("coin", 0)) != starting_coins + 1:
 		errors.append("completed action reward/flag did not survive save reopen")
 	reopened.free()
 

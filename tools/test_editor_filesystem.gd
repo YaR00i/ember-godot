@@ -7,6 +7,8 @@ class FakeFilesystem extends RefCounted:
 	var importing := false
 	var scans := 0
 	var source_scans := 0
+	var files: Array[String] = []
+	var request_during_file := false
 	var request_during_scan := false
 	func is_scanning() -> bool:
 		return scanning
@@ -19,6 +21,11 @@ class FakeFilesystem extends RefCounted:
 			Queue.request(self)
 	func scan_sources() -> void:
 		source_scans += 1
+	func update_file(path: String) -> void:
+		files.append(path)
+		if request_during_file:
+			request_during_file = false
+			Queue.request_file("res://content/items/next.tres", self)
 
 var errors: Array[String] = []
 
@@ -37,6 +44,7 @@ func settle() -> void:
 func _run() -> void:
 	var fs := FakeFilesystem.new()
 	Queue.request() # Runtime has no default EditorInterface side effect.
+	Queue.request_file("res://content/items/test.tres")
 	check(Queue.diagnostics().pending == 0, "runtime request queued an editor scan")
 	for index in 8:
 		Queue.request(fs)
@@ -78,6 +86,28 @@ func _run() -> void:
 	nested = null
 	await settle()
 	check(fs.scans == 6, "pending batch scan lost after lease release")
+	for path in ["res://content/items/b.tres", "res://content/items/a.tres", "res://content/items/b.tres"]: Queue.request_file(path, fs)
+	check(fs.files.is_empty(), "file updates ran synchronously")
+	fs.scanning = true
+	await settle()
+	check(fs.files.is_empty(), "file index changed during background scan")
+	fs.scanning = false
+	await settle()
+	check(fs.files == ["res://content/items/a.tres", "res://content/items/b.tres"] and fs.scans == 6, "file requests were not coalesced or triggered full scan")
+	fs.request_during_file = true
+	Queue.request_file("res://content/items/a.tres", fs)
+	await settle()
+	check(fs.files.slice(2) == ["res://content/items/a.tres", "res://content/items/next.tres"], "update callback request lost")
+	Queue.request_file("res://content/items/a.tres", fs)
+	Queue.request(fs, true)
+	await settle()
+	check(fs.files.size() == 4 and fs.source_scans == 2, "source scan did not supersede pending file update")
+	Queue.request_file("res://content/items/a.tres", fs)
+	Queue.request(fs)
+	await settle()
+	check(fs.scans == 7 and fs.files.size() == 4, "full scan did not supersede pending file update")
+	Queue.request_file("res://content/items/../invalid.tres", fs)
+	check(Queue.diagnostics().pending == 0, "non-normalized file path accepted")
 	var released := FakeFilesystem.new()
 	Queue.request(released)
 	released = null

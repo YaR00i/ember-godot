@@ -149,6 +149,7 @@ var _deployment_reset: Button
 var _deployment_ready_panel: PanelContainer
 var _deployment_ready_start: Button
 var _deployment_ready_edit: Button
+var _library_setup := {}
 
 
 func _ready() -> void:
@@ -171,9 +172,19 @@ func _ready() -> void:
 			get_tree().quit(2)
 			return
 		_authored_encounter = request.encounter
+		_library_setup = request.preparedSetup
+		if not str(request.setupPath).is_empty(): DirAccess.remove_absolute(str(request.setupPath))
+	if _authored_encounter != null:
+		# The shell is still propagating child _ready; replace its arena only
+		# after that traversal completes, before building HUD or battle state.
+		await get_tree().process_frame
+		if not _install_encounter_arena():
+			get_tree().quit(2)
+			return
 	_party_snapshot = EmberCombatTransition.active_party_snapshot()
 	_active_hero_ids_snapshot = EmberCombatTransition.active_hero_ids_snapshot()
 	_inventory_snapshot = EmberCombatTransition.active_inventory_snapshot()
+	if _library_test: _inventory_snapshot = _library_setup.inventory.duplicate(true)
 	_strategy_snapshot = EmberCombatTransition.active_strategy_snapshot()
 	if _strategy_snapshot.is_empty() and not _library_test:
 		var progress := get_node_or_null("/root/EmberExploreProgress") as EmberExploreState
@@ -211,7 +222,39 @@ func _ready() -> void:
 	if _library_test:
 		DisplayServer.window_set_title("Ember · Тест: " + _authored_encounter.display_name)
 		print("EMBER_LIBRARY_LAB_READY ", _authored_encounter.encounter_id)
+		if not _library_setup.setup.is_empty(): print("EMBER_LIBRARY_LAB_SETUP ", JSON.stringify(_library_setup.setup))
 	call_deferred("_fade_in")
+
+
+func _install_encounter_arena() -> bool:
+	# The Lab shell keeps HUD/lifecycle; the selected arena keeps the existing
+	# world projection, authored decoration, camera and lighting.
+	var previous := get_node_or_null(external_3d_world_path) as Node3D
+	var instance := _authored_encounter.arena_scene.instantiate()
+	var arena := instance as EmberCombatGrid3DWorld
+	if arena == null:
+		if instance != null: instance.free()
+		printerr("Не удалось открыть бой: сцена арены несовместима с общим боевым полем.")
+		return false
+	if previous == null:
+		arena.free()
+		printerr("Не удалось открыть бой: оболочка Lab не содержит арену.")
+		return false
+	var parent := previous.get_parent()
+	var position_in_parent := previous.get_index()
+	var arena_name := previous.name
+	parent.remove_child(previous)
+	previous.free()
+	arena.name = arena_name
+	# Assign before _ready, so the arena's own preview field cannot supersede
+	# the encounter's semantic cells or physical projection.
+	arena.battlefield = _authored_encounter.battlefield
+	parent.add_child(arena)
+	parent.move_child(arena, position_in_parent)
+	# Picking and rendering must use the same camera, even if the authored
+	# scene contains an extra camera used while arranging its decoration.
+	(arena.get_node("CameraRig/CombatCamera3D") as Camera3D).make_current()
+	return true
 
 
 func _process(_delta: float) -> void:
@@ -990,6 +1033,8 @@ func _reset_lab(reopen_deployment: bool = true, retry_confirmed: bool = false) -
 		if _encounter_mode == "terrain"
 		else (Grid.initial_state(laboratory_field, battle_seed) if _is_grid_mode() else Combat.initial_state(battle_seed)))
 	)
+	if _library_test:
+		_state = EmberCombatTransition.LabSetup.apply(_state, _library_setup)
 	if _authored_encounter == null and _is_grid_mode():
 		_add_lab_effect_actions("mira", ["earth_raise", "earth_wall", "wind_spread"])
 	var battle_inventory := (
@@ -2311,6 +2356,8 @@ func _command_availability_copy(action_id: String, selection_state: Dictionary) 
 	var partner_reason := Combat.duo_partner_unavailable_reason(selection_state, action_id)
 	if not partner_reason.is_empty():
 		return "Недоступно: %s" % partner_reason
+	var condition_reason := Combat.action_condition_reason(selection_state, action_id)
+	if not condition_reason.is_empty(): return "Недоступно: " + condition_reason
 	if Combat.is_item_command(action_id):
 		var item_id := Combat.item_id_from_command(action_id)
 		if int((selection_state.get("inventory", {}) as Dictionary).get(item_id, 0)) <= 0:

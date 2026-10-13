@@ -4,6 +4,7 @@ extends RefCounted
 const Catalog = preload("res://addons/ember_import/ember_game_systems_catalog.gd")
 const ItemStore = preload("res://addons/ember_import/ember_item_store.gd")
 const SPECS := {
+	"start": ["res://content/game_start", "start_id", preload("res://scripts/ember_game_start_resource.gd")],
 	"item": ["res://content/items", "item_id", preload("res://scripts/ember_item_resource.gd")],
 	"status": ["res://content/combat/statuses", "status_id", preload("res://scripts/prototypes/ember_combat_status_resource.gd")],
 	"effect": ["res://content/combat/effects", "effect_id", preload("res://scripts/prototypes/ember_combat_effect_resource.gd")],
@@ -19,6 +20,7 @@ static func kind(module: String) -> String:
 	return "item" if module == "equipment" else module
 
 static func path_for(module: String, id: String) -> String:
+	if module == "start" and id != "default": return ""
 	var spec: Array = SPECS.get(kind(module), [])
 	return str(spec[0]).path_join(id + ".tres") if not spec.is_empty() and valid_id(id) else ""
 
@@ -49,8 +51,9 @@ static func blank(module: String, id: String, name: String) -> Resource:
 			cells.resize(resource.cell_count())
 			cells.fill("" if property == "groups" else 0)
 			resource.set(property, cells)
-		resource.party_deployment_cells = [Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 3)]
-		resource.enemy_deployment_cells = [Vector2i(6, 0), Vector2i(6, 1), Vector2i(6, 2)]
+		# Keep the Resource's typed arrays when reached through generic authoring.
+		resource.party_deployment_cells.assign([Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2), Vector2i(0, 3)])
+		resource.enemy_deployment_cells.assign([Vector2i(6, 0), Vector2i(6, 1), Vector2i(6, 2)])
 	return resource
 
 static func validation(module: String, resource: Resource) -> Array[String]:
@@ -105,6 +108,7 @@ static func restore(value: Dictionary) -> int:
 	return error
 
 static func remove_with_backup(path: String) -> int:
+	if path == SPECS.start[2].DEFAULT_PATH: return ERR_UNAUTHORIZED
 	if not _allowed_path(path) or not FileAccess.file_exists(path): return ERR_INVALID_PARAMETER
 	var backup_dir := "user://ember-editor-resource-backups"
 	var error := DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(backup_dir))
@@ -127,3 +131,4 @@ static func _allowed_path(path: String) -> bool:
 static func _sync(path: String) -> void:
 	if FileAccess.file_exists(path): ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_REPLACE)
 	Catalog.refresh()
+	preload("res://addons/ember_import/ember_editor_filesystem.gd").request_file(path)

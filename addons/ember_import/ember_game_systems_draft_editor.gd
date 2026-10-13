@@ -3,6 +3,7 @@ extends VBoxContainer
 ## Native fields project existing Resource metadata into an isolated authoring draft.
 const Catalog = preload("res://addons/ember_import/ember_game_systems_catalog.gd")
 const Store = preload("res://addons/ember_import/ember_game_systems_store.gd")
+const Conditions = preload("res://scripts/prototypes/ember_combat_action_conditions.gd")
 signal save_requested
 signal discard_requested
 var _session
@@ -18,6 +19,9 @@ var _rules_summary: Label
 var _field_controls := {}
 var _group_headers := {}
 var _group_keys := {}
+var _condition_refresh: Callable
+var _value_condition_refresh: Callable
+var _equipment_condition_refresh: Callable
 const RESISTANCE_LABELS := {"fire_resistance": "Огонь, %", "water_resistance": "Вода, %", "cold_resistance": "Холод, %", "lightning_resistance": "Молния, %", "air_resistance": "Воздух, %", "earth_resistance": "Земля, %", "wet_resistance": "Мокрый: сократить на ходы", "frozen_resistance": "Замёрзший: сократить на ходы", "burning_resistance": "Горение: сократить на ходы"}
 const CONTENT_LABELS := {"combat_level": "Уровень", "creature_type": "Тип существа", "weight_class": "Класс веса", "push_resistance": "Стойкость к отбрасыванию", "combat_tags": "Боевые теги (ID)", "battle_color": "Цвет бойца", "portrait": "Портрет", "prototype_roster_order": "Порядок в лаборатории", "prototype_zone": "Лабораторная зона", "prototype_next_at": "Начальная отметка очереди", "target_priority": "Приоритет цели", "action_priority": "Приоритет приёма", "prefer_elemental_reactions": "Предпочитать стихийные реакции", "positioning_behavior": "Выбор позиции", "low_hp_threshold_percent": "Порог здоровья, %", "low_hp_behavior": "Действие при низком здоровье", "accent_color": "Цвет карточки", "intro_text": "Вступительный текст", "party_unit_ids": "Разрешённые герои (порядок расстановки)", "enemy_unit_ids": "Враги (порядок расстановки)", "victory_rule": "Условие победы", "defeat_rule": "Условие поражения", "victory_flag_id": "Флаг победы (ID)", "defeat_flag_id": "Флаг поражения (ID)", "victory_action_script_id": "Цепочка после победы", "defeat_action_script_id": "Цепочка после поражения", "victory_xp": "XP каждому активному герою", "repeatable": "Разрешить повторный бой"}
 const ACTION_LABELS := {"menu_group": "Раздел боевого меню", "element": "Стихия", "target": "Тип цели", "effect": "Базовое действие", "power": "Сила прямого урона", "accuracy_modifier": "Поправка к точности", "scaling": "Атакующая характеристика", "throw_range_cells": "Дальность броска", "max_lift_weight": "Допустимый вес цели", "force": "Сила отбрасывания", "partner_range_cells": "Радиус партнёра", "partner_mp_cost": "Стоимость MP партнёра", "partner_delay": "Задержка партнёра", "requirements_text": "Подсказка об условиях (текст)"}
@@ -64,17 +68,25 @@ func update_status() -> void:
 	_status.text = ("Не сохранено" if _session.has_changes() else "Сохранено") + ("\n" + _session.last_error if not _session.last_error.is_empty() else "")
 	if not errors.is_empty(): _status.text += "\n• " + "\n• ".join(errors)
 	_status.modulate = Color("e6bb78") if _session.has_changes() else Color("79d99a")
-	_rules_summary.visible = _session.module in ["status", "effect", "action", "unit", "ai", "loot", "encounter"]
+	_rules_summary.visible = _session.module in ["start", "status", "effect", "action", "unit", "ai", "loot", "encounter"]
 	if _rules_summary.visible: _rules_summary.text = str(_session.draft.call("behavior_summary"))
 	_update_rule_fields()
 
 func _build_fields() -> void:
+	_condition_refresh = Callable()
+	_value_condition_refresh = Callable()
+	_equipment_condition_refresh = Callable()
 	_field_controls = {}
 	_group_headers = {}
 	_group_keys = {}
 	for child in _fields.get_children():
 		_fields.remove_child(child)
 		child.queue_free()
+	if _session.module == "start":
+		var form := preload("res://addons/ember_import/ember_game_start_editor.gd").new()
+		_fields.add_child(form)
+		form.setup(_session)
+		return
 	if Store.kind(_session.module) == "item":
 		_item_form = preload("res://addons/ember_import/ember_item_editor.gd").new()
 		_fields.add_child(_item_form)
@@ -102,6 +114,13 @@ func _build_fields() -> void:
 		if not (int(property.usage) & PROPERTY_USAGE_EDITOR) or not (int(property.usage) & PROPERTY_USAGE_STORAGE): continue
 		var key := str(property.name)
 		if key in ["script", "resource_name", "resource_local_to_scene"] or key == Store.SPECS[Store.kind(_session.module)][1]: continue
+		if _session.module == "action" and key in Conditions.FIELDS:
+			if key == Conditions.FIELDS[0]:
+				var builder := _condition_builder()
+				_fields.add_child(builder)
+				_field_controls["application_conditions"] = [builder]
+				_group_keys[group].append("application_conditions")
+			continue
 		var label := Label.new()
 		label.text = str(LABELS.get(key, RULE_LABELS.get(key, key.capitalize())))
 		if _session.module == "status" and key == "kind": label.text = "Категория"
@@ -130,6 +149,9 @@ func _update_rule_fields() -> void:
 	elif _session.module == "status" and _field_controls.has("max_duration"):
 		for control in _field_controls.max_duration: control.visible = int(_session.draft.reapply) == 2
 	elif _session.module == "action":
+		if _condition_refresh.is_valid(): _condition_refresh.call()
+		if _value_condition_refresh.is_valid(): _value_condition_refresh.call()
+		if _equipment_condition_refresh.is_valid(): _equipment_condition_refresh.call()
 		var preset := str(_session.draft.call("effect_id"))
 		for key in ["throw_range_cells", "max_lift_weight", "force", "partner_unit_id", "partner_range_cells", "partner_mp_cost", "partner_delay"]:
 			var relevant := (preset == "lift_throw" if key in ["throw_range_cells", "max_lift_weight"] else preset in ["gust", "kindle", "steam_breach"] if key == "force" else preset in ["duo_pulse", "steam_breach"])
@@ -255,6 +277,7 @@ func _catalog_picker(key: String, module: String, current: Variant, shared: bool
 
 func _arena_picker(current: Resource) -> OptionButton:
 	var choice := OptionButton.new()
+	choice.tooltip_text = "Наследованная сцена общего боевого поля: окружение, свет и камера. В игре и тесте используется поле выбранной встречи."
 	choice.add_item("— выберите сцену арены —")
 	choice.set_item_metadata(0, null)
 	var directory := DirAccess.open("res://scenes/combat/arenas")
@@ -322,6 +345,342 @@ func _status_picker(current: String) -> OptionButton:
 		choice.select(choice.item_count - 1)
 	choice.item_selected.connect(func(index: int) -> void: _set_value("status_id", str(choice.get_item_metadata(index))))
 	return choice
+
+func _condition_builder() -> VBoxContainer:
+	var box := VBoxContainer.new()
+	box.name = "DraftStatusConditions"
+	var hint := Label.new()
+	hint.text = "Все условия должны выполняться одновременно. Активный статус имеет оставшиеся ходы больше нуля."
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(hint)
+	for key in Conditions.STATUS_FIELDS:
+		for id in _session.draft.get(key):
+			var row := HBoxContainer.new()
+			box.add_child(row)
+			var label := Label.new()
+			label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			var status := Catalog.Statuses.resource(str(id))
+			label.text = "%s: %s" % [Conditions.LABELS[key], str(status.display_name) if status != null else "Не найден: " + str(id)]
+			row.add_child(label)
+			_button(row, "Убрать", "DraftRemoveCondition_%s_%s" % [key, id], func() -> void:
+				if _session.draft != _draft: return
+				var next := PackedStringArray(_session.draft.get(key))
+				while id in next: next.remove_at(next.find(id))
+				_set_value(key, next)
+				_build_fields()
+			)
+	var row := HBoxContainer.new()
+	box.add_child(row)
+	var subject := OptionButton.new()
+	subject.name = "DraftConditionSubject"
+	for name in ["Исполнитель", "Цель"]: subject.add_item(name)
+	row.add_child(subject)
+	var presence := OptionButton.new()
+	presence.name = "DraftConditionPresence"
+	for name in ["Должен иметь", "Не должен иметь"]: presence.add_item(name)
+	row.add_child(presence)
+	var status := OptionButton.new()
+	status.name = "DraftConditionStatus"
+	status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for record in Catalog.entries("status"):
+		status.add_item(str(record.name))
+		status.set_item_metadata(status.item_count - 1, str(record.id))
+	row.add_child(status)
+	var add := Button.new()
+	add.name = "DraftAddCondition"
+	add.text = "Добавить условие"
+	box.add_child(add)
+	add.pressed.connect(func() -> void:
+		if _session.draft != _draft: return
+		if add.disabled or status.selected < 0: return
+		var key := ("actor" if subject.selected == 0 else "target") + ("_required_status_ids" if presence.selected == 0 else "_forbidden_status_ids")
+		var next := PackedStringArray(_session.draft.get(key))
+		next.append(str(status.get_item_metadata(status.selected)))
+		_set_value(key, next)
+		_build_fields()
+	)
+	var feedback := Label.new()
+	feedback.name = "DraftConditionFeedback"
+	feedback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(feedback)
+	_condition_refresh = func() -> void:
+		var cell_target: bool = _session.draft.target_id() == "cell"
+		subject.set_item_disabled(1, cell_target)
+		if cell_target and subject.selected == 1: subject.select(0)
+		add.disabled = status.selected < 0
+		feedback.text = "Создайте статус в общей библиотеке." if add.disabled else ""
+		if status.selected < 0: return
+		var key := ("actor" if subject.selected == 0 else "target") + ("_required_status_ids" if presence.selected == 0 else "_forbidden_status_ids")
+		var id := str(status.get_item_metadata(status.selected))
+		var rules: Dictionary = _session.draft.application_conditions()
+		if id in rules[key]:
+			add.disabled = true
+			feedback.text = "Такое условие уже добавлено."
+			return
+		rules[key].append(id)
+		var errors := Conditions.validation_errors(rules, _session.draft.target_id())
+		add.disabled = not errors.is_empty()
+		feedback.text = errors[0] if not errors.is_empty() else "Для цели-клетки доступны условия исполнителя." if cell_target else ""
+	for choice in [subject, presence, status]:
+		choice.item_selected.connect(func(_index: int) -> void: _condition_refresh.call())
+	_condition_refresh.call()
+	box.add_child(_value_condition_builder())
+	box.add_child(_equipment_condition_builder())
+	return box
+
+func _value_condition_builder() -> VBoxContainer:
+	var box := VBoxContainer.new()
+	box.name = "DraftValueConditions"
+	var hint := Label.new()
+	hint.text = "HP и MP проверяются до расхода и эффектов. ≥ — не меньше; ≤ — не больше. Процент требует ненулевого максимума."
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(hint)
+	for index in _session.draft.value_conditions.size():
+		var data: Dictionary = _session.draft.value_conditions[index]
+		var card := VBoxContainer.new()
+		box.add_child(card)
+		var heading := HBoxContainer.new()
+		card.add_child(heading)
+		var row := HBoxContainer.new()
+		card.add_child(row)
+		var label := Label.new()
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		heading.add_child(label)
+		if Conditions.value_errors(data).is_empty():
+			label.text = "%s · %s" % [Conditions.SUBJECT_LABELS[data.subject], data.stat.to_upper()]
+			var comparison := _value_option("DraftValueComparison_%d" % index, Conditions.COMPARISON_LABELS, data.comparison)
+			row.add_child(comparison)
+			comparison.item_selected.connect(func(selected: int) -> void: _edit_value_condition(index, "comparison", comparison.get_item_metadata(selected)))
+			var number := SpinBox.new()
+			number.name = "DraftValueThreshold_%d" % index
+			number.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			number.max_value = 100 if data.unit == "percent" else Conditions.MAX_POINTS
+			number.allow_greater = true
+			number.allow_lesser = true
+			number.value = data.value
+			row.add_child(number)
+			number.value_changed.connect(func(value: float) -> void: _edit_value_condition(index, "value", int(value)))
+			var measure := _value_option("DraftValueUnit_%d" % index, {"points": "Очки", "percent": "% максимума"}, data.unit)
+			row.add_child(measure)
+			measure.item_selected.connect(func(selected: int) -> void:
+				_edit_value_condition(index, "unit", measure.get_item_metadata(selected))
+				number.max_value = 100 if selected == 1 else Conditions.MAX_POINTS
+			)
+		else: label.text = "Некорректное сохранённое условие: " + str(data)
+		_button(heading, "Убрать", "DraftRemoveValueCondition_%d" % index, func() -> void:
+			if _session.draft != _draft: return
+			var next: Array[Dictionary] = _session.draft.value_conditions.duplicate(true)
+			next.remove_at(index)
+			_set_value(Conditions.VALUE_FIELD, next)
+			_build_fields()
+		)
+	var row := HBoxContainer.new()
+	box.add_child(row)
+	var subject := _value_option("DraftValueSubject", Conditions.SUBJECT_LABELS, "actor")
+	row.add_child(subject)
+	var stat := _value_option("DraftValueStat", {"hp": "HP · Здоровье", "mp": "MP · Энергия"}, "hp")
+	row.add_child(stat)
+	var measure := _value_option("DraftValueUnit", {"points": "Очки", "percent": "% максимума"}, "percent")
+	measure.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(measure)
+	row = HBoxContainer.new()
+	box.add_child(row)
+	var comparison := _value_option("DraftValueComparison", {"gte": "≥ Не меньше", "lte": "≤ Не больше"}, "gte")
+	row.add_child(comparison)
+	var number := SpinBox.new()
+	number.name = "DraftValueThreshold"
+	number.max_value = 100
+	number.value = 30
+	number.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(number)
+	var add := _button(row, "Добавить порог", "DraftAddValueCondition", func() -> void:
+		if _session.draft != _draft: return
+		var next: Array[Dictionary] = _session.draft.value_conditions.duplicate(true)
+		next.append(_value_input(subject, stat, comparison, measure, number))
+		var proposed: Dictionary = _session.draft.application_conditions()
+		proposed[Conditions.VALUE_FIELD] = next
+		if not Conditions.validation_errors(proposed, _session.draft.target_id()).is_empty(): return
+		_set_value(Conditions.VALUE_FIELD, next)
+		_build_fields()
+	)
+	var feedback := Label.new()
+	feedback.name = "DraftValueFeedback"
+	feedback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(feedback)
+	_value_condition_refresh = func() -> void:
+		if _session.draft != _draft: return
+		var cell_target: bool = _session.draft.target_id() == "cell"
+		subject.set_item_disabled(1, cell_target)
+		if cell_target and subject.selected == 1: subject.select(0)
+		var proposed: Dictionary = _session.draft.application_conditions()
+		proposed[Conditions.VALUE_FIELD].append(_value_input(subject, stat, comparison, measure, number))
+		var errors := Conditions.validation_errors(proposed, _session.draft.target_id())
+		add.disabled = not errors.is_empty()
+		feedback.text = errors[0] if not errors.is_empty() else "Для цели-клетки доступны только пороги исполнителя." if cell_target else ""
+	for choice in [subject, stat, comparison, measure]:
+		choice.item_selected.connect(func(_index: int) -> void:
+			number.max_value = 100 if measure.get_item_metadata(measure.selected) == "percent" else Conditions.MAX_POINTS
+			_value_condition_refresh.call()
+		)
+	number.value_changed.connect(func(_value: float) -> void: _value_condition_refresh.call())
+	_value_condition_refresh.call()
+	return box
+
+func _value_option(node_name: String, options: Dictionary, selected: String) -> OptionButton:
+	var choice := OptionButton.new()
+	choice.name = node_name
+	for id in options:
+		choice.add_item(options[id])
+		choice.set_item_metadata(choice.item_count - 1, id)
+		if id == selected: choice.select(choice.item_count - 1)
+	return choice
+
+func _value_input(subject: OptionButton, stat: OptionButton, comparison: OptionButton, measure: OptionButton, number: SpinBox) -> Dictionary:
+	return {"subject": subject.get_item_metadata(subject.selected), "stat": stat.get_item_metadata(stat.selected), "comparison": comparison.get_item_metadata(comparison.selected), "unit": measure.get_item_metadata(measure.selected), "value": int(number.value)}
+
+func _edit_value_condition(index: int, key: String, value: Variant) -> void:
+	if _session.draft != _draft: return
+	var next: Array[Dictionary] = _session.draft.value_conditions.duplicate(true)
+	next[index][key] = value
+	_set_value(Conditions.VALUE_FIELD, next, ":%d:%s" % [index, key] if key == "value" else "")
+
+func _equipment_condition_builder() -> VBoxContainer:
+	var box := VBoxContainer.new()
+	box.name = "DraftEquipmentConditions"
+	var hint := Label.new()
+	hint.text = "Экипировка: предмет должен быть надет, наличие в сумке не считается. Все условия выполняются одновременно."
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(hint)
+	for index in _session.draft.equipment_conditions.size():
+		var data: Dictionary = _session.draft.equipment_conditions[index]
+		var card := VBoxContainer.new()
+		box.add_child(card)
+		var heading := HBoxContainer.new()
+		card.add_child(heading)
+		var label := Label.new()
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		label.text = Conditions.equipment_summary(data) if Conditions.equipment_shape_errors(data).is_empty() else "Некорректное сохранённое условие: " + str(data)
+		heading.add_child(label)
+		_button(heading, "Убрать", "DraftRemoveEquipmentCondition_%d" % index, func() -> void:
+			if _session.draft != _draft: return
+			var next: Array[Dictionary] = _session.draft.equipment_conditions.duplicate(true)
+			next.remove_at(index)
+			_set_value(Conditions.EQUIPMENT_FIELD, next)
+			_build_fields()
+		)
+		if not Conditions.equipment_shape_errors(data).is_empty(): continue
+		var row := HBoxContainer.new()
+		card.add_child(row)
+		var subject := _equipment_option("DraftEquipmentSubject_%d" % index, Conditions.SUBJECT_LABELS, data.subject)
+		row.add_child(subject)
+		var mode := _equipment_option("DraftEquipmentMode_%d" % index, Conditions.EQUIPMENT_MODES, data.mode)
+		row.add_child(mode)
+		row = HBoxContainer.new()
+		card.add_child(row)
+		var slot := _equipment_slot_picker("DraftEquipmentSlot_%d" % index, data.mode, data.slot)
+		row.add_child(slot)
+		var item := _equipment_item_picker("DraftEquipmentItem_%d" % index, data.slot, data.item_id)
+		item.visible = data.mode == "item"
+		row.add_child(item)
+		for pair in [[subject, "subject"], [mode, "mode"], [slot, "slot"], [item, "item_id"]]:
+			var choice: OptionButton = pair[0]
+			var key: String = pair[1]
+			choice.item_selected.connect(func(selected: int) -> void: _edit_equipment_condition(index, key, str(choice.get_item_metadata(selected))))
+	var row := HBoxContainer.new()
+	box.add_child(row)
+	var subject := _equipment_option("DraftEquipmentSubject", Conditions.SUBJECT_LABELS, "actor")
+	row.add_child(subject)
+	var mode := _equipment_option("DraftEquipmentMode", Conditions.EQUIPMENT_MODES, "item")
+	row.add_child(mode)
+	row = HBoxContainer.new()
+	box.add_child(row)
+	var slot := _equipment_slot_picker("DraftEquipmentSlot", "item", "")
+	row.add_child(slot)
+	var item := _equipment_item_picker("DraftEquipmentItem", "", "")
+	row.add_child(item)
+	var add := _button(box, "Добавить условие экипировки", "DraftAddEquipmentCondition", func() -> void:
+		if _session.draft != _draft: return
+		var next: Array[Dictionary] = _session.draft.equipment_conditions.duplicate(true)
+		next.append(_equipment_input(subject, mode, slot, item))
+		var proposed: Dictionary = _session.draft.application_conditions()
+		proposed[Conditions.EQUIPMENT_FIELD] = next
+		if not Conditions.validation_errors(proposed, _session.draft.target_id()).is_empty(): return
+		_set_value(Conditions.EQUIPMENT_FIELD, next)
+		_build_fields()
+	)
+	var feedback := Label.new()
+	feedback.name = "DraftEquipmentFeedback"
+	feedback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(feedback)
+	_equipment_condition_refresh = func() -> void:
+		if _session.draft != _draft: return
+		var cell_target: bool = _session.draft.target_id() == "cell"
+		subject.set_item_disabled(1, cell_target)
+		if cell_target and subject.selected == 1: subject.select(0)
+		var needs_item: bool = mode.get_item_metadata(mode.selected) == "item"
+		slot.set_item_disabled(0, not needs_item)
+		if not needs_item and slot.selected == 0: slot.select(1)
+		item.visible = needs_item
+		var proposed: Dictionary = _session.draft.application_conditions()
+		proposed[Conditions.EQUIPMENT_FIELD].append(_equipment_input(subject, mode, slot, item))
+		var errors := Conditions.validation_errors(proposed, _session.draft.target_id())
+		add.disabled = not errors.is_empty()
+		feedback.text = errors[0] if not errors.is_empty() else "Для цели-клетки доступны условия исполнителя." if cell_target else ""
+	for choice in [subject, mode, slot, item]:
+		choice.item_selected.connect(func(_index: int) -> void: _equipment_condition_refresh.call())
+	# Refill only on explicit slot selection; current unavailable ID stays visible.
+	slot.item_selected.connect(func(_index: int) -> void:
+		var current := str(item.get_item_metadata(item.selected))
+		var replacement := _equipment_item_picker("DraftEquipmentReplacement", str(slot.get_item_metadata(slot.selected)), current)
+		item.clear()
+		for index in replacement.item_count:
+			item.add_item(replacement.get_item_text(index))
+			item.set_item_metadata(index, replacement.get_item_metadata(index))
+		item.select(replacement.selected)
+		replacement.free()
+		_equipment_condition_refresh.call()
+	)
+	_equipment_condition_refresh.call()
+	return box
+
+func _equipment_option(node_name: String, options: Dictionary, selected: String) -> OptionButton:
+	var choice := _value_option(node_name, options, selected)
+	choice.fit_to_longest_item = false
+	choice.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	return choice
+
+func _equipment_slot_picker(node_name: String, mode: String, selected: String) -> OptionButton:
+	var options := {"": "Любой подходящий слот"}
+	options.merge(Conditions.Equipment.SLOT_LABELS)
+	var choice := _equipment_option(node_name, options, selected)
+	choice.set_item_disabled(0, mode != "item")
+	return choice
+
+func _equipment_item_picker(node_name: String, slot: String, current: String) -> OptionButton:
+	var options := {"": "— выберите предмет —"}
+	for record in Catalog.entries("item"):
+		var allowed := Conditions.Equipment.slots_for_item(record.data)
+		if not allowed.is_empty() and (slot.is_empty() or slot in allowed): options[str(record.id)] = str(record.name)
+	if not current.is_empty() and not options.has(current): options[current] = "Недоступен или не найден: " + current
+	return _equipment_option(node_name, options, current)
+
+func _equipment_input(subject: OptionButton, mode: OptionButton, slot: OptionButton, item: OptionButton) -> Dictionary:
+	var kind := str(mode.get_item_metadata(mode.selected))
+	return {"subject": str(subject.get_item_metadata(subject.selected)), "slot": str(slot.get_item_metadata(slot.selected)), "mode": kind, "item_id": str(item.get_item_metadata(item.selected)) if kind == "item" else ""}
+
+func _edit_equipment_condition(index: int, key: String, value: String) -> void:
+	if _session.draft != _draft: return
+	var next: Array[Dictionary] = _session.draft.equipment_conditions.duplicate(true)
+	next[index][key] = value
+	if key == "mode" and value != "item":
+		next[index].item_id = ""
+		if next[index].slot.is_empty(): next[index].slot = "weapon"
+	_set_value(Conditions.EQUIPMENT_FIELD, next)
+	_build_fields()
+
 
 func _status_choices(key: String, current: Variant) -> VBoxContainer:
 	var box := VBoxContainer.new()

@@ -21,6 +21,10 @@ func _run() -> void:
 	for info in Catalog.MODULES:
 		var module := str(info[0])
 		if not Store.SPECS.has(Store.kind(module)): continue
+		if module == "start":
+			var singleton := Session.new()
+			_check(not singleton.create("start", "operations_fixture_start", "Copy"), "singleton start allowed copy")
+			continue # Dedicated --start covers existing singleton publication.
 		var records := Catalog.entries(module)
 		_check(not records.is_empty(), "native source missing for " + module)
 		if not records.is_empty(): _round_trip(module, records[0])

@@ -15,11 +15,13 @@ func _init() -> void:
 func _run_and_quit() -> void:
 	var errors: Array[String] = []
 	var lab := LAB_SCENE.instantiate()
+	var requested_fullscreen := bool(lab.get_node("CombatHUDLayer/CombatHUD").request_fullscreen)
+	lab.get_node("CombatHUDLayer/CombatHUD").request_fullscreen = false
 	root.add_child(lab)
 	await process_frame
 	await process_frame
 	await physics_frame
-	var world := lab as Node3D
+	var world := lab.get_node("Arena") as Node3D
 	var hud := lab.find_child("CombatHUD", true, false) as Control
 	var timeline := lab.find_child("CombatTimeline", true, false) as VBoxContainer
 	var timeline_panel := lab.find_child("CombatTimelinePanel", true, false) as PanelContainer
@@ -276,6 +278,7 @@ func _run_and_quit() -> void:
 			str(wet_pair_button.disabled) if wet_pair_button != null else "n/a",
 			wet_pair_button.text if wet_pair_button != null else "missing",
 		])
+	if wet_pair_button != null: wet_pair_button.grab_focus()
 	hud.call("_show_radial_entry_help", {"id": "duo_pulse"})
 	await process_frame
 	if (
@@ -283,7 +286,7 @@ func _run_and_quit() -> void:
 		or "дистанция 2/3 · В РАДИУСЕ" not in ability_info.text
 		or "MP: 6" not in ability_info.text
 	):
-		errors.append("pair hover description does not explain its partner, radius and cost")
+		errors.append("pair hover description does not explain its partner, radius and cost: " + ability_info.text)
 	var pair_badge := lab.find_child("CombatPairPartnerBadge_mira", true, false) as Label3D
 	if (
 		pair_badge == null
@@ -291,7 +294,7 @@ func _run_and_quit() -> void:
 		or "В РАДИУСЕ · 2/3" not in pair_badge.text
 		or lab.find_child("CombatPairRange_0_1", true, false) == null
 	):
-		errors.append("3D pair context does not identify the partner and visible radius")
+		errors.append("3D pair context does not identify the partner and visible radius: " + (pair_badge.text if pair_badge != null else "<missing>"))
 	var in_range_pair_state := pair_state.duplicate(true)
 	var distant_pair_state := in_range_pair_state.duplicate(true)
 	var distant_units: Dictionary = distant_pair_state.get("units", {})
@@ -302,6 +305,9 @@ func _run_and_quit() -> void:
 	hud.set("_state", distant_pair_state)
 	hud.call("_refresh")
 	hud.call("_open_radial_page", "skill")
+	await process_frame
+	# Opening the drawer queues native focus; let it settle before hovering a
+	# disabled command, which cannot claim focus itself.
 	await process_frame
 	wet_pair_button = lab.find_child("CombatCommand_duo_pulse", true, false) as Button
 	if wet_pair_button != null:
@@ -401,6 +407,9 @@ func _run_and_quit() -> void:
 	hud.set("_pending_actor_id", "")
 	hud.call("_refresh")
 	await process_frame
+	# Picking must target the visible enemy after its presentation reaches the
+	# new fixture cell, rather than ray-testing a moving hitbox.
+	await _wait_actor_xz(lab, "wisp", Vector2(7.8, 3.0))
 	var far_strike := lab.find_child("CombatRadial_strike", true, false) as Button
 	if far_strike == null or far_strike.disabled:
 		var radial_names := PackedStringArray()
@@ -447,7 +456,7 @@ func _run_and_quit() -> void:
 	await process_frame
 	if hud == null or hud.size.x < 1500.0 or hud.size.y < 850.0:
 		errors.append("Combat HUD did not fill its 1600x900 CanvasLayer")
-	if hud != null and not bool(hud.get("request_fullscreen")):
+	if not requested_fullscreen:
 		errors.append("Combat Lab no longer requests a fullscreen game window")
 	var move_button := lab.find_child("CombatMoveMode", true, false) as Button
 	if move_button == null:
@@ -458,14 +467,14 @@ func _run_and_quit() -> void:
 		if radial.visible:
 			errors.append("radial menu did not hide while choosing a movement cell")
 		world.emit_signal("cell_chosen", Vector2i(3, 1), "")
-		await create_timer(0.34).timeout
+		await _wait_actor_xz(lab, "mira", Vector2(4.2, 1.8))
 		if not radial.visible:
 			errors.append("radial menu did not return after choosing a movement cell")
 		var staged_state: Dictionary = hud.call("state_snapshot")
 		var staged_mira: Dictionary = (staged_state.get("units", {}) as Dictionary).get("mira", {})
 		var staged_unit := lab.find_child("CombatUnit_mira", true, false) as Node3D
 		if staged_unit == null or not is_equal_approx(staged_unit.position.x, 4.2):
-			errors.append("staged destination does not visibly project the active hero")
+			errors.append("staged destination does not visibly project the active hero (position=%s; pending=%s)" % [staged_unit.position if staged_unit != null else Vector3.INF, hud.get("_pending_cell")])
 		if (
 			str(world.call("projected_occupant_at", Vector2i(3, 1))) != "mira"
 			or not str(world.call("projected_occupant_at", Vector2i(1, 2))).is_empty()
@@ -811,6 +820,16 @@ func _run_and_quit() -> void:
 	print("  Esc/B step back through targeting and command menus before pause")
 	print("  E3 projects elevation and Frozen changes; 2D remains a diagnostic view")
 	quit(0)
+
+
+func _wait_actor_xz(lab: Node, unit_id: String, target: Vector2) -> void:
+	var deadline := Time.get_ticks_msec() + 1500
+	while Time.get_ticks_msec() < deadline:
+		await process_frame
+		var actor := lab.find_child("CombatUnit_" + unit_id, true, false) as Node3D
+		if actor != null and Vector2(actor.position.x, actor.position.z).distance_to(target) < 0.00001:
+			return
+	# The caller still asserts the final pose/picking, so timeout stays a failure.
 
 
 func _lock_hit_seed(

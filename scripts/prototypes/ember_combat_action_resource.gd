@@ -20,6 +20,7 @@ const SCALING_IDS := ["none", "strength", "magic"]
 const SCALING_LABELS := ["Без характеристики", "Сила", "Магия"]
 const MENU_GROUP_IDS := ["basic", "skill", "magic"]
 const MENU_GROUP_LABELS := ["Основное", "Умение", "Магия"]
+const Conditions = preload("res://scripts/prototypes/ember_combat_action_conditions.gd")
 
 @export_group("Действие")
 @export var action_id := ""
@@ -43,6 +44,16 @@ const MENU_GROUP_LABELS := ["Основное", "Умение", "Магия"]
 ## Authored deterministic force. A push happens only when this value is greater
 ## than the target's push resistance.
 @export_range(0, 3, 1) var force := 0
+
+@export_group("Проверяемые условия")
+@export var actor_required_status_ids := PackedStringArray()
+@export var actor_forbidden_status_ids := PackedStringArray()
+@export var target_required_status_ids := PackedStringArray()
+@export var target_forbidden_status_ids := PackedStringArray()
+## Owned embedded rows: subject, stat, comparison, unit and integer value.
+@export var value_conditions: Array[Dictionary] = []
+## Owned equipment rows: subject, slot (empty means any for item), mode, item_id.
+@export var equipment_conditions: Array[Dictionary] = []
 
 @export_group("Библиотека эффектов")
 ## Ordered reusable steps. Existing actions retain their stable resolver preset;
@@ -124,6 +135,7 @@ func to_definition() -> Dictionary:
 		"maxLiftWeight": max_lift_weight,
 		"hint": hint.strip_edges(),
 		"requirements": requirements_text.strip_edges(),
+		"applicationConditions": application_conditions(),
 		"menuGroup": menu_group_id(),
 		"menuGroupLabel": menu_group_label(),
 		"force": force,
@@ -138,8 +150,15 @@ func to_definition() -> Dictionary:
 	}
 
 
+func application_conditions() -> Dictionary:
+	var result := {}
+	for key in Conditions.FIELDS: result[key] = get(key).duplicate() if key in Conditions.STATUS_FIELDS else get(key).duplicate(true)
+	return result
+
+
 func validation_errors() -> Array[String]:
 	var errors: Array[String] = []
+	errors.append_array(Conditions.validation_errors(application_conditions(), target_id()))
 	if not _valid_id(action_id):
 		errors.append("ID действия: используйте a-z, 0-9, _ или -.")
 	if display_name.strip_edges().is_empty():
@@ -237,6 +256,7 @@ func content_signature() -> String:
 		str(max_lift_weight), str(force), partner_unit_id, str(partner_range_cells),
 		str(partner_mp_cost), str(partner_delay), ui_color.to_html(true),
 		icon.resource_path if icon != null else "", "||".join(step_signatures),
+		str(application_conditions()),
 	])
 
 
@@ -248,6 +268,8 @@ func behavior_summary() -> String:
 	if effect in [Effect.DUO_PULSE, Effect.STEAM_BREACH]: lines.append("Партнёр %s: радиус %d, %d MP, задержка %d." % [partner_unit_id, partner_range_cells, partner_mp_cost, partner_delay])
 	lines.append("Общих шагов: %d. Выполняются по порядку после базового действия; настройки шагов принадлежат библиотеке эффектов." % effect_steps.size())
 	lines.append("Текст условий — подсказка игроку. Доступность проверяют цель, дальность, MP и правила выбранного действия.")
+	var conditions_text := Conditions.summary(application_conditions())
+	lines.append("Проверяемые условия: все выбранные правила одновременно.\n" + conditions_text if not conditions_text.is_empty() else "Дополнительных условий применения нет.")
 	return "\n".join(lines)
 
 

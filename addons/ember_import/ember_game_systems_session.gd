@@ -59,6 +59,9 @@ func open(module_id: String, record: Dictionary) -> bool:
 	return true
 
 func create(module_id: String, id: String, name: String, source: Resource = null) -> bool:
+	if module_id == "start":
+		last_error = "Старт игры — единая запись. Откройте её существующий черновик."
+		return false
 	var target := Store.path_for(module_id, id)
 	if target.is_empty() or FileAccess.file_exists(target) or Store.Catalog.entries(module_id).any(func(record: Dictionary) -> bool: return record.id == id):
 		last_error = "Нужен свободный ID; существующая запись не перезаписана."
@@ -154,6 +157,9 @@ func save() -> bool:
 
 func remove(module_id: String, record: Dictionary, expected_signature: String) -> bool:
 	last_error = ""
+	if module_id == "start":
+		last_error = "Единый старт игры нельзя удалить. Можно очистить его экипировку и сумку."
+		return false
 	if _editor_undo == null or Store.signature(str(record.path)) != expected_signature:
 		last_error = "Файл изменился или история редактора недоступна. Удаление остановлено."
 		return false

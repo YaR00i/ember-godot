@@ -77,6 +77,8 @@ static func result_validation_errors(resolved: Dictionary) -> Array[String]:
 			errors.append("Результат preview: %s должен быть Dictionary." % key)
 	if resolved.has("statusRulesHash") and typeof(resolved.statusRulesHash) != TYPE_INT:
 		errors.append("Результат preview: statusRulesHash должен быть целым числом.")
+	if resolved.has("actionConditionsHash") and typeof(resolved.actionConditionsHash) != TYPE_INT:
+		errors.append("Результат preview: actionConditionsHash должен быть целым числом.")
 	return errors
 
 

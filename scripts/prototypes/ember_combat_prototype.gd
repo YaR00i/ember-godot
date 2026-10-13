@@ -9,6 +9,7 @@ const UnitCatalog = preload("res://scripts/prototypes/ember_combat_unit_catalog.
 const ActionCatalog = preload("res://scripts/prototypes/ember_combat_action_catalog.gd")
 const AiProfileCatalog = preload("res://scripts/prototypes/ember_combat_ai_profile_catalog.gd")
 const StatusRules = preload("res://scripts/prototypes/ember_combat_status_rules.gd")
+const ActionConditions = preload("res://scripts/prototypes/ember_combat_action_conditions.gd")
 const DamageRules = preload("res://scripts/prototypes/ember_combat_damage_rules.gd")
 const EffectRules = preload("res://scripts/prototypes/ember_combat_effect_rules.gd")
 const StateSchema = preload("res://scripts/prototypes/ember_combat_state_schema.gd")
@@ -311,6 +312,7 @@ static func _unit_target_ids(
 	state: Dictionary,
 	action_id: String,
 	check_position: bool,
+	check_conditions := true,
 ) -> Array[String]:
 	var result: Array[String] = []
 	var actor_id := current_unit_id(state)
@@ -334,6 +336,8 @@ static func _unit_target_ids(
 		return result
 	if not duo_partner_unavailable_reason(state, action_id).is_empty():
 		return result
+	var conditions: Variant = action.get("applicationConditions", {})
+	if check_conditions and (not ActionConditions.validation_errors(conditions, str(action.get("target", "")), false).is_empty() or not ActionConditions.unit_reason(actor, conditions, "actor").is_empty()): return result
 	var target_team := str(action.get("target", "enemy"))
 	var effect_id := str(action.get("effect", "damage"))
 	if target_team == "cell":
@@ -361,6 +365,7 @@ static func _unit_target_ids(
 			continue
 		if not _authored_effects_allow_unit_target(action, target):
 			continue
+		if check_conditions and not ActionConditions.unit_reason(target, conditions, "target").is_empty(): continue
 		if (
 			effect_id == "lift_throw"
 			and int(target.get("weightClass", 1)) > int(action.get("maxLiftWeight", 0))
@@ -414,6 +419,7 @@ static func _target_cells(state: Dictionary, action_id: String, check_position: 
 		or not duo_partner_unavailable_reason(state, action_id).is_empty()
 	):
 		return result
+	if not action_condition_reason(state, action_id).is_empty(): return result
 	var actor_cell: Vector2i = actor.get("cell", INVALID_CELL)
 	var grid: Dictionary = state.get("grid", {})
 	for y in int(grid.get("height", 0)):
@@ -433,6 +439,22 @@ static func _target_cells(state: Dictionary, action_id: String, check_position: 
 				continue
 			result.append(cell)
 	return result
+
+
+static func action_condition_reason(state: Dictionary, action_id: String, target_id := "") -> String:
+	var action := command_definition(state, action_id)
+	var rules: Variant = action.get("applicationConditions", {})
+	var errors := ActionConditions.validation_errors(rules, str(action.get("target", "")), false)
+	if not errors.is_empty(): return "Некорректные условия: " + errors[0]
+	if not ActionConditions.has_conditions(rules): return ""
+	var actor_reason := ActionConditions.unit_reason(unit_definition(state, current_unit_id(state)), rules, "actor")
+	if not actor_reason.is_empty(): return actor_reason
+	if not target_id.is_empty(): return ActionConditions.unit_reason(unit_definition(state, target_id), rules, "target")
+	var candidates := _unit_target_ids(state, action_id, false, false)
+	for candidate in candidates:
+		if ActionConditions.unit_reason(unit_definition(state, candidate), rules, "target").is_empty(): return ""
+	if not candidates.is_empty(): return "Нет подходящей цели. " + ActionConditions.unit_reason(unit_definition(state, candidates[0]), rules, "target")
+	return ""
 
 
 static func duo_partner_unavailable_reason(state: Dictionary, action_id: String) -> String:
@@ -543,6 +565,8 @@ static func preview(
 	var target := unit_definition(state, resolved_target_id)
 	if actor.is_empty() or action.is_empty() or (not cell_target and target.is_empty()):
 		return _invalid_preview("Не выбраны действие или цель.")
+	var condition_reason := action_condition_reason(state, action_id, resolved_target_id)
+	if not condition_reason.is_empty(): return _invalid_preview(condition_reason)
 	var synthetic_command := action_id in [HELD_THROW_COMMAND, HELD_LOWER_COMMAND, HELD_GUARD_COMMAND]
 	if (
 		(
@@ -577,6 +601,7 @@ static func preview(
 		"stateTurn": int(state.get("turn", 1)),
 		"stateHash": hash(state),
 		"statusRulesHash": StatusRules.content_hash(),
+		"actionConditionsHash": hash(action.get("applicationConditions", {})),
 		"actorId": actor_id,
 		"actionId": action_id,
 		"targetId": resolved_target_id,
@@ -851,6 +876,9 @@ static func commit(state: Dictionary, resolved: Dictionary) -> Dictionary:
 		return state.duplicate(true)
 	if resolved.has("statusRulesHash") and int(resolved.statusRulesHash) != StatusRules.content_hash():
 		return state.duplicate(true)
+	var condition_action := command_definition(state, str(resolved.get("actionId", "")))
+	if resolved.has("actionConditionsHash") and int(resolved.actionConditionsHash) != hash(condition_action.get("applicationConditions", {})): return state.duplicate(true)
+	if not action_condition_reason(state, str(resolved.get("actionId", "")), str(resolved.get("targetId", ""))).is_empty(): return state.duplicate(true)
 	var partner_id := str(resolved.get("partnerId", ""))
 	if not partner_id.is_empty():
 		var partner_before := unit_definition(state, partner_id)
@@ -1403,6 +1431,8 @@ static func describe_intent(
 		])
 	parts.append("Эффект: %s" % str(action.get("hint", "—")))
 	parts.append("Условия: %s" % str(action.get("requirements", "—")))
+	var conditions_copy := ActionConditions.summary(action.get("applicationConditions", {}))
+	if not conditions_copy.is_empty(): parts.append("Проверяемые условия (все):\n" + conditions_copy)
 	if not target.is_empty():
 		parts.append("Выбранная цель: %s" % str(target.get("name", target_id)))
 	elif target_cell != INVALID_CELL:
@@ -1896,6 +1926,8 @@ static func target_unavailable_reason(state: Dictionary, action_id: String, cell
 	var partner_reason := duo_partner_unavailable_reason(state, action_id)
 	if not partner_reason.is_empty():
 		return partner_reason
+	var condition_reason := action_condition_reason(state, action_id, target_id)
+	if not condition_reason.is_empty(): return condition_reason
 	if str(action.get("target", "")) == "cell":
 		return "Содержимое, препятствие или теги клетки не подходят этому действию."
 	if target_id.is_empty():

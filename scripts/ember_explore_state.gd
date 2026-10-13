@@ -6,6 +6,7 @@ extends Node
 
 const QuestCatalog = preload("res://scripts/ember_quest_catalog.gd")
 const EmberPartyState = preload("res://scripts/ember_party_state.gd")
+const GameStart = preload("res://scripts/ember_game_start_resource.gd")
 
 signal economy_changed
 signal progress_changed
@@ -18,7 +19,6 @@ const LEGACY_SAVE_VERSION := 1
 const PACK_ID := "ember_p1"
 const DEFAULT_SLOT := 0
 const MANUAL_SLOT_COUNT := 3
-const STARTING_COINS := 20
 const DEFAULT_MAX_HP := 100.0
 const DEFAULT_STORAGE_ROOT := "user://ember-save-v2"
 const DEFAULT_LEGACY_STORAGE_ROOT := "user://ember-save-v1"
@@ -65,11 +65,11 @@ func _ready() -> void:
 		restore_enabled = false
 		storage_root = "user://ember-library-lab/%d/saves" % OS.get_process_id()
 		legacy_storage_root = "user://ember-library-lab/%d/legacy" % OS.get_process_id()
-		reset_new_game()
+		_boot_new_game()
 		return
 	active_slot = _manual_slot(ProjectSettings.get_setting("ember/save_slot", DEFAULT_SLOT))
 	if not load_latest_available():
-		reset_new_game()
+		_boot_new_game()
 
 
 func _process(delta: float) -> void:
@@ -77,10 +77,30 @@ func _process(delta: float) -> void:
 		playtime_seconds += delta
 
 
-func reset_new_game() -> void:
-	inventory = {EmberEconomy.WALLET_ITEM_ID: STARTING_COINS}
+func reset_new_game() -> bool:
+	# Validate the complete saved recipe before replacing any existing progress.
+	var config := GameStart.saved()
+	var recipe := config.prepare(_items()) if config != null else {"ok": false, "error": "Нет записи Старт игры: " + GameStart.DEFAULT_PATH}
+	if not recipe.ok:
+		push_warning("Ember: новая игра не создана. " + str(recipe.error))
+		return false
+	_initialize_new_game(recipe)
+	return true
+
+
+func _boot_new_game() -> void:
+	if reset_new_game(): return
+	# No save could be loaded. Keep a playable neutral session, but prevent an
+	# invalid/missing author recipe from overwriting the user's persistent saves.
+	persistence_enabled = false
+	_initialize_new_game({"party": EmberPartyState.new_game(_items()), "inventory": {EmberEconomy.WALLET_ITEM_ID: 20} if _items().has(EmberEconomy.WALLET_ITEM_ID) else {}})
+	push_warning("Ember: временная сессия со стандартным стартом; сохранение отключено до исправления Старт игры.")
+
+
+func _initialize_new_game(recipe: Dictionary) -> void:
+	inventory = recipe.inventory
 	shop_stock = {}
-	party = EmberPartyState.new_game(_items())
+	party = recipe.party
 	active_hero_ids = EmberPartyState.HERO_IDS.duplicate()
 	battle_strategy = EmberPartyState.normalize_battle_strategy([])
 	_sync_compatibility_from_party()

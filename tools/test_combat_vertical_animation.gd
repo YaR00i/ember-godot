@@ -16,10 +16,11 @@ func _run_and_quit() -> void:
 	if progress != null:
 		progress.set_battle_strategy(EmberPartyState.DEFAULT_BATTLE_STRATEGY)
 	var lab := LAB_SCENE.instantiate()
+	lab.get_node("CombatHUDLayer/CombatHUD").request_fullscreen = false
 	root.add_child(lab)
 	await process_frame
 	await process_frame
-	var world := lab as Node3D
+	var world := lab.get_node("Arena") as Node3D
 	var hud := lab.find_child("CombatHUD", true, false) as Control
 	var mode_picker := lab.find_child("CombatEncounterMode", true, false) as OptionButton
 	if world == null or hud == null or mode_picker == null:

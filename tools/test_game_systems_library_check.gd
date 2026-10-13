@@ -23,6 +23,17 @@ func _save(resource: Resource, path: String) -> void:
 	_check(ResourceSaver.save(resource, path) == OK, "could not create diagnostic fixture")
 
 func _run() -> void:
+	# First inspect the actual copied library before injecting malformed fixtures.
+	var clean_service := Service.new()
+	_check(clean_service.start().get("ok", false), "clean library check did not start")
+	var clean_report := {}
+	for attempt in 300:
+		await create_timer(0.1).timeout
+		clean_report = clean_service.poll()
+		if not clean_report.is_empty(): break
+	_check(clean_report.get("ok", false) and clean_report.get("issueCount", -1) == 0, "saved author library has issues before fixtures: " + str(clean_report.get("issues", [])))
+	print("LIBRARY_START_BASELINE records=%d issues=%d" % [clean_report.get("recordCount", -1), clean_report.get("issueCount", -1)])
+	clean_service.cancel()
 	var valid := Store.blank("status", "check_valid", "Сохранённый корректный статус")
 	valid.description = "Проверка сохранённой версии."
 	var valid_path := Store.path_for("status", "check_valid")
@@ -56,6 +67,13 @@ func _run() -> void:
 	file.close()
 	_paths.append(missing_path)
 	var hashes := {}
+	var bad_start := preload("res://scripts/ember_game_start_resource.gd").new()
+	bad_start.start_id = "check_bad_start"
+	bad_start.hero_levels = {"mira": 0}
+	bad_start.hero_equipment = {"mira": 1}
+	bad_start.inventory = {"absent_check_item": 1}
+	var bad_start_path := "res://content/game_start/check_bad_start.tres"
+	_save(bad_start, bad_start_path)
 	for path in _paths: hashes[path] = FileAccess.get_sha256(path)
 	var service := Service.new()
 	_check(service.start().get("ok", false), "check process did not start")
@@ -67,6 +85,7 @@ func _run() -> void:
 		if not report.is_empty(): break
 	_check(report.get("ok", false), "report absent/failed: " + str(report))
 	if report.get("ok", false):
+		_check(_has(report, "validation", bad_start_path) and _has(report, "missing_id", bad_start_path), "invalid start shape/level/item/singleton identity disappeared from saved check")
 		_check(_has(report, "duplicate_id", "res://content/combat/statuses/wet.tres") and _has(report, "duplicate_id", "res://content/combat/statuses/check_duplicate_wet.tres"), "duplicate IDs collapsed or wrong file reported")
 		_check(_has(report, "missing_id", Store.path_for("effect", "check_missing_status")), "missing ID not reported")
 		_check(_has(report, "enum_value", Store.path_for("ai", "check_invalid_enum")), "unsupported native enum not reported")

@@ -69,6 +69,8 @@ func _run() -> void:
 				var paths := PackedStringArray()
 				for record in records: paths.append(record.path)
 				for record in records: _issue(record, "duplicate_id", "ID %s повторяется в разделе: %s." % [id, ", ".join(paths)])
+	if _ids.get("start", {}).get("default", []).is_empty():
+		_issue({"module": "start", "path": Store.SPECS.start[2].DEFAULT_PATH, "id": "default", "name": "Старт игры", "loadable": false}, "missing_start", "Не найдена единая запись Старт игры.")
 	var known_actions := PackedStringArray(_ids.get("action", {}).keys())
 	for record in _records:
 		if record.resource == null: continue
@@ -132,9 +134,14 @@ func _reference(record: Dictionary, module: String, id: String) -> void:
 func _links(record: Dictionary) -> void:
 	var resource: Resource = record.resource
 	match record.module:
+		"start":
+			for id in preload("res://scripts/ember_party_state.gd").HERO_IDS: _reference(record, "unit", id)
+			for id in resource.call("item_ids"): _reference(record, "item", id)
 		"item": _reference(record, "icon", str(resource.definition.get("iconId", "")))
 		"action":
 			if str(resource.call("effect_id")) in ["duo_pulse", "steam_breach"]: _reference(record, "unit", str(resource.get("partner_unit_id")))
+			for row in resource.get("equipment_conditions"):
+				if row.get("mode", "") == "item": _reference(record, "item", str(row.get("item_id", "")))
 		"effect":
 			match str(resource.call("operation_id")):
 				"apply_status": _reference(record, "status", str(resource.get("status_id")))

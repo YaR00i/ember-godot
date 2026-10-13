@@ -70,7 +70,7 @@ func _capture_and_quit() -> void:
 	await process_frame
 	await process_frame
 	var hud := lab.find_child("CombatHUD", true, false) as Control
-	var world := lab as Node3D
+	var world := lab.get_node("Arena") as Node3D
 	if hud != null:
 		hud.call("_confirm_deployment")
 		hud.call("_console_add_status", "wisp", "wet", 2)

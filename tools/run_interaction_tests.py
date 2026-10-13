@@ -19,7 +19,7 @@ TESTS = ('test_talk_shop.gd', 'test_action_script.gd', 'test_interact_launch_rul
 
 def prepare_project(destination):
     copy_code(destination)
-    for folder in ('content/items', 'content/item_icons', 'materials', 'tools/fixtures', 'assets/world_markers'):
+    for folder in ('content/items', 'content/item_icons', 'content/game_start', 'materials', 'tools/fixtures', 'assets/world_markers'):
         shutil.copytree(ROOT / folder, destination / folder)
     for name in TESTS:
         shutil.copyfile(ROOT / 'tools' / name, destination / 'tools' / name)
@@ -40,7 +40,7 @@ def run_gate(godot, test):
     with tempfile.TemporaryDirectory(prefix='ember-interaction-') as temporary:
         destination = Path(temporary).resolve()
         prepare_project(destination)
-        frozen = {folder: hashes(destination / folder) for folder in ('content/items', 'content/item_icons', 'materials', 'assets/world_markers')}
+        frozen = {folder: hashes(destination / folder) for folder in ('content/items', 'content/item_icons', 'content/game_start', 'materials', 'assets/world_markers')}
         environment = os.environ.copy()
         environment['EMBER_INTERACTION_TEST_ROOT'] = destination.as_posix()
         result = subprocess.run([str(godot), '--headless', '--path', str(destination), '--script', 'res://tools/' + test],

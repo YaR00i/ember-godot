@@ -10,9 +10,19 @@ const Store = preload("res://addons/ember_import/ember_game_systems_store.gd")
 const DraftEditor = preload("res://addons/ember_import/ember_game_systems_draft_editor.gd")
 const LabLauncher = preload("res://addons/ember_import/ember_game_systems_lab_launcher.gd")
 const CheckPanel = preload("res://addons/ember_import/ember_game_systems_check_panel.gd")
+const LabSetupDialog = preload("res://addons/ember_import/ember_game_systems_lab_setup_dialog.gd")
+const UsagePanel = preload("res://addons/ember_import/ember_game_systems_usage_panel.gd")
 signal editor_requested(module: String, record: Dictionary)
 signal library_file_requested(path: String)
 var _check_panel: ConfirmationDialog
+var _lab_setup_dialog: ConfirmationDialog
+var _lab_setup_context := {}
+var _lab_setup_path := ""
+var _usage_panel: ConfirmationDialog
+var _usage_target := {}
+var _usage_origin := {}
+var _selected_path := ""
+var _strict_path_selection := false
 var _session := Session.new()
 var _draft_editor: Control
 var _pending := {}
@@ -189,21 +199,21 @@ func setup() -> void:
 
 func refresh() -> void:
 	if has_unsaved_changes():
-		_pending = {"module": _module, "id": _selected, "category": _category_id}
+		_pending = {"module": _module, "id": _selected, "category": _category_id, "path": _selected_path}
 		_confirm_navigation()
 		return
 	Catalog.refresh()
-	select_module(_module, _selected, _category_id)
+	select_module(_module, _selected, _category_id, _selected_path)
 
 
-func select_module(module: String, preferred := "", category := "") -> void:
+func select_module(module: String, preferred := "", category := "", preferred_path := "") -> void:
 	# Old equipment links resolve to a filter of the same library and draft owner.
 	if module == "equipment":
 		module = "item"
 		category = "equipment"
 	if not _module_buttons.has(module): return
 	if has_unsaved_changes():
-		_pending = {"module": module, "id": preferred, "category": category}
+		_pending = {"module": module, "id": preferred, "category": category, "path": preferred_path}
 		_confirm_navigation()
 		return
 	_session.discard()
@@ -212,6 +222,7 @@ func select_module(module: String, preferred := "", category := "") -> void:
 	_category.visible = module == "item"
 	_sync_category()
 	_selected = preferred
+	_selected_path = preferred_path
 	_search.text = ""
 	for key in _module_buttons:
 		(_module_buttons[key] as Button).set_pressed_no_signal(key == module)
@@ -220,19 +231,29 @@ func select_module(module: String, preferred := "", category := "") -> void:
 			_heading.text = info[1]
 			_description.text = info[2]
 	_records = Catalog.entries(module)
-	_new_button.disabled = not Store.SPECS.has(Store.kind(module))
+	if not preferred_path.is_empty():
+		var exact := Catalog.saved_record(module, preferred_path, Store.SPECS)
+		if not exact.is_empty() and str(exact.id) == preferred:
+			for index in range(_records.size() - 1, -1, -1):
+				if str(_records[index].path) == preferred_path: _records.remove_at(index)
+			_records.append(exact)
+			_records.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return str(a.name).naturalnocasecmp_to(str(b.name)) < 0)
+	_new_button.disabled = module == "start" or not Store.SPECS.has(Store.kind(module))
 	_copy_button.disabled = _new_button.disabled or _records.is_empty()
+	_strict_path_selection = not preferred_path.is_empty()
 	_refresh_list()
+	_strict_path_selection = false
 	if not preferred.is_empty() and not _records.any(func(record: Dictionary) -> bool: return record.id == preferred):
 		_list.deselect_all()
 		_selected = ""
+		_selected_path = ""
 		_show_detail({})
 		_note("Связанная запись %s не найдена. Откройте её исходный редактор и проверьте ссылку." % preferred)
 
 
 func _refresh_list() -> void:
 	if has_unsaved_changes():
-		_pending = {"module": _module, "id": _selected, "search": _search.text, "category": _category_id}
+		_pending = {"module": _module, "id": _selected, "search": _search.text, "category": _category_id, "path": _selected_path}
 		_search.text = _draft_search
 		_confirm_navigation()
 		return
@@ -249,15 +270,16 @@ func _refresh_list() -> void:
 		row.set_metadata(0, record.id)
 		row.set_tooltip_text(0, str(record.path))
 		row.set_custom_minimum_height(54)
-		if record.id == _selected: selected = row
+		if record.id == _selected and (_selected_path.is_empty() or str(record.path) == _selected_path): selected = row
 		visible_count += 1
 	_count.text = "%d из %d записей" % [visible_count, _records.size()]
-	if selected == null: selected = root.get_first_child()
+	if selected == null and not _strict_path_selection: selected = root.get_first_child()
 	if selected != null:
 		selected.select(0)
 		_on_selected()
 	else:
 		_selected = ""
+		_selected_path = ""
 		_show_detail({})
 
 
@@ -281,25 +303,27 @@ func _select_category(index: int) -> void:
 	_session.discard()
 	_category_id = next
 	_selected = ""
+	_selected_path = ""
 	_refresh_list()
 
 
 func _on_selected() -> void:
 	var row := _list.get_selected()
 	if row == null: return
-	if has_unsaved_changes() and str(row.get_metadata(0)) != _selected:
-		_pending = {"module": _module, "id": str(row.get_metadata(0)), "category": _category_id}
+	if has_unsaved_changes() and (str(row.get_metadata(0)) != _selected or row.get_tooltip_text(0) != _selected_path):
+		_pending = {"module": _module, "id": str(row.get_metadata(0)), "category": _category_id, "path": row.get_tooltip_text(0)}
 		_confirm_navigation()
 		return
 	if has_unsaved_changes(): return
 	if _session.draft != null: _session.discard()
 	_selected = str(row.get_metadata(0))
+	_selected_path = row.get_tooltip_text(0)
 	_show_detail(selected_record())
 
 
 func selected_record() -> Dictionary:
 	for record in _records:
-		if record.id == _selected: return record
+		if record.id == _selected and (_selected_path.is_empty() or str(record.path) == _selected_path): return record
 	return {}
 
 
@@ -313,6 +337,13 @@ func _show_detail(record: Dictionary) -> void:
 		_detail.add_child(_label("Измените поиск или выберите другой раздел.", 14))
 		return
 	_detail.add_child(_label(str(record.name), 23))
+	if not _usage_origin.is_empty() and str(_usage_origin.path) != str(record.path):
+		var back := Button.new()
+		back.name = "GameSystemsUsageBack"
+		back.text = "← Назад: " + str(_usage_origin.name)
+		back.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		back.pressed.connect(_return_usage_origin)
+		_detail.add_child(back)
 	var id := _label(str(record.id), 13)
 	id.modulate = Color("8bbbc7")
 	_detail.add_child(id)
@@ -335,7 +366,7 @@ func _show_detail(record: Dictionary) -> void:
 			_note("Пять слотов: оружие, броня, обувь и два аксессуара. Примерка в редакторе показывает результат замены для выбранного героя.")
 		for pair in [["atk", "Атака"], ["def", "Защита"], ["hpBonus", "Бонус max HP"], ["mpBonus", "Бонус max MP"], ["hpRestore", "Лечение HP"], ["mpRestore", "Восстановление MP"], ["reviveHp", "Воскрешение HP"]]:
 			if int(data.get(pair[0], 0)) != 0: _detail.add_child(_label("%s: %d" % [pair[1], int(data[pair[0]])], 14))
-	if _module in ["status", "effect", "action", "unit", "ai", "loot", "encounter"] and record.get("resource") != null:
+	if _module in ["start", "status", "effect", "action", "unit", "ai", "loot", "encounter"] and record.get("resource") != null:
 		_note(str(record.resource.call("behavior_summary")))
 	var resource := record.get("resource") as Resource
 	var errors: Array = []
@@ -356,7 +387,7 @@ func _show_detail(record: Dictionary) -> void:
 		run.text = "Проверить встречу в Lab"
 		run.tooltip_text = "Открыть сохранённую встречу в отдельном тестовом окне. Игровые сохранения не используются; награды только показываются."
 		run.disabled = not errors.is_empty()
-		run.pressed.connect(_run_selected_encounter)
+		run.pressed.connect(_configure_selected_encounter)
 		_detail.add_child(run)
 	if Store.SPECS.has(Store.kind(_module)):
 		var edit := Button.new()
@@ -372,6 +403,7 @@ func _show_detail(record: Dictionary) -> void:
 		var remove := Button.new()
 		remove.name = "GameSystemsDelete"
 		remove.text = "Удалить запись…"
+		remove.disabled = _module == "start"
 		remove.pressed.connect(_request_delete.bind(record))
 		_detail.add_child(remove)
 	var links := Catalog.relations(_module, record)
@@ -422,7 +454,38 @@ func _open_checked_record(issue: Dictionary) -> void:
 	# Exact file route, not ID lookup: duplicate IDs must open the chosen source.
 	editor_requested.emit("library_check", {"path": path})
 
-func _run_selected_encounter() -> Dictionary:
+func _configure_selected_encounter() -> Dictionary:
+	if _module != "encounter": return {"ok": false, "error": "Выберите встречу."}
+	if has_unsaved_changes():
+		_session.last_error = "Сначала сохраните черновик встречи, затем настройте тест."
+		show_current_status()
+		return {"ok": false, "error": _session.last_error}
+	var record := selected_record()
+	var request := LabLauncher.Transition.library_test_content(str(record.get("path", "")))
+	if not request.get("ok", false):
+		_note(str(request.error))
+		return request
+	if _lab_setup_dialog == null:
+		_lab_setup_dialog = LabSetupDialog.new()
+		add_child(_lab_setup_dialog)
+		_lab_setup_dialog.connect("launch_requested", _launch_configured_encounter)
+	_lab_setup_path = str(record.path)
+	_lab_setup_dialog.call("open_setup", request.encounter, _lab_setup_context.get(_lab_setup_path, {}))
+	return {"ok": true}
+
+func _launch_configured_encounter(setup: Dictionary) -> Dictionary:
+	# The dialog is modal, but recheck the selected source and dirty guard at launch.
+	if str(selected_record().get("path", "")) != _lab_setup_path:
+		_lab_setup_dialog.call("feedback", "Выбранная встреча изменилась. Откройте настройки заново.")
+		return {"ok": false, "error": "Выбранная встреча изменилась."}
+	var result := _run_selected_encounter(setup)
+	if result.get("ok", false):
+		_lab_setup_context[_lab_setup_path] = setup.duplicate(true)
+		_lab_setup_dialog.hide()
+	else: _lab_setup_dialog.call("feedback", str(result.get("error", "")))
+	return result
+
+func _run_selected_encounter(setup: Dictionary = {}) -> Dictionary:
 	if _module != "encounter": return {"ok": false, "error": "Выберите встречу."}
 	if has_unsaved_changes():
 		_session.last_error = "Сначала сохраните черновик встречи, затем запустите тест из библиотеки."
@@ -430,7 +493,7 @@ func _run_selected_encounter() -> Dictionary:
 		return {"ok": false, "error": _session.last_error}
 	var record := selected_record()
 	if record.is_empty(): return {"ok": false, "error": "Выберите сохранённую встречу."}
-	var result := LabLauncher.start(str(record.path))
+	var result := LabLauncher.start(str(record.path), setup)
 	_note("Тест открыт в отдельном окне. Результат не изменяет игровой прогресс." if result.get("ok", false) else str(result.get("error", "Не удалось запустить тест.")))
 	return result
 
@@ -460,7 +523,7 @@ func _build_dialogs() -> void:
 		_pending = {}
 		var row := _list.get_root().get_first_child()
 		while row != null:
-			if str(row.get_metadata(0)) == _selected: row.select(0)
+			if str(row.get_metadata(0)) == _selected and (_selected_path.is_empty() or row.get_tooltip_text(0) == _selected_path): row.select(0)
 			row = row.get_next()
 	)
 	add_child(_discard_dialog)
@@ -494,13 +557,14 @@ func _accept_navigation() -> void:
 	var target := _pending.duplicate()
 	_session.discard()
 	_pending = {}
-	select_module(str(target.get("module", _module)), str(target.get("id", "")), str(target.get("category", _category_id)))
+	select_module(str(target.get("module", _module)), str(target.get("id", "")), str(target.get("category", _category_id)), str(target.get("path", "")))
 	if target.has("search"):
 		_search.text = str(target.search)
 		_refresh_list()
 	if target.has("create"): _open_create(bool(target.create))
 
 func _open_create(duplicate_selected: bool) -> void:
+	if _module == "start": return
 	if has_unsaved_changes():
 		_pending = {"module": _module, "id": _selected, "create": duplicate_selected, "category": _category_id}
 		_confirm_navigation()
@@ -531,6 +595,7 @@ func begin_edit() -> void:
 	else: _note(_session.last_error)
 
 func begin_new(module: String, source: Resource = null) -> void:
+	if module == "start": return
 	select_module(module)
 	_duplicate_source = source
 	_create_id.text = ""
@@ -578,9 +643,9 @@ func _close_draft() -> void:
 
 func _on_published() -> void:
 	if _check_panel != null: _check_panel.call("mark_stale")
+	if _usage_panel != null: _usage_panel.call("feedback", "Запись сохранялась после поиска. Обновите список, чтобы увидеть новые связи.")
 	if has_unsaved_changes(): return
 	var id := Store.id_for(_session.module, _session.draft) if _session.draft != null else _selected
-	if Engine.is_editor_hint(): preload("res://addons/ember_import/ember_editor_filesystem.gd").request()
 	Catalog.refresh()
 	# A saved type change must remain visible even if it left the current filter.
 	var category := _category_id
@@ -590,10 +655,81 @@ func _on_published() -> void:
 	select_module(_module, id, category)
 
 func _show_usage(record: Dictionary) -> void:
-	var sources := Catalog.incoming(_module, record)
-	_detail.add_child(_label("Прямые ссылки:\n" + "\n".join(sources) if not sources.is_empty() else "Прямых ссылок не найдено. Динамические ссылки и сохранения требуют отдельной проверки перед удалением.", 14))
+	if _usage_panel == null:
+		_usage_panel = UsagePanel.new()
+		add_child(_usage_panel)
+		_usage_panel.call("setup")
+		_usage_panel.connect("record_requested", _open_usage_record)
+		_usage_panel.connect("file_requested", _open_usage_file)
+		_usage_panel.connect("refresh_requested", _refresh_usage)
+	_usage_target = {"module": _module, "record": record.duplicate()}
+	_refresh_usage(true)
+
+func _refresh_usage(show_window := false) -> void:
+	var previous: Dictionary = _usage_target.get("record", {})
+	var record := Catalog.saved_record(str(_usage_target.get("module", "")), str(previous.get("path", "")), Store.SPECS)
+	if record.is_empty() or str(record.id) != str(previous.get("id", "")):
+		var empty_rows: Array[Dictionary] = []
+		_usage_panel.call("show_sources", {"name": previous.get("name", "Запись")}, empty_rows, show_window)
+		_usage_panel.call("feedback", "Исходная запись удалена или изменила ID/тип. Переоткройте её в библиотеке.")
+		return
+	_usage_panel.call("show_sources", record, Catalog.incoming_links(str(_usage_target.module), record, Store.SPECS), show_window)
+
+func _usage_source_error(source: Dictionary) -> String:
+	var path := str(source.get("path", ""))
+	if not FileAccess.file_exists(path): return "Файл уже удалён или перемещён. Обновите список."
+	if FileAccess.get_sha256(path) != str(source.get("hash", "")): return "Файл изменился после поиска. Обновите список перед переходом."
+	return ""
+
+func _open_usage_record(source: Dictionary) -> bool:
+	if has_unsaved_changes():
+		_usage_panel.call("feedback", "В черновике есть изменения. Сохраните или закройте его перед переходом к другой записи.")
+		return false
+	var error := _usage_source_error(source)
+	var record := {} if not error.is_empty() else Catalog.saved_record(str(source.get("module", "")), str(source.get("path", "")), Store.SPECS)
+	if error.is_empty() and (record.is_empty() or str(record.id) != str(source.get("id", ""))): error = "Запись изменила ID или тип. Обновите список."
+	if not error.is_empty():
+		_usage_panel.call("feedback", error)
+		return false
+	var origin := selected_record()
+	_usage_origin = {"module": _module, "id": origin.id, "path": origin.path, "name": origin.name, "category": _category_id, "search": _search.text}
+	_usage_panel.hide()
+	select_module(str(source.module), str(source.id), "", str(source.path))
+	_focus_usage_destination()
+	return str(selected_record().get("path", "")) == str(source.path)
+
+func _open_usage_file(source: Dictionary) -> bool:
+	var error := _usage_source_error(source)
+	if not error.is_empty():
+		_usage_panel.call("feedback", error)
+		return false
+	library_file_requested.emit(str(source.path))
+	_usage_panel.hide()
+	return true
+
+func _return_usage_origin() -> bool:
+	var origin := _usage_origin.duplicate(true)
+	if origin.is_empty(): return false
+	var record := Catalog.saved_record(str(origin.module), str(origin.path), Store.SPECS)
+	if record.is_empty() or str(record.id) != str(origin.id):
+		_note("Исходная запись удалена или изменила ID/тип. Откройте её заново через библиотеку.")
+		return false
+	select_module(str(origin.module), str(origin.id), str(origin.get("category", "")), str(origin.path))
+	if has_unsaved_changes(): return false
+	_search.text = str(origin.get("search", ""))
+	_refresh_list()
+	_usage_origin = {}
+	_show_detail(selected_record())
+	_focus_usage_destination()
+	return str(selected_record().get("path", "")) == str(origin.path)
+
+func _focus_usage_destination() -> void:
+	var scroll := _detail.get_parent() as ScrollContainer
+	if scroll != null: scroll.scroll_vertical = 0
+	_list.ensure_cursor_is_visible()
 
 func _request_delete(record: Dictionary) -> void:
+	if _module == "start": return
 	var sources := Catalog.incoming(_module, record)
 	if not sources.is_empty():
 		_note("Удаление заблокировано: найдены ссылки или совпадающие ID.\n" + "\n".join(sources))

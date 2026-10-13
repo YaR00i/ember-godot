@@ -5,6 +5,8 @@ const Store = preload("res://addons/ember_import/ember_game_systems_store.gd")
 const StatusType = preload("res://scripts/prototypes/ember_combat_status_resource.gd")
 const EffectType = preload("res://scripts/prototypes/ember_combat_effect_resource.gd")
 const ActionType = preload("res://scripts/prototypes/ember_combat_action_resource.gd")
+const Filesystem = preload("res://addons/ember_import/ember_editor_filesystem.gd")
+const LabPresets = preload("res://addons/ember_import/ember_game_systems_lab_preset_store.gd")
 var _errors: Array[String] = []
 
 func _enter_tree() -> void:
@@ -38,6 +40,20 @@ func _run() -> void:
 	workspace.open_resource("systems", "systems_library")
 	await _frames(10)
 	var hub := workspace.get("_game_systems_workspace") as Control
+	if OS.get_environment("EMBER_GAME_SYSTEMS_EDITOR_FOCUS") == "start":
+		await _start_forms(hub)
+		await _settle_filesystem()
+		if _errors.is_empty(): print("PASS game systems focused Forward+ start/levels/gear/bag/preview/Undo/Redo/Discard/Save/reopen/UID/publication")
+		else: printerr("FAIL focused start: ", "; ".join(_errors))
+		get_tree().quit(0 if _errors.is_empty() else 1)
+		return
+	if OS.get_environment("EMBER_GAME_SYSTEMS_EDITOR_FOCUS") == "presets":
+		await _encounter_forms(hub)
+		await _settle_filesystem()
+		if _errors.is_empty(): print("PASS game systems focused Forward+ named presets/forms/Save/recreated dialog/Load/actual child launch")
+		else: printerr("FAIL focused presets: ", "; ".join(_errors))
+		get_tree().quit(0 if _errors.is_empty() else 1)
+		return
 	for module in Catalog.MODULES:
 		hub.call("select_module", str(module[0]))
 		await _frames(2)
@@ -146,10 +162,13 @@ func _run() -> void:
 		item_form = hub.find_child("GameSystemsItemDraft", true, false) as EmberItemEditor
 		if not item_form.get("_preview").visible or item_form.get("_preview").get("_comparison").hero != "mira": _errors.append("native Undo lost fitting view/hero")
 		hub.call("discard_changes")
+	await _start_forms(hub)
 	await _status_forms(hub)
 	await _action_forms(hub)
 	await _encounter_forms(hub)
 	await _library_check(hub)
+	await _usage_navigation(hub)
+	await _settle_filesystem()
 	# Actual unload/reload, without touching the author checkout or scene drafts.
 	EditorInterface.set_main_screen_editor("3D")
 	EditorInterface.set_plugin_enabled("ember_import", false)
@@ -166,9 +185,142 @@ func _run() -> void:
 	EditorInterface.set_main_screen_editor("3D")
 	EditorInterface.set_plugin_enabled("ember_import", false)
 	await _frames(20)
+	await _settle_filesystem()
 	if not _errors.is_empty(): printerr("FAIL game systems editor: ", "; ".join(_errors))
 	else: print("PASS game systems actual Forward+ modules, draft fields/Undo/Save/reopen, global publication Undo/Redo, item form, unload/reload")
 	get_tree().quit(0 if _errors.is_empty() else 1)
+
+func _start_forms(hub: Control) -> void:
+	var path := Store.path_for("start", "default")
+	var before := Store.snapshot(path)
+	var uid := ResourceLoader.get_resource_uid(path)
+	hub.call("select_module", "start", "default")
+	hub.call("begin_edit")
+	await _frames(6)
+	var session = hub.get("_session")
+	var form := hub.get("_draft_editor") as Control
+	var tabs := form.find_child("StartHeroTabs", true, false) as TabContainer
+	if tabs == null:
+		_errors.append("native start form missing")
+		return
+	tabs.current_tab = 1
+	(form.find_child("StartLevel_mira", true, false) as SpinBox).value = 7
+	var armor := form.find_child("StartGear_mira_armor", true, false) as OptionButton
+	for index in armor.item_count:
+		if armor.get_item_metadata(index) == "traveler_tunic":
+			armor.select(index)
+			armor.item_selected.emit(index)
+	(form.find_child("StartBagCount_coin", true, false) as SpinBox).value = 37
+	var bag := form.find_child("StartBagAddItem", true, false) as OptionButton
+	for index in bag.item_count:
+		if bag.get_item_metadata(index) == "herb":
+			bag.select(index)
+			bag.item_selected.emit(index)
+	(form.find_child("StartBagAdd", true, false) as Button).pressed.emit()
+	(form.find_child("StartBagCount_herb", true, false) as SpinBox).value = 2
+	form.call("_undo_draft")
+	if session.draft.inventory.get("herb") != 1: _errors.append("native start Undo failed")
+	form.call("_redo_draft")
+	if session.draft.inventory.get("herb") != 2: _errors.append("native start Redo failed")
+	(form.find_child("StartHeroTabs", true, false) as TabContainer).current_tab = 1
+	await _frames(5)
+	if form.get_combined_minimum_size().x > form.size.x + 1: _errors.append("native start form width overflow")
+	if hub.get_combined_minimum_size().x > hub.size.x + 1: _errors.append("native start workspace width overflow")
+	if (form.find_child("StartLevel_mira", true, false) as SpinBox).size.y > 60: _errors.append("native start grid labels forced tall rows")
+	await _capture("start-game")
+	var scroll := hub.get("_detail").get_parent() as ScrollContainer
+	scroll.scroll_vertical = 400
+	await _capture("start-game-bag")
+	scroll.scroll_vertical = 0
+	var saved: Resource = Store.clone(session.draft)
+	var save := hub.find_child("GameSystemsDraftSave", true, false) as Button
+	if save.disabled: _errors.append("native start Save disabled for valid recipe")
+	else: save.pressed.emit()
+	await _frames(5)
+	if ResourceLoader.get_resource_uid(path) != uid: _errors.append("native start Save changed UID")
+	hub.call("select_module", "start", "default")
+	hub.call("begin_edit")
+	await _frames(4)
+	session = hub.get("_session")
+	if session.draft.hero_levels != saved.hero_levels or session.draft.hero_equipment != saved.hero_equipment or session.draft.inventory != saved.inventory: _errors.append("native start Save/reopen lost data")
+	form = hub.get("_draft_editor") as Control
+	(form.find_child("StartLevel_mira", true, false) as SpinBox).value = 8
+	hub.call("discard_changes")
+	if preload("res://scripts/ember_game_start_resource.gd").saved().hero_levels.mira != 7: _errors.append("native start Discard wrote data")
+	var history := get_undo_redo().get_history_undo_redo(EditorUndoRedoManager.GLOBAL_HISTORY)
+	history.undo()
+	if FileAccess.get_file_as_bytes(path) != before.bytes: _errors.append("native start publication Undo did not restore bytes")
+	history.redo()
+	if preload("res://scripts/ember_game_start_resource.gd").saved().inventory.get("herb") != 2: _errors.append("native start publication Redo lost bag")
+	Store.restore(before)
+	get_undo_redo().clear_history(EditorUndoRedoManager.GLOBAL_HISTORY, false)
+	hub.call("select_module", "start", "default")
+
+func _settle_filesystem() -> void:
+	# Fixture deletion and quit must not race an editor dependency scan.
+	Filesystem.request()
+	var deadline := Time.get_ticks_msec() + 10000
+	var filesystem := EditorInterface.get_resource_filesystem()
+	while Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+		if Filesystem.diagnostics().pending == 0 and not filesystem.is_scanning() and not filesystem.is_importing(): return
+	_errors.append("editor filesystem did not settle after fixture cleanup")
+
+func _usage_navigation(hub: Control) -> void:
+	var source_path := "res://content/combat/actions/editor_usage_duplicate.tres"
+	var source := Store.clone(Catalog.Actions.resource("strike"))
+	source.display_name = "Проверочный приём с тем же ID"
+	source.effect_steps.assign([Catalog.Effects.resource("apply_wet")])
+	if ResourceSaver.save(source, source_path) != OK:
+		_errors.append("native usage source fixture failed")
+		return
+	Filesystem.request()
+	Catalog.refresh()
+	hub.call("select_module", "effect", "apply_wet")
+	(hub.find_child("GameSystemsUsage", true, false) as Button).pressed.emit()
+	var panel := hub.get("_usage_panel") as ConfirmationDialog
+	await _frames(8)
+	var search := panel.find_child("UsageSearch", true, false) as LineEdit
+	search.text = "editor_usage_duplicate"
+	search.text_changed.emit(search.text)
+	var tree := panel.find_child("UsageRecords", true, false) as Tree
+	var row := tree.get_root().get_first_child()
+	if row == null:
+		_errors.append("native usage filter lost exact incoming file")
+	else:
+		row.select(0)
+		panel.call("_select")
+		await _capture("usage-links", panel)
+		if panel.size.y > 850 or panel.size.x > 1500: _errors.append("native usage dialog exceeds window")
+		(panel.find_child("UsageOpen", true, false) as Button).pressed.emit()
+		await _frames(4)
+		if hub.call("selected_record").get("path") != source_path: _errors.append("native usage opened same-ID alias")
+		if (hub.get("_detail").get_parent() as ScrollContainer).scroll_vertical != 0: _errors.append("usage destination kept previous card scroll")
+		await _capture("usage-destination")
+		(hub.find_child("GameSystemsUsageBack", true, false) as Button).pressed.emit()
+		if hub.call("selected_record").get("id") != "apply_wet": _errors.append("native usage Back failed")
+		hub.call("begin_edit")
+		hub.get("_session").set_value("display_name", "Несохранённый эффект переходов")
+		var consumer: Dictionary = row.get_metadata(0)
+		hub.call("_show_usage", hub.call("selected_record"))
+		hub.call("_open_usage_record", consumer)
+		if not hub.has_unsaved_changes() or not panel.visible or not "В черновике" in str(panel.get("_detail").text): _errors.append("native usage navigation dropped dirty draft")
+		await _capture("usage-dirty", panel)
+		hub.call("discard_changes")
+		panel.hide()
+	panel.hide()
+	# FileSystem route is exact and keeps the library selected, even for external consumers.
+	hub.call("select_module", "effect", "apply_wet")
+	hub.call("_show_usage", hub.call("selected_record"))
+	var before := str(hub.call("selected_record").path)
+	var file_source := {"path": source_path, "hash": FileAccess.get_sha256(source_path)}
+	hub.call("_open_usage_file", file_source)
+	await _frames(5)
+	if source_path not in EditorInterface.get_selected_paths() or str(hub.call("selected_record").path) != before: _errors.append("native usage FileSystem route changed library or selected wrong file")
+	await _settle_filesystem()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(source_path))
+	Catalog.refresh()
+	await _settle_filesystem()
 
 func _status_forms(hub: Control) -> void:
 	hub.call("select_module", "status", "wet")
@@ -298,6 +450,83 @@ func _action_forms(hub: Control) -> void:
 	if session.draft.effect_steps[0].effect_id != "restore_major_hp": _errors.append("native action step Undo failed")
 	form.call("_redo_draft")
 	var scroll := hub.get("_detail").get_parent() as ScrollContainer
+	for subject_index in [0, 1]:
+		var subject := form.find_child("DraftConditionSubject", true, false) as OptionButton
+		subject.select(subject_index)
+		subject.item_selected.emit(subject_index)
+		var presence := form.find_child("DraftConditionPresence", true, false) as OptionButton
+		presence.select(1)
+		presence.item_selected.emit(1)
+		var status := form.find_child("DraftConditionStatus", true, false) as OptionButton
+		for index in status.item_count:
+			if str(status.get_item_metadata(index)) == "frozen":
+				status.select(index)
+				status.item_selected.emit(index)
+		(form.find_child("DraftAddCondition", true, false) as Button).pressed.emit()
+	if session.draft.actor_forbidden_status_ids != PackedStringArray(["frozen"]) or session.draft.target_forbidden_status_ids != PackedStringArray(["frozen"]): _errors.append("native named predicates failed")
+	(form.find_child("DraftRemoveCondition_target_forbidden_status_ids_frozen", true, false) as Button).pressed.emit()
+	form.call("_undo_draft")
+	if session.draft.target_forbidden_status_ids != PackedStringArray(["frozen"]): _errors.append("native predicate Undo failed")
+	form.call("_redo_draft")
+	if not session.draft.target_forbidden_status_ids.is_empty(): _errors.append("native predicate Redo failed")
+	form.call("_undo_draft")
+	await _frames(5)
+	var numeric_stat := form.find_child("DraftValueStat", true, false) as OptionButton
+	numeric_stat.select(1)
+	numeric_stat.item_selected.emit(1)
+	var numeric_measure := form.find_child("DraftValueUnit", true, false) as OptionButton
+	numeric_measure.select(0)
+	numeric_measure.item_selected.emit(0)
+	(form.find_child("DraftValueThreshold", true, false) as SpinBox).value = 10
+	(form.find_child("DraftAddValueCondition", true, false) as Button).pressed.emit()
+	(form.find_child("DraftValueThreshold_0", true, false) as SpinBox).value = 12
+	form.call("_undo_draft")
+	if session.draft.value_conditions.size() != 1 or session.draft.value_conditions[0].value != 10: _errors.append("native numeric input Undo failed")
+	form.call("_redo_draft")
+	if session.draft.value_conditions[0].value != 12: _errors.append("native numeric input Redo failed")
+	form.call("_undo_draft")
+	var numeric_subject := form.find_child("DraftValueSubject", true, false) as OptionButton
+	numeric_subject.select(1)
+	numeric_subject.item_selected.emit(1)
+	var numeric_compare := form.find_child("DraftValueComparison", true, false) as OptionButton
+	numeric_compare.select(1)
+	numeric_compare.item_selected.emit(1)
+	(form.find_child("DraftValueThreshold", true, false) as SpinBox).value = 30
+	(form.find_child("DraftAddValueCondition", true, false) as Button).pressed.emit()
+	var conditions := form.find_child("DraftStatusConditions", true, false) as Control
+	scroll.scroll_vertical += int(conditions.global_position.y - scroll.global_position.y) - 65
+	await _capture("action-status-conditions")
+	var numeric := form.find_child("DraftValueConditions", true, false) as Control
+	scroll.scroll_vertical += int(numeric.global_position.y - scroll.global_position.y) - 65
+	await _capture("action-value-conditions")
+	var gear_item := form.find_child("DraftEquipmentItem", true, false) as OptionButton
+	for index in gear_item.item_count:
+		if str(gear_item.get_item_metadata(index)) == "traveler_tunic":
+			gear_item.select(index)
+			gear_item.item_selected.emit(index)
+	(form.find_child("DraftAddEquipmentCondition", true, false) as Button).pressed.emit()
+	var gear_slot := form.find_child("DraftEquipmentSlot_0", true, false) as OptionButton
+	for index in gear_slot.item_count:
+		if str(gear_slot.get_item_metadata(index)) == "armor":
+			gear_slot.select(index)
+			gear_slot.item_selected.emit(index)
+	form.call("_undo_draft")
+	if session.draft.equipment_conditions.size() != 1 or not session.draft.equipment_conditions[0].slot.is_empty(): _errors.append("native gear edit Undo failed")
+	form.call("_redo_draft")
+	if session.draft.equipment_conditions[0].slot != "armor": _errors.append("native gear edit Redo failed")
+	var gear_mode := form.find_child("DraftEquipmentMode", true, false) as OptionButton
+	gear_mode.select(2)
+	gear_mode.item_selected.emit(2)
+	gear_slot = form.find_child("DraftEquipmentSlot", true, false) as OptionButton
+	for index in gear_slot.item_count:
+		if str(gear_slot.get_item_metadata(index)) == "shoes":
+			gear_slot.select(index)
+			gear_slot.item_selected.emit(index)
+	(form.find_child("DraftAddEquipmentCondition", true, false) as Button).pressed.emit()
+	await _frames(5)
+	var gear := form.find_child("DraftEquipmentConditions", true, false) as Control
+	scroll.scroll_vertical += int(gear.global_position.y - scroll.global_position.y) - 65
+	await _capture("action-equipment-conditions")
 	scroll.scroll_vertical = 0
 	await _capture("action-constructor")
 	var steps := form.find_child("DraftField_effect_steps", true, false) as Control
@@ -308,6 +537,9 @@ func _action_forms(hub: Control) -> void:
 	await _frames(5)
 	hub.call("begin_edit")
 	if session.draft == null or session.draft.effect_steps.size() != 2 or session.draft.effect_steps[0].effect_id != "apply_wet": _errors.append("native ordered steps Save/reopen failed")
+	if session.draft == null or session.draft.actor_forbidden_status_ids != PackedStringArray(["frozen"]) or session.draft.target_forbidden_status_ids != PackedStringArray(["frozen"]): _errors.append("native predicates Save/reopen failed")
+	if session.draft == null or session.draft.value_conditions.size() != 2 or session.draft.value_conditions[0].stat != "mp" or session.draft.value_conditions[0].value != 10 or session.draft.value_conditions[1].unit != "percent" or session.draft.value_conditions[1].value != 30: _errors.append("native numeric rules Save/reopen failed")
+	if session.draft == null or session.draft.equipment_conditions.size() != 2 or session.draft.equipment_conditions[0].item_id != "traveler_tunic" or session.draft.equipment_conditions[0].slot != "armor" or session.draft.equipment_conditions[1].mode != "empty": _errors.append("native gear rules Save/reopen failed")
 	hub.call("discard_changes")
 	hub.call("select_module", "unit", "mira")
 	if not session.create("unit", "editor_action_assignment", "Автор лечебной воды", Catalog.Units.resource("mira")):
@@ -426,24 +658,94 @@ func _encounter_forms(hub: Control) -> void:
 	hub.call("select_module", "encounter", encounter_id)
 	if hub.find_child("GameSystemsRunEncounter", true, false) == null: _errors.append("native encounter Lab button missing")
 	await _capture("lab-launch")
-	var launched: Dictionary = hub.call("_run_selected_encounter")
+	(hub.find_child("GameSystemsRunEncounter", true, false) as Button).pressed.emit()
+	await _frames(5)
+	var setup_dialog := hub.get("_lab_setup_dialog") as ConfirmationDialog
+	if setup_dialog == null:
+		_errors.append("native Lab setup dialog missing")
+		return
+	var hero_picker := setup_dialog.find_child("LabSetupHero", true, false) as OptionButton
+	for index in hero_picker.item_count:
+		if str(hero_picker.get_item_metadata(index)) == "mira":
+			hero_picker.select(index)
+			hero_picker.item_selected.emit(index)
+	(setup_dialog.find_child("LabSetupCustom", true, false) as CheckBox).button_pressed = true
+	(setup_dialog.find_child("LabSetupLevel", true, false) as SpinBox).value = 9
+	var armor_picker := setup_dialog.find_child("LabSetupSlot_armor", true, false) as OptionButton
+	for index in armor_picker.item_count:
+		if str(armor_picker.get_item_metadata(index)) == "traveler_tunic":
+			armor_picker.select(index)
+			armor_picker.item_selected.emit(index)
+	(setup_dialog.find_child("LabSetupCount_herb", true, false) as SpinBox).value = 3
+	var test_setup: Dictionary = setup_dialog.call("snapshot")
+	(setup_dialog.find_child("LabSetupUndo", true, false) as Button).pressed.emit()
+	if setup_dialog.call("snapshot").get("inventory", {}).has("herb"): _errors.append("native Lab bag Undo failed")
+	(setup_dialog.find_child("LabSetupRedo", true, false) as Button).pressed.emit()
+	if setup_dialog.call("snapshot") != test_setup: _errors.append("native Lab bag Redo failed")
+	var preset_path := "user://ember-tests/native-presets-%s.json" % ProjectSettings.globalize_path("res://").rstrip("/").get_file()
+	setup_dialog.set("preset_store", LabPresets.new(preset_path))
+	setup_dialog.call("_refresh_presets", "")
+	var preset_name := setup_dialog.find_child("LabPresetName", true, false) as LineEdit
+	preset_name.text = "Мира 9 · проверка снаряжения"
+	preset_name.text_changed.emit(preset_name.text)
+	(setup_dialog.find_child("LabPresetSave", true, false) as Button).pressed.emit()
+	var preset_id := str(setup_dialog.get("_preset_id"))
+	if preset_id.is_empty() or LabPresets.new(preset_path).read().records.size() != 1: _errors.append("native named preset Save failed")
+	await _capture("lab-presets", setup_dialog)
+	await _capture("lab-setup", setup_dialog)
+	var setup_feedback := setup_dialog.find_child("LabSetupFeedback", true, false) as Label
+	if setup_feedback.get_global_rect().end.y > setup_dialog.get_ok_button().global_position.y - 2:
+		_errors.append("preset/body/feedback overlap the native launch/cancel buttons")
+	if setup_dialog.size.x > 1500 or setup_dialog.size.y > 830: _errors.append("native Lab setup exceeds editor window")
+	setup_dialog.hide()
+	hub.call("_configure_selected_encounter")
+	if not setup_dialog.call("snapshot").is_empty(): _errors.append("canceled Lab setup was remembered")
+	# Recreate the dialog, load by saved ID, then launch that restored snapshot.
+	setup_dialog.hide()
+	setup_dialog.free()
+	hub.set("_lab_setup_dialog", null)
+	hub.call("_configure_selected_encounter")
+	setup_dialog = hub.get("_lab_setup_dialog")
+	setup_dialog.set("preset_store", LabPresets.new(preset_path))
+	setup_dialog.call("_refresh_presets", "")
+	var preset_picker := setup_dialog.find_child("LabPresetPicker", true, false) as OptionButton
+	for index in preset_picker.item_count:
+		if str(preset_picker.get_item_metadata(index)) == preset_id:
+			preset_picker.select(index)
+			preset_picker.item_selected.emit(index)
+	(setup_dialog.find_child("LabPresetLoad", true, false) as Button).pressed.emit()
+	if setup_dialog.call("snapshot") != test_setup: _errors.append("fresh native preset dialog lost saved party/bag")
+	var launched: Dictionary = hub.call("_launch_configured_encounter", setup_dialog.call("snapshot"))
 	if not launched.get("ok", false):
 		_errors.append("native editor could not launch saved Lab: " + str(launched.get("error", "")))
 	else:
+		if setup_dialog.visible or hub.has_unsaved_changes(): _errors.append("launch left settings open or modified author draft")
+		hub.call("_configure_selected_encounter")
+		if setup_dialog.call("snapshot") != test_setup: _errors.append("launched Lab setup not remembered during editor session")
+		setup_dialog.hide()
 		var ready := false
-		for attempt in 120:
-			await get_tree().create_timer(0.1).timeout
+		var ready_deadline := Time.get_ticks_msec() + 15000
+		while Time.get_ticks_msec() < ready_deadline:
+			await get_tree().process_frame
 			if FileAccess.file_exists(launched.log) and ("EMBER_LIBRARY_LAB_READY " + encounter_id) in FileAccess.get_file_as_string(launched.log):
 				ready = true
 				break
 		var repeated: Dictionary = hub.call("_run_selected_encounter")
 		if repeated.get("ok", false): _errors.append("native launch allowed two simultaneous Lab processes")
 		if OS.is_process_running(int(launched.pid)): OS.kill(int(launched.pid))
-		await _frames(10)
 		# Godot's active log can be buffered/locked on Windows; verify again after
 		# stopping only this test-owned child, when its file handle is closed.
-		if not ready and FileAccess.file_exists(launched.log): ready = ("EMBER_LIBRARY_LAB_READY " + encounter_id) in FileAccess.get_file_as_string(launched.log)
+		var log_text := ""
+		var close_deadline := Time.get_ticks_msec() + 5000
+		while Time.get_ticks_msec() < close_deadline:
+			await get_tree().process_frame
+			if FileAccess.file_exists(launched.log): log_text = FileAccess.get_file_as_string(launched.log)
+			if ("EMBER_LIBRARY_LAB_READY " + encounter_id) in log_text and "EMBER_LIBRARY_LAB_SETUP " in log_text:
+				ready = true
+				break
 		if not ready: _errors.append("spawned Lab did not consume selected saved encounter")
+		if not "EMBER_LIBRARY_LAB_SETUP " in log_text: _errors.append("native editor child lost test settings")
+		if not ready: print("LAB_CHILD_LOG_DIAGNOSTIC ", launched, " length=", log_text.length(), " text=", log_text)
 	for pair in [["encounter", encounter_id], ["unit", enemy_id], ["loot", loot_id]]:
 		Store.restore({"path": Store.path_for(pair[0], pair[1]), "exists": false})
 	get_undo_redo().clear_history(EditorUndoRedoManager.GLOBAL_HISTORY, false)

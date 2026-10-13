@@ -150,7 +150,11 @@ static func views(raw: Variant, items: Dictionary = {}, hero_ids: Array[String] 
 
 
 static func derived_stats(hero_id: String, member: Dictionary, items: Dictionary = {}) -> Dictionary:
-	var unit := _unit_resource(hero_id)
+	return derived_stats_for_unit(_unit_resource(hero_id), member, items)
+
+
+static func derived_stats_for_unit(unit: EmberCombatUnitResource, member: Dictionary, items: Dictionary = {}) -> Dictionary:
+	# Same rules for campaign members and saved hero cards used by the Lab.
 	var level := maxi(1, int(member.get("level", 1)))
 	var equipment := EmberEquipment.normalize(member.get("equipment", {}))
 	var combat_stats := EmberEquipment.combat_stats(equipment, items)
@@ -210,22 +214,26 @@ static func apply_to_combat_state(
 			continue
 		var member: Dictionary = party_data.get(hero_id, {})
 		var derived := derived_stats(hero_id, member, items)
-		var unit: Dictionary = units[hero_id]
-		unit["level"] = int(member.get("level", 1))
-		unit["xp"] = int(member.get("xp", 0))
-		unit["hp"] = int(member.get("hp", derived.get("maxHp", 1)))
-		unit["maxHp"] = int(derived.get("maxHp", 1))
-		unit["mp"] = int(member.get("mp", derived.get("maxMp", 0)))
-		unit["maxMp"] = int(derived.get("maxMp", 0))
-		unit["equipment"] = EmberEquipment.normalize(member.get("equipment", {}))
-		unit["atk"] = int(derived.get("atk", EmberEquipment.UNARMED_ATK))
-		for stat_key in ["str", "mag", "def", "res", "speed", "acc", "luck", "eva", "crit"]:
-			unit[stat_key] = int(derived.get(stat_key, unit.get(stat_key, 0)))
-		unit["resistances"] = (derived.get("resistances", {}) as Dictionary).duplicate(true)
-		unit["arenaAtk"] = int(derived.get("arenaAtk", EmberEquipment.UNARMED_ATK))
-		units[hero_id] = unit
+		units[hero_id] = project_combat_member(units[hero_id], member, derived)
 	result["units"] = units
 	return result
+
+
+static func project_combat_member(source: Dictionary, member: Dictionary, derived: Dictionary) -> Dictionary:
+	var unit := source.duplicate(true)
+	unit["level"] = int(member.get("level", 1))
+	unit["xp"] = int(member.get("xp", 0))
+	unit["hp"] = int(member.get("hp", derived.get("maxHp", 1)))
+	unit["maxHp"] = int(derived.get("maxHp", 1))
+	unit["mp"] = int(member.get("mp", derived.get("maxMp", 0)))
+	unit["maxMp"] = int(derived.get("maxMp", 0))
+	unit["equipment"] = EmberEquipment.normalize(member.get("equipment", {}))
+	unit["atk"] = int(derived.get("atk", EmberEquipment.UNARMED_ATK))
+	for stat_key in ["str", "mag", "def", "res", "speed", "acc", "luck", "eva", "crit"]:
+		unit[stat_key] = int(derived.get(stat_key, unit.get(stat_key, 0)))
+	unit["resistances"] = (derived.get("resistances", {}) as Dictionary).duplicate(true)
+	unit["arenaAtk"] = int(derived.get("arenaAtk", EmberEquipment.UNARMED_ATK))
+	return unit
 
 
 static func apply_combat_result(

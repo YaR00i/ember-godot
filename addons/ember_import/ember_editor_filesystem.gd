@@ -6,7 +6,7 @@ extends RefCounted
 const QUIET_SECONDS := 0.15
 static var _pending: Dictionary = {}
 static var _holds: Dictionary = {}
-static var _stats := {"scans": 0, "source_scans": 0, "merged": 0, "busy_waits": 0}
+static var _stats := {"scans": 0, "source_scans": 0, "file_updates": 0, "merged": 0, "busy_waits": 0}
 
 
 static func request(filesystem: Object = null, sources_only := false) -> void:
@@ -19,11 +19,31 @@ static func request(filesystem: Object = null, sources_only := false) -> void:
 	var id := filesystem.get_instance_id()
 	var deadline := Time.get_ticks_msec() + int(QUIET_SECONDS * 1000)
 	if _pending.has(id):
-		_pending[id].sources_only = bool(_pending[id].sources_only) and sources_only
+		_pending[id].sources_only = sources_only if bool(_pending[id].files_only) else bool(_pending[id].sources_only) and sources_only
+		_pending[id].files_only = false
 		_pending[id].deadline = deadline
 		_stats.merged += 1
 		return
-	_pending[id] = {"filesystem": weakref(filesystem), "sources_only": sources_only, "deadline": deadline}
+	_pending[id] = {"filesystem": weakref(filesystem), "sources_only": sources_only, "files_only": false, "paths": {}, "deadline": deadline}
+	_schedule(id, QUIET_SECONDS)
+
+
+static func request_file(path: String, filesystem: Object = null) -> void:
+	# Native text Resources need index/UID updates, not a background project
+	# rescan which can overlap the next ResourceSaver callback or Undo/delete.
+	if not path.begins_with("res://") or path.simplify_path() != path: return
+	if filesystem == null:
+		if not Engine.is_editor_hint(): return
+		filesystem = EditorInterface.get_resource_filesystem()
+	if not is_instance_valid(filesystem): return
+	var id := filesystem.get_instance_id()
+	var deadline := Time.get_ticks_msec() + int(QUIET_SECONDS * 1000)
+	if _pending.has(id):
+		_pending[id].paths[path] = true
+		_pending[id].deadline = deadline
+		_stats.merged += 1
+		return
+	_pending[id] = {"filesystem": weakref(filesystem), "sources_only": false, "files_only": true, "paths": {path: true}, "deadline": deadline}
 	_schedule(id, QUIET_SECONDS)
 
 
@@ -98,7 +118,13 @@ static func _flush(id: int) -> void:
 		return
 	# Erase first: requests raised synchronously by scan signals form a new batch.
 	_pending.erase(id)
-	if bool(entry.sources_only):
+	if bool(entry.files_only):
+		var paths: Array = entry.paths.keys()
+		paths.sort()
+		for path in paths:
+			_stats.file_updates += 1
+			filesystem.update_file(str(path))
+	elif bool(entry.sources_only):
 		_stats.source_scans += 1
 		filesystem.scan_sources()
 	else:

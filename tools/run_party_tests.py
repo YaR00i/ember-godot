@@ -21,7 +21,7 @@ FIXTURE_ITEMS = ('party_fixture_weapon.tres', 'party_fixture_arena.tres',
 
 def prepare_project(destination):
     copy_code(destination)
-    for folder in ('content/items', 'content/item_icons', 'materials', 'tools/fixtures'):
+    for folder in ('content/items', 'content/item_icons', 'content/game_start', 'materials', 'tools/fixtures'):
         shutil.copytree(ROOT / folder, destination / folder)
     for name in TESTS:
         shutil.copyfile(ROOT / 'tools' / name, destination / 'tools' / name)
@@ -49,7 +49,7 @@ def run_gate(godot, test, capture_arg=None):
         if capture_arg:
             project = destination / 'project.godot'
             project.write_text(project.read_text(encoding='utf-8').replace('gl_compatibility', 'forward_plus'), encoding='utf-8')
-        frozen = {folder: hashes(destination / folder) for folder in ('content/items', 'content/item_icons', 'content/combat', 'materials')}
+        frozen = {folder: hashes(destination / folder) for folder in ('content/items', 'content/item_icons', 'content/game_start', 'content/combat', 'materials')}
         environment = os.environ.copy()
         environment['EMBER_PARTY_TEST_ROOT'] = destination.as_posix()
         command = [str(godot)] + ([] if capture_arg else ['--headless'])

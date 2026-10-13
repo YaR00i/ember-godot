@@ -149,8 +149,13 @@ func _test_encounter() -> void:
 	_form.call("_undo_draft")
 	_form.call("_redo_draft")
 	_pick("DraftField_battlefield", source.battlefield, true)
-	_pick("DraftField_arena_scene", source.arena_scene, true)
-	_check(_session.draft.battlefield == source.battlefield and _session.draft.arena_scene == source.arena_scene, "field/arena refs changed")
+	var arena := load("res://scenes/combat/arenas/thaw_keeper.tscn") as PackedScene
+	_pick("DraftField_arena_scene", arena, true)
+	_check(_session.draft.battlefield == source.battlefield and _session.draft.arena_scene == arena, "field/arena refs changed")
+	_form.call("_undo_draft")
+	_check(_session.draft.arena_scene.resource_path == source.arena_scene.resource_path, "arena selection Undo lost old scene")
+	_form.call("_redo_draft")
+	_check(_session.draft.arena_scene == arena, "arena selection Redo lost selected scene")
 	_session.set_value("victory_rule", 8)
 	_mount()
 	_check(not _session.save(), "unsupported outcome rule published")
@@ -159,6 +164,7 @@ func _test_encounter() -> void:
 	rule.item_selected.emit(0)
 	_check(_session.save(), "encounter Save failed: " + _session.last_error)
 	var encounter := ResourceLoader.load(Store.path_for("encounter", ENCOUNTER_ID), "", ResourceLoader.CACHE_MODE_IGNORE) as EmberEncounterResource
+	_check(encounter.arena_scene.resource_path == arena.resource_path and encounter.battlefield.resource_path == source.battlefield.resource_path, "Save/reopen lost distinct arena/field references")
 	var state := encounter.initial_state({}, 77)
 	_check(state.units.size() == 3 and state.units.orik.cell == source.battlefield.party_deployment_cells[0] and state.units.mira.cell == source.battlefield.party_deployment_cells[1], "native roster deployment lost order")
 	for id in state.units: state.units[id].nextAt = 1000.0

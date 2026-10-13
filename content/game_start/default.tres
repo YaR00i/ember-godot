@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="EmberGameStartResource" load_steps=2 format=3 uid="uid://crj20e8b3gxvm"]
+
+[ext_resource type="Script" path="res://scripts/ember_game_start_resource.gd" id="1_start"]
+
+[resource]
+script = ExtResource("1_start")
+inventory = {
+"coin": 20
+}

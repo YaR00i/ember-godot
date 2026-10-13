@@ -101,11 +101,12 @@ func _test_lab_lifecycle(errors: Array[String]) -> void:
 	if progress != null:
 		progress.set_battle_strategy(saved_strategy)
 	var lab := LAB_SCENE.instantiate()
+	lab.get_node("CombatHUDLayer/CombatHUD").request_fullscreen = false
 	root.add_child(lab)
 	await process_frame
 	await process_frame
 	var hud := lab.find_child("CombatHUD", true, false)
-	var world := lab as Node3D
+	var world := lab.get_node("Arena") as Node3D
 	if hud == null or world == null:
 		errors.append("Combat Lab fixture is missing its HUD or 3D world")
 		lab.queue_free()

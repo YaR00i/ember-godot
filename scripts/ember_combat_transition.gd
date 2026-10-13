@@ -6,6 +6,8 @@ const Catalog := preload("res://scripts/prototypes/ember_encounter_catalog.gd")
 const CombatResult := preload("res://scripts/prototypes/ember_combat_result.gd")
 const COMBAT_SCENE := "res://scenes/combat_lab.tscn"
 const LIBRARY_TEST_PREFIX := "--ember-library-encounter="
+const LIBRARY_SETUP_PREFIX := "--ember-library-setup="
+const LabSetup = preload("res://scripts/prototypes/ember_combat_lab_setup.gd")
 const LIBRARY_CHECK_PREFIX := "--ember-library-check="
 
 static var _pending_encounter_id := ""
@@ -27,22 +29,31 @@ static var last_start_error := ""
 
 static func library_test_requested() -> bool:
 	for arg in OS.get_cmdline_user_args():
-		if arg.begins_with(LIBRARY_TEST_PREFIX): return true
+		if arg.begins_with(LIBRARY_TEST_PREFIX) or arg.begins_with(LIBRARY_SETUP_PREFIX): return true
 	return false
 
 
 static func isolated_editor_process_requested() -> bool:
 	for arg in OS.get_cmdline_user_args():
-		if arg.begins_with(LIBRARY_TEST_PREFIX) or arg.begins_with(LIBRARY_CHECK_PREFIX): return true
+		if arg.begins_with(LIBRARY_TEST_PREFIX) or arg.begins_with(LIBRARY_SETUP_PREFIX) or arg.begins_with(LIBRARY_CHECK_PREFIX): return true
 	return false
 
 
 static func library_test_request(arguments: PackedStringArray) -> Dictionary:
 	var paths := PackedStringArray()
+	var setups := PackedStringArray()
 	for arg in arguments:
 		if arg.begins_with(LIBRARY_TEST_PREFIX): paths.append(arg.trim_prefix(LIBRARY_TEST_PREFIX))
+		if arg.begins_with(LIBRARY_SETUP_PREFIX): setups.append(arg.trim_prefix(LIBRARY_SETUP_PREFIX))
 	if paths.size() != 1: return {"ok": false, "error": "Укажите одну сохранённую встречу для теста."}
-	return library_test_content(paths[0])
+	if setups.size() > 1: return {"ok": false, "error": "Укажите один набор настроек теста."}
+	var request := library_test_content(paths[0])
+	if not request.get("ok", false): return request
+	var prepared := LabSetup.prepare(request.encounter, {}) if setups.is_empty() else LabSetup.read_request(setups[0], request.encounter, paths[0])
+	if not prepared.get("ok", false): return prepared
+	request["preparedSetup"] = prepared
+	request["setupPath"] = "" if setups.is_empty() else setups[0]
+	return request
 
 
 static func library_test_content(path: String) -> Dictionary:
