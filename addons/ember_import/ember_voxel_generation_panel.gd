@@ -377,6 +377,7 @@ func _sync_controls() -> void:
 		if field.key == "leaf_density": control.get_parent().visible = int(recipe.parameters.generation_version) == 1
 		if field.key == "structure_diversity": control.get_parent().visible = recipe.generator_id == Generator.BUSH or Generator.LargeTreeProvider.TreeVariation.supported(recipe.parameters)
 		if field.key == "foliage_amount": control.get_parent().visible = int(recipe.parameters.generation_version) >= 2
+		if field.key == "foliage_element_size": control.get_parent().visible = int(recipe.parameters.get("foliage_volume_form", 0)) == 1
 		if field.key == "foliage_style":
 			control.visible = recipe.generator_id == Generator.BUSH or Generator.LargeTreeProvider.FoliagePattern.supported(recipe.parameters)
 			if recipe.generator_id == Generator.LARGE_TREE: control.set_item_disabled(2, not Generator.LargeTreeProvider.FoliagePattern.supports_style(recipe.parameters, 2))

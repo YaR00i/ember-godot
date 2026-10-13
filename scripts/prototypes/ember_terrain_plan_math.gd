@@ -8,10 +8,21 @@ const MOUNTAIN_DEFAULTS := {"height_m": 12.0, "summit_m": 4.0, "slope_m": 8.0}
 const ROAD_DEFAULTS := {"width_m":4.0,"edge_m":2.0,"grade_percent":25.0}
 const GROVE_DEFAULTS := {"density":0.6,"spacing_m":6.0,"slope_percent":25.0,"seed":7,"model_ids":[]}
 const PLACEMENT_DEFAULTS := {"density":0.6,"spacing_m":6.0,"clearance_m":0.5,"slope_percent":25.0,"seed":7,"model_ids":[]}
+const PLACEMENT_GROUP_DEFAULTS := {"pattern":"uniform","cluster_strength":0.75,"cluster_size_m":24.0}
 static func parameter_error(values: Dictionary, kind := "plateau") -> String:
+	if values.get("terrain_sampling","legacy8") not in ["legacy8","fine16"]:return "Неизвестная точность рельефа."
+	if kind == "mountain":
+		if values.get("mountain_shape","ellipse") not in ["ellipse","massif"]:return "Неизвестная форма горы."
+		var seed_value: Variant = values.get("shape_seed",7)
+		if typeof(seed_value)!=TYPE_INT or seed_value<0 or seed_value>1000000:return "Вариант массива: целое число от 0 до 1000000."
 	if kind in ["grove","placement"]:
 		if kind == "placement":
 			if typeof(values.get("clearance_m")) not in [TYPE_INT,TYPE_FLOAT] or not is_finite(float(values.clearance_m)) or values.clearance_m < 0 or values.clearance_m > 8: return "Свободное место вокруг основания: от 0 до 8 м."
+			if values.get("pattern","uniform") not in ["uniform","groups"]: return "Выберите рисунок расстановки."
+			for key in ["cluster_strength","cluster_size_m"]:
+				var value: Variant = values.get(key,PLACEMENT_GROUP_DEFAULTS[key])
+				var limits := Vector2(0,1) if key == "cluster_strength" else Vector2(8,96)
+				if typeof(value) not in [TYPE_INT,TYPE_FLOAT] or not is_finite(float(value)) or value < limits.x or value > limits.y: return "Кучность: от 0 до 100%; размер группы: от 8 до 96 м."
 		for key in ["density","spacing_m","slope_percent"]:
 			if typeof(values.get(key)) not in [TYPE_INT,TYPE_FLOAT] or not is_finite(float(values[key])): return "Параметры расстановки должны быть конечными числами."
 		if values.density < 0 or values.density > 1: return "Плотность: от 0 до 100%."
@@ -79,7 +90,27 @@ static func mountain_weight(bounds: Rect2i, point_m: Vector2, values: Dictionary
 	var summit := float(values.summit_m)*0.5
 	var radius := summit+float(values.slope_m)
 	var scale := Vector2(bounds.size)/float(min(bounds.size.x,bounds.size.y))
-	var distance := ((point_m-Rect2(bounds).get_center())/scale).length()
+	var local := (point_m-Rect2(bounds).get_center())/scale
+	if values.get("mountain_shape","ellipse") == "massif":
+		# Large coherent lobes, broad crest and a compact, zero-slope foot.
+		# No fine noise here: surface detail remains a separate operation.
+		var angle := fmod(float(values.get("shape_seed",7))*2.399963229728653,TAU)
+		var p := local.rotated(angle)/radius
+		var theta := atan2(p.y,p.x)
+		var reach := 0.82+0.10*sin(3.0*theta+0.7)+0.06*cos(5.0*theta-0.4)
+		var radial := p.length()/reach
+		var foot := 1.0-smoothstep(0.55,1.0,radial)
+		var crest := Vector2(p.x+0.10-0.12*sin(p.y*3.0),p.y-0.07)
+		var distance := Vector2(crest.x*1.9,crest.y*0.85).length()
+		var crown := clampf(summit/radius,0.04,0.55)
+		var body := pow(1.0-smoothstep(crown*0.15,1.08,distance),1.25)
+		body *= 0.82+0.18*cos((p.y+0.13)*7.0)
+		var shoulder_a := 0.48*(1.0-smoothstep(0.0,0.60,(p-Vector2(0.30,-0.29)).length()))
+		var shoulder_b := 0.34*(1.0-smoothstep(0.0,0.52,(p-Vector2(-0.33,0.35)).length()))
+		# Rounded union of broad shoulders; no creases where lobes meet.
+		var mass := pow(pow(body,4.0)+pow(shoulder_a,4.0)+pow(shoulder_b,4.0),0.25)
+		return clampf(mass*foot,0.0,1.0)
+	var distance := local.length()
 	return 1.0-smoothstep(summit,radius,distance)
 
 static func lake_bounds_error(bounds: Rect2i, values: Dictionary) -> String:
@@ -168,10 +199,26 @@ static func grove_random(seed: int, cell: Vector2i, channel: int) -> float:
 	value = ((value^(value>>13))*1274126177)&0x7fffffff
 	return float(value)/2147483648.0
 
-static func grove_candidate(bounds: Rect2i, values: Dictionary, cell: Vector2i) -> Dictionary:
+static func placement_group_noise(values: Dictionary) -> FastNoiseLite:
+	if values.get("pattern","uniform") != "groups" or values.get("cluster_strength",PLACEMENT_GROUP_DEFAULTS.cluster_strength) == 0: return null
+	var noise := FastNoiseLite.new()
+	noise.seed = (int(values.seed)+1669)&0x7fffffff
+	noise.noise_type = FastNoiseLite.TYPE_PERLIN
+	noise.fractal_type = FastNoiseLite.FRACTAL_NONE
+	noise.frequency = 1.0/float(values.get("cluster_size_m",PLACEMENT_GROUP_DEFAULTS.cluster_size_m))
+	return noise
+
+static func placement_density(point: Vector2, values: Dictionary, group_noise: FastNoiseLite = null) -> float:
+	var density: float = values.density
+	if group_noise == null or density <= 0 or density >= 1: return density
+	# Coherent variation in map metres; endpoints still mean none / all candidates.
+	var strength: float = values.get("cluster_strength",PLACEMENT_GROUP_DEFAULTS.cluster_strength)
+	return clampf(density+group_noise.get_noise_2dv(point)*3.0*minf(density,1.0-density)*strength,0,1)
+
+static func grove_candidate(bounds: Rect2i, values: Dictionary, cell: Vector2i, group_noise: FastNoiseLite = null) -> Dictionary:
 	var spacing: float = values.spacing_m
 	var point := Vector2(bounds.position)+(Vector2(cell)+Vector2.ONE*0.5)*spacing
 	point += Vector2(grove_random(values.seed,cell,1)-0.5,grove_random(values.seed,cell,2)-0.5)*spacing*0.7
-	if not Rect2(bounds).has_point(point) or grove_random(values.seed,cell,3) >= values.density: return {}
+	if not Rect2(bounds).has_point(point) or grove_random(values.seed,cell,3) >= placement_density(point,values,group_noise): return {}
 	return {"key":"%d_%d"%[cell.x,cell.y],"point":point,"turn":grove_random(values.seed,cell,4)*TAU,
 		"variant":mini(values.model_ids.size()-1,int(grove_random(values.seed,cell,5)*values.model_ids.size()))}

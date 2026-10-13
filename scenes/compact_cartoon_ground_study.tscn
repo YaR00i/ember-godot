@@ -1,0 +1,51 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_cartoon_ground_study.gd" id="1_a0ucw"]
+[ext_resource type="Script" path="res://scripts/ember_map_loader.gd" id="2_d8gg2"]
+[ext_resource type="Resource" path="res://content/world_terrains/cartoon_ground_study.res" id="3_l450j"]
+
+[sub_resource type="Environment" id="Environment_fxfys"]
+background_mode = 1
+background_color = Color(0.6431373, 0.7176471, 0.7490196, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.70980394, 0.7647059, 0.827451, 1)
+ambient_light_energy = 0.45
+tonemap_mode = 2
+
+[node name="CartoonGroundStudy" type="Node3D" unique_id=817682093]
+script = ExtResource("1_a0ucw")
+
+[node name="Map" type="Node3D" parent="." unique_id=1700978700]
+script = ExtResource("2_d8gg2")
+map_id = "cartoon_ground_study"
+compact_terrain = ExtResource("3_l450j")
+compact_ground_style = 1
+compact_material_light_mode = 1
+authored_size_blocks = Vector2i(24, 16)
+imported_tile_size = 1.0
+
+[node name="Look" type="Node3D" parent="Map" unique_id=537937796]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="Map/Look" unique_id=398724743]
+environment = SubResource("Environment_fxfys")
+
+[node name="Sun" type="DirectionalLight3D" parent="Map/Look" unique_id=2010632460]
+transform = Transform3D(0.81915206, 0.38379756, -0.42625037, 0, 0.7431448, 0.6691306, 0.57357645, -0.5481197, 0.6087486, 0, 0, 0)
+light_color = Color(1, 0.94509804, 0.8509804, 1)
+light_energy = 1.4
+shadow_enabled = true
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=1265182518]
+transform = Transform3D(0.74899656, -0.2844404, 0.59841275, 0, 0.9031638, 0.4292961, -0.6625739, -0.3215413, 0.6764666, 35, 18, 34)
+current = true
+fov = 35.0
+
+[node name="Instructions" type="CanvasLayer" parent="." unique_id=1133059181]
+
+[node name="Caption" type="Label" parent="Instructions" unique_id=1624619091]
+offset_left = 20.0
+offset_top = 16.0
+offset_right = 20.0
+offset_bottom = 16.0
+text = "Мультяшная земля · ПКМ — повернуть · колесо — приблизить
+M — гладкая / воксельная · L — повернуть свет"

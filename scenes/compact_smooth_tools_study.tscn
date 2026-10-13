@@ -1,0 +1,54 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_cartoon_ground_study.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/ember_map_loader.gd" id="2"]
+[ext_resource type="Resource" path="res://content/world_terrains/smooth_tools_base.res" id="3"]
+[ext_resource type="Resource" path="res://content/world_terrains/smooth_tools_detail.res" id="4"]
+
+[sub_resource type="Environment" id="Environment"]
+background_mode = 1
+background_color = Color(0.6431373, 0.7176471, 0.7490196, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.70980394, 0.7647059, 0.827451, 1)
+ambient_light_energy = 0.45
+tonemap_mode = 2
+
+[node name="SmoothToolsStudy" type="Node3D"]
+script = ExtResource("1")
+orbit_center = Vector3(4, 1.8, 4)
+baseline_terrain = ExtResource("3")
+
+[node name="Map" type="Node3D" parent="."]
+script = ExtResource("2")
+map_id = "smooth_tools_study"
+compact_terrain = ExtResource("4")
+compact_ground_style = 1
+compact_smooth_material_blend = true
+compact_material_light_mode = 1
+authored_size_blocks = Vector2i(8, 8)
+imported_tile_size = 1.0
+
+[node name="Look" type="Node3D" parent="Map"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="Map/Look"]
+environment = SubResource("Environment")
+
+[node name="Sun" type="DirectionalLight3D" parent="Map/Look"]
+transform = Transform3D(0.81915206, 0.38379756, -0.42625037, 0, 0.7431448, 0.6691306, 0.57357645, -0.5481197, 0.6087486, 0, 0, 0)
+light_color = Color(1, 0.94509804, 0.8509804, 1)
+light_energy = 1.4
+shadow_enabled = true
+
+[node name="Props" type="Node3D" parent="Map"]
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(0.70710678, 0, -0.70710678, -0.3547, 0.865, -0.3547, 0.6117, 0.5016, 0.6117, 14, 10, 14)
+current = true
+fov = 40.0
+
+[node name="Instructions" type="CanvasLayer" parent="."]
+
+[node name="Caption" type="Label" parent="Instructions"]
+offset_left = 20.0
+offset_top = 16.0
+text = "Прежняя лепка и покраска · B — до/после фактуры · M — вид · ПКМ — камера · L — свет"

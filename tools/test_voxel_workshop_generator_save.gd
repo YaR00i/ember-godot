@@ -71,6 +71,8 @@ func _run() -> void:
 		panel.set_parameter("foliage_style", 3 if mode == 2 else 1)
 		panel.set_parameter("foliage_pattern_strength", 42 if mode == 2 else 25)
 		panel.set_parameter("foliage_detail", 70)
+		panel.set_parameter("foliage_volume_form", 1)
+		panel.set_parameter("foliage_element_size", mode % 2)
 		panel.prepare()
 		# Inject fixture publication paths before preparation captures update hashes.
 		var prepared := Creation.new()
@@ -121,6 +123,7 @@ func _run() -> void:
 		check(redone.voxels == exact_voxels and redone.palette == exact_palette, "Redo restores exact published geometry and palette")
 		check(panel.open_source(saved_source), "saved source opens contextual recipe")
 		check(panel.recipe.parameters == expected and panel.controls.foliage_pattern_strength.value == expected.foliage_pattern_strength, "reopen restores style and strength controls")
+		check(panel.controls.foliage_element_size.selected == expected.foliage_element_size and panel.controls.foliage_volume_form.selected == 1, "reopen restores flat element controls")
 		panel.set_parameter("foliage_pattern_strength", 99)
 		check(not workspace.save_changes(), "changed parameters require a fresh preview")
 		check(Creation.load_recipe(id, original.recipe_directory).parameters == expected, "rejected Save leaves published recipe unchanged")

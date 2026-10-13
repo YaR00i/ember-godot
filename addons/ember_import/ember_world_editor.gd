@@ -101,6 +101,7 @@ var shore_width: SpinBox
 var softness: SpinBox
 var compact_feature_scale: SpinBox
 var compact_detail: SpinBox
+var compact_detail_pattern: OptionButton
 var compact_seed: SpinBox
 var compact_direction: OptionButton
 var compact_level_from_point: CheckBox
@@ -549,6 +550,9 @@ func _finish_terrain_plan_selection(bounds_m: Rect2i) -> void:
 			plan.upgrade_local_layers(); plan.regions[-1].kind = "placement"; plan.regions[-1].enabled = true
 			plan.regions[-1].name = "Объекты %d"%plan.regions.size()
 			plan.regions[-1].parameters = TerrainPlan.Influence.PLACEMENT_DEFAULTS.duplicate(true)
+		if _plan_selection in ["add","add_plateau","add_lake","add_mountain"]:
+			plan.upgrade_local_layers();plan.regions[-1].parameters.terrain_sampling="fine16"
+			if _plan_selection=="add_mountain":plan.regions[-1].parameters.merge({"mountain_shape":"massif","shape_seed":7},true)
 		_plan_selected_id = id
 	else:
 		var index: int = plan.index_of(_plan_selected_id)
@@ -581,6 +585,7 @@ func _finish_plan_path() -> void:
 		_plan_selected_id = "%s_%s_%s" % [kind,OS.get_process_id(),Time.get_ticks_usec()]
 		plan.regions.append({"id":_plan_selected_id,"name":("Дорога %d" if kind == "road" else "Река %d") % (plan.regions.size()+1),"kind":kind,"enabled":true,"parameters":(TerrainPlan.Influence.ROAD_DEFAULTS if kind == "road" else TerrainPlan.Influence.RIVER_DEFAULTS).duplicate()})
 		index = plan.regions.size()-1
+		plan.regions[index].parameters.terrain_sampling="fine16"
 	if index < 0: return
 	plan.regions[index].points_m = _path_points.duplicate()
 	plan.regions[index].bounds = _plan_path_bounds(plan.regions[index],plan.regions[index].parameters,extent)
@@ -601,6 +606,7 @@ func _save_terrain_plan_parameters(parameters: Dictionary) -> void:
 	if plan.regions[index].bounds != _generation_context.get("area"):
 		_generation_panel.set_pending("Границы изменились. Откройте область снова."); return
 	plan.regions[index].parameters = parameters.duplicate(true)
+	if parameters.has("terrain_operation") or parameters.has("terrain_sampling") or parameters.has("mountain_shape"):plan.upgrade_local_layers()
 	if plan.regions[index].get("kind") == "grove" and parameters.has("clearance_m"): plan.regions[index].kind = "placement"
 	if plan.regions[index].get("kind") in ["river","road"]:
 		plan.regions[index].bounds = _plan_path_bounds(plan.regions[index],parameters,Vector2i(entry.resource.width/16,entry.resource.depth/16))
@@ -622,7 +628,7 @@ func _compact_active() -> bool:
 	return not entry.is_empty() and entry.get("compact", false)
 
 func _set_busy(value: bool) -> void:
-	for control in [target_choice,category,tools,palette,sand_palette,surface_role_choice,material_variant_choice,material_slot_button,material_pattern_button,clip,shore_direction,compact_direction,compact_level_from_point,terrain_edit_scale,terrain_height_step,brush_shape]:
+	for control in [target_choice,category,tools,palette,sand_palette,surface_role_choice,material_variant_choice,material_slot_button,material_pattern_button,clip,shore_direction,compact_direction,compact_detail_pattern,compact_level_from_point,terrain_edit_scale,terrain_height_step,brush_shape]:
 		if is_instance_valid(control): control.disabled = value
 	for control in [radius,depth,coarse_depth,plane_height,water_height,shore_width,softness,compact_feature_scale,compact_detail,compact_seed]:
 		if is_instance_valid(control): control.editable = not value
@@ -698,6 +704,24 @@ func _ensure_generation_panel() -> void:
 		_generation_panel.select_area_requested.connect(func(): begin_section_selection(true))
 		_generation_panel.plan_settings_requested.connect(_save_terrain_plan_parameters)
 		_generation_panel.return_plan_requested.connect(_open_terrain_plan)
+		_generation_panel.paint_protection_requested.connect(_set_paint_protection)
+
+func _set_paint_protection(locked: bool) -> void:
+	var target: EmberMapLoader=(_generation_context.target as WeakRef).get_ref() if _generation_context.get("target") is WeakRef else null
+	var area: Rect2i=_generation_context.get("area",Rect2i())
+	if not is_instance_valid(target) or not area.has_area() or area.size.x>32 or area.size.y>32:
+		_generation_panel.set_pending("Выберите существующую область до 32×32 м.");return
+	var draft: Dictionary=sessions.open_map(target,scene)
+	if draft.is_empty():_generation_panel.set_pending(sessions.error);return
+	if not Rect2i(0,0,draft.resource.width,draft.resource.depth).encloses(Rect2i(area.position*16,area.size*16)):
+		_generation_panel.set_pending("Область выходит за границы земли.");return
+	var previous: Resource=TerrainPlan.read(target)
+	var next: Resource=previous.working_copy() if previous!=null else TerrainPlan.new()
+	next.protect_paint_area(Rect2i(area.position*16,area.size*16),locked)
+	var message:=commit_terrain_plan(target,next)
+	if not message.is_empty():_generation_panel.set_pending(message);return
+	if not _generation_context.get("plan_id","").is_empty():_generation_context.plan_version=next.data()
+	_generation_panel.set_pending("Покраска выделения защищена. Ctrl+Z отменяет защиту; обновите предпросмотр." if locked else "Защита выделения снята. Ctrl+Z возвращает её; обновите предпросмотр.")
 
 
 func _prepare_terrain_generation(parameters: Dictionary) -> void:
@@ -723,12 +747,13 @@ func _prepare_terrain_generation(parameters: Dictionary) -> void:
 		if not context.plan_id.is_empty():
 			var index: int = input.index_of(context.plan_id)
 			input.regions[index].parameters = parameters.duplicate(true)
+			if parameters.has("terrain_sampling") or parameters.has("mountain_shape"):input.upgrade_local_layers()
 			if input.regions[index].get("kind") in ["river","road"]: input.regions[index].bounds = _plan_path_bounds(input.regions[index],parameters,Vector2i(draft.resource.width/16,draft.resource.depth/16))
 		_generation_job = TerrainComposition.new()
 		prepared = _generation_job.begin(draft.resource, input)
 	else:
 		_generation_job = TerrainGeneration.new()
-		prepared = _generation_job.begin(draft.resource, context.area, parameters, context.addition)
+		prepared = _generation_job.begin(draft.resource, context.area, parameters, context.addition,TerrainPlan.read(target))
 	if not prepared:
 		_generation_panel.set_pending(_generation_job.error)
 		_generation_job = null
@@ -736,6 +761,10 @@ func _prepare_terrain_generation(parameters: Dictionary) -> void:
 	_generation_context["draft"] = draft
 	_generation_context["version"] = draft.resource.working_copy()
 	_generation_context["layout"] = Sessions.compact_layout(target).positions
+	_generation_context["terrain_operation"] = parameters.get("terrain_operation","generate")
+	if parameters.get("terrain_operation","")=="coverage":
+		var paint_plan: Resource=TerrainPlan.read(target)
+		_generation_context.paint_plan_version=paint_plan.data() if paint_plan!=null else {}
 	_generation_context["selection"] = _generation_job.addition.duplicate()
 	_generation_panel.set_pending("Подготавливаю землю…")
 
@@ -769,6 +798,7 @@ func _process_terrain_generation() -> void:
 	var candidate: EmberTerrainPilotResource = _generation_job.candidate
 	var bounds: Rect2i = _generation_job.bounds
 	var profile_ms := float(_generation_job.elapsed_us) / 1000.0
+	_generation_context.protected_paint_columns=_generation_job.protected_paint_columns if not _generation_context.get("composition",false) else 0
 	var preview_tiles: Array[Vector2i] = []
 	if _generation_context.get("composition", false):
 		_generation_context.output_plan = _generation_job.output_plan
@@ -800,7 +830,10 @@ func _process_terrain_generation() -> void:
 		if _generation_preview == preview and is_instance_valid(_generation_panel):
 			if _generation_context.get("composition", false):
 				_generation_panel.set_ready("Предпросмотр областей готов · защищено мест: %d. Изменения применятся одной командой Undo." % _generation_context.protected_blocks.size()); _update_overlay(); return
-			_generation_panel.set_ready("Предпросмотр готов. Добавится %d участков; прежняя земля сохранится." % _generation_context.selection.keys.size() if _generation_context.addition else "Предпросмотр готов · расчёт %.0f мс. Применение заменит выбранную землю; отмена вернёт прежний вид." % profile_ms)
+			var operation: String=_generation_context.get("terrain_operation","generate")
+			var result_text: String={"detail":"Предпросмотр фактуры готов. Покраска и вода сохраняются; применение — одна команда Undo.","coverage":"Предпросмотр покрытий готов. Форма земли и вода сохраняются; применение — одна команда Undo."}.get(operation,"Предпросмотр готов · расчёт %.0f мс. Применение заменит форму выбранной земли; отмена вернёт прежний вид."%profile_ms)
+			if operation=="coverage":result_text+=" Защищено ручной покраски: %.1f м²."%(float(_generation_context.get("protected_paint_columns",0))/256.0)
+			_generation_panel.set_ready("Предпросмотр готов. Добавится %d участков; прежняя земля сохранится." % _generation_context.selection.keys.size() if _generation_context.addition else result_text)
 	)
 
 
@@ -814,7 +847,7 @@ func _submit_terrain_generation() -> void:
 		if plan == null or plan.data() != context.plan_version:
 			_generation_panel.set_pending("План изменился. Подготовьте предпросмотр заново."); clear_terrain_generation_preview(); return
 	clear_terrain_generation_preview()
-	var message := commit_terrain_composition(target, context) if context.get("composition", false) else commit_selected_sections(target, context) if context.get("addition", false) else commit_terrain_generation(target, context.draft, context.version, context.candidate)
+	var message := commit_terrain_composition(target, context) if context.get("composition", false) else commit_selected_sections(target, context) if context.get("addition", false) else commit_terrain_generation(target, context.draft, context.version, context.candidate,context.get("paint_plan_version"))
 	if message.is_empty():
 		_close_generation_panel()
 	else:
@@ -944,11 +977,14 @@ func _apply_composed_terrain(target: EmberMapLoader, draft: Dictionary, terrain:
 	_apply_generated_terrain(target, draft, terrain)
 	_refresh_terrain_plan()
 
-func commit_terrain_generation(target: EmberMapLoader, draft: Dictionary, before_version: EmberTerrainPilotResource, candidate: EmberTerrainPilotResource) -> String:
+func commit_terrain_generation(target: EmberMapLoader, draft: Dictionary, before_version: EmberTerrainPilotResource, candidate: EmberTerrainPilotResource,expected_paint_plan: Variant=null) -> String:
 	if not is_instance_valid(target) or candidate == null: return "Карта была закрыта."
 	if draft.get("target") is not WeakRef or draft.target.get_ref() != target or not sessions.entries.values().has(draft): return "Черновик карты изменился."
 	var before: EmberTerrainPilotResource = draft.resource
 	if not before.same_terrain_data(before_version): return "Земля изменилась после предпросмотра. Подготовьте рельеф заново."
+	if expected_paint_plan!=null:
+		var plan: Resource=TerrainPlan.read(target)
+		if (plan.data() if plan!=null else {})!=expected_paint_plan:return "Защита покраски или план изменились. Обновите предпросмотр."
 	if Vector2i(candidate.width, candidate.depth) != Vector2i(before.width, before.depth): return "Генерация не может изменять размер карты."
 	var validation := candidate.validation_errors()
 	if not validation.is_empty(): return validation[0]
@@ -1673,6 +1709,9 @@ func build_sidebar() -> Control:
 	compact_level_from_point.button_pressed = true
 	advanced.add_child(compact_level_from_point)
 	compact_feature_scale = _brush_slider(advanced,"feature_scale")
+	compact_detail_pattern = _brush_choice(settings,"detail_pattern")
+	compact_detail_pattern.tooltip_text="Фактура покрытия: каменные выступы, песчаные гребни и тихие неровности грунта. Сохраняет покраску и подводное дно; PNG выбирается в прежнем материале."
+	compact_detail_pattern.item_selected.connect(func(_value):cancel_stroke();_tool_changed())
 	compact_detail = _brush_slider(advanced,"detail")
 	compact_seed = _brush_spin(advanced,"seed")
 	compact_direction = _brush_choice(advanced,"direction")
@@ -1800,6 +1839,7 @@ func build_sidebar() -> Control:
 	radius = _brush_slider(parameters,"radius")
 	depth = _brush_slider(parameters,"strength_detail")
 	coarse_depth = _brush_slider(parameters,"strength_steps")
+	settings.move_child(compact_detail_pattern,2)
 	_brush_parameter_controls = {
 		"edit_scale":terrain_edit_scale, "height_step":terrain_height_step, "shape":brush_shape,
 		"radius":_parameter_group(radius), "strength_detail":_parameter_group(depth),
@@ -1808,7 +1848,7 @@ func build_sidebar() -> Control:
 		"shore_width":_parameter_group(shore_width), "shore_direction":shore_direction,
 		"softness":_parameter_group(softness), "level_from_point":compact_level_from_point,
 		"feature_scale":_parameter_group(compact_feature_scale), "detail":_parameter_group(compact_detail),
-		"seed":compact_seed.get_parent(), "direction":compact_direction,
+		"seed":compact_seed.get_parent(), "direction":compact_direction,"detail_pattern":compact_detail_pattern,
 	}
 	radius.value_changed.connect(func(_value): cancel_stroke(); _update_overlay())
 	depth.value_changed.connect(func(_value): cancel_stroke())
@@ -2248,9 +2288,11 @@ func _tool_changed() -> void:
 	for i in _tool_buttons.size():
 		_tool_buttons[i].set_pressed_no_signal(i == tools.selected)
 	var coarse_profile := _compact_active() and terrain_edit_scale.selected != 2
-	var active_parameters := BrushParameters.active_for(_mode(),_compact_active(),coarse_profile,compact_level_from_point.button_pressed)
+	var active_parameters := BrushParameters.active_for(_mode(),_compact_active(),coarse_profile,compact_level_from_point.button_pressed,compact_detail_pattern.selected==1)
 	if is_instance_valid(inspector_title): inspector_title.text = "Параметры · %s" % tools.get_item_text(tools.selected) if tools.selected >= 0 else "Параметры кисти"
 	if is_instance_valid(inspector_hint): inspector_hint.text = "Ступени по %s блока. Ячейки %s выравниваются." % ["¼" if terrain_height_step.selected == 0 else "½", "8×8 вокселей" if terrain_edit_scale.selected == 0 else "2×2 вокселя"] if coarse_profile and category.selected == 0 else TOOL_HINTS.get(_mode(),"")
+	if _compact_active() and _mode()=="generator" and compact_detail_pattern.selected==1:
+		inspector_hint.text="Выступы камня, гребни песка и неровности грунта. Сохраняет выбранные покрытия."
 	if is_instance_valid(inspector_icon): inspector_icon.texture = _editor_icon(TOOL_ICONS.get(_mode(),&"ToolSelect"))
 	for parameter_id: String in _brush_parameter_controls:
 		var control: Control = _brush_parameter_controls[parameter_id]
@@ -2827,7 +2869,7 @@ func _forward_compact(event: InputEvent) -> int:
 				if event.ctrl_pressed:
 					mode = {"raise":"lower","lower":"raise","water":"dry","dry":"water"}.get(mode,mode)
 				var selected_palette := int(palette.get_selected_metadata()) if palette.selected >= 0 else 1
-				var direction := compact_direction.selected
+				var direction: int = [0,1,-1][compact_direction.selected]
 				var target_world := roundi(plane_height.value) if mode == "level" and not compact_level_from_point.button_pressed else -99999
 				var coarse_profile := terrain_edit_scale.selected != 2
 				var height_step := (CompactBrushMath.QUARTER_BLOCK_HEIGHT_STEP if terrain_height_step.selected == 0 else CompactBrushMath.HALF_BLOCK_HEIGHT_STEP) if coarse_profile else 1
@@ -2836,10 +2878,10 @@ func _forward_compact(event: InputEvent) -> int:
 					_compact_trace.begin_brush_stroke({"mode": mode, "radius_blocks": radius.value,
 						"edit_scale": _compact_edit_scale(), "brush_shape": "square" if brush_shape.selected == 0 else "circle",
 						"height_step_voxels": height_step, "strength_voxels": height_strength,
-						"feature_scale": compact_feature_scale.value, "detail": compact_detail.value})
+						"feature_scale": compact_feature_scale.value, "detail": compact_detail.value,"material_detail":compact_detail_pattern.selected==1})
 					_compact_trace.stage("press_pick", press_pick_usec)
 				var begin_started := Time.get_ticks_usec() if _compact_trace.recording else 0
-				if _compact_brush.begin(mode,radius.value,height_strength,selected_palette,roundi(water_height.value),roundi(compact_feature_scale.value),roundi(compact_detail.value),roundi(compact_seed.value),direction,target_world,_compact_edit_scale(),"square" if brush_shape.selected == 0 else "circle",height_step):
+				if _compact_brush.begin(mode,radius.value,height_strength,selected_palette,roundi(water_height.value),roundi(compact_feature_scale.value),roundi(compact_detail.value),roundi(compact_seed.value),direction,target_world,_compact_edit_scale(),"square" if brush_shape.selected == 0 else "circle",height_step,compact_detail_pattern.selected==1):
 					if begin_started > 0:
 						_compact_trace.stage("brush_begin", Time.get_ticks_usec() - begin_started)
 						_compact_brush.diagnostic_sink = _compact_trace

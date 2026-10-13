@@ -7,7 +7,7 @@ signal pattern_saved(pattern: Resource, id: String)
 signal pattern_created(id: String, role: String)
 signal edit_closed
 signal variant_opened(id: String, role: String)
-const EDIT_FIELDS := ["role_id", "base_color", "light_color", "shadow_color", "pixels", "side_pixels", "gloss", "sheen", "pixel_relief", "micro_relief", "micro_size_m", "micro_roughness", "relief_pixels", "side_relief_pixels", "roughness_pixels", "side_roughness_pixels", "pattern_size_m", "roughness_variation"]
+const EDIT_FIELDS := ["role_id", "base_color", "light_color", "shadow_color", "pixels", "side_pixels", "gloss", "sheen", "pixel_relief", "micro_relief", "micro_size_m", "micro_roughness", "relief_pixels", "side_relief_pixels", "roughness_pixels", "side_roughness_pixels", "pattern_size_m", "roughness_variation", "albedo_texture"]
 
 const Materials = preload("res://scripts/ember_voxel_surface_materials.gd")
 const Pattern = preload("res://scripts/ember_compact_terrain_pattern.gd")
@@ -50,6 +50,8 @@ var _canvas_scroll: ScrollContainer
 var _name_input: LineEdit
 var _file_dialog: FileDialog
 var _file_import := false
+var _texture_dialog: FileDialog
+var _texture_label: Label
 
 
 func _init() -> void:
@@ -76,6 +78,14 @@ func _ready() -> void:
 	column.add_child(_variant_choice); _variant_choice.hide()
 	var hint := Label.new(); hint.text = "Общий вариант: сохранение изменит все карты, где он выбран."
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; column.add_child(hint)
+	_texture_label=Label.new();_texture_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;column.add_child(_texture_label)
+	for item in [["Выбрать текстуру PNG…",_choose_texture],["Убрать PNG · использовать рисунок",_remove_texture]]:
+		var button:=Button.new();button.text=item[0];button.tooltip_text=item[0]
+		button.clip_text=true;button.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+		button.pressed.connect(item[1]);column.add_child(button)
+	_texture_dialog=FileDialog.new();_texture_dialog.access=FileDialog.ACCESS_RESOURCES
+	_texture_dialog.file_mode=FileDialog.FILE_MODE_OPEN_FILE;_texture_dialog.add_filter("*.png","Текстура PNG")
+	_texture_dialog.file_selected.connect(_load_texture);add_child(_texture_dialog)
 	for tone_index in 3:
 		var label := Label.new(); label.text = ["Основной", "Светлый", "Тёмный"][tone_index]; column.add_child(label)
 		var picker := ColorPickerButton.new(); picker.custom_minimum_size.y = 28
@@ -139,6 +149,28 @@ func _ready() -> void:
 	_file_dialog.add_filter("*.png", "PNG 16×16"); _file_dialog.file_selected.connect(_on_file_selected); add_child(_file_dialog)
 	set_process_input(true)
 
+
+func _choose_texture() -> void:
+	if _draft==null:return
+	_texture_dialog.popup_centered_ratio(0.65)
+
+func _remove_texture() -> void:
+	_change_texture(null)
+
+func _load_texture(path: String) -> void:
+	var texture:=load(path) as Texture2D
+	if texture==null:_message.text="Не удалось открыть PNG из проекта.";return
+	_change_texture(texture)
+
+func _change_texture(value: Texture2D) -> void:
+	if _draft==null or _draft.albedo_texture==value:return
+	if value!=null and (value.get_width()>4096 or value.get_height()>4096):
+		_message.text="Максимальный размер текстуры — 4096 × 4096.";return
+	_history.create_action("Текстура материала")
+	_history.add_do_method(_set_texture.bind(value));_history.add_undo_method(_set_texture.bind(_draft.albedo_texture));_history.commit_action()
+
+func _set_texture(value: Texture2D) -> void:
+	_draft.albedo_texture=value;_refresh_grid()
 
 func _input(event: InputEvent) -> void:
 	if _draft == null or not event is InputEventKey or not event.pressed or event.echo: return
@@ -238,6 +270,8 @@ func _select_face(index: int) -> void:
 
 
 func _refresh_grid() -> void:
+	if _draft!=null and is_instance_valid(_texture_label):
+		_texture_label.text="PNG: "+_draft.albedo_texture.resource_path.get_file()+" · рисунок ниже сохранён как запасной" if _draft.albedo_texture!=null else "Текстура PNG не выбрана · используется рисунок 16×16"
 	if _draft == null: return
 	_grid.set_tones(_draft.surface_pixels(_channel,_editing_side), _channel_colors())
 	for picker in _tones: picker.disabled=_channel!="color"

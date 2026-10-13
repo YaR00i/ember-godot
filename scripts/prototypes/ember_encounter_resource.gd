@@ -57,6 +57,8 @@ func validation_errors() -> Array[String]:
 		])
 	if arena_scene == null:
 		errors.append("Выберите сцену арены для редактирования в 3D.")
+	else:
+		errors.append_array(arena_validation_errors(arena_scene))
 	_validate_roster("Герои", party_unit_ids, "hero", errors)
 	_validate_roster("Враги", enemy_unit_ids, "enemy", errors)
 	for unit_id in party_unit_ids:
@@ -69,6 +71,51 @@ func validation_errors() -> Array[String]:
 	if victory_rule != VictoryRule.ALL_ENEMIES_DEFEATED or defeat_rule != DefeatRule.ALL_HEROES_DEFEATED:
 		errors.append("Выберите поддерживаемые условия: все враги побеждены / все герои побеждены.")
 	return errors
+
+
+static func arena_validation_errors(scene: PackedScene) -> Array[String]:
+	# Read saved structure without running author scripts in the editor/checker.
+	var errors: Array[String] = []
+	if scene == null or not scene.can_instantiate():
+		errors.append("Арена: выберите сохранённую сцену общего боевого поля.")
+		return errors
+	var structure := _arena_structure(scene.get_state())
+	var script := structure.get("script") as Script
+	var compatible := false
+	while script != null:
+		if script.resource_path == "res://scripts/prototypes/ember_combat_grid_3d_world.gd":
+			compatible = true
+			break
+		script = script.get_base_script()
+	if not compatible:
+		errors.append("Арена: корень сцены должен использовать EmberCombatGrid3DWorld. Создайте наследованную сцену общего боевого поля.")
+		return errors
+	var required := {"CombatGridMap": "GridMap", "CombatActors3D": "Node3D", "CombatOverlays3D": "Node3D", "CombatPairContext3D": "Node3D", "CameraRig": "Node3D", "CameraRig/CombatCamera3D": "Camera3D"}
+	for path in required:
+		var type := str(structure.nodes.get(path, ""))
+		if type.is_empty() or not ClassDB.is_parent_class(type, required[path]):
+			errors.append("Арена: нужен узел %s типа %s." % [path, required[path]])
+	return errors
+
+
+static func _arena_structure(state: SceneState) -> Dictionary:
+	if state == null or state.get_node_count() == 0: return {"nodes": {}}
+	var base := state.get_base_scene_state()
+	var result := _arena_structure(base)
+	var root_instance := state.get_node_instance(0)
+	if root_instance != null:
+		var inherited := _arena_structure(root_instance.get_state())
+		result.nodes.merge(inherited.nodes, true)
+		if inherited.has("script"): result["script"] = inherited.script
+	for index in state.get_node_count():
+		var path := str(state.get_node_path(index)).trim_prefix("./")
+		var type := str(state.get_node_type(index))
+		if not type.is_empty(): result.nodes[path] = type
+		if index == 0:
+			for property in state.get_node_property_count(index):
+				if state.get_node_property_name(index, property) == &"script":
+					result["script"] = state.get_node_property_value(index, property)
+	return result
 
 
 func active_party_errors(active_ids: Array[String]) -> Array[String]:

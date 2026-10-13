@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="EmberCompactTerrainPattern" format=4]
+
+[ext_resource type="Texture2D" path="res://content/terrain_materials/textures/cartoon_soil.png" id="1_s3aoi"]
+[ext_resource type="Script" path="res://scripts/ember_compact_terrain_pattern.gd" id="2_tt8y1"]
+
+[resource]
+script = ExtResource("2_tt8y1")
+role_id = "soil"
+base_color = Color(0.4, 0.29, 0.19, 1)
+light_color = Color(0.432, 0.3132, 0.2052, 1)
+shadow_color = Color(0.368, 0.2668, 0.1748, 1)
+pixels = PackedByteArray("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==")
+albedo_texture = ExtResource("1_s3aoi")
+side_pixels = PackedByteArray()
+relief_pixels = PackedByteArray()
+side_relief_pixels = PackedByteArray()
+roughness_pixels = PackedByteArray()
+side_roughness_pixels = PackedByteArray()
+pattern_size_m = 1.5

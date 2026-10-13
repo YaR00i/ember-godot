@@ -48,6 +48,8 @@ static func creation_fields(generator_id: String) -> Array[Dictionary]:
 		{"key": "branchiness", "title": "Ветвистость", "min": 0, "max": 100},
 		{"key": "structure_diversity", "title": "Разнообразие каркаса · %", "min": 0, "max": 100},
 		{"key": "foliage_amount", "title": "Количество листвы", "min": 0, "max": 100},
+		{"key": "foliage_volume_form", "title": "Форма листвы", "options": ["Обычная", "Плоские элементы · B"]},
+		{"key": "foliage_element_size", "title": "Размер плоских элементов · vox", "options": ["Крупные · 8 × 4 × 8", "Мелкие · 4 × 2 × 4"]},
 		{"key": "foliage_style", "title": "Стиль листвы", "options": ["Прежняя", "Пиксель-арт · пробная", "Листовые побеги · пробные", "Лиственные облака · пробные"]},
 		{"key": "foliage_leaf_size", "title": "Размер листика · vox", "min": 3, "max": 12},
 		{"key": "foliage_leaf_accents", "title": "Выраженность листиков · %", "min": 0, "max": 100},
@@ -282,6 +284,7 @@ static func editing_fields(recipe: Resource) -> Array:
 	var fields: Array = [
 		{"key": "branch_thickness", "label": "Толщина ветвей · % ствола", "group": "Каркас", "min": 25, "max": 100},
 		{"key": "branch_taper", "label": "Сужение ветвей · %", "group": "Каркас", "min": 0, "max": 100},
+		{"key": "foliage_volume_form", "label": "Форма листвы", "group": "Листва", "options": ["Обычная", "Плоские элементы · B"]},
 		{"key": "foliage_amount", "label": "Количество листвы · %", "group": "Листва", "min": 0, "max": 100},
 		{"key": "cluster_size", "label": "Размер пучков · %", "group": "Листва", "min": 65, "max": 180},
 		{"key": "cluster_flatten", "label": "Приплюснутость · %", "group": "Листва", "min": 0, "max": 100},
@@ -310,6 +313,15 @@ static func editing_fields(recipe: Resource) -> Array:
 		descriptor["label"] = descriptor.title
 		descriptor["group"] = "Рисунок коры"
 		fields.append(descriptor)
+	for index in fields.size():
+		if str(fields[index].key) != "foliage_volume_form": continue
+		var form: Dictionary = fields[index]
+		fields.remove_at(index)
+		form.group = "Форма"
+		fields.push_front(form)
+		break
+	if int(recipe.parameters.get("foliage_volume_form", 0)) == 1:
+		fields.insert(1, {"key": "foliage_element_size", "label": "Размер плоских элементов · vox", "group": "Форма", "options": ["Крупные · 8 × 4 × 8", "Мелкие · 4 × 2 × 4"]})
 	return fields
 
 

@@ -34,7 +34,7 @@ static func compact_terrain_material() -> ShaderMaterial:
 	return material
 
 
-static func set_compact_terrain_roles(material: ShaderMaterial, roles: PackedStringArray, material_ids := PackedStringArray()) -> void:
+static func set_compact_terrain_roles(material: ShaderMaterial, roles: PackedStringArray, material_ids := PackedStringArray(), palette := PackedColorArray()) -> void:
 	if material == null or material.shader == null or material.shader.resource_path != TERRAIN_SHADER_PATH:
 		return
 	var lookup := Image.create(256, 1, false, Image.FORMAT_RGBA8)
@@ -45,6 +45,15 @@ static func set_compact_terrain_roles(material: ShaderMaterial, roles: PackedStr
 	var detail_lookup := Image.create(256, 1, false, Image.FORMAT_RGBAF)
 	detail_lookup.fill(Color(0.0,0.09,0.0,0.0))
 	var images: Dictionary = {}
+	var png_lookup:=Image.create(256,1,false,Image.FORMAT_RGBAF)
+	var png_mean:=Image.create(256,1,false,Image.FORMAT_RGBAF)
+	var png_tint:=Image.create(256,1,false,Image.FORMAT_RGBAF)
+	var palette_lookup:=Image.create(256,1,false,Image.FORMAT_RGBAF)
+	for i in mini(palette.size(),256): palette_lookup.set_pixel(i,0,palette[i])
+	var png_images: Array[Image]=[]
+	var png_layers: Dictionary={}
+	var png_means: Dictionary={}
+	var max_size:=Vector2i.ONE
 	var side_images: Dictionary = {}
 	var patterns: Dictionary = {}
 	var surface_lookup:=Image.create(256,1,false,Image.FORMAT_RGBAF); surface_lookup.fill(Color(4,0,0,0))
@@ -79,6 +88,24 @@ static func set_compact_terrain_roles(material: ShaderMaterial, roles: PackedStr
 		var tile := images[id] as Image
 		if tile == null: continue
 		var finish := patterns[id] as TerrainPattern
+		if finish.albedo_texture != null:
+			var texture_key:=finish.albedo_texture.get_instance_id()
+			if not png_layers.has(texture_key):
+				var png:=finish.albedo_texture.get_image()
+				if png != null:
+					if png.is_compressed(): png.decompress()
+					png.convert(Image.FORMAT_RGBA8)
+					var mean:=Color(0,0,0,0);var samples:=0
+					for y in range(0,png.get_height(),16):
+						for x in range(0,png.get_width(),16): mean+=png.get_pixel(x,y).srgb_to_linear();samples+=1
+					png_means[texture_key]=mean/maxi(1,samples)
+					png_layers[texture_key]=png_images.size()
+					png_images.append(png)
+					max_size=Vector2i(maxi(max_size.x,png.get_width()),maxi(max_size.y,png.get_height()))
+			if png_layers.has(texture_key):
+				png_lookup.set_pixel(index,0,Color(png_layers[texture_key]+1,finish.pattern_size_m,TerrainPattern.ROLE_IDS.find(role)+1,0))
+				png_mean.set_pixel(index,0,png_means[texture_key])
+				png_tint.set_pixel(index,0,finish.base_color.srgb_to_linear())
 		lookup.set_pixel(index, 0, Color8(1, 1 if not finish.side_pixels.is_empty() or not finish.relief_pixels.is_empty() or not finish.side_relief_pixels.is_empty() else 0, 1 if finish.role_id == "grass" else 2 if finish.role_id == "soil" else 0))
 		atlas.blit_rect(tile, Rect2i(0, 0, 16, 16), Vector2i(0, index * 16))
 		side_atlas.blit_rect(side_images[id], Rect2i(0, 0, 16, 16), Vector2i(0, index * 16))
@@ -89,6 +116,17 @@ static func set_compact_terrain_roles(material: ShaderMaterial, roles: PackedStr
 		for side in [false,true]:
 			var rough:=finish.surface_image("roughness",side); rough.convert(Image.FORMAT_R8)
 			(side_rough_atlas if side else rough_atlas).blit_rect(rough,Rect2i(0,0,16,16),Vector2i(0,index*16))
+	if png_images.is_empty():
+		var white:=Image.create(1,1,false,Image.FORMAT_RGBA8);white.fill(Color.WHITE);png_images.append(white)
+	for png: Image in png_images:
+		if png.get_size()!=max_size: png.resize(max_size.x,max_size.y,Image.INTERPOLATE_LANCZOS)
+		png.generate_mipmaps()
+	var bank:=Texture2DArray.new()
+	if bank.create_from_images(png_images)==OK: material.set_shader_parameter("png_albedo_bank",bank)
+	material.set_shader_parameter("png_lookup",ImageTexture.create_from_image(png_lookup))
+	material.set_shader_parameter("png_mean_lookup",ImageTexture.create_from_image(png_mean))
+	material.set_shader_parameter("png_tint_lookup",ImageTexture.create_from_image(png_tint))
+	material.set_shader_parameter("palette_color_lookup",ImageTexture.create_from_image(palette_lookup))
 	material.set_shader_parameter("role_lookup", ImageTexture.create_from_image(lookup))
 	material.set_shader_parameter("pattern_atlas", ImageTexture.create_from_image(atlas))
 	material.set_shader_parameter("side_pattern_atlas", ImageTexture.create_from_image(side_atlas))

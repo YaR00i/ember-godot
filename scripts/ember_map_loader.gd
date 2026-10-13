@@ -24,9 +24,27 @@ const TerrainProjection := preload("res://scripts/prototypes/ember_terrain_pilot
 		_refresh_visual_surface_projection()
 ## Compact ground is an alternative map-owned source. A map may never render
 ## both this and the legacy dense Surface as its ground.
+## Explicit opt-in for isolated large-map studies; ordinary maps retain 32x32m.
+@export_storage var compact_smooth_study_column_limit := 0
 @export var compact_terrain: TerrainResource:
 	set(value):
 		compact_terrain = value
+		if compact_ground_style == 1 and value != null and value.width*value.depth > smooth_column_limit():
+			compact_ground_style = 0
+			push_warning("Гладкая земля пока доступна на тестовых картах до 262144 мелких колонок.")
+		_refresh_visual_surface_projection()
+## Optional fine-grid smooth appearance; the source columns stay unchanged.
+@export_enum("Воксельная земля", "Гладкая земля") var compact_ground_style := 0:
+	set(value):
+		if value == 1 and compact_terrain != null and compact_terrain.width*compact_terrain.depth > smooth_column_limit():
+			push_warning("Для гладкой земли выберите тестовую карту до 262144 мелких колонок.")
+			return
+		compact_ground_style = clampi(value,0,1)
+		_refresh_visual_surface_projection()
+## Optional derived material feathering; existing scene defaults stay unchanged.
+@export var compact_smooth_material_blend := false:
+	set(value):
+		compact_smooth_material_blend=value
 		_refresh_visual_surface_projection()
 ## Optional scene-owned water look. Zero mesh step preserves the shared
 ## greedy water geometry; a positive step only refines visual wave vertices.
@@ -640,6 +658,9 @@ func _world_surface_matches(surface: EmberVoxelModelResource) -> bool:
 	)
 
 
+func smooth_column_limit() -> int:
+	return clampi(compact_smooth_study_column_limit,TerrainProjection.SmoothSurface.MAX_COLUMNS,1048576)
+
 func refresh_visual_surface_projection() -> void:
 	_refresh_visual_surface_projection()
 
@@ -674,13 +695,19 @@ func _refresh_visual_surface_projection() -> void:
 			_visual_surface_projection = TerrainProjection.new()
 			_visual_surface_projection.name = "DerivedCompactWorldTerrain"
 			_visual_surface_projection.source = terrain
+			_visual_surface_projection.smooth_column_limit = smooth_column_limit()
 			_visual_surface_projection.water_visual_material = compact_water_visual_material
 			_visual_surface_projection.water_mesh_step = compact_water_mesh_step
 			_visual_surface_projection.water_volume_sides = compact_water_volume_sides
 			_visual_surface_projection.material_light_mode = compact_material_light_mode
 			_visual_surface_projection.material_gray_preview = compact_material_gray_preview
+			_visual_surface_projection.set_ground_style(compact_ground_style)
+			_visual_surface_projection.set_smooth_material_blend(compact_smooth_material_blend)
 			add_child(_visual_surface_projection)
 		else:
+			_visual_surface_projection.smooth_column_limit = smooth_column_limit()
+			_visual_surface_projection.set_ground_style(compact_ground_style)
+			_visual_surface_projection.set_smooth_material_blend(compact_smooth_material_blend)
 			_visual_surface_projection.open_document(terrain)
 		_visual_surface_projection.scale = Vector3.ONE * (imported_tile_size / float(TerrainResource.CELLS_PER_BLOCK))
 		var terrain_visual := _content_node("Terrain/Mesh") as Node3D

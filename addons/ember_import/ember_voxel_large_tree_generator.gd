@@ -14,6 +14,7 @@ const LATEST_VERSIONS := [14, 17, 13, 12, 15]
 const TreeVariation = preload("res://addons/ember_import/ember_voxel_tree_variation.gd")
 const BarkPattern = preload("res://addons/ember_import/ember_voxel_bark_pattern.gd")
 const FoliagePattern = preload("res://addons/ember_import/ember_voxel_foliage_pattern.gd")
+const FoliageElements = preload("res://addons/ember_import/ember_voxel_foliage_elements.gd")
 
 
 static func defaults() -> Dictionary:
@@ -25,6 +26,8 @@ static func defaults() -> Dictionary:
 		"branch_direction": 0,
 		"foliage_along": 65,
 		"foliage_style": 0,
+		"foliage_volume_form": 0,
+		"foliage_element_size": 0,
 		"foliage_leaf_size": 5,
 		"foliage_leaf_accents": 35,
 		"foliage_cloud_version": 2,
@@ -88,6 +91,8 @@ static func normalize(parameters: Dictionary) -> Dictionary:
 		"foliage_along": clampi(int(parameters.get("foliage_along", 65)), 0, 100),
 		# Absent fields keep every previously saved crown byte-identical.
 		"foliage_style": clampi(int(parameters.get("foliage_style", 0)), 0, 3),
+		"foliage_volume_form": clampi(int(parameters.get("foliage_volume_form", 0)), 0, 1),
+		"foliage_element_size": clampi(int(parameters.get("foliage_element_size", 0)), 0, 1),
 		"foliage_leaf_size": clampi(int(parameters.get("foliage_leaf_size", 5)), 3, 12),
 		"foliage_leaf_accents": clampi(int(parameters.get("foliage_leaf_accents", 35)), 0, 100),
 		"foliage_cloud_version": clampi(int(parameters.get("foliage_cloud_version", 1)), 1, 2),
@@ -123,6 +128,22 @@ static func normalize(parameters: Dictionary) -> Dictionary:
 static func build(
 	parameters: Dictionary, seed: int, fallback_color: Color, material: Dictionary,
 	title: String, model_id := "generated_large_tree",
+) -> Dictionary:
+	return _apply_foliage_form(_build_shape(parameters, seed, fallback_color, material, title, model_id))
+
+
+static func _apply_foliage_form(result: Dictionary) -> Dictionary:
+	if not result.has("error") and int(result.parameters.get("foliage_volume_form", 0)) == 1:
+		result.geometry = FoliageElements.apply(result.geometry, int(result.parameters.foliage_element_size))
+		result.occupied = result.geometry.voxels.size() - result.geometry.voxels.count(0)
+		if result.occupied > MAX_OCCUPIED_VOXELS:
+			return {"error": "Плоская крона превышает предел %d вокселей. Уменьшите её размер или выберите мелкие элементы." % MAX_OCCUPIED_VOXELS}
+	return result
+
+
+static func _build_shape(
+	parameters: Dictionary, seed: int, fallback_color: Color, material: Dictionary,
+	title: String, model_id: String,
 ) -> Dictionary:
 	if int(normalize(parameters).generation_version) == 1:
 		return _build_legacy(parameters, seed, fallback_color, material, title, model_id)
@@ -1401,6 +1422,11 @@ static func structure_errors(structure: Dictionary) -> Array[String]:
 
 
 static func build_on_structure(parameters: Dictionary, structure: Dictionary, seed: int,
+	material: Dictionary, title: String, model_id: String) -> Dictionary:
+	return _apply_foliage_form(_build_on_structure_shape(parameters, structure, seed, material, title, model_id))
+
+
+static func _build_on_structure_shape(parameters: Dictionary, structure: Dictionary, seed: int,
 	material: Dictionary, title: String, model_id: String) -> Dictionary:
 	var errors := structure_errors(structure)
 	if not errors.is_empty():

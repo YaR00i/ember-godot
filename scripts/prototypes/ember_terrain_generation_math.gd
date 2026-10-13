@@ -9,6 +9,12 @@ const DEFAULTS := {"profile": "hills", "seed": 7, "sea_m": 2.0, "land_m": 2.0,
 	"relief_m": 6.0, "feature_m": 18.0, "shore_m": 5.0, "land_fraction": 0.72}
 const PLAINS_DEFAULTS := {"flat_fraction": 0.8, "flat_size_m": 16.0,
 	"micro_m": 0.0, "flat_transition_m": 2.0}
+const SURFACE_DEFAULTS := {"surface_strength":0.0,"surface_scale":1.0,"surface_seed":731}
+const SURFACE_MAX_BLOCKS := 32
+const OPERATIONS := ["generate","detail","coverage"]
+const COVERAGE_DEFAULTS := {"coverage_seed":731,"coverage_scale":1.0,"coverage_sea_m":2.0}
+const ZONE_DEFAULTS := {"coverage_profile":"large","coverage_zone_m":12.0,
+	"coverage_soil_amount":0.2,"coverage_stone_slope":35.0,"coverage_sand_width_m":1.5}
 
 var parameters: Dictionary
 var area_m: Rect2
@@ -19,8 +25,25 @@ var _sites := {} # Derived only for this sampler/job; never part of the map.
 
 
 static func parameter_error(values: Dictionary) -> String:
+	if values.get("terrain_sampling","legacy8") not in ["legacy8","fine16"]:return "Неизвестная точность рельефа."
+	if values.get("coverage_profile","legacy") not in ["legacy","large"]:return "Выберите крупные зоны или прежний рисунок покрытий."
+	for spec in [["coverage_zone_m",4.0,48.0],["coverage_soil_amount",0.0,1.0],["coverage_stone_slope",5.0,100.0],["coverage_sand_width_m",0.0,6.0]]:
+		var value: Variant=values.get(spec[0],ZONE_DEFAULTS[spec[0]])
+		if typeof(value) not in [TYPE_FLOAT,TYPE_INT] or not is_finite(float(value)) or value<spec[1] or value>spec[2]:return "Параметр крупной зоны вне допустимого диапазона: "+str(spec[0])
+	if values.get("terrain_operation","generate") not in OPERATIONS:return "Выберите создание рельефа, фактуру или распределение покрытий."
+	var coverage_seed: Variant=values.get("coverage_seed",COVERAGE_DEFAULTS.coverage_seed)
+	if typeof(coverage_seed)!=TYPE_INT or coverage_seed<0 or coverage_seed>1000000:return "Рисунок покрытий: целое число от 0 до 1000000."
+	for spec in [["coverage_scale",0.5,8.0],["coverage_sea_m",0.0,16.0]]:
+		var value: Variant=values.get(spec[0],COVERAGE_DEFAULTS[spec[0]])
+		if typeof(value) not in [TYPE_FLOAT,TYPE_INT] or not is_finite(float(value)) or value<spec[1] or value>spec[2]:return "Масштаб зон: 0,5–8; уровень берега для покрытий: 0–16 м."
 	if values.get("profile", "") not in PROFILES: return "Выберите рисунок рельефа."
 	if typeof(values.get("seed")) != TYPE_INT: return "Номер рисунка должен быть целым."
+	for spec in [["surface_strength",0.0,1.0],["surface_scale",0.5,3.0]]:
+		var value: Variant=values.get(spec[0],SURFACE_DEFAULTS[spec[0]])
+		if typeof(value) not in [TYPE_FLOAT,TYPE_INT] or not is_finite(float(value)) or value<spec[1] or value>spec[2]:
+			return "Сила фактурности: 0–100%; масштаб деталей: 0,5–3."
+	var detail_seed: Variant=values.get("surface_seed",SURFACE_DEFAULTS.surface_seed)
+	if typeof(detail_seed)!=TYPE_INT or detail_seed<0 or detail_seed>1000000:return "Номер рисунка деталей: целое число от 0 до 1000000."
 	# Arrays retain double precision at UI endpoints such as 0.3 and 0.9.
 	var limits := {"sea_m": [0.5,16.0], "land_m": [0.25,8.0],
 		"relief_m": [0.0,24.0], "feature_m": [2.0,96.0],
@@ -42,6 +65,12 @@ static func parameter_error(values: Dictionary) -> String:
 			if value < limits_value.x or value > limits_value.y: return "Параметр %s вне допустимого диапазона." % key
 		if values.get("flat_transition_m",PLAINS_DEFAULTS.flat_transition_m) > values.get("flat_size_m",PLAINS_DEFAULTS.flat_size_m)*0.25:
 			return "Пологий переход должен быть не шире четверти размера ровного участка."
+	return ""
+
+static func surface_bounds_error(bounds: Rect2i,values: Dictionary) -> String:
+	if values.get("terrain_operation","generate")!="generate" and (bounds.size.x>SURFACE_MAX_BLOCKS or bounds.size.y>SURFACE_MAX_BLOCKS):return "Для фактуры или распределения покрытий выберите область до 32×32 м."
+	if (values.get("terrain_operation","generate")!="generate" or float(values.get("surface_strength",0.0))>0.0) and (bounds.size.x>SURFACE_MAX_BLOCKS or bounds.size.y>SURFACE_MAX_BLOCKS):
+		return "Для фактурности выберите область до 32×32 м. При силе 0 доступен прежний размер."
 	return ""
 
 

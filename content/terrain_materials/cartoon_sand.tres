@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="EmberCompactTerrainPattern" format=4]
+
+[ext_resource type="Script" path="res://scripts/ember_compact_terrain_pattern.gd" id="1_k2vlg"]
+
+[resource]
+script = ExtResource("1_k2vlg")
+role_id = "sand"
+base_color = Color(0.84313726, 0.7529412, 0.54901963, 1)
+light_color = Color(0.8901961, 0.8156863, 0.62352943, 1)
+shadow_color = Color(0.7647059, 0.6666667, 0.47058824, 1)
+pixels = PackedByteArray("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==")
+side_pixels = PackedByteArray()
+relief_pixels = PackedByteArray()
+side_relief_pixels = PackedByteArray()
+roughness_pixels = PackedByteArray()
+side_roughness_pixels = PackedByteArray()
+pattern_size_m = 1.5

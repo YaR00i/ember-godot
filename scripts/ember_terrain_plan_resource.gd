@@ -5,7 +5,7 @@ extends Resource
 const Math = preload("res://scripts/prototypes/ember_terrain_generation_math.gd")
 const Influence = preload("res://scripts/prototypes/ember_terrain_plan_math.gd")
 const META := &"_ember_terrain_plan"
-const VERSION := 8
+const VERSION := 11
 const GROVE_MEMBER_META := &"_ember_grove_member"
 const GROVE_GROUP_META := &"_ember_grove_group"
 const MAX_GROVE_MEMBERS := 256
@@ -14,6 +14,9 @@ const MAX_REGIONS := 256
 @export var regions: Array[Dictionary] = []
 @export_storage var patches: Array[Dictionary] = [] # Local editor provenance, stripped at export.
 @export_storage var object_layers: Dictionary = {} # IDs/protection only; scene instances own geometry.
+@export_storage var paint_locks: Dictionary = {} # Sparse 64x64-cell bitmaps; editor-only manual paint protection.
+const PAINT_TILE := 64
+const PAINT_BYTES := 512
 const MAX_PATCHES := 256
 const PATCH_CHANNELS := {"before": TYPE_PACKED_INT32_ARRAY, "after": TYPE_PACKED_INT32_ARRAY,
 	"before_caps": TYPE_PACKED_BYTE_ARRAY, "after_caps": TYPE_PACKED_BYTE_ARRAY,
@@ -33,12 +36,13 @@ func working_copy() -> Resource:
 	result.regions.assign(regions.duplicate(true))
 	result.patches.assign(patches.duplicate(true))
 	result.object_layers = object_layers.duplicate(true)
+	result.paint_locks = paint_locks.duplicate(true)
 	return result
 
-func data() -> Dictionary: return {"version": schema_version, "regions": regions.duplicate(true), "patches": patches.duplicate(true), "object_layers":object_layers.duplicate(true)}
+func data() -> Dictionary: return {"version": schema_version, "regions": regions.duplicate(true), "patches": patches.duplicate(true), "object_layers":object_layers.duplicate(true),"paint_locks":paint_locks.duplicate(true)}
 
 static func from_data(value: Variant) -> Resource:
-	if not value is Dictionary or value.get("version") not in [1, 2, 3, 4, 5, 6, 7, VERSION] or not value.get("regions") is Array or not value.get("patches", []) is Array or not value.get("object_layers",{}) is Dictionary: return null
+	if not value is Dictionary or value.get("version") not in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, VERSION] or not value.get("regions") is Array or not value.get("patches", []) is Array or not value.get("object_layers",{}) is Dictionary or not value.get("paint_locks",{}) is Dictionary: return null
 	for region in value.regions:
 		if not region is Dictionary: return null
 	var result := load("res://scripts/ember_terrain_plan_resource.gd").new() as Resource
@@ -48,6 +52,7 @@ static func from_data(value: Variant) -> Resource:
 		if not patch is Dictionary: return null
 	result.patches.assign(value.get("patches", []).duplicate(true))
 	result.object_layers = value.get("object_layers",{}).duplicate(true)
+	result.paint_locks = value.get("paint_locks",{}).duplicate(true)
 	return result if result.validation_errors().is_empty() else null
 
 static func same(a: Variant, b: Variant) -> bool:
@@ -57,7 +62,18 @@ static func same(a: Variant, b: Variant) -> bool:
 
 func validation_errors(extent := Vector2i.ZERO) -> Array[String]:
 	var errors: Array[String] = []
-	if schema_version not in [1, 2, 3, 4, 5, 6, 7, VERSION]: errors.append("Неподдерживаемая версия плана областей.")
+	if schema_version not in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, VERSION]: errors.append("Неподдерживаемая версия плана областей.")
+	if not paint_locks.is_empty() and schema_version<10:errors.append("Защита ручной покраски требует план версии 10.")
+	if paint_locks.size()>132*132:errors.append("Слишком большой слой защиты покраски.")
+	for key in paint_locks:
+		if not key is Vector2i or key.x<0 or key.y<0 or key.x>=132 or key.y>=132 or not paint_locks[key] is PackedByteArray or paint_locks[key].size()!=PAINT_BYTES:
+			errors.append("Некорректная плитка защиты покраски.");continue
+		if extent!=Vector2i.ZERO:
+			var tile:=Rect2i(key*PAINT_TILE,Vector2i.ONE*PAINT_TILE)
+			if not Rect2i(Vector2i.ZERO,extent*16).encloses(tile):
+				for bit in PAINT_TILE*PAINT_TILE:
+					if paint_locks[key][bit/8]&(1<<(bit%8)) and not Rect2i(Vector2i.ZERO,extent*16).has_point(tile.position+Vector2i(bit%PAINT_TILE,bit/PAINT_TILE)):
+						errors.append("Защита покраски выходит за границы карты.");break
 	if schema_version < 7 and not object_layers.is_empty(): errors.append("Рощи требуют план версии 7.")
 	if schema_version == 1 and not patches.is_empty(): errors.append("Локальные слои требуют план версии 2.")
 	if regions.size() > MAX_REGIONS: errors.append("Слишком много областей в плане.")
@@ -83,9 +99,20 @@ func validation_errors(extent := Vector2i.ZERO) -> Array[String]:
 			if kind == "road" and schema_version < 6: errors.append("Дорога требует план версии 6.")
 			if kind == "grove" and schema_version < 7: errors.append("Роща требует план версии 7.")
 			if kind == "placement" and schema_version < 8: errors.append("Общая расстановка требует план версии 8.")
+			if schema_version<11:
+				for key in ["terrain_sampling","mountain_shape","shape_seed"]:
+					if region.get("parameters",{}).has(key):errors.append("Точная форма рельефа требует план версии 11.")
+			if kind=="generation" and region.get("parameters",{}).has("terrain_operation") and schema_version<9:errors.append("Раздельные действия рельефа, фактуры и покрытий требуют план версии 9.")
+			if kind=="generation" and region.get("parameters",{}).has("coverage_profile") and schema_version<10:errors.append("Крупные зоны покрытий требуют план версии 10.")
+			if kind=="generation" and schema_version<10:
+				for key in Math.ZONE_DEFAULTS:
+					if key!="coverage_profile" and region.parameters.has(key):errors.append("Настройки крупных зон требуют план версии 10.");break
 			if typeof(region.get("enabled", true)) != TYPE_BOOL: errors.append("Некорректное включение области.")
 			var error := Influence.parameter_error(region.parameters,kind) if kind in ["plateau","lake","river","mountain","road","grove","placement"] else Math.parameter_error(region.parameters)
 			if not error.is_empty(): errors.append(error)
+			elif kind=="generation" and bounds is Rect2i:
+				error=Math.surface_bounds_error(bounds,region.parameters)
+				if not error.is_empty():errors.append(error)
 			elif kind == "lake" and bounds is Rect2i:
 				error = Influence.lake_bounds_error(bounds,region.parameters)
 				if not error.is_empty(): errors.append(error)
@@ -162,6 +189,13 @@ func overlaps(id: String) -> PackedStringArray:
 
 func translated(offset_m: Vector2i) -> Resource:
 	var result := working_copy()
+	result.paint_locks={}
+	var shifted_locks: Dictionary={}
+	for key: Vector2i in paint_locks:
+		var mask: PackedByteArray=paint_locks[key]
+		for bit in PAINT_TILE*PAINT_TILE:
+			if mask[bit/8]&(1<<(bit%8)):_write_paint_lock(shifted_locks,key*PAINT_TILE+Vector2i(bit%PAINT_TILE,bit/PAINT_TILE)+offset_m*16,true)
+	result.paint_locks=shifted_locks
 	for region: Dictionary in result.regions:
 		region.bounds = Rect2i(region.bounds.position + offset_m, region.bounds.size)
 		if region.get("kind") in ["river","road"]:
@@ -180,6 +214,38 @@ func translated(offset_m: Vector2i) -> Resource:
 			transform.origin += Vector3(offset_m.x*16,0,offset_m.y*16)
 			member.expected.transform = transform
 	return result
+
+static func paint_locked(locks: Dictionary,cell: Vector2i) -> bool:
+	var key:=Vector2i(cell.x/PAINT_TILE,cell.y/PAINT_TILE)
+	if not locks.has(key):return false
+	var bit:=posmod(cell.x,PAINT_TILE)+posmod(cell.y,PAINT_TILE)*PAINT_TILE
+	return bool(locks[key][bit/8]&(1<<(bit%8)))
+
+static func _write_paint_lock(cache: Dictionary,cell: Vector2i,locked: bool) -> void:
+	var key:=Vector2i(cell.x/PAINT_TILE,cell.y/PAINT_TILE)
+	var mask: PackedByteArray=cache.get(key,PackedByteArray())
+	if mask.is_empty():mask.resize(PAINT_BYTES)
+	var bit:=posmod(cell.x,PAINT_TILE)+posmod(cell.y,PAINT_TILE)*PAINT_TILE
+	mask[bit/8]=(mask[bit/8]|(1<<(bit%8))) if locked else (mask[bit/8]&~(1<<(bit%8)))
+	cache[key]=mask
+
+func protect_paint_columns(indices: PackedInt32Array,width: int) -> void:
+	upgrade_local_layers()
+	var cache:=paint_locks.duplicate(true)
+	for index in indices:_write_paint_lock(cache,Vector2i(index%width,index/width),true)
+	paint_locks=cache
+
+func protect_paint_area(bounds: Rect2i,locked: bool) -> void:
+	upgrade_local_layers()
+	var cache:=paint_locks.duplicate(true)
+	for z in range(bounds.position.y,bounds.end.y):
+		for x in range(bounds.position.x,bounds.end.x):_write_paint_lock(cache,Vector2i(x,z),locked)
+	for key in cache.keys():
+		var empty:=true
+		for value in cache[key]:
+			if value!=0:empty=false;break
+		if empty:cache.erase(key)
+	paint_locks=cache
 
 func upgrade_local_layers() -> void:
 	# Called on a private authoring copy for an explicit edit, never on open.

@@ -20,6 +20,8 @@ const COLORS := {
 }
 const WATER_VALUES = preload("res://scripts/prototypes/ember_compact_planar_reflection_study.gd").WATER_VALUES
 const MATERIAL_VALUES := {
+	"compact_ground_style": ["Поверхность земли", "compact_ground_style", 0, 1, 1,
+		["Воксельная", "Гладкая"]],
 	"compact_material_light_mode": ["Освещение поверхности", "compact_material_light_mode", 0, 2, 1,
 		["Прежний свет", "Естественный мультяшный", "Игрушечный пластик"]],
 }
@@ -306,6 +308,10 @@ func refresh() -> void:
 		var choice := _choices[key] as OptionButton
 		var target := _target(key)
 		choice.disabled = target == null
+		if key == "compact_ground_style" and is_instance_valid(_map):
+			var terrain := _map.compact_terrain
+			choice.disabled = terrain == null or terrain.width*terrain.depth > _map.smooth_column_limit()
+			choice.tooltip_text = "Проба гладкой земли: до 262144 мелких колонок (32 × 32 блока)." if choice.disabled else "Сетка 16 × 16 сохраняется; меняется форма поверхности."
 		if target != null: choice.select(int(_value(target, _property(key))))
 	_gray_switch.disabled = _target("compact_material_gray_preview") == null
 	if not _gray_switch.disabled: _gray_switch.set_pressed_no_signal(_map.compact_material_gray_preview)

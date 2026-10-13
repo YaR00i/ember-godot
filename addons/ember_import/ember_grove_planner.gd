@@ -5,6 +5,8 @@ const Plan = preload("res://scripts/ember_terrain_plan_resource.gd")
 const Math = preload("res://scripts/prototypes/ember_terrain_plan_math.gd")
 const Creation = preload("res://addons/ember_import/ember_voxel_tree_object_creation.gd")
 const PlacementMath = preload("res://addons/ember_import/ember_voxel_placement_math.gd")
+const SmoothSurface = preload("res://scripts/prototypes/ember_terrain_smooth_surface.gd")
+const GROUND_TILE_SIZE := 64
 const MAX_TREES := 64
 const SNAP_PARENT := &"_ember_grove_snapshot_parent"
 const SNAP_NAME := &"_ember_grove_snapshot_name"
@@ -26,7 +28,13 @@ var _source: EmberTerrainPilotResource
 var _map: EmberMapLoader
 var _root: Node
 var _frame := Transform3D.IDENTITY
+var _ground_style := 0
+var _smooth_fields := {}
+var _smooth_keys: Array[Vector2i] = []
+var _smooth_cursor := 0
+var _smooth_job: SmoothSurface.FieldJob
 var _regions: Array[Dictionary] = []
+var _group_noises := {} # One derived sampler per placement region/job, never saved.
 var _roads: Array[Dictionary] = []
 var _objects: Array[Dictionary] = []
 var _walk: Array[Node] = []
@@ -261,6 +269,9 @@ func begin(source: EmberTerrainPilotResource, map: EmberMapLoader, scene_root: N
 	if not problems.is_empty(): error = problems[0]; return false
 	var projection := map._visual_surface_projection as Node3D
 	_frame = projection.global_transform if is_instance_valid(projection) and projection.is_inside_tree() else map.global_transform
+	_ground_style = map.compact_ground_style
+	if _ground_style == 1 and source.width*source.depth > SmoothSurface.MAX_COLUMNS:
+		error = "Гладкая опора объектов: общая площадь до 32×32 блоков.";return false
 	output_plan = plan.working_copy(); output_plan.upgrade_local_layers(); output_plan.object_layers.clear()
 	for region: Dictionary in plan.regions:
 		if region.get("kind") == "road" and region.get("enabled",true): _roads.append({"curve":Math.path_curve(region.points_m),"values":region.parameters})
@@ -268,6 +279,7 @@ func begin(source: EmberTerrainPilotResource, map: EmberMapLoader, scene_root: N
 		if region.bounds.size.x > 96 or region.bounds.size.y > 96: error = "Область расстановки: до 96×96 м."; return false
 		if region.parameters.model_ids.is_empty() and region.parameters.density > 0: error = "Выберите готовые объекты из библиотеки."; return false
 		_regions.append(region.duplicate(true))
+		if region.kind == "placement": _group_noises[region.id] = Math.placement_group_noise(region.parameters)
 		for id in region.parameters.model_ids:
 			if templates.has(id): continue
 			if catalog.is_empty() and (not FileAccess.file_exists(EmberVoxelCatalog.native_path(id)) or not FileAccess.file_exists(EmberVoxelPrefab.prefab_path(id))):
@@ -284,11 +296,22 @@ func begin(source: EmberTerrainPilotResource, map: EmberMapLoader, scene_root: N
 			var record := member.duplicate(true); record.region = region_id; _old_members[member.id] = record
 	var parent := map.get_node_or_null("Props")
 	if parent == null: error = "В карте нет обычной группы Props для объектов."; return false
+	if _ground_style == 1:
+		var keys := {}
+		for region in _regions:
+			# Generic footprints stay inside their region; grove probes extend 0.5m.
+			var bounds: Rect2i = Rect2i(region.bounds.position*16-Vector2i(8,8),region.bounds.size*16+Vector2i(16,16)).intersection(Rect2i(0,0,source.width,source.depth))
+			if not bounds.has_area():continue
+			for z in range(bounds.position.y/GROUND_TILE_SIZE,(bounds.end.y-1)/GROUND_TILE_SIZE+1):
+				for x in range(bounds.position.x/GROUND_TILE_SIZE,(bounds.end.x-1)/GROUND_TILE_SIZE+1):keys[Vector2i(x,z)]=true
+		_smooth_keys.assign(keys.keys())
 	_walk.append(parent); scene_version = scene_fingerprint(map,_frame)
 	_used_ids = EmberSceneAuthoring.placement_ids(scene_root)
 	return true
 
-func cancel() -> void: cancelled = true; finished = true
+func cancel() -> void:
+	cancelled = true; finished = true
+	_smooth_job=null;_smooth_fields.clear();_smooth_keys.clear()
 
 func _walk_one() -> void:
 	var node := _walk.pop_back() as Node
@@ -324,7 +347,12 @@ func _ground(point: Vector2, slope: float, radius := 0.5) -> float:
 		if cell.x < 0 or cell.y < 0 or cell.x >= _source.width or cell.y >= _source.depth: return -INF
 		var index: int = _source.column_index(cell.x,cell.y); var height: int = _source.column_value("heights",index)
 		if height <= 0 or _source.column_value("top_materials",index) == 0 or _source.column_value("water_levels",index) > height: return -INF
-		levels.append(float(height+_source.origin_y)/16.0)
+		var level:=float(height+_source.origin_y)
+		if _ground_style == 1:
+			var key:=Vector2i(cell.x/GROUND_TILE_SIZE,cell.y/GROUND_TILE_SIZE)
+			level=SmoothSurface.sample(_smooth_fields[key],(point+offset)*16.0)
+			if _source.column_value("water_levels",index)>0 and _source.column_value("water_levels",index)+_source.origin_y>level:return -INF
+		levels.append(level/16.0)
 	if (levels.max()-levels.min())*100.0/maxf(0.1,radius*2) > slope+0.001: return -INF
 	return levels.max()
 
@@ -353,7 +381,7 @@ func _point_one() -> void:
 		_region_index += 1; _cell_index = 0; _region_count = 0; return
 	var cell := Vector2i(_cell_index%columns,_cell_index/columns); _cell_index += 1
 	if values.model_ids.is_empty(): return
-	var next: Dictionary = Math.grove_candidate(region.bounds,values,cell)
+	var next: Dictionary = Math.grove_candidate(region.bounds,values,cell,_group_noises.get(region.id) as FastNoiseLite)
 	if next.is_empty() or _skip_slots.has(str(region.id)+":"+str(next.key)): return
 	next.model_id = values.model_ids[next.variant]
 	var height := -INF
@@ -383,6 +411,14 @@ func step(budget_us := 4000) -> void:
 	var started := Time.get_ticks_usec()
 	while Time.get_ticks_usec()-started < budget_us:
 		if not _walk.is_empty(): _walk_one()
+		elif _smooth_cursor < _smooth_keys.size():
+			var key:=_smooth_keys[_smooth_cursor]
+			if _smooth_job==null:
+				var begin:=key*GROUND_TILE_SIZE
+				_smooth_job=SmoothSurface.FieldJob.new(_source,Rect2i(begin,Vector2i(mini(GROUND_TILE_SIZE,_source.width-begin.x),mini(GROUND_TILE_SIZE,_source.depth-begin.y))))
+			_smooth_job.step(maxi(1,budget_us-int(Time.get_ticks_usec()-started)))
+			if _smooth_job.finished:
+				_smooth_fields[key]=_smooth_job.result;_smooth_job=null;_smooth_cursor+=1
 		elif not _prepared_members: _prepare_members()
 		elif _region_index < _regions.size(): _point_one()
 		else: finished = true; break
@@ -391,6 +427,10 @@ func step(budget_us := 4000) -> void:
 
 func stale() -> bool:
 	if not is_instance_valid(_map) or scene_fingerprint(_map,_frame) != scene_version: return true
+	if _map.compact_ground_style != _ground_style:return true
+	var projection:=_map._visual_surface_projection as Node3D
+	var frame: Transform3D=projection.global_transform if is_instance_valid(projection) and projection.is_inside_tree() else _map.global_transform
+	if frame!=_frame:return true
 	for id in _base_versions:
 		if FileAccess.get_sha256(EmberVoxelCatalog.native_path(id)) != _base_versions[id]: return true
 	for id in model_hashes:

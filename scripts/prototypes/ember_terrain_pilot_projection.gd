@@ -18,6 +18,11 @@ const WaterLOD = preload("res://scripts/prototypes/ember_terrain_water_lod.gd")
 const GroundLOD = preload("res://scripts/prototypes/ember_terrain_ground_lod.gd")
 const Materials = preload("res://scripts/ember_voxel_surface_materials.gd")
 const TerrainPattern = preload("res://scripts/ember_compact_terrain_pattern.gd")
+const SmoothSurface = preload("res://scripts/prototypes/ember_terrain_smooth_surface.gd")
+var smooth_material_blend_enabled := false
+var ground_style := 0 # Scene-owned by MapLoader: 0 old steps, 1 fine-grid smooth.
+var smooth_column_limit := SmoothSurface.MAX_COLUMNS # Explicit scene study opt-in.
+var _smooth_fields := {}
 const SurfacePhysics = preload("res://scripts/ember_voxel_surface_physics.gd")
 
 @export var source: TerrainResource
@@ -146,7 +151,7 @@ func _start_geometry_preparation() -> void:
 	for i in mini(GeometryCache.PREPARE_TILES, _pending.size()):
 		var key: Vector2i = _pending[i]
 		jobs.append({"key": key, "request": _geometry_requests.get(key, 0),
-			"policy": [water_mesh_step, water_volume_sides, runtime_water_mesh_optimization, runtime_ground_lod_enabled, runtime_water_lod_enabled],
+			"policy": _geometry_policy(),
 			"swash": (swash_tiles.get(key, PackedVector4Array()) as PackedVector4Array).duplicate(),
 			"sheet": (fall.tiles.get(key, {}) as Dictionary).duplicate(true) if fall != null else {}})
 	_mesh_lod_in_flight = jobs.size()
@@ -160,7 +165,7 @@ func _start_geometry_preparation() -> void:
 
 
 func _queue_ground_lod(key: Vector2i, mesh: ArrayMesh, source_arrays: Array = []) -> ArrayMesh:
-	if Engine.is_editor_hint() or not runtime_ground_lod_enabled or mesh.get_surface_count() == 0: return mesh
+	if ground_style == 1 or Engine.is_editor_hint() or not runtime_ground_lod_enabled or mesh.get_surface_count() == 0: return mesh
 	var cached: Dictionary = _ground_lod_cache.get(key, {})
 	if not cached.is_empty() and int(cached.revision) == _column_revision: return cached.mesh
 	var arrays := _lod_arrays(mesh, source_arrays)
@@ -292,6 +297,43 @@ func set_material_light(mode: int, gray_preview: bool) -> void:
 			ground.set_shader_parameter("material_gray_preview", material_gray_preview)
 
 
+func _geometry_policy() -> Array:
+	var policy: Array=[water_mesh_step, water_volume_sides, runtime_water_mesh_optimization, runtime_ground_lod_enabled, runtime_water_lod_enabled, ground_style]
+	if ground_style==1 and smooth_material_blend_enabled:policy.append("material-blend-v1")
+	if ground_style==1:policy.append("smooth-shore-v1")
+	return policy
+
+func set_smooth_material_blend(next: bool) -> void:
+	if smooth_material_blend_enabled==next:return
+	smooth_material_blend_enabled=next
+	if document==null:return
+	var current:=source
+	document=null
+	open_document(current)
+
+func set_ground_style(next: int) -> void:
+	next = clampi(next,0,1)
+	if next == 1 and source != null and source.width*source.depth > smooth_column_limit: return
+	if ground_style == next: return
+	ground_style = next
+	_smooth_fields.clear()
+	if document == null: return
+	var current := source
+	document = null # Style changes rebuild the same source through its one owner.
+	open_document(current)
+
+
+func _smooth_field(key: Vector2i) -> Dictionary:
+	if not _smooth_fields.has(key):
+		var begin := key*TILE_SIZE
+		_smooth_fields[key] = SmoothSurface.field(document,Rect2i(begin,Vector2i(mini(TILE_SIZE,document.width-begin.x),mini(TILE_SIZE,document.depth-begin.y))))
+	return _smooth_fields[key]
+
+
+func _smooth_height(point: Vector2) -> float:
+	return SmoothSurface.sample(_smooth_field(Vector2i(floori(point.x/TILE_SIZE),floori(point.y/TILE_SIZE))),point)
+
+
 func set_shared_material_pattern(pattern: TerrainPattern) -> bool:
 	if pattern == null or not pattern.validation_errors().is_empty(): return false
 	_refresh_material_atlas()
@@ -300,15 +342,19 @@ func set_shared_material_pattern(pattern: TerrainPattern) -> bool:
 
 func _refresh_material_atlas() -> void:
 	if document != null:
-		Materials.set_compact_terrain_roles(_ground_material as ShaderMaterial, document.palette_surface_roles, document.palette_material_ids)
+		Materials.set_compact_terrain_roles(_ground_material as ShaderMaterial, document.palette_surface_roles, document.palette_material_ids, document.palette)
+		(_ground_material as ShaderMaterial).set_shader_parameter("smooth_surface_enabled",ground_style == 1)
 		for region: Dictionary in _water_regions.values():
 			var ground: ShaderMaterial = region.get("ground")
-			if ground != null: Materials.set_compact_terrain_roles(ground, document.palette_surface_roles, document.palette_material_ids)
+			if ground != null:
+				Materials.set_compact_terrain_roles(ground, document.palette_surface_roles, document.palette_material_ids, document.palette)
+				ground.set_shader_parameter("smooth_surface_enabled",ground_style == 1)
 
 
 func open_document(next_source: TerrainResource) -> bool:
 	if next_source == null:
 		return false
+	if ground_style == 1 and next_source.width*next_source.depth > smooth_column_limit: return false
 	var stage_started := Time.get_ticks_usec()
 	# Entering edit mode and opening the extension dialog can hand us a fresh
 	# draft with identical terrain data. Keep the live tiles and pending edits.
@@ -564,7 +610,7 @@ func _rebuild_tile(key: Vector2i, prepared: Dictionary = {}) -> void:
 		if _geometry_cache == null: _geometry_cache = GeometryCache.new()
 		_geometry_cache.directory = runtime_geometry_cache_directory
 		cache_key = _geometry_cache.tile_key(document, key, _column_revision,
-			[water_mesh_step, water_volume_sides, runtime_water_mesh_optimization, runtime_ground_lod_enabled, runtime_water_lod_enabled], swash, sheet)
+			_geometry_policy(), swash, sheet)
 		_geometry_keys[key] = cache_key
 		_profile_add("geometry_cache_key_us", Time.get_ticks_usec() - started)
 		var read_started := Time.get_ticks_usec()
@@ -580,7 +626,7 @@ func _rebuild_tile(key: Vector2i, prepared: Dictionary = {}) -> void:
 	if generated.is_empty():
 		generated = MeshBuilder.build_tile(document, key.x * TILE_SIZE, key.y * TILE_SIZE,
 			TILE_SIZE, water_mesh_step, water_volume_sides, swash, sheet, not Engine.is_editor_hint(),
-			not Engine.is_editor_hint() and runtime_water_mesh_optimization)
+			not Engine.is_editor_hint() and runtime_water_mesh_optimization, ground_style == 1, smooth_material_blend_enabled)
 		if not cache_key.is_empty():
 			var write_started := Time.get_ticks_usec()
 			var bytes_before: int = _geometry_cache.disk.written_bytes
@@ -590,6 +636,7 @@ func _rebuild_tile(key: Vector2i, prepared: Dictionary = {}) -> void:
 			_profile_add("geometry_cache_written_bytes", _geometry_cache.disk.written_bytes - bytes_before)
 			_profile_add("geometry_cache_failures", _geometry_cache.disk.failures - failures_before)
 			_mesh_lod_jobs["cache_maintenance"] = {"kind": "cache_maintenance", "directory": runtime_geometry_cache_directory}
+	if generated.has("smooth_field"): _smooth_fields[key] = generated.smooth_field
 	_profile_add("mesh_us", Time.get_ticks_usec() - started)
 	_profile_add("geometry_us", int(generated.get("geometry_us", 0)))
 	_profile_add("top_us", int(generated.get("top_us", 0)))
@@ -654,6 +701,16 @@ func _rebuild_tile(key: Vector2i, prepared: Dictionary = {}) -> void:
 	_profile_add("tile_builds", 1)
 	_profile["max_tile_us"] = maxi(int(_profile.get("max_tile_us", 0)), Time.get_ticks_usec() - tile_started)
 
+
+func apply_study_smooth_tile(key: Vector2i, field: Dictionary, faces: PackedVector3Array) -> bool:
+	# Opt-in presentation study only. Source/cache entries stay canonical;
+	# floor/pick/navigation and collision advance to the same derived phase.
+	if ground_style!=1 or not _tiles.has(key) or field.is_empty():return false
+	var shape:=(_tiles[key] as Node3D).get_node("GroundPhysics/Shape") as CollisionShape3D
+	(shape.shape as ConcavePolygonShape3D).set_faces(faces)
+	_smooth_fields[key]=field
+	_navigation_grid.clear()
+	return true
 
 func _profile_reset(operation: String) -> void:
 	_profile = {"operation": operation, "compare_us": 0, "validation_us": 0, "copy_us": 0, "queue_us": 0,
@@ -773,13 +830,14 @@ func floor_surface_sample(global_point: Vector3) -> Dictionary:
 	var height := document.column_value("heights", index)
 	if height <= 0:
 		return {"solid": false, "cell": cell}
+	var physical_height: float = _smooth_height(Vector2(local.x,local.z)) if ground_style == 1 else document.origin_y+height
 	return {
 		"solid": true,
 		"cell": cell,
-		"height_voxel": height - 1,
+		"height_voxel": physical_height-document.origin_y-1,
 		"palette_index": document.column_value("top_materials", index),
 		"material_role": document.surface_role_for_palette(document.column_value("top_materials", index)),
-		"position": to_global(Vector3(local.x, document.origin_y + height, local.z)),
+		"position": to_global(Vector3(local.x, physical_height, local.z)),
 	}
 
 
@@ -824,7 +882,16 @@ func pick_ground_top(ray_start: Vector3, ray_end: Vector3) -> Dictionary:
 		var end_distance := minf(leave, minf(next_x, next_z))
 		var index := document.column_index(x, z)
 		var height := document.column_value("heights", index)
-		if height > 0 and document.column_value("top_materials", index) > 0:
+		if ground_style == 1 and height > 0 and document.column_value("top_materials",index)>0:
+			var f := _smooth_field(Vector2i(x/TILE_SIZE,z/TILE_SIZE))
+			var a := Vector3(x,SmoothSurface.corner(f,x,z),z)
+			var b := Vector3(x+1,SmoothSurface.corner(f,x+1,z),z)
+			var c := Vector3(x,SmoothSurface.corner(f,x,z+1),z+1)
+			var d := Vector3(x+1,SmoothSurface.corner(f,x+1,z+1),z+1)
+			for triangle: Array in [[a,b,c],[b,d,c]]:
+				var hit: Variant = Geometry3D.segment_intersects_triangle(origin,origin+segment,triangle[0],triangle[1],triangle[2])
+				if hit != null: return {"cell":Vector2i(x,z),"world":to_global(hit)}
+		if ground_style == 0 and height > 0 and document.column_value("top_materials", index) > 0:
 			var entry_y := origin.y + direction.y * distance
 			if distance > 0.00001 and entry_y >= float(document.origin_y) and entry_y < float(document.origin_y + height):
 				return {"cell": Vector2i(x, z), "world": to_global(origin + direction * distance)}
@@ -983,7 +1050,9 @@ func navigation_path(global_start: Vector3, global_goal: Vector3, max_step_voxel
 	)
 	for block in blocks:
 		var height := block_heights[block.x + block.y * width]
-		result.append(to_global(Vector3((block.x + 0.5) * TerrainResource.CELLS_PER_BLOCK, document.origin_y + height + 1, (block.y + 0.5) * TerrainResource.CELLS_PER_BLOCK)))
+		var p := Vector2((block.x+0.5)*TerrainResource.CELLS_PER_BLOCK,(block.y+0.5)*TerrainResource.CELLS_PER_BLOCK)
+		var y: float = _smooth_height(p) if ground_style == 1 else document.origin_y+height
+		result.append(to_global(Vector3(p.x,y+1,p.y)))
 	return result
 
 
@@ -1007,7 +1076,9 @@ func _build_navigation_grid() -> Dictionary:
 				for oz in [TerrainResource.CELLS_PER_BLOCK / 4, TerrainResource.CELLS_PER_BLOCK / 2, TerrainResource.CELLS_PER_BLOCK * 3 / 4]:
 					for ox in [TerrainResource.CELLS_PER_BLOCK / 4, TerrainResource.CELLS_PER_BLOCK / 2, TerrainResource.CELLS_PER_BLOCK * 3 / 4]:
 						var height := document.column_value("heights", document.column_index(bx * TerrainResource.CELLS_PER_BLOCK + ox, bz * TerrainResource.CELLS_PER_BLOCK + oz))
-						if height > 0: samples.append(height - 1)
+						if height > 0:
+							var point := Vector2(bx*TerrainResource.CELLS_PER_BLOCK+ox,bz*TerrainResource.CELLS_PER_BLOCK+oz)
+							samples.append(roundi(_smooth_height(point)-document.origin_y)-1 if ground_style == 1 else height-1)
 				if samples.size() >= 5:
 					samples.sort()
 					block_heights[bx + bz * width] = samples[samples.size() / 2]
@@ -1063,6 +1134,7 @@ func apply_columns(indices: PackedInt32Array, heights: PackedInt32Array, tops: P
 		all_water_colors[index] = water_colors[i]
 		var x := index % document.width
 		var z := index / document.width
+		if ground_style == 1: _mark_smooth_neighbours(Vector2i(x,z),dirty,grid_dirty,grid_changed,tile_columns,tile_rows)
 		var tile_index := x / TILE_SIZE + z / TILE_SIZE * tile_columns
 		dirty[tile_index] = 1
 		if grid_changed: grid_dirty[tile_index] = 1
@@ -1145,6 +1217,7 @@ func _apply_section_columns(indices: PackedInt32Array, heights: PackedInt32Array
 		has_dirty = true
 		changed_parts[address] = true
 		has_grid_dirty = has_grid_dirty or grid_changed
+		if ground_style == 1: _mark_smooth_neighbours(cell,dirty,grid_dirty,grid_changed,_pending_tile_columns,_pending_tile_rows)
 		var tile_index := cell.x / TILE_SIZE + cell.y / TILE_SIZE * _pending_tile_columns
 		dirty[tile_index] = 1
 		if grid_changed: grid_dirty[tile_index] = 1
@@ -1180,7 +1253,17 @@ func _apply_section_columns(indices: PackedInt32Array, heights: PackedInt32Array
 	set_process(true)
 
 
+func _mark_smooth_neighbours(cell: Vector2i, dirty: PackedByteArray, grid: PackedByteArray, changed: bool, columns: int, rows: int) -> void:
+	var begin := (cell-Vector2i(SmoothSurface.HALO,SmoothSurface.HALO))/TILE_SIZE
+	var end := (cell+Vector2i(SmoothSurface.HALO,SmoothSurface.HALO))/TILE_SIZE
+	for z in range(maxi(0,begin.y),mini(rows-1,end.y)+1):
+		for x in range(maxi(0,begin.x),mini(columns-1,end.x)+1):
+			dirty[x+z*columns] = 1
+			if changed: grid[x+z*columns] = 1
+
+
 func _reset_pending_flags() -> void:
+	_smooth_fields.clear()
 	_pending_tile_columns = ceili(float(document.width) / TILE_SIZE)
 	_pending_tile_rows = ceili(float(document.depth) / TILE_SIZE)
 	_pending_flags.resize(_pending_tile_columns * _pending_tile_rows)
@@ -1216,6 +1299,7 @@ func _queue_tile(key: Vector2i, front: bool) -> void:
 		_geometry_requests[key] = _geometry_request_serial
 		# A newer terrain/water request must never publish an older CPU snapshot.
 		_geometry_prepared.erase(key)
+	_smooth_fields.erase(key)
 	var index := key.x + key.y * _pending_tile_columns
 	if _pending_flags[index] != 0:
 		if front: _pending_edit_flags[index] = 1

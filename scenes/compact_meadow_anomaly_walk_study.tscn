@@ -1,0 +1,56 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_mountain_anomaly_study.gd" id="1_cs1l4"]
+[ext_resource type="Script" path="res://scripts/ember_map_loader.gd" id="2_cihin"]
+[ext_resource type="Resource" path="res://content/world_terrains/meadow_anomaly_study.res" id="3_dacr4"]
+
+[sub_resource type="Environment" id="Environment"]
+background_mode = 1
+background_color = Color(0.6431373, 0.7176471, 0.7490196, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.70980394, 0.7647059, 0.827451, 1)
+ambient_light_energy = 0.45
+tonemap_mode = 2
+
+[node name="MeadowAnomalyWalkStudy" type="Node3D" unique_id=2068147147]
+script = ExtResource("1_cs1l4")
+anomaly_zones = Array[Vector4]([Vector4(27, 29, 3.2, 1), Vector4(38, 30, 2.4, 0.8)])
+walk_test_enabled = true
+walk_route = PackedVector2Array(23, 29, 31, 29)
+orbit_center = Vector3(32, 3, 24)
+
+[node name="Map" type="Node3D" parent="." unique_id=2129954581]
+script = ExtResource("2_cihin")
+map_id = "meadow_anomaly_walk_study"
+compact_smooth_study_column_limit = 786432
+compact_terrain = ExtResource("3_dacr4")
+compact_ground_style = 1
+compact_smooth_material_blend = true
+compact_material_light_mode = 1
+authored_size_blocks = Vector2i(64, 48)
+imported_tile_size = 1.0
+
+[node name="Look" type="Node3D" parent="Map" unique_id=369353320]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="Map/Look" unique_id=33941164]
+environment = SubResource("Environment")
+
+[node name="Sun" type="DirectionalLight3D" parent="Map/Look" unique_id=535289951]
+transform = Transform3D(0.81915206, 0.38379756, -0.42625037, 0, 0.7431448, 0.6691306, 0.57357645, -0.5481197, 0.6087486, 0, 0, 0)
+light_color = Color(1, 0.94509804, 0.8509804, 1)
+light_energy = 1.4
+shadow_enabled = true
+
+[node name="Props" type="Node3D" parent="Map" unique_id=1084594557]
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=552504207]
+transform = Transform3D(0.77675146, -0.3586247, 0.5177004, 0, 0.82193875, 0.56947047, -0.6297984, -0.4423038, 0.6384972, 92, 69, 98)
+current = true
+fov = 40.0
+
+[node name="Instructions" type="CanvasLayer" parent="." unique_id=271116948]
+
+[node name="Caption" type="Label" parent="Instructions" unique_id=757860656]
+offset_left = 20.0
+offset_top = 16.0
+text = "Поляна 64×48 м · гора сбоку · речка · WASD — ходить · V — камера"

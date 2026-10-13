@@ -15,6 +15,7 @@ const DEFINITIONS := {
 	"softness": {"kind":"slider", "title":"Мягкость · %", "min":0.0, "max":100.0, "initial":75.0},
 	"feature_scale": {"kind":"slider", "title":"Крупность неровностей · ячейки", "min":4.0, "max":64.0, "initial":16.0},
 	"detail": {"kind":"slider", "title":"Детализация неровностей", "min":0.0, "max":5.0, "initial":0.0},
+	"detail_pattern": {"kind":"choice", "items":["Рисунок · прежний шум", "Рисунок · фактура покрытия"]},
 	"seed": {"kind":"spin", "title":"Вариант неровностей", "min":0.0, "max":2147483647.0, "initial":1.0},
 	"direction": {"kind":"choice", "items":["Вверх и вниз", "Только вверх", "Только вниз"]},
 	"level_from_point": {"kind":"toggle", "title":"Площадка · высота по точке"},
@@ -27,7 +28,7 @@ const COMPACT_TOOLS := {
 	"lower":["strength_detail", "strength_steps"],
 	"smooth":["strength_detail", "strength_steps"],
 	"level":["level_from_point", "plane_height"],
-	"generator":["strength_detail", "strength_steps", "feature_scale", "detail", "seed", "direction"],
+	"generator":["detail_pattern", "strength_detail", "strength_steps", "feature_scale", "detail", "seed", "direction"],
 	"paint":["palette"],
 	"water":["palette", "water_height"],
 	"dry":[],
@@ -53,7 +54,7 @@ const LEGACY_TOOLS := {
 static func definition(id: String) -> Dictionary:
 	return DEFINITIONS.get(id, {})
 
-static func active_for(mode: String, compact: bool, coarse: bool, level_from_point: bool) -> Array[String]:
+static func active_for(mode: String, compact: bool, coarse: bool, level_from_point: bool, material_detail := false) -> Array[String]:
 	var tool_definitions: Dictionary = COMPACT_TOOLS if compact else LEGACY_TOOLS
 	if not tool_definitions.has(mode): return []
 	var active: Array[String] = []
@@ -65,6 +66,7 @@ static func active_for(mode: String, compact: bool, coarse: bool, level_from_poi
 		if coarse and mode in ["raise", "lower", "smooth", "level", "generator"]:
 			active.append("height_step")
 	for id: String in tool_definitions[mode]:
+		if id=="detail" and compact and mode=="generator" and material_detail:continue
 		if id == "strength_detail" and compact and coarse: continue
 		if id == "strength_steps" and (not compact or not coarse): continue
 		if id == "plane_height" and compact and level_from_point: continue

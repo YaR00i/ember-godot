@@ -61,6 +61,8 @@ static func _valid_arrays(arrays: Variant) -> bool:
 	if not arrays[Mesh.ARRAY_NORMAL] is PackedVector3Array or not arrays[Mesh.ARRAY_COLOR] is PackedColorArray or not arrays[Mesh.ARRAY_TEX_UV] is PackedVector2Array: return false
 	for channel in [Mesh.ARRAY_NORMAL, Mesh.ARRAY_COLOR, Mesh.ARRAY_TEX_UV]:
 		if arrays[channel].size() != count: return false
+	var uv2: Variant = arrays[Mesh.ARRAY_TEX_UV2]
+	if uv2 != null and (not uv2 is PackedVector2Array or (not uv2.is_empty() and uv2.size() != count)): return false
 	for point in arrays[Mesh.ARRAY_VERTEX]:
 		if not point.is_finite(): return false
 	var indices: Variant = arrays[Mesh.ARRAY_INDEX]
@@ -81,6 +83,11 @@ func read_geometry_arrays(key: String) -> Dictionary:
 		disk.invalid += 1
 		return {}
 	var faces: PackedVector3Array = data.collision_faces
+	if data.get("smooth_ground",false) and not data.ground.is_empty():
+		var uv2: Variant = data.ground[Mesh.ARRAY_TEX_UV2]
+		if not uv2 is PackedVector2Array or uv2.size()!=data.ground[Mesh.ARRAY_VERTEX].size():
+			disk.invalid+=1
+			return {}
 	if faces.size() % 3 != 0: disk.invalid += 1; return {}
 	var ground: Array = data.ground
 	if ground.is_empty():
@@ -151,7 +158,7 @@ func write_geometry(key: String, generated: Dictionary) -> Dictionary:
 	var ground := mesh_arrays(generated.terrain)
 	var water := mesh_arrays(generated.water)
 	disk.write(key, {"version": VERSION, "ground": ground, "water": water,
-		"collision_faces": generated.collision_faces, "water_source_vertices": generated.get("water_source_vertices", generated.get("water_vertices", 0))}, func() -> bool: return false)
+		"collision_faces": generated.collision_faces, "smooth_ground": generated.has("smooth_field"), "water_source_vertices": generated.get("water_source_vertices", generated.get("water_vertices", 0))}, func() -> bool: return false)
 	# Cold/I-O fallback keeps the same serialized representation and can reuse
 	# the serialization readback for LOD. No CPU arrays remain in the tile cache.
 	return {"ground_arrays": ground, "water_arrays": water}

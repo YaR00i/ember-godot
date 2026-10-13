@@ -209,15 +209,20 @@ func _column() -> void:
 	var x: int = _patch.rect.position.x + _point % _patch.rect.size.x
 	var z: int = _patch.rect.position.y + _point / _patch.rect.size.x
 	var point := Vector2i(x, z)
-	var group: Vector2i = point / GROUP
 	var influences: Array[Dictionary] = []
-	if _influences.has(group): influences = _influences[group]
-	else:
-		var sample := Vector2(group * GROUP + Vector2i.ONE * (GROUP / 2)) / 16.0
-		for layer in _tile_layers:
-			var influence := _influence_at(layer,sample)
-			if not influence.is_empty(): influences.append(influence)
-		_influences[group] = influences
+	for layer_index in _tile_layers.size():
+		var layer: Dictionary = _tile_layers[layer_index]
+		var fine: bool = layer.parameters.get("terrain_sampling","legacy8") == "fine16"
+		var group := point / GROUP
+		var key := Vector3i(group.x,group.y,layer_index)
+		var influence: Dictionary
+		if fine:
+			influence = _influence_at(layer,(Vector2(point)+Vector2.ONE*0.5)/16.0)
+		else:
+			if not _influences.has(key):
+				_influences[key] = _influence_at(layer,Vector2(group*GROUP+Vector2i.ONE*(GROUP/2))/16.0)
+			influence = _influences[key]
+		if not influence.is_empty(): influences.append(influence)
 	var active := not influences.is_empty()
 	if not before.has_column(x, z):
 		if active: error = "Область попала в пустое место. Сначала добавьте участки."
@@ -295,6 +300,11 @@ func _original_state(point: Vector2i) -> Dictionary:
 	return state
 
 func _influence_at(layer: Dictionary, sample: Vector2) -> Dictionary:
+	var result := _sample_influence(layer,sample)
+	if not result.is_empty():result.quantum = 1 if layer.parameters.get("terrain_sampling","legacy8") == "fine16" else 4
+	return result
+
+func _sample_influence(layer: Dictionary, sample: Vector2) -> Dictionary:
 	if layer.get("kind") == "road":
 		var sampled := Math.path_sample(layer.curve,sample,layer.parameters.width_m,layer.parameters.edge_m)
 		if sampled.is_empty(): return {}
@@ -320,12 +330,13 @@ func _influence_at(layer: Dictionary, sample: Vector2) -> Dictionary:
 	return {"kind":"plateau","height":float(layer.parameters.height_m)*16-before.origin_y,"weight":weight} if weight > 0 else {}
 
 func _project(state: Dictionary, influence: Dictionary) -> void:
+	var quantum: int = influence.get("quantum",4)
 	if influence.kind != "river" and state.water > state.height:
 		error = "Сухая область пересекает воду. Измените её границы или перенесите на сушу."; return
 	if influence.kind == "lake":
 		if state.flow != Vector2.ZERO: error = "Озеро создаётся на земле без исходного течения. Реку добавляйте после озера в списке."; return
 		var sampled := Math.lake_height(influence.distance,float(state.height+before.origin_y)/16.0,influence.parameters)
-		state.height = clampi(roundi((sampled*16.0-before.origin_y)/4.0)*4,4,candidate.height_limit)
+		state.height = clampi(roundi((sampled*16.0-before.origin_y)/float(quantum))*quantum,4,candidate.height_limit)
 		if influence.distance >= float(influence.parameters.shore_m):
 			state.water = roundi((float(influence.parameters.water_m)*16.0-before.origin_y)/4.0)*4
 			state.color = _water
@@ -336,7 +347,7 @@ func _project(state: Dictionary, influence: Dictionary) -> void:
 		var half: float = influence.parameters.width_m*0.5
 		if wet and influence.distance >= half: return # Preserve the existing body beyond the channel.
 		var sampled := Math.river_height(influence.distance,float(state.height+before.origin_y)/16.0,influence.water_m,influence.parameters)
-		var height := clampi(roundi((sampled*16.0-before.origin_y)/4.0)*4,4,candidate.height_limit)
+		var height := clampi(roundi((sampled*16.0-before.origin_y)/float(quantum))*quantum,4,candidate.height_limit)
 		state.height = mini(state.height,height) if wet else height
 		if influence.distance < half:
 			if not wet: state.water = roundi(influence.water_m*16.0-before.origin_y); state.color = _water
@@ -346,15 +357,15 @@ func _project(state: Dictionary, influence: Dictionary) -> void:
 	elif influence.kind == "mountain":
 		# A lower peak is not a cutting tool. Constant target height makes the
 		# summit flat and repeat/move independent of previously applied relief.
-		state.height = maxi(state.height,clampi(roundi(lerpf(float(state.height),influence.height,influence.weight)/4.0)*4,4,candidate.height_limit))
+		state.height = maxi(state.height,clampi(roundi(lerpf(float(state.height),influence.height,influence.weight)/float(quantum))*quantum,4,candidate.height_limit))
 	elif influence.kind == "road":
-		state.height = clampi(roundi(lerpf(float(state.height),influence.height,influence.weight)/4.0)*4,4,candidate.height_limit)
+		state.height = clampi(roundi(lerpf(float(state.height),influence.height,influence.weight)/float(quantum))*quantum,4,candidate.height_limit)
 		if state.water > 0 and state.height <= state.water:
 			error = "Дорога опустит землю под воду. Измените линию или высоты конечных площадок; мост добавим отдельно."; return
 		if influence.surface: state.top = _soil
 		state.side = {}
 	else:
-		state.height = clampi(roundi(lerpf(float(state.height),influence.height,influence.weight)/4.0)*4,4,candidate.height_limit)
+		state.height = clampi(roundi(lerpf(float(state.height),influence.height,influence.weight)/float(quantum))*quantum,4,candidate.height_limit)
 		if state.water > 0 and state.height <= state.water: error = "Плато опустит землю под воду. Поднимите его или измените границы."; return
 	state.cap = mini(state.cap,state.height)
 

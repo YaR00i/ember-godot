@@ -4,6 +4,8 @@ extends RefCounted
 
 const BrushMath = preload("res://scripts/prototypes/ember_terrain_pilot_brush_math.gd")
 const TerrainResource = preload("res://scripts/prototypes/ember_terrain_pilot_resource.gd")
+const SurfaceForms = preload("res://scripts/prototypes/ember_terrain_surface_form_math.gd")
+const Plan = preload("res://scripts/ember_terrain_plan_resource.gd")
 
 var _entry: Dictionary
 var _history: Object
@@ -26,6 +28,8 @@ var _before_tops := PackedByteArray()
 var _before_waters := PackedInt32Array()
 var _before_water_colors := PackedByteArray()
 var _noise: FastNoiseLite
+var _surface_forms: SurfaceForms
+var _surface_scale := 1.0
 var _detail := 0
 var _direction := 0
 var _falloff_by_distance := PackedFloat64Array()
@@ -38,6 +42,8 @@ var _section_baseline: TerrainResource
 var _section_touched := {}
 var _section_influence := {}
 var _section_groups := {}
+var _paint_columns := PackedInt32Array()
+var _paint_groups := {}
 
 
 func configure(entry: Dictionary, history: Object, scene: Node) -> void:
@@ -50,7 +56,7 @@ func active() -> bool:
 	return not _mode.is_empty()
 
 
-func begin(mode: String, radius_blocks: float, depth_voxels: int, palette_index: int, water_world: int, feature_scale: int, detail: int, seed: int, direction: int, target_world := -99999, edit_scale := "detail", brush_shape := "auto", requested_height_step := 0) -> bool:
+func begin(mode: String, radius_blocks: float, depth_voxels: int, palette_index: int, water_world: int, feature_scale: int, detail: int, seed: int, direction: int, target_world := -99999, edit_scale := "detail", brush_shape := "auto", requested_height_step := 0, material_detail := false) -> bool:
 	if _entry.is_empty() or active():
 		return false
 	var source: TerrainResource = _entry.resource
@@ -99,7 +105,10 @@ func begin(mode: String, radius_blocks: float, depth_voxels: int, palette_index:
 	_section_touched.clear()
 	_section_influence.clear()
 	_section_groups.clear()
-	if mode == "generator":
+	if mode == "generator" and material_detail:
+		_surface_forms=SurfaceForms.new();_surface_forms.configure(seed)
+		_surface_scale=clampf(float(feature_scale)/16.0,0.25,4.0)
+	elif mode == "generator":
 		_noise = FastNoiseLite.new()
 		_noise.seed = seed
 		_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
@@ -207,9 +216,11 @@ func _stamp_point(cell: Vector2i, bounds: Rect2i, previous_center: Vector2i) -> 
 					"level": height = _target_height
 					"smooth": height = _smooth_baseline(source, x, z, group_x, group_z, influence)
 					"generator":
-						var steps := BrushMath.noise_offset(_noise, group_x, group_z, influence, maxi(1, _depth / _height_step), _detail, _direction)
-						height = clampi(baseline + steps, 1, source.height_limit) if _height_step == 1 else BrushMath.stepped_height(baseline + steps * _height_step, _height_step, source.height_limit)
+						if _surface_forms==null:
+							var steps := BrushMath.noise_offset(_noise, group_x, group_z, influence, maxi(1, _depth / _height_step), _detail, _direction)
+							height = clampi(baseline + steps, 1, source.height_limit) if _height_step == 1 else BrushMath.stepped_height(baseline + steps * _height_step, _height_step, source.height_limit)
 			var group_changed := false
+			var protect_group:=paint_surface and not _paint_groups.has(representative)
 			var local_representative := representative
 			if sectioned:
 				var address := Vector2i(x / TerrainResource.Sections.CELLS, z / TerrainResource.Sections.CELLS)
@@ -231,10 +242,20 @@ func _stamp_point(cell: Vector2i, bounds: Rect2i, previous_center: Vector2i) -> 
 				var index := representative + offset
 				var local_index := local_representative + local_offsets[group_index]
 				var current_height := current_heights[local_index]
+				if protect_group and current_height>0:_paint_columns.append(index)
 				var current_top := current_tops[local_index]
 				var current_water := current_waters[local_index]
 				var current_color := current_colors[local_index]
 				var next_height: int = height if changes_height else current_height
+				if _surface_forms!=null:
+					var original_height: int=_section_baseline.column_value("heights",index) if sectioned else _before_heights[index]
+					# Preserve underwater ground, holes and the actual painted role.
+					next_height=current_height
+					if original_height>0 and not (current_water>original_height and current_color>0):
+						var point:=Vector2((float(x+group_index%_cell_stride)+0.5)/16.0,(float(z+floori(float(group_index)/_cell_stride))+0.5)/16.0)
+						var role: String=source.surface_role_for_palette(current_top)
+						var delta: int=_surface_forms.brush_offset_voxels(point,role,_surface_scale,_depth,influence,_height_step,_direction)
+						next_height=clampi(original_height+delta,maxi(1,source.column_value("cap_depths",index)),source.height_limit)
 				var next_top: int = _palette if paint_surface else current_top
 				var next_water: int = _water_level if fill_water else 0 if clear_water else current_water
 				var next_water_color: int = _palette if fill_water else 0 if clear_water else current_color
@@ -249,6 +270,7 @@ func _stamp_point(cell: Vector2i, bounds: Rect2i, previous_center: Vector2i) -> 
 				waters.append(next_water)
 				water_colors.append(next_water_color)
 			if group_changed: _mark_touched(representative)
+			if protect_group:_paint_groups[representative]=true
 	if diagnostic_sink != null:
 		diagnostic_sink.stage("brush_collect", Time.get_ticks_usec() - gather_started)
 	if not indices.is_empty(): _apply(source, _entry.target, indices, heights, tops, waters, water_colors)
@@ -299,21 +321,25 @@ func end() -> void:
 	var snapshot_started := Time.get_ticks_usec() if diagnostic_sink != null else 0
 	var source: TerrainResource = _entry.resource
 	var target_ref: WeakRef = _entry.target
+	var protection:=_paint_protection_delta()
+	if not protection.is_empty():_apply_paint_protection(target_ref,protection.after)
 	if _section_baseline != null:
 		var before_parts := _touched_parts(_section_baseline)
 		var after_parts := _touched_parts(source)
 		var title := "Мир · компактная земля · " + _mode
 		_clear()
-		if after_parts.is_empty(): return
+		if after_parts.is_empty():_commit_paint_only(protection);return
 		if _history is EditorUndoRedoManager:
 			(_history as EditorUndoRedoManager).create_action(title, UndoRedo.MERGE_DISABLE, _scene)
 			Callable(_history, "add_do_method").callv([self, "_apply_parts", source, target_ref, after_parts])
 			Callable(_history, "add_undo_method").callv([self, "_apply_parts", source, target_ref, before_parts])
+			_add_paint_history(protection)
 			(_history as EditorUndoRedoManager).commit_action(false)
 		else:
 			(_history as UndoRedo).create_action(title, UndoRedo.MERGE_DISABLE)
 			(_history as UndoRedo).add_do_method(Callable(self, "_apply_parts").bind(source, target_ref, after_parts))
 			(_history as UndoRedo).add_undo_method(Callable(self, "_apply_parts").bind(source, target_ref, before_parts))
+			_add_paint_history(protection)
 			(_history as UndoRedo).commit_action(false)
 		return
 	var indices := _indices.duplicate()
@@ -380,19 +406,54 @@ func end() -> void:
 	var clear_started := Time.get_ticks_usec() if diagnostic_sink != null else 0
 	_clear()
 	if clear_started > 0: diagnostic_sink.stage("brush_clear", Time.get_ticks_usec() - clear_started)
-	if indices.is_empty(): return
+	if indices.is_empty():_commit_paint_only(protection);return
 	var commit_started := Time.get_ticks_usec() if diagnostic_sink != null else 0
 	if _history is EditorUndoRedoManager:
 		(_history as EditorUndoRedoManager).create_action(title, UndoRedo.MERGE_DISABLE, _scene)
 		Callable(_history, "add_do_method").callv([self, "_apply", source, target_ref, indices, after_heights, after_tops, after_waters, after_water_colors])
 		Callable(_history, "add_undo_method").callv([self, "_apply", source, target_ref, indices, before_heights, before_tops, before_waters, before_water_colors])
+		_add_paint_history(protection)
 		(_history as EditorUndoRedoManager).commit_action(false)
 	else:
 		(_history as UndoRedo).create_action(title, UndoRedo.MERGE_DISABLE)
 		(_history as UndoRedo).add_do_method(Callable(self, "_apply").bind(source, target_ref, indices, after_heights, after_tops, after_waters, after_water_colors))
 		(_history as UndoRedo).add_undo_method(Callable(self, "_apply").bind(source, target_ref, indices, before_heights, before_tops, before_waters, before_water_colors))
+		_add_paint_history(protection)
 		(_history as UndoRedo).commit_action(false)
 	if commit_started > 0: diagnostic_sink.stage("history_commit", Time.get_ticks_usec() - commit_started)
+
+func _paint_protection_delta() -> Dictionary:
+	if _mode!="paint" or _paint_columns.is_empty():return {}
+	var target: Node=_entry.target.get_ref()
+	if not is_instance_valid(target):return {}
+	var previous: Resource=Plan.read(target)
+	# Unchanged recipe/patch arrays stay immutable; only the paint bitmap is
+	# copied. Ancient patches need the existing explicit migration first.
+	var next: Resource=(previous.working_copy() if previous.schema_version<3 else previous.duplicate(false)) if previous!=null else Plan.new()
+	next.protect_paint_columns(_paint_columns,_entry.resource.width)
+	return {} if previous!=null and previous.schema_version==next.schema_version and previous.paint_locks==next.paint_locks else {"before":previous,"after":next,"target":_entry.target}
+
+func _apply_paint_protection(target_ref: WeakRef,plan: Resource) -> void:
+	var target: Node=target_ref.get_ref()
+	if not is_instance_valid(target):return
+	if plan==null:target.remove_meta(Plan.META)
+	else:target.set_meta(Plan.META,plan)
+
+func _add_paint_history(delta: Dictionary) -> void:
+	if delta.is_empty():return
+	if _history is EditorUndoRedoManager:
+		Callable(_history,"add_do_method").callv([self,"_apply_paint_protection",delta.target,delta.after])
+		Callable(_history,"add_undo_method").callv([self,"_apply_paint_protection",delta.target,delta.before])
+	else:
+		(_history as UndoRedo).add_do_method(_apply_paint_protection.bind(delta.target,delta.after))
+		(_history as UndoRedo).add_undo_method(_apply_paint_protection.bind(delta.target,delta.before))
+
+func _commit_paint_only(delta: Dictionary) -> void:
+	if delta.is_empty():return
+	if _history is EditorUndoRedoManager:(_history as EditorUndoRedoManager).create_action("Мир · защитить ручную покраску",UndoRedo.MERGE_DISABLE,_scene)
+	else:(_history as UndoRedo).create_action("Мир · защитить ручную покраску",UndoRedo.MERGE_DISABLE)
+	_add_paint_history(delta)
+	_history.commit_action(false)
 
 
 func cancel() -> void:
@@ -440,6 +501,7 @@ func _live_projection() -> EmberTerrainPilotProjection:
 
 
 func _clear() -> void:
+	_paint_columns=PackedInt32Array();_paint_groups.clear()
 	_mode = ""
 	_cell_stride = 1
 	_height_step = 1
@@ -453,6 +515,8 @@ func _clear() -> void:
 	_before_waters = PackedInt32Array()
 	_before_water_colors = PackedByteArray()
 	_noise = null
+	_surface_forms = null
+	_surface_scale = 1.0
 	_falloff_by_distance = PackedFloat64Array()
 	_amount_by_distance = PackedInt32Array()
 	_strength_by_distance = PackedInt32Array()

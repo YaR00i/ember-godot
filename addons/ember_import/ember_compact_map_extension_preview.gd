@@ -77,7 +77,7 @@ func _process(_delta: float) -> void:
 	var started := Time.get_ticks_usec()
 	while not _pending.is_empty() and Time.get_ticks_usec() - started < 4000:
 		var key: Vector2i = _pending.pop_front()
-		var generated := MeshBuilder.build_tile(_candidate, key.x * TerrainProjection.TILE_SIZE, key.y * TerrainProjection.TILE_SIZE, TerrainProjection.TILE_SIZE, _projection.water_mesh_step, _projection.water_volume_sides)
+		var generated := MeshBuilder.build_tile(_candidate, key.x * TerrainProjection.TILE_SIZE, key.y * TerrainProjection.TILE_SIZE, TerrainProjection.TILE_SIZE, _projection.water_mesh_step, _projection.water_volume_sides,PackedVector4Array(),{},false,false,_projection.ground_style==1,_projection.smooth_material_blend_enabled)
 		var tile := Node3D.new()
 		tile.name = "PreviewTile_%d_%d" % [key.x, key.y]
 		add_child(tile, false, Node.INTERNAL_MODE_BACK)

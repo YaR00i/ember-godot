@@ -7,6 +7,8 @@ extends RefCounted
 const TerrainResource = preload("res://scripts/prototypes/ember_terrain_pilot_resource.gd")
 const BrushMath = preload("res://scripts/prototypes/ember_terrain_pilot_brush_math.gd")
 const GROUP_SIZE: int = BrushMath.COARSE_CELL_SIZE
+const SmoothSurface = preload("res://scripts/prototypes/ember_terrain_smooth_surface.gd")
+const SmoothWater = preload("res://scripts/prototypes/ember_terrain_smooth_water.gd")
 
 
 class Triangles:
@@ -115,17 +117,17 @@ class Triangles:
 ## Immediate side quads are the editable default; the gameplay projection opts
 ## into coalescing explicitly. Both modes keep the same authored surface.
 static func build_tile(source: TerrainResource, min_x: int, min_z: int, tile_size: int,
-		water_step := 0, water_volume_sides := false, swash_cells := PackedVector4Array(), waterfall_sheet := {}, coalesce_ground_sides := false, optimize_water_mesh := false) -> Dictionary:
+		water_step := 0, water_volume_sides := false, swash_cells := PackedVector4Array(), waterfall_sheet := {}, coalesce_ground_sides := false, optimize_water_mesh := false, smooth_ground := false, blend_materials := false) -> Dictionary:
 	if source.is_sectioned():
-		return _build_section_tile(source, min_x, min_z, tile_size, water_step, water_volume_sides, swash_cells, waterfall_sheet, coalesce_ground_sides, optimize_water_mesh)
+		return _build_section_tile(source, min_x, min_z, tile_size, water_step, water_volume_sides, swash_cells, waterfall_sheet, coalesce_ground_sides, optimize_water_mesh, smooth_ground, blend_materials)
 	var geometry_started := Time.get_ticks_usec()
 	var end_x := mini(source.width, min_x + tile_size)
 	var end_z := mini(source.depth, min_z + tile_size)
-	var uniform := _build_uniform_dry_tile(source, min_x, min_z, end_x, end_z, coalesce_ground_sides) if swash_cells.is_empty() and waterfall_sheet.is_empty() else {}
+	var uniform := _build_uniform_dry_tile(source, min_x, min_z, end_x, end_z, coalesce_ground_sides) if not smooth_ground and swash_cells.is_empty() and waterfall_sheet.is_empty() else {}
 	if not uniform.is_empty():
 		return uniform
 	var grouped := _build_grouped_tile(source, min_x, min_z, end_x, end_z,
-		water_step, water_volume_sides, coalesce_ground_sides, optimize_water_mesh) if swash_cells.is_empty() and waterfall_sheet.is_empty() else {}
+		water_step, water_volume_sides, coalesce_ground_sides, optimize_water_mesh) if not smooth_ground and swash_cells.is_empty() and waterfall_sheet.is_empty() else {}
 	if not grouped.is_empty():
 		return grouped
 	var ground := Triangles.new()
@@ -133,12 +135,14 @@ static func build_tile(source: TerrainResource, min_x: int, min_z: int, tile_siz
 	var water := Triangles.new()
 	if optimize_water_mesh: water.water_depth_cache = {}
 	var pass_started := Time.get_ticks_usec()
-	var skip_sides := _build_top_rectangles(source, ground, min_x, min_z, end_x, end_z)
+	var smooth := SmoothSurface.build(source, Rect2i(min_x,min_z,end_x-min_x,end_z-min_z), blend_materials) if smooth_ground else {}
+	var skip_sides := PackedByteArray() if smooth_ground else _build_top_rectangles(source, ground, min_x, min_z, end_x, end_z)
 	var top_us := Time.get_ticks_usec() - pass_started
 	var side_us := 0
 	for z in range(min_z, end_z):
 		pass_started = Time.get_ticks_usec()
 		for cell_x in range(min_x, end_x):
+			if smooth_ground: continue
 			if skip_sides[(cell_x - min_x) + (z - min_z) * (end_x - min_x)] != 0:
 				continue
 			var index := cell_x + z * source.width
@@ -159,14 +163,20 @@ static func build_tile(source: TerrainResource, min_x: int, min_z: int, tile_siz
 				_add_side(source, ground, cell_x, z, height, back, 3)
 		side_us += Time.get_ticks_usec() - pass_started
 	pass_started = Time.get_ticks_usec()
-	_build_water_rectangles(source, water, min_x, min_z, end_x, end_z, water_step)
+	# First smooth shoreline slice: flat water. Volume walls, waterfall sheets
+	# and animated swash retain their existing geometry contract.
+	var smooth_shore := smooth_ground and not water_volume_sides and waterfall_sheet.is_empty() and swash_cells.is_empty()
+	if smooth_shore:
+		SmoothWater.append(source, Rect2i(min_x,min_z,end_x-min_x,end_z-min_z), smooth.smooth_field, water)
+	else:
+		_build_water_rectangles(source, water, min_x, min_z, end_x, end_z, water_step)
 	for cell in swash_cells:
 		var y := cell.z + 0.025
 		# Existing Water mesh/material: UV.y=-1 marks temporary dry-bank coverage.
 		water.quad(Vector3(cell.x, y, cell.y), Vector3(cell.x + 1.0, y, cell.y),
 			Vector3(cell.x + 1.0, y, cell.y + 1.0), Vector3(cell.x, y, cell.y + 1.0),
 			Color(0.1, 0.7, 0.8, 0.0), Vector3.UP, Vector2(cell.x + 0.5, -cell.y - 1.5))
-	if water_step > 0 or water_volume_sides:
+	if not smooth_shore and (water_step > 0 or water_volume_sides):
 		_stitch_water_edges(source, water, min_x, min_z, end_x, end_z, water_volume_sides)
 	if water_volume_sides:
 		_build_water_walls(source, water, min_x, min_z, end_x, end_z, waterfall_sheet.get("spill", {}))
@@ -182,21 +192,24 @@ static func build_tile(source: TerrainResource, min_x: int, min_z: int, tile_siz
 	var water_us := Time.get_ticks_usec() - pass_started
 	var geometry_us := Time.get_ticks_usec() - geometry_started
 	var resource_started := Time.get_ticks_usec()
-	var ground_mesh := ground.mesh()
+	var ground_mesh: ArrayMesh = smooth.terrain if smooth_ground else ground.mesh()
 	var water_mesh := water.mesh(optimize_water_mesh)
-	return {"terrain": ground_mesh, "water": water_mesh, "collision_faces": ground.vertices,
+	var result := {"terrain": ground_mesh, "water": water_mesh, "collision_faces": smooth.collision_faces if smooth_ground else ground.vertices,
 		"water_vertices": water_mesh.surface_get_array_len(0) if water_mesh.get_surface_count() > 0 else 0,
 		"water_source_vertices": water.vertices.size(), "water_indices": water_mesh.surface_get_array_index_len(0) if water_mesh.get_surface_count() > 0 else 0, "uniform_dry": false,
 		"geometry_us": geometry_us, "top_us": top_us, "side_us": side_us, "water_us": water_us, "uniform_us": 0,
 		"mesh_resource_us": Time.get_ticks_usec() - resource_started}
+	if smooth_ground: result.smooth_field = smooth.smooth_field
+	return result
 
 
-static func _build_section_tile(source: TerrainResource, x: int, z: int, size: int, step: int, sides: bool, swash: PackedVector4Array, sheet: Dictionary, coalesce: bool, optimize_water: bool) -> Dictionary:
+static func _build_section_tile(source: TerrainResource, x: int, z: int, size: int, step: int, sides: bool, swash: PackedVector4Array, sheet: Dictionary, coalesce: bool, optimize_water: bool, smooth_ground: bool, blend_materials: bool) -> Dictionary:
 	# Only this tile and an eight-column halo enter the existing mesher. The
 	# halo keeps its grouped neighbour tests and shared water corners identical.
 	var started := Time.get_ticks_usec()
-	var start := Vector2i(maxi(0, x - GROUP_SIZE), maxi(0, z - GROUP_SIZE))
-	var end := Vector2i(mini(source.width, x + size + GROUP_SIZE), mini(source.depth, z + size + GROUP_SIZE))
+	var halo: int = SmoothSurface.HALO if smooth_ground else GROUP_SIZE
+	var start := Vector2i(maxi(0, x - halo), maxi(0, z - halo))
+	var end := Vector2i(mini(source.width, x + size + halo), mini(source.depth, z + size + halo))
 	var address := Vector2i(x / TerrainResource.Sections.CELLS, z / TerrainResource.Sections.CELLS)
 	var part := source.sections.get(address) as TerrainResource
 	var part_start := address * TerrainResource.Sections.CELLS
@@ -221,7 +234,7 @@ static func _build_section_tile(source: TerrainResource, x: int, z: int, size: i
 		if sheet.has("spill"):
 			falling.spill = sheet.spill.duplicate()
 			falling.spill.center -= Vector2(start)
-	var generated := build_tile(view, x - start.x, z - start.y, size, step, sides, bank, falling, coalesce, optimize_water)
+	var generated := build_tile(view, x - start.x, z - start.y, size, step, sides, bank, falling, coalesce, optimize_water, smooth_ground, blend_materials)
 	var shift := Vector3(start.x, 0, start.y)
 	for channel in ["terrain", "water"]:
 		var old_mesh := generated[channel] as ArrayMesh
@@ -241,6 +254,7 @@ static func _build_section_tile(source: TerrainResource, x: int, z: int, size: i
 	var faces: PackedVector3Array = generated.collision_faces
 	for i in faces.size(): faces[i] += shift
 	generated.collision_faces = faces
+	if generated.has("smooth_field"): generated.smooth_field.start += start
 	generated.section_window_columns = view.width * view.depth
 	generated.geometry_us = Time.get_ticks_usec() - started
 	return generated

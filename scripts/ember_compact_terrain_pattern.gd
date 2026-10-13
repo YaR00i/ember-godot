@@ -11,6 +11,9 @@ const ROLE_IDS := ["soil", "grass", "sand", "stone"]
 @export var light_color := Color.WHITE
 @export var shadow_color := Color.WHITE
 @export var pixels := PackedByteArray()
+## Optional full-colour project texture. Existing 16x16 artwork remains editable
+## and supplies the fallback when no texture is selected.
+@export var albedo_texture: Texture2D
 ## Optional side artwork. Empty keeps the original top artwork on every face.
 @export var side_pixels := PackedByteArray()
 ## Optional independent three-level artwork. Empty retains legacy colour heights.
@@ -33,6 +36,8 @@ const ROLE_IDS := ["soil", "grass", "sand", "stone"]
 
 func validation_errors() -> Array[String]:
 	var errors: Array[String] = []
+	if albedo_texture != null and (albedo_texture.get_width()<=0 or albedo_texture.get_height()<=0 or albedo_texture.get_width()>4096 or albedo_texture.get_height()>4096):
+		errors.append("terrain PNG texture must be within 1..4096 pixels per side")
 	if role_id not in ROLE_IDS:
 		errors.append("unknown compact terrain pattern role")
 	if pixels.size() != SIZE * SIZE:

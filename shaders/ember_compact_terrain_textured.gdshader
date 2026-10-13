@@ -9,6 +9,12 @@ uniform sampler2D finish_lookup : filter_nearest, repeat_disable;
 uniform sampler2D detail_lookup : filter_nearest, repeat_disable;
 uniform sampler2D surface_lookup : filter_nearest, repeat_disable;
 uniform bool independent_surface_enabled = false;
+uniform bool smooth_surface_enabled = false;
+uniform sampler2DArray png_albedo_bank : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D png_lookup : filter_nearest, repeat_disable;
+uniform sampler2D png_mean_lookup : filter_nearest, repeat_disable;
+uniform sampler2D png_tint_lookup : filter_nearest, repeat_disable;
+uniform sampler2D palette_color_lookup : filter_nearest, repeat_disable;
 uniform sampler2D roughness_atlas : filter_nearest, repeat_disable;
 uniform sampler2D side_roughness_atlas : filter_nearest, repeat_disable;
 uniform float texture_span = 64.0;
@@ -38,13 +44,17 @@ uniform float sand_wet_strength = 0.0;
 varying vec3 terrain_position;
 varying vec3 terrain_normal;
 varying vec3 terrain_world_position;
+varying vec3 terrain_world_normal;
 varying float palette_slot;
+varying flat vec3 smooth_slots;
 
 void vertex() {
 	terrain_position = VERTEX;
 	terrain_normal = NORMAL;
 	terrain_world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	terrain_world_normal = normalize(MODEL_NORMAL_MATRIX * NORMAL);
 	palette_slot = COLOR.a;
+	smooth_slots = vec3(UV,UV2.x)*255.0;
 }
 
 vec2 mirrored_tile(vec2 uv) {
@@ -56,6 +66,63 @@ vec4 artwork_pixel(ivec2 pixel, bool side_artwork) {
 		return texelFetch(side_pattern_atlas, pixel, 0);
 	}
 	return texelFetch(pattern_atlas, pixel, 0);
+}
+
+vec3 png_tile(vec2 uv,float layer) {
+	vec2 f=fract(uv),edge=min(f,vec2(1.0)-f);
+	vec2 blend=vec2(1.0)-smoothstep(vec2(0.0),vec2(0.018),edge);
+	vec3 a=mix(texture(png_albedo_bank,vec3(uv,layer)).rgb,texture(png_albedo_bank,vec3(uv+vec2(0.5,0.0),layer)).rgb,blend.x);
+	vec3 b=mix(texture(png_albedo_bank,vec3(uv+vec2(0.0,0.5),layer)).rgb,texture(png_albedo_bank,vec3(uv+vec2(0.5),layer)).rgb,blend.x);
+	return mix(a,b,blend.y);
+}
+
+vec3 slot_albedo(int slot) {
+	vec4 png=texelFetch(png_lookup,ivec2(slot,0),0);
+	vec3 n=abs(normalize(terrain_world_normal));
+	if(png.r>0.5) {
+		vec3 p=terrain_world_position/max(png.g,0.125);
+		vec3 rgb;
+		if(png.b>3.5) {
+			n/=max(max(n.x,max(n.y,n.z)),0.00001);
+			vec3 weights=pow(n,vec3(24.0));weights/=max(dot(weights,vec3(1.0)),0.0001);
+			rgb=png_tile(p.zy,png.r-1.0)*weights.x+png_tile(p.xz,png.r-1.0)*weights.y+png_tile(p.xy,png.r-1.0)*weights.z;
+		}else{rgb=png_tile(p.xz,png.r-1.0);}
+		vec3 mean=texelFetch(png_mean_lookup,ivec2(slot,0),0).rgb;
+		return texelFetch(png_tint_lookup,ivec2(slot,0),0).rgb*clamp(rgb/max(mean,vec3(0.001)),vec3(0.55),vec3(1.65));
+	}
+	if(texelFetch(role_lookup,ivec2(slot,0),0).r>0.0) {
+		vec2 position=n.y>0.5?terrain_position.xz:(n.x>0.5?terrain_position.zy:terrain_position.xy);
+		vec3 surface=texelFetch(surface_lookup,ivec2(slot,0),0).rgb;
+		vec2 uv=mirrored_tile(position/(texture_span*max(surface.r,0.125)/4.0));
+		ivec2 pixel=clamp(ivec2(floor(uv*16.0)),ivec2(0),ivec2(15));
+		return artwork_pixel(ivec2(pixel.x,slot*16+pixel.y),n.y<0.5).rgb;
+	}
+	return texelFetch(palette_color_lookup,ivec2(slot,0),0).rgb;
+}
+
+vec3 png_relief_tile(vec2 uv,float layer) {
+	// Blur only the optical height, preserving sharp albedo and avoiding paint grain.
+	vec2 f=fract(uv),edge=min(f,vec2(1.0)-f);
+	vec2 blend=vec2(1.0)-smoothstep(vec2(0.0),vec2(0.018),edge);
+	vec3 rgb=textureLod(png_albedo_bank,vec3(uv,layer),5.0).rgb;
+	if(blend.x>0.0)rgb=mix(rgb,textureLod(png_albedo_bank,vec3(uv+vec2(0.5,0.0),layer),5.0).rgb,blend.x);
+	if(blend.y>0.0) {
+		vec3 other=textureLod(png_albedo_bank,vec3(uv+vec2(0.0,0.5),layer),5.0).rgb;
+		if(blend.x>0.0)other=mix(other,textureLod(png_albedo_bank,vec3(uv+vec2(0.5),layer),5.0).rgb,blend.x);
+		rgb=mix(rgb,other,blend.y);
+	}
+	return rgb;
+}
+
+float slot_optical_height(int slot) {
+	vec4 png=texelFetch(png_lookup,ivec2(slot,0),0);
+	float amount=texelFetch(finish_lookup,ivec2(slot,0),0).b*0.3;
+	if(png.r<0.5 || amount<0.0001)return 0.0;
+	vec3 p=terrain_world_position/max(png.g,0.125);
+	// First heightfield slice follows top artwork; steep sides fade below.
+	// Avoid differentiating triplanar weights, which reveals the fine mesh.
+	vec3 rgb=png_relief_tile(p.xz,png.r-1.0);
+	return dot(rgb,vec3(0.2126,0.7152,0.0722))*amount*2.0;
 }
 
 float submerged_side_weight() {
@@ -100,7 +167,7 @@ void fragment() {
 	CLEARCOAT_ROUGHNESS = 0.20;
 	int palette_index = int(round(palette_slot * 255.0));
 	int has_pattern = int(round(texelFetch(role_lookup, ivec2(palette_index, 0), 0).r * 255.0));
-	if (has_pattern > 0) {
+	if (has_pattern > 0 && !smooth_surface_enabled && texelFetch(png_lookup,ivec2(palette_index,0),0).r<0.5) {
 		vec3 finish = texelFetch(finish_lookup, ivec2(palette_index, 0), 0).rgb;
 		ROUGHNESS = 1.0 - finish.r * 0.78;
 		if (material_light_mode > 0) {
@@ -156,6 +223,40 @@ void fragment() {
 				ROUGHNESS = clamp(ROUGHNESS+grain.z*detail.b*fade,0.22,1.0);
 			}
 		}
+	}
+	if(smooth_surface_enabled) {
+		ivec3 slots=ivec3(round(smooth_slots));
+		vec3 weights=max(COLOR.rgb,vec3(0.0));weights/=max(dot(weights,vec3(1.0)),0.00001);
+		ALBEDO=slot_albedo(slots.x)*weights.x+slot_albedo(slots.y)*weights.y+slot_albedo(slots.z)*weights.z;
+		ROUGHNESS=0.98;SPECULAR=0.05;
+		// Optional fine optical relief follows the existing PNG artwork and
+		// material's authored relief amount. Coarse volume still lives in terrain.
+		float bump_m=0.0;
+		for(int i=0;i<3;i++) {
+			int slot=slots[i];
+			if(texelFetch(png_lookup,ivec2(slot,0),0).r>0.5) {
+				bump_m+=weights[i]*texelFetch(finish_lookup,ivec2(slot,0),0).b*0.3;
+			}
+		}
+		vec3 heights=vec3(slot_optical_height(slots.x),slot_optical_height(slots.y),slot_optical_height(slots.z));
+		vec3 n=normalize(terrain_world_normal);
+		vec3 dx=dFdx(terrain_world_position),dy=dFdy(terrain_world_position);
+		vec3 r1=cross(dy,n),r2=cross(n,dx);
+		float det=dot(dx,r1);
+		// Blend gradients, not height derivatives: material borders must not
+		// become fake ridges or reveal per-triangle blend interpolation.
+		vec3 gradient=r1*dot(dFdx(heights),weights)+r2*dot(dFdy(heights),weights);
+		if(surface_detail_enabled && bump_m>0.0001) {
+			if(abs(det)>0.00000001) {
+				vec3 slope=sign(det)*gradient/abs(det);
+				slope*=min(1.0,0.30/max(length(slope),0.00001));
+				slope*=smoothstep(0.62,0.9,abs(n.y));
+				vec3 painted_normal=normalize(n-slope);
+				NORMAL=normalize((VIEW_MATRIX*vec4(painted_normal,0.0)).xyz);
+			}
+		}
+	}else if(texelFetch(png_lookup,ivec2(palette_index,0),0).r>0.5) {
+		ALBEDO=slot_albedo(palette_index);ROUGHNESS=0.98;SPECULAR=0.05;
 	}
 	if (material_light_mode == 2) {
 		ROUGHNESS = 0.24;
