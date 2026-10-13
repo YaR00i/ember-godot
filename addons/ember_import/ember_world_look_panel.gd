@@ -50,6 +50,7 @@ var _water_rows: VBoxContainer
 var _tabs: TabContainer
 var _gray_switch: CheckBox
 var _contact_switch: CheckBox
+var _material_light_buttons: Array[Button]=[]
 
 
 func _ready() -> void:
@@ -66,6 +67,11 @@ func _ready() -> void:
 	_light_rows = VBoxContainer.new()
 	_light_rows.name = "Свет и цвет"
 	_tabs.add_child(_light_rows)
+	var preset_title:=Label.new();preset_title.text="Проверка материалов · свет";_light_rows.add_child(preset_title)
+	var presets:=HBoxContainer.new();_light_rows.add_child(presets)
+	for i in EmberLights.MATERIAL_LIGHT_PRESETS.size():
+		var button:=Button.new();button.text=EmberLights.MATERIAL_LIGHT_PRESETS[i].name;button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		button.pressed.connect(apply_material_light_preset.bind(i));presets.add_child(button);_material_light_buttons.append(button)
 	_water_rows = VBoxContainer.new()
 	_water_rows.name = "Вода"
 	_tabs.add_child(_water_rows)
@@ -302,6 +308,7 @@ func refresh() -> void:
 	if not is_node_ready(): return
 	_syncing = true
 	var available := is_instance_valid(_scene) and is_instance_valid(_sun) and _environment != null
+	for button in _material_light_buttons:button.disabled=not available
 	_hint.text = "Настройки сохраняются в сцене карты." if available else "На карте нужны Look/Sun и Look/WorldEnvironment."
 	_water_hint.text = "Вода пробной карты · 3D и F6. Отражение объектов и подводный свет проверяйте в F6." if is_instance_valid(_water) else "Эти настройки доступны на пробной карте воды."
 	for key in _choices:
@@ -421,6 +428,36 @@ func _apply_value(target: Object, property: String, value: Variant,
 		(target as Environment).adjustment_enabled = adjustments_enabled
 	refresh()
 
+
+func apply_material_light_preset(index: int) -> void:
+	if not is_instance_valid(_scene) or not is_instance_valid(_sun) or _environment==null or index<0 or index>=EmberLights.MATERIAL_LIGHT_PRESETS.size():return
+	if not _dragging.is_empty():_drag_ended(true,_dragging)
+	if not _color_editing.is_empty():_color_closed(_color_editing)
+	var before: Dictionary={"sun_rotation":_sun.rotation_degrees,"sun_color":_sun.light_color,"sun_energy":_sun.light_energy,"ambient_color":_environment.ambient_light_color,"ambient_energy":_environment.ambient_light_energy,"ambient_source":_environment.ambient_light_source,"background_color":_environment.background_color}
+	var p: Dictionary=EmberLights.MATERIAL_LIGHT_PRESETS[index]
+	var rotation:=_sun.rotation_degrees;rotation.x=-p.elevation
+	var after: Dictionary={"sun_rotation":rotation,"sun_color":p.sun_color,"sun_energy":p.sun_energy,"ambient_color":p.ambient_color,"ambient_energy":p.ambient_energy,"ambient_source":Environment.AMBIENT_SOURCE_COLOR,"background_color":p.background_color}
+	if before==after:return
+	var action:="Вид мира: "+str(p.name)
+	if _history is EditorUndoRedoManager:
+		(_history as EditorUndoRedoManager).create_action(action,UndoRedo.MERGE_DISABLE,_scene)
+		Callable(_history,"add_do_method").callv([self,"_apply_material_light_values",after])
+		Callable(_history,"add_undo_method").callv([self,"_apply_material_light_values",before])
+		(_history as EditorUndoRedoManager).commit_action()
+	elif _history is UndoRedo:
+		(_history as UndoRedo).create_action(action)
+		(_history as UndoRedo).add_do_method(_apply_material_light_values.bind(after))
+		(_history as UndoRedo).add_undo_method(_apply_material_light_values.bind(before))
+		(_history as UndoRedo).commit_action()
+	else:_apply_material_light_values(after)
+
+func _apply_material_light_values(values: Dictionary) -> void:
+	if not is_instance_valid(_sun) or _environment==null:return
+	_sun.rotation_degrees=values.sun_rotation;_sun.light_color=values.sun_color;_sun.light_energy=values.sun_energy
+	_environment.ambient_light_color=values.ambient_color;_environment.ambient_light_energy=values.ambient_energy
+	_environment.ambient_light_source=values.ambient_source
+	_environment.background_color=values.background_color
+	refresh()
 
 func _commit(key: String, previous: Variant, next: Variant, enabled_before: bool,
 		sky_before := -1.0) -> void:

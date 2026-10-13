@@ -1,0 +1,57 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_material_depth_study.gd" id="1_study"]
+[ext_resource type="Script" path="res://scripts/ember_map_loader.gd" id="2_map"]
+[ext_resource type="Resource" path="res://content/world_terrains/material_depth_study.res" id="3_source"]
+
+[sub_resource type="Environment" id="Environment_study"]
+background_mode = 1
+background_color = Color(0.55, 0.65, 0.7, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.70, 0.77, 0.83, 1)
+ambient_light_energy = 0.45
+tonemap_mode = 2
+
+[node name="MaterialDepthStudy" type="Node3D"]
+script = ExtResource("1_study")
+orbit_center = Vector3(2.4, 1.15, 2)
+anomaly_zones = Array[Vector4]([Vector4(1.7, 1.8, 1.6, 0.4)])
+walk_test_enabled = true
+walk_start = Vector2(1.2, 2)
+walk_route = PackedVector2Array(1.2, 2, 3.1, 2)
+
+[node name="Map" type="Node3D" parent="."]
+script = ExtResource("2_map")
+map_id = "material_depth_study"
+compact_terrain = ExtResource("3_source")
+compact_ground_style = 1
+compact_smooth_material_blend = true
+compact_material_light_mode = 1
+authored_size_blocks = Vector2i(5, 4)
+imported_tile_size = 1.0
+
+[node name="Look" type="Node3D" parent="Map"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="Map/Look"]
+environment = SubResource("Environment_study")
+
+[node name="Sun" type="DirectionalLight3D" parent="Map/Look"]
+rotation_degrees = Vector3(-48, -28, 0)
+light_color = Color(1, 0.945, 0.85, 1)
+light_energy = 1.4
+shadow_enabled = true
+
+[node name="Camera3D" type="Camera3D" parent="."]
+position = Vector3(6.5, 5, 7.5)
+rotation_degrees = Vector3(-31, 37, 0)
+current = true
+fov = 42.0
+near = 0.03
+far = 80.0
+
+[node name="Instructions" type="CanvasLayer" parent="."]
+
+[node name="Caption" type="Label" parent="Instructions"]
+offset_left = 20.0
+offset_top = 16.0
+text = "Подготовка пробы камня и песка…"

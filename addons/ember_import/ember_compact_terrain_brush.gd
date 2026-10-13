@@ -4,6 +4,10 @@ extends RefCounted
 
 const BrushMath = preload("res://scripts/prototypes/ember_terrain_pilot_brush_math.gd")
 const TerrainResource = preload("res://scripts/prototypes/ember_terrain_pilot_resource.gd")
+const SurfaceRules=preload("res://scripts/prototypes/ember_terrain_surface_rules.gd")
+var _rule_cells: Dictionary={}
+var _rule_exposure: Dictionary={}
+var _rule_code:=0
 const SurfaceForms = preload("res://scripts/prototypes/ember_terrain_surface_form_math.gd")
 const Plan = preload("res://scripts/ember_terrain_plan_resource.gd")
 
@@ -56,13 +60,18 @@ func active() -> bool:
 	return not _mode.is_empty()
 
 
-func begin(mode: String, radius_blocks: float, depth_voxels: int, palette_index: int, water_world: int, feature_scale: int, detail: int, seed: int, direction: int, target_world := -99999, edit_scale := "detail", brush_shape := "auto", requested_height_step := 0, material_detail := false) -> bool:
+func begin(mode: String, radius_blocks: float, depth_voxels: int, palette_index: int, water_world: int, feature_scale: int, detail: int, seed: int, direction: int, target_world := -99999, edit_scale := "detail", brush_shape := "auto", requested_height_step := 0, material_detail := false,rule_code:=-1) -> bool:
 	if _entry.is_empty() or active():
 		return false
 	var source: TerrainResource = _entry.resource
-	if mode not in ["raise", "lower", "level", "smooth", "generator", "paint", "water", "dry"]:
+	if mode not in ["raise", "lower", "level", "smooth", "generator", "paint", "water", "dry","shape_round","shape_protect","shape_clear"]:
 		return false
+	if mode.begins_with("shape_") and source.width*source.depth>262144:return false
 	_mode = mode
+	_rule_code=rule_code;_rule_cells={};_rule_exposure={}
+	if mode=="shape_round" and _rule_code<0:_rule_code=96
+	if mode=="shape_protect" and _rule_code<0:_rule_code=255
+	if mode.begins_with("shape_"):edit_scale="detail"
 	var profile := BrushMath.edit_profile(edit_scale, brush_shape, requested_height_step)
 	_cell_stride = int(profile.cell_stride)
 	_height_step = int(profile.height_step)
@@ -92,6 +101,7 @@ func begin(mode: String, radius_blocks: float, depth_voxels: int, palette_index:
 	for dz in range(-_radius, _radius + 1):
 		_row_extents[dz + _radius] = _radius if _shape == "square" else floori(sqrt(float(_radius * _radius - dz * dz)))
 	_last = Vector2i(-1, -1)
+	if _mode.begins_with("shape_"):return true # Pending mask only; no live remesh.
 	_indices = PackedInt32Array()
 	_touched = PackedByteArray()
 	_touched.resize(source.heights.size())
@@ -141,6 +151,8 @@ func stamp(cell: Vector2i, bounds := Rect2i()) -> void:
 
 func _stamp_point(cell: Vector2i, bounds: Rect2i, previous_center: Vector2i) -> void:
 	var source: TerrainResource = _entry.resource
+	if _mode.begins_with("shape_"):
+		_stamp_rules(cell,bounds);return
 	if cell.x < 0 or cell.y < 0 or cell.x >= source.width or cell.y >= source.depth:
 		return
 	if not source.has_column(cell.x, cell.y): return
@@ -311,11 +323,13 @@ func _apply(source: TerrainResource, target_ref: WeakRef, indices: PackedInt32Ar
 
 
 func changed_column_count() -> int:
-	return _indices.size()
+	return _rule_cells.size() if _mode.begins_with("shape_") else _indices.size()
 
 
 func end() -> void:
 	if not active(): return
+	if _mode.begins_with("shape_"):
+		_commit_rules();return
 	var projection := _live_projection()
 	if projection != null: projection.end_live_brush()
 	var snapshot_started := Time.get_ticks_usec() if diagnostic_sink != null else 0
@@ -458,6 +472,7 @@ func _commit_paint_only(delta: Dictionary) -> void:
 
 func cancel() -> void:
 	if not active(): return
+	if _mode.begins_with("shape_"):_clear();return
 	var projection := _live_projection()
 	if projection != null: projection.end_live_brush()
 	if _section_baseline != null:
@@ -500,7 +515,58 @@ func _live_projection() -> EmberTerrainPilotProjection:
 	return map._visual_surface_projection as EmberTerrainPilotProjection if is_instance_valid(map) else null
 
 
+func _stamp_rules(center: Vector2i,bounds: Rect2i) -> void:
+	if _mode=="shape_protect" and _rule_code==0:return
+	var source: TerrainResource=_entry.resource
+	for z in range(maxi(0,center.y-_radius),mini(source.depth,center.y+_radius+1)):
+		for x in range(maxi(0,center.x-_radius),mini(source.width,center.x+_radius+1)):
+			var cell:=Vector2i(x,z)
+			if not source.has_column(x,z) or (bounds.has_area() and not bounds.has_point(cell)):continue
+			var delta:=cell-center
+			var distance:=maxi(absi(delta.x),absi(delta.y))
+			var d2:=distance*distance if _shape=="square" else delta.length_squared()
+			if d2>_radius*_radius:continue
+			var influence: float=_falloff_by_distance[d2]
+			if influence<=0.001:continue
+			if influence<=float(_rule_exposure.get(cell,0.0)):continue
+			_rule_exposure[cell]=influence
+			var code:=0
+			if _mode=="shape_protect":code=SurfaceRules.protect_code(float(maxi(128,_rule_code)-127)/128.0*influence)
+			elif _mode=="shape_round":
+				var amount:=float((_rule_code-1)%32)/31.0
+				var radius: int=(_rule_code-1)/32+1
+				code=SurfaceRules.round_code(lerpf(1.0,amount,influence),roundi(lerpf(3.0,float(radius),influence)))
+			# Keep the strongest exposure for overlapping dabs of one stroke.
+			if _rule_cells.has(cell) and _mode=="shape_protect":code=maxi(code,_rule_cells[cell])
+			_rule_cells[cell]=code
+
+func _commit_rules() -> void:
+	var source: TerrainResource=_entry.resource
+	var before:=source.surface_rules.duplicate()
+	var after:=SurfaceRules.changed(before,_rule_cells)
+	var cells:=_rule_cells.keys();var target_ref: WeakRef=_entry.target
+	_clear()
+	if before==after:return
+	_apply_rules(source,target_ref,after,cells)
+	if _history is EditorUndoRedoManager:
+		(_history as EditorUndoRedoManager).create_action("Мир · правило гладкой формы",UndoRedo.MERGE_DISABLE,_scene)
+		Callable(_history,"add_do_method").callv([self,"_apply_rules",source,target_ref,after,cells])
+		Callable(_history,"add_undo_method").callv([self,"_apply_rules",source,target_ref,before,cells])
+		(_history as EditorUndoRedoManager).commit_action(false)
+	else:
+		(_history as UndoRedo).create_action("Мир · правило гладкой формы",UndoRedo.MERGE_DISABLE)
+		(_history as UndoRedo).add_do_method(_apply_rules.bind(source,target_ref,after,cells))
+		(_history as UndoRedo).add_undo_method(_apply_rules.bind(source,target_ref,before,cells))
+		(_history as UndoRedo).commit_action(false)
+
+func _apply_rules(source: TerrainResource,target_ref: WeakRef,rules: Dictionary,cells: Array) -> void:
+	source.surface_rules=rules.duplicate()
+	var map:=target_ref.get_ref() as EmberMapLoader
+	if is_instance_valid(map) and map._visual_surface_projection!=null:
+		map._visual_surface_projection.apply_surface_rules(rules,cells)
+
 func _clear() -> void:
+	_rule_cells={};_rule_exposure={};_rule_code=0
 	_paint_columns=PackedInt32Array();_paint_groups.clear()
 	_mode = ""
 	_cell_stride = 1

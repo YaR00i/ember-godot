@@ -40,15 +40,35 @@ uniform float sand_wet_strength = 0.0;
 #include "res://shaders/ember_material_light.gdshaderinc"
 #include "res://shaders/ember_terrain_surface_detail.gdshaderinc"
 #include "res://shaders/ember_compact_study_wave.gdshaderinc"
+#include "res://shaders/ember_material_texture_mapping.gdshaderinc"
+#include "res://shaders/ember_painterly_light.gdshaderinc"
+varying vec2 painterly_weights;
+uniform sampler2D grass_light_lookup : filter_nearest, repeat_disable;
+uniform bool grass_light_profiles_enabled = false;
+varying float grass_profile_weight;
+varying vec3 grass_profile_values;
+varying vec3 grass_profile_cool;
+varying vec3 grass_profile_warm;
+varying vec3 grass_profile_shadow;
 
 varying vec3 terrain_position;
 varying vec3 terrain_normal;
 varying vec3 terrain_world_position;
 varying vec3 terrain_world_normal;
+varying vec3 texture_projection_normal;
 varying float palette_slot;
 varying flat vec3 smooth_slots;
+#ifdef EMBER_MATERIAL_LOOK_STUDY
+#include "res://shaders/ember_material_look_study.gdshaderinc"
+#endif
+#ifdef EMBER_BEVEL_STUDY
+#include "res://shaders/ember_bevel_light.gdshaderinc"
+#endif
 
 void vertex() {
+#ifdef EMBER_PAINTERLY_STUDY
+	painterly_blade_height = clamp(VERTEX.y / 0.14, 0.0, 1.0);
+#endif
 	terrain_position = VERTEX;
 	terrain_normal = NORMAL;
 	terrain_world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -68,25 +88,43 @@ vec4 artwork_pixel(ivec2 pixel, bool side_artwork) {
 	return texelFetch(pattern_atlas, pixel, 0);
 }
 
-vec3 png_tile(vec2 uv,float layer) {
-	vec2 f=fract(uv),edge=min(f,vec2(1.0)-f);
-	vec2 blend=vec2(1.0)-smoothstep(vec2(0.0),vec2(0.018),edge);
-	vec3 a=mix(texture(png_albedo_bank,vec3(uv,layer)).rgb,texture(png_albedo_bank,vec3(uv+vec2(0.5,0.0),layer)).rgb,blend.x);
-	vec3 b=mix(texture(png_albedo_bank,vec3(uv+vec2(0.0,0.5),layer)).rgb,texture(png_albedo_bank,vec3(uv+vec2(0.5),layer)).rgb,blend.x);
+vec3 png_colour_sample(vec2 uv,float layer,vec2 uv_dx,vec2 uv_dy) {
+#ifdef EMBER_MATERIAL_LOOK_STUDY
+	// Use the unquantized footprint: discontinuous cell-centre UV derivatives
+	// would choose different mip levels at alternating cell boundaries.
+	if (look_study_mode==2) return textureGrad(png_albedo_bank,vec3(uv,layer),uv_dx,uv_dy).rgb;
+#endif
+	return texture(png_albedo_bank,vec3(uv,layer)).rgb;
+}
+
+vec3 png_tile(vec2 uv,float layer,bool periodic,vec2 uv_dx,vec2 uv_dy) {
+	if (periodic) return png_colour_sample(uv,layer,uv_dx,uv_dy);
+	vec2 blend=ember_texture_seam_blend(uv,false);
+	vec3 a=mix(png_colour_sample(uv,layer,uv_dx,uv_dy),png_colour_sample(uv+vec2(0.5,0.0),layer,uv_dx,uv_dy),blend.x);
+	vec3 b=mix(png_colour_sample(uv+vec2(0.0,0.5),layer,uv_dx,uv_dy),png_colour_sample(uv+vec2(0.5),layer,uv_dx,uv_dy),blend.x);
 	return mix(a,b,blend.y);
 }
 
-vec3 slot_albedo(int slot) {
+vec3 slot_albedo_at(int slot, vec3 world_position, vec3 world_normal) {
 	vec4 png=texelFetch(png_lookup,ivec2(slot,0),0);
-	vec3 n=abs(normalize(terrain_world_normal));
+	vec3 n=abs(normalize(world_normal));
 	if(png.r>0.5) {
-		vec3 p=terrain_world_position/max(png.g,0.125);
+		vec3 p=ember_texture_coordinates(world_position,png.g);
+		vec3 texture_dx=vec3(0.0),texture_dy=vec3(0.0);
+#ifdef EMBER_MATERIAL_LOOK_STUDY
+		texture_dx=dFdx(p);texture_dy=dFdy(p);
+		p=ember_texture_coordinates(ember_look_pixel_colour_position(world_position,world_normal),png.g);
+#endif
 		vec3 rgb;
-		if(png.b>3.5) {
-			n/=max(max(n.x,max(n.y,n.z)),0.00001);
-			vec3 weights=pow(n,vec3(24.0));weights/=max(dot(weights,vec3(1.0)),0.0001);
-			rgb=png_tile(p.zy,png.r-1.0)*weights.x+png_tile(p.xz,png.r-1.0)*weights.y+png_tile(p.xy,png.r-1.0)*weights.z;
-		}else{rgb=png_tile(p.xz,png.r-1.0);}
+		bool periodic=png.a>0.5;
+		if(periodic)n=abs(texture_projection_normal);
+		if(png.b>3.5 || periodic) {
+			vec3 weights=ember_texture_axis_weights(n);
+			rgb=vec3(0.0);
+			if(weights.x>0.00001)rgb+=png_tile(p.zy,png.r-1.0,periodic,texture_dx.zy,texture_dy.zy)*weights.x;
+			if(weights.y>0.00001)rgb+=png_tile(p.xz,png.r-1.0,periodic,texture_dx.xz,texture_dy.xz)*weights.y;
+			if(weights.z>0.00001)rgb+=png_tile(p.xy,png.r-1.0,periodic,texture_dx.xy,texture_dy.xy)*weights.z;
+		}else{rgb=png_tile(p.xz,png.r-1.0,periodic,texture_dx.xz,texture_dy.xz);}
 		vec3 mean=texelFetch(png_mean_lookup,ivec2(slot,0),0).rgb;
 		return texelFetch(png_tint_lookup,ivec2(slot,0),0).rgb*clamp(rgb/max(mean,vec3(0.001)),vec3(0.55),vec3(1.65));
 	}
@@ -100,7 +138,18 @@ vec3 slot_albedo(int slot) {
 	return texelFetch(palette_color_lookup,ivec2(slot,0),0).rgb;
 }
 
-vec3 png_relief_tile(vec2 uv,float layer) {
+vec3 slot_albedo(int slot) {
+	return slot_albedo_at(slot, terrain_world_position, terrain_world_normal);
+}
+
+// Optional feature of the same renderer. Default materials keep automatic
+// fragment depth and do not compile ray marching, samplers or light changes.
+#ifdef EMBER_TERRAIN_MATERIAL_DEPTH
+#include "res://shaders/ember_terrain_material_depth.gdshaderinc"
+#endif
+
+vec3 png_relief_tile(vec2 uv,float layer,bool periodic) {
+	if (periodic) return textureLod(png_albedo_bank,vec3(uv,layer),5.0).rgb;
 	// Blur only the optical height, preserving sharp albedo and avoiding paint grain.
 	vec2 f=fract(uv),edge=min(f,vec2(1.0)-f);
 	vec2 blend=vec2(1.0)-smoothstep(vec2(0.0),vec2(0.018),edge);
@@ -118,10 +167,10 @@ float slot_optical_height(int slot) {
 	vec4 png=texelFetch(png_lookup,ivec2(slot,0),0);
 	float amount=texelFetch(finish_lookup,ivec2(slot,0),0).b*0.3;
 	if(png.r<0.5 || amount<0.0001)return 0.0;
-	vec3 p=terrain_world_position/max(png.g,0.125);
+	vec3 p=ember_texture_coordinates(terrain_world_position,png.g);
 	// First heightfield slice follows top artwork; steep sides fade below.
 	// Avoid differentiating triplanar weights, which reveals the fine mesh.
-	vec3 rgb=png_relief_tile(p.xz,png.r-1.0);
+	vec3 rgb=png_relief_tile(p.xz,png.r-1.0,png.a>0.5);
 	return dot(rgb,vec3(0.2126,0.7152,0.0722))*amount*2.0;
 }
 
@@ -148,6 +197,46 @@ float submerged_side_weight() {
 }
 
 void fragment() {
+	#ifdef EMBER_BEVEL_STUDY
+	bevel_light_mask = 0.0;
+	#endif
+	texture_projection_normal = ember_texture_surface_normal(terrain_world_position, terrain_world_normal);
+	painterly_weights = vec2(0.0);
+	grass_profile_weight=0.0;
+	grass_profile_values=vec3(0.0);grass_profile_cool=vec3(0.0);grass_profile_warm=vec3(0.0);grass_profile_shadow=vec3(0.0);
+	ivec3 painted_slots = smooth_surface_enabled ? ivec3(round(smooth_slots)) : ivec3(int(round(palette_slot * 255.0)));
+	vec3 painted_blend = smooth_surface_enabled ? max(COLOR.rgb,vec3(0.0)) : vec3(1.0,0.0,0.0);
+	painted_blend /= max(dot(painted_blend,vec3(1.0)),0.00001);
+	if(painterly_enabled || grass_light_profiles_enabled) for (int i=0; i<3; i++) {
+		float role = texelFetch(role_lookup,ivec2(painted_slots[i],0),0).b * 255.0;
+		painterly_weights.x += painted_blend[i] * (abs(role - 1.0) < 0.1 ? 1.0 : 0.0);
+		// LAB stone slot is explicit, same slot bound by the existing depth study.
+		painterly_weights.y += painted_blend[i] * (painted_slots[i] == 1 ? 1.0 : 0.0);
+		if(grass_light_profiles_enabled && abs(role-1.0)<0.1) {
+			vec4 settings=texelFetch(grass_light_lookup,ivec2(painted_slots[i],0),0);
+			float weight=painted_blend[i]*settings.a;
+			grass_profile_weight+=weight;grass_profile_values+=weight*settings.rgb;
+			grass_profile_cool+=weight*texelFetch(grass_light_lookup,ivec2(painted_slots[i],1),0).rgb;
+			grass_profile_warm+=weight*texelFetch(grass_light_lookup,ivec2(painted_slots[i],2),0).rgb;
+			grass_profile_shadow+=weight*texelFetch(grass_light_lookup,ivec2(painted_slots[i],3),0).rgb;
+		}
+	}
+	painterly_weights.x *= painterly_grass_enabled ? 1.0 : 0.0;
+	if(grass_profile_weight>0.00001) {
+		grass_profile_values/=grass_profile_weight;grass_profile_cool/=grass_profile_weight;
+		grass_profile_warm/=grass_profile_weight;grass_profile_shadow/=grass_profile_weight;
+	}
+#ifdef EMBER_TERRAIN_MATERIAL_DEPTH
+	DEPTH = FRAGCOORD.z;
+	material_depth_light = 1.0;
+	material_depth_lod = clamp(log2(max(length(fwidth(terrain_world_position / material_depth_span())) * float(textureSize(material_depth_height,0).x),1.0)),0.0,6.0);
+	vec3 depth_normal = texelFetch(png_lookup,ivec2(material_depth_slots.x,0),0).a>0.5 ? texture_projection_normal : normalize(terrain_world_normal);
+	vec3 depth_view_direction = normalize(CAMERA_POSITION_WORLD - terrain_world_position);
+	float depth_facing = dot(depth_normal, depth_view_direction);
+	float depth_distance_fade = 1.0 - smoothstep(material_depth_fade_near_m, material_depth_fade_far_m, length(VERTEX));
+	float depth_amplitude = material_depth_amplitude_m * depth_distance_fade * smoothstep(0.04, 0.12, depth_facing);
+	bool depth_active = material_depth_enabled && depth_amplitude > 0.00001 && !IN_SHADOW_PASS && !reflection_pass_enabled && material_depth_weight(terrain_world_position)>0.00001;
+#endif
 	// The mirrored study camera sits below the surface. Ground below that
 	// plane must not appear as a reflection of the shore.
 	if (reflection_pass_enabled && (CAMERA_VISIBLE_LAYERS & (1u << 19u)) != 0u
@@ -224,7 +313,11 @@ void fragment() {
 			}
 		}
 	}
-	if(smooth_surface_enabled) {
+	bool use_smooth_baseline = smooth_surface_enabled;
+#ifdef EMBER_TERRAIN_MATERIAL_DEPTH
+	use_smooth_baseline = use_smooth_baseline && !depth_active;
+#endif
+	if(use_smooth_baseline) {
 		ivec3 slots=ivec3(round(smooth_slots));
 		vec3 weights=max(COLOR.rgb,vec3(0.0));weights/=max(dot(weights,vec3(1.0)),0.00001);
 		ALBEDO=slot_albedo(slots.x)*weights.x+slot_albedo(slots.y)*weights.y+slot_albedo(slots.z)*weights.z;
@@ -262,9 +355,46 @@ void fragment() {
 		ROUGHNESS = 0.24;
 		SPECULAR = 0.5;
 	}
+#ifdef EMBER_TERRAIN_MATERIAL_DEPTH
+	if (depth_active) {
+		vec3 n = depth_normal;
+		float amplitude = depth_amplitude;
+		vec3 hit = material_depth_intersection(terrain_world_position, n, depth_view_direction, amplitude);
+		ALBEDO = material_depth_albedo(hit, n);
+		ROUGHNESS = 0.98;
+		SPECULAR = 0.05;
+		vec3 tangent = normalize(cross(abs(n.y) > 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0), n));
+		vec3 bitangent = cross(n, tangent);
+		float epsilon = max(material_depth_span() * exp2(material_depth_lod) / float(textureSize(material_depth_height, 0).x), 0.001);
+		float dh_t = (material_depth_height_at(hit + tangent * epsilon, n) - material_depth_height_at(hit - tangent * epsilon, n)) * amplitude / (2.0 * epsilon);
+		float dh_b = (material_depth_height_at(hit + bitangent * epsilon, n) - material_depth_height_at(hit - bitangent * epsilon, n)) * amplitude / (2.0 * epsilon);
+		NORMAL = normalize((VIEW_MATRIX * vec4(normalize(n - tangent * dh_t - bitangent * dh_b), 0.0)).xyz);
+#ifdef EMBER_BEVEL_STUDY
+		if (bevel_light_enabled) {
+			bevel_light_mask = ember_bevel_mask(vec2(dh_t,dh_b), material_depth_height_at(hit,n));
+		}
+#endif
+		LIGHT_VERTEX = (VIEW_MATRIX * vec4(hit, 1.0)).xyz;
+		vec4 clip_position = PROJECTION_MATRIX * vec4(LIGHT_VERTEX, 1.0);
+		DEPTH = clip_position.z / clip_position.w;
+		material_depth_light = material_depth_shadow_at(hit, n, amplitude);
+	}
+#endif
 	if (material_gray_preview) {
 		ALBEDO = vec3(0.32);
 	}
+#ifdef EMBER_PAINTERLY_STUDY
+	if (painterly_blades) {
+		// Shared ground pigment; the darker base reads as a shallow plant mass.
+		if (painterly_enabled && painterly_grass_masses) {
+			ALBEDO *= mix(0.98, 1.0, smoothstep(0.0, 0.75, painterly_blade_height));
+			// Ambient also treats neighbouring cards as one painted canopy.
+			NORMAL = normalize(mat3(VIEW_MATRIX) * vec3(0.0, 1.0, 0.0));
+		} else {
+			ALBEDO *= mix(0.68, 1.06, smoothstep(0.0, 0.75, painterly_blade_height));
+		}
+	}
+#endif
 	float submerged_side = submerged_side_weight();
 	vec4 coast = coastal_info(terrain_world_position.xz);
 	float wetness = coastal_state(terrain_world_position.xz).b * coast.a * sand_wet_strength;
@@ -285,9 +415,82 @@ void fragment() {
 			EMISSION += vec3(0.50, 1.08, 1.14) * focus * fade * underwater_caustics;
 		}
 	}
+#ifdef EMBER_MATERIAL_LOOK_STUDY
+	look_study_position = terrain_world_position;
+	vec3 look_sample_delta = ember_look_sample(terrain_world_position, texture_projection_normal);
+	// Reuse the existing fragment-to-light channel; Forward+ has a fixed budget.
+	texture_projection_normal = terrain_world_normal;
+	if (look_study_mode == 2 && !IN_SHADOW_PASS) {
+		look_study_position = ember_look_extrapolate(terrain_world_position, look_sample_delta);
+		texture_projection_normal = normalize(ember_look_extrapolate(terrain_world_normal, look_sample_delta));
+		NORMAL = normalize(ember_look_extrapolate(NORMAL, look_sample_delta));
+		// Sample real lighting/shadows at the texel centre. POM DEPTH stays exact.
+		LIGHT_VERTEX = ember_look_extrapolate(LIGHT_VERTEX, look_sample_delta);
+	}
+#endif
 }
 
 void light() {
+	vec3 look_position = terrain_world_position;
+	vec3 look_form = terrain_world_normal;
+#ifdef EMBER_MATERIAL_LOOK_STUDY
+	look_position = look_study_position;
+	look_form = ember_look_world_normal(texture_projection_normal);
+	vec3 look_previous_diffuse = DIFFUSE_LIGHT;
+#endif
+	float terrain_light_attenuation = ATTENUATION;
+#ifdef EMBER_TERRAIN_MATERIAL_DEPTH
+	if (LIGHT_IS_DIRECTIONAL) terrain_light_attenuation *= material_depth_light;
+#endif
+#ifdef EMBER_BEVEL_STUDY
+	if (bevel_light_enabled && LIGHT_IS_DIRECTIONAL) {
+		float accent = ember_bevel_light(NORMAL, normalize(mat3(VIEW_MATRIX)*normalize(terrain_world_normal)), LIGHT);
+		// POM visibility and the world's real shadows both gate the accent.
+		accent *= smoothstep(0.5, 0.9, material_depth_light);
+		SPECULAR_LIGHT += LIGHT_COLOR * terrain_light_attenuation * accent / PI;
+	}
+#endif
+	float previous_share=1.0-grass_profile_weight;
+	vec3 previous_light_color=LIGHT_COLOR*previous_share;
+	if(grass_profile_weight>0.00001) {
+		vec3 grass_world_normal=ember_grass_masses_normal(look_position);
+#ifdef EMBER_MATERIAL_LOOK_STUDY
+		grass_world_normal=ember_look_world_normal(grass_world_normal);
+#endif
+		vec3 gn=normalize(mat3(VIEW_MATRIX)*grass_world_normal);
+		vec2 steps=ember_painted_grass_steps(gn,LIGHT);
+		float brightness=grass_profile_values.r+(1.0-grass_profile_values.r)*0.5*(steps.x+steps.y);
+		vec3 tint=material_gray_preview ? vec3(1.0) : ember_grass_light_tint(gn,LIGHT,ALBEDO*LIGHT_COLOR,grass_profile_cool,grass_profile_warm,grass_profile_values.g);
+		DIFFUSE_LIGHT+=LIGHT_COLOR*terrain_light_attenuation*brightness*tint*grass_profile_weight/PI;
+		if(LIGHT_IS_DIRECTIONAL) {
+			float shade=smoothstep(0.08,0.92,1.0-ATTENUATION);
+			DIFFUSE_LIGHT+=LIGHT_COLOR*mix(vec3(0.85,0.96,1.0),grass_profile_shadow,shade)*shade*grass_profile_values.b*grass_profile_weight/PI;
+		}
+	}
+	if(previous_share>0.00001) {
+	if (painterly_enabled) {
+		vec3 form_normal=normalize(mat3(VIEW_MATRIX)*normalize(look_form));
+		vec3 grass_normal=normalize(mat3(VIEW_MATRIX)*ember_painted_grass_normal(normalize(look_form),look_position));
+		// Remove the profiled part before shading the remaining material blend.
+		vec2 residual=vec2(max(painterly_weights.x-grass_profile_weight,0.0),painterly_weights.y)/max(previous_share,0.00001);
+		vec2 response = ember_painterly_light(form_normal, NORMAL,
+			form_normal, grass_normal, VIEW, LIGHT,
+			residual.x, residual.y);
+		vec3 painted_diffuse = previous_light_color * terrain_light_attenuation * response.x / PI;
+		if (painterly_grass_color && painterly_grass_masses && !material_gray_preview && painterly_weights.x > 0.00001) {
+			painted_diffuse *= mix(vec3(1.0), ember_painted_grass_tint(grass_normal, LIGHT, ALBEDO * LIGHT_COLOR), residual.x);
+		}
+		DIFFUSE_LIGHT += painted_diffuse;
+		if (LIGHT_IS_DIRECTIONAL && painterly_grass_masses && painterly_weights.x > 0.00001) {
+			// Small artistic sky-bounce allowance in real directional shadows.
+			// ATTENUATION is light visibility, not distance inside a tree crown.
+			// No emission: with zero light energy this contribution is also zero.
+			float shade = smoothstep(0.08, 0.92, 1.0-ATTENUATION);
+			vec3 shade_tint = mix(vec3(0.85, 0.96, 1.0), painterly_grass_shadow_color, shade);
+			DIFFUSE_LIGHT += previous_light_color * shade_tint * shade * painterly_grass_shadow_fill * residual.x / PI;
+		}
+		SPECULAR_LIGHT += previous_light_color * terrain_light_attenuation * response.y / PI;
+	} else
 	if (material_light_mode > 0) {
 		float nl = max(dot(NORMAL, LIGHT), 0.0);
 		float nv = max(dot(NORMAL, VIEW), 0.0001);
@@ -301,17 +504,17 @@ void light() {
 		float coat_fresnel = ember_surface_fresnel(vh, 0.04) * coat;
 		float transmission = 1.0 - coat_fresnel;
 		// No permanent side glow or directional fill in these comparisons.
-		DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * nl / PI
+		DIFFUSE_LIGHT += previous_light_color * terrain_light_attenuation * nl / PI
 			* (1.0 - fresnel) * transmission;
 		float specular = ember_surface_specular(nl, nv, nh, ROUGHNESS) * fresnel * transmission;
 		if (coat > 0.0) {
 			specular += ember_surface_specular(nl, nv, nh, 0.20) * coat_fresnel;
 		}
-		SPECULAR_LIGHT += LIGHT_COLOR * ATTENUATION * nl * specular;
+		SPECULAR_LIGHT += previous_light_color * terrain_light_attenuation * nl * specular;
 	} else {
 	// Godot applies ALBEDO during final composition. Keep one palette tint.
-	DIFFUSE_LIGHT += ember_diorama_diffuse(vec3(1.0), NORMAL, LIGHT, LIGHT_COLOR,
-		ATTENUATION, LIGHT_IS_DIRECTIONAL, max(float(toon_steps), 2.0),
+	DIFFUSE_LIGHT += ember_diorama_diffuse(vec3(1.0), NORMAL, LIGHT, previous_light_color,
+		terrain_light_attenuation, LIGHT_IS_DIRECTIONAL, max(float(toon_steps), 2.0),
 		band_floor, local_light_softness);
 	// The stepped sides are only a few pixels high on screen. Keep a restrained
 	// light-coloured bounce so they read as faces instead of black gaps.
@@ -319,8 +522,8 @@ void light() {
 		bool has_side_pattern = texelFetch(role_lookup, ivec2(int(round(palette_slot * 255.0)), 0), 0).g > 0.0;
 		float side = has_side_pattern ? (1.0 - abs(terrain_normal.y)) * 0.55 : 1.0 - abs(NORMAL.y);
 		float submerged_side = submerged_side_weight();
-		DIFFUSE_LIGHT += shadow_tint * LIGHT_COLOR * terrain_side_fill * side
-			* mix(1.0, ATTENUATION, submerged_side);
+		DIFFUSE_LIGHT += shadow_tint * previous_light_color * terrain_side_fill * side
+			* mix(1.0, terrain_light_attenuation, submerged_side);
 	}
 	int palette_index = int(round(palette_slot * 255.0));
 	vec2 finish = texelFetch(finish_lookup, ivec2(palette_index, 0), 0).rg;
@@ -328,8 +531,14 @@ void light() {
 		vec3 halfway = normalize(LIGHT + VIEW);
 		float focus = pow(max(dot(NORMAL, halfway), 0.0), mix(10.0, 72.0, finish.x));
 		float highlight = smoothstep(0.06, 0.55, focus);
-		SPECULAR_LIGHT += LIGHT_COLOR * ATTENUATION * highlight
+		SPECULAR_LIGHT += previous_light_color * terrain_light_attenuation * highlight
 			* max(dot(NORMAL, LIGHT), 0.0) * finish.y * 0.42;
 	}
 	}
+	}
+#ifdef EMBER_MATERIAL_LOOK_STUDY
+	if (look_study_mode == 2) {
+		DIFFUSE_LIGHT = look_previous_diffuse + ember_look_stepped_contribution(DIFFUSE_LIGHT - look_previous_diffuse, LIGHT_COLOR);
+	}
+#endif
 }

@@ -339,6 +339,15 @@ func set_shared_material_pattern(pattern: TerrainPattern) -> bool:
 	_refresh_material_atlas()
 	return true
 
+func preview_shared_material_light(pattern: TerrainPattern, id: String) -> void:
+	if document==null or pattern==null:return
+	for slot in document.palette_surface_roles.size():
+		if document.material_id_for_palette(slot)!=id:continue
+		Materials.update_grass_light_profile(_ground_material as ShaderMaterial,slot,pattern)
+		for region: Dictionary in _water_regions.values():
+			var material: ShaderMaterial=region.get("ground")
+			if material!=null:Materials.update_grass_light_profile(material,slot,pattern)
+
 
 func _refresh_material_atlas() -> void:
 	if document != null:
@@ -536,6 +545,13 @@ func _open_changed_sections(next_source: TerrainResource, shift: Vector2i) -> bo
 		var span := TerrainResource.Sections.CELLS / TILE_SIZE
 		for z in range(start.y - 1, start.y + span + 1):
 			for x in range(start.x - 1, start.x + span + 1): _queue_tile(Vector2i(x, z), false)
+	if previous.surface_rules!=next_source.surface_rules:
+		var rule_keys:=previous.surface_rules.keys()
+		for key in next_source.surface_rules:
+			if key not in rule_keys:rule_keys.append(key)
+		for key: Vector2i in rule_keys:
+			for dz in [-1,0,1]:
+				for dx in [-1,0,1]:_queue_tile(key+Vector2i(dx,dz),false)
 	_prioritize_pending()
 	set_process(not _pending.is_empty())
 	return true
@@ -711,6 +727,21 @@ func apply_study_smooth_tile(key: Vector2i, field: Dictionary, faces: PackedVect
 	_smooth_fields[key]=field
 	_navigation_grid.clear()
 	return true
+
+func apply_surface_rules(rules: Dictionary,cells: Array) -> void:
+	if document==null:return
+	document.surface_rules=rules.duplicate()
+	if ground_style!=1:return # Saved for smooth view; voxel shape stays exact.
+	var dirty:=PackedByteArray();dirty.resize(_pending_flags.size())
+	var grid:=PackedByteArray();grid.resize(dirty.size())
+	_column_revision+=1
+	for cell: Vector2i in cells:
+		_mark_smooth_neighbours(cell,dirty,grid,true,_pending_tile_columns,_pending_tile_rows)
+	for index in dirty.size():
+		if dirty[index]==0:continue
+		var key:=Vector2i(index%_pending_tile_columns,index/_pending_tile_columns)
+		_smooth_fields.erase(key);_tile_revisions[index]=_column_revision;_queue_tile(key,true)
+	_navigation_grid.clear();set_process(true)
 
 func _profile_reset(operation: String) -> void:
 	_profile = {"operation": operation, "compare_us": 0, "validation_us": 0, "copy_us": 0, "queue_us": 0,

@@ -5,6 +5,7 @@ const HALO := 11 # Three radius-3 passes, normal neighbour and corner column.
 const MAX_COLUMNS := 262144 # First exact-detail slice: at most 32x32 blocks.
 const KERNEL := [1.0, 6.0, 15.0, 20.0, 15.0, 6.0, 1.0]
 const MATERIAL_KERNEL := [1.0,7.0,21.0,35.0,35.0,21.0,7.0,1.0]
+const SurfaceRules=preload("res://scripts/prototypes/ember_terrain_surface_rules.gd")
 
 class FieldJob extends RefCounted:
 	# Rendering and placement share the exact float32 passes. Authoring jobs
@@ -19,8 +20,25 @@ class FieldJob extends RefCounted:
 	var _phase := 0
 	var _row := 0
 	var _pass := 0
-	func _init(source, bounds: Rect2i) -> void:
+	var _pass_limit := 3
+	var _profile: Dictionary
+	var _original := PackedFloat32Array()
+	var _radius := 3
+	var _kernel: Array=KERNEL
+	var _threshold := 2.0
+	var _preserve_edges := false
+	var _rules: Dictionary={}
+	var _bounds: Rect2i
+	func _init(source, bounds: Rect2i, filter_passes := 3, profile: Dictionary={},apply_rules:=true) -> void:
+		_pass_limit=clampi(filter_passes,1,3)
+		_profile=profile.duplicate(true)
+		_radius=clampi(int(profile.get("radius_cells",3)),1,3)
+		_kernel=[1.0,2.0,1.0] if _radius==1 else [1.0,4.0,6.0,4.0,1.0] if _radius==2 else KERNEL
+		_threshold=maxf(0.001,float(profile.get("edge_threshold_m",0.125))*16.0)
+		_preserve_edges=profile.get("preserve_edges",false)
 		_source=source;_start=bounds.position-Vector2i(10,10);_size=bounds.size+Vector2i(21,21)
+		_bounds=bounds
+		if apply_rules:_rules=source.surface_rules.duplicate()
 		_heights.resize(_size.x*_size.y)
 	func step(budget_us := 4000) -> void:
 		var started:=Time.get_ticks_usec()
@@ -37,25 +55,100 @@ class FieldJob extends RefCounted:
 							h+=float(_source.column_value("heights",_source.column_index(sx,sz)))
 					_heights[x+z*_size.x]=h*0.25+_source.origin_y
 				elif _phase==1:
-					for tap in 7:h+=_heights[clampi(x+tap-3,0,_size.x-1)+z*_size.x]*KERNEL[tap]/64.0
+					if _profile.is_empty():
+						for tap in 7:h+=_heights[clampi(x+tap-3,0,_size.x-1)+z*_size.x]*KERNEL[tap]/64.0
+					else:h=_filtered(x,z,true)
 					_horizontal[x+z*_size.x]=h
 				else:
-					for tap in 7:h+=_horizontal[x+clampi(z+tap-3,0,_size.y-1)*_size.x]*KERNEL[tap]/64.0
+					if _profile.is_empty():
+						for tap in 7:h+=_horizontal[x+clampi(z+tap-3,0,_size.y-1)*_size.x]*KERNEL[tap]/64.0
+					else:h=_filtered(x,z,false)
 					_heights[x+z*_size.x]=h
 			_row+=1
 			if _row<_size.y:continue
 			_row=0
 			if _phase==2:
 				_pass+=1
-				if _pass==3:
+				if _pass==_pass_limit:
+					if not _profile.is_empty():_apply_strength()
+					if not _rules.is_empty():_apply_source_rules()
 					result={"start":_start,"size":_size,"heights":_heights};finished=true
-					_source=null;_horizontal=PackedFloat32Array();continue
+					_source=null;_horizontal=PackedFloat32Array();_original=PackedFloat32Array();continue
 				_phase=1
 			else:_phase+=1
-			if _phase==1:_horizontal=_heights.duplicate()
+			if _phase==1:
+				_horizontal=_heights.duplicate()
+				if (not _profile.is_empty() or not _rules.is_empty()) and _original.is_empty():_original=_heights.duplicate()
 
-static func field(source, bounds: Rect2i) -> Dictionary:
-	var job:=FieldJob.new(source,bounds)
+	func _apply_source_rules() -> void:
+		var variants: Dictionary={3:_heights.duplicate()}
+		var radii: Dictionary={}
+		for key: Vector2i in _rules:
+			if not Rect2i(key*64,Vector2i(64,64)).intersects(_bounds.grow(HALO)):continue
+			var bytes: PackedByteArray=_rules[key]
+			for code in bytes:
+				if code>0 and code<=64:radii[(code-1)/32+1]=true
+		for radius: int in radii:
+			var job:=FieldJob.new(_source,_bounds,_pass_limit,{"radius_cells":radius},false)
+			while not job.finished:job.step(1000000)
+			variants[radius]=job.result.heights
+		for z in _size.y:
+			for x in _size.x:
+				var i:=x+z*_size.x;var total:=0.0
+				var corner:=_start+Vector2i(x,z)
+				for oz in [-1,0]:
+					for ox in [-1,0]:
+						var cell:=Vector2i(clampi(corner.x+ox,0,_source.width-1),clampi(corner.y+oz,0,_source.depth-1))
+						var code:=SurfaceRules.read(_rules,cell)
+						if code==0:total+=variants[3][i]
+						elif code>=128:total+=lerpf(variants[3][i],_original[i],float(code-127)/128.0)
+						else:
+							var radius: int=(code-1)/32+1
+							total+=lerpf(_original[i],variants[radius][i],float((code-1)%32)/31.0)
+				_heights[i]=total*0.25
+
+	func _filtered(x: int,z: int,horizontal: bool) -> float:
+		var values:=_heights if horizontal else _horizontal
+		var centre:=values[x+z*_size.x]
+		var ahead:=values[clampi(x+1,0,_size.x-1)+z*_size.x] if horizontal else values[x+clampi(z+1,0,_size.y-1)*_size.x]
+		var behind:=values[clampi(x-1,0,_size.x-1)+z*_size.x] if horizontal else values[x+clampi(z-1,0,_size.y-1)*_size.x]
+		var gradient:=(ahead-behind)*0.5
+		var total:=0.0;var weight_sum:=0.0
+		for offset in range(-_radius,_radius+1):
+			var sx:=clampi(x+offset,0,_size.x-1) if horizontal else x
+			var sz:=z if horizontal else clampi(z+offset,0,_size.y-1)
+			var height:=values[sx+sz*_size.x]
+			var weight: float=_kernel[offset+_radius]
+			if _preserve_edges:
+				# Remove the local plane's slope from edge detection. Otherwise a
+				# steep quantized face is mistaken for dozens of protected breaks.
+				var difference:=(height-centre-gradient*offset)/_threshold
+				weight*=exp(-0.5*difference*difference)
+			total+=height*weight;weight_sum+=weight
+		return total/weight_sum
+
+	func _apply_strength() -> void:
+		var strength:=clampf(float(_profile.get("strength",1.0)),0.0,1.0)
+		var feather:=maxf(0.001,float(_profile.get("protection_feather_m",0.15)))
+		for z in _size.y:
+			for x in _size.x:
+				var point:=Vector2(_start+Vector2i(x,z))/16.0
+				var protection:=0.0
+				for region: Rect2 in _profile.get("protected_regions",[]):
+					var nearest:=Vector2(clampf(point.x,region.position.x,region.end.x),clampf(point.y,region.position.y,region.end.y))
+					protection=maxf(protection,1.0-smoothstep(0.0,feather,point.distance_to(nearest)))
+				var i:=x+z*_size.x
+				_heights[i]=lerpf(_original[i],_heights[i],strength*(1.0-protection))
+
+static func field(source, bounds: Rect2i, filter_passes := 3) -> Dictionary:
+	var job:=FieldJob.new(source,bounds,filter_passes)
+	while not job.finished:job.step(1000000)
+	return job.result
+
+static func controlled_field(source,bounds: Rect2i,profile: Dictionary) -> Dictionary:
+	# Opt-in derived LAB settings, not Resource metadata or a material policy.
+	# Existing default callers retain the exact original three-pass result.
+	var job:=FieldJob.new(source,bounds,clampi(int(profile.get("passes",3)),1,3),profile)
 	while not job.finished:job.step(1000000)
 	return job.result
 
@@ -142,8 +235,10 @@ static func _uniform_material(source,bounds: Rect2i) -> int:
 			elif value!=slot:return 0
 	return slot
 
-static func build(source,bounds: Rect2i,blend_materials:=false,uniform_fastpath:=true) -> Dictionary:
-	var data := field(source,bounds)
+static func build(source,bounds: Rect2i,blend_materials:=false,uniform_fastpath:=true,prepared_field: Dictionary={}) -> Dictionary:
+	# Explicit studies may supply an already derived field. Render, collision
+	# and returned floor data still consume this single set of heights.
+	var data := field(source,bounds) if prepared_field.is_empty() else prepared_field
 	var uniform:=_uniform_material(source,bounds) if blend_materials and uniform_fastpath else 0
 	var material_cache: Dictionary={}
 	var points := PackedVector3Array();var normals := PackedVector3Array()

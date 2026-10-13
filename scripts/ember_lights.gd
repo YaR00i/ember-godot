@@ -24,6 +24,23 @@ const SUN_LOOK_VALUES := {
 	"shadow_softness": ["Размер солнца / мягкость теней", "light_angular_distance", 0.0, 5.0, 0.1],
 }
 
+## Repeatable material checks, applied to the existing scene Sun/Environment.
+## No saved preset index or time-of-day owner; node values are the truth.
+const MATERIAL_LIGHT_PRESETS := [
+	{"name":"Вечер","sun_color":Color(1,0.87,0.65),"sun_energy":1.3,"elevation":32.0,"ambient_color":Color(0.58,0.67,0.85),"ambient_energy":0.45,"background_color":Color(0.22,0.27,0.25)},
+	{"name":"День","sun_color":Color(1,0.98,0.94),"sun_energy":1.15,"elevation":62.0,"ambient_color":Color(0.72,0.82,1),"ambient_energy":0.55,"background_color":Color(0.35,0.47,0.54)},
+	{"name":"Ночь","sun_color":Color(0.56,0.68,1),"sun_energy":0.22,"elevation":38.0,"ambient_color":Color(0.36,0.46,0.72),"ambient_energy":0.16,"background_color":Color(0.035,0.05,0.085)},
+]
+
+static func apply_material_light_preset(sun: DirectionalLight3D, environment: Environment, index: int) -> void:
+	if sun==null or environment==null or index<0 or index>=MATERIAL_LIGHT_PRESETS.size():return
+	var preset: Dictionary=MATERIAL_LIGHT_PRESETS[index]
+	sun.light_color=preset.sun_color;sun.light_energy=preset.sun_energy
+	apply_sun_look_value(sun,"_sun_elevation",preset.elevation)
+	environment.ambient_light_color=preset.ambient_color;environment.ambient_light_energy=preset.ambient_energy
+	environment.ambient_light_source=Environment.AMBIENT_SOURCE_COLOR
+	environment.background_color=preset.background_color
+
 static func sun_look_value(sun: DirectionalLight3D, property: String) -> float:
 	if property == "_sun_azimuth": return wrapf(sun.rotation_degrees.y, -180.0, 180.0)
 	if property == "_sun_elevation": return -sun.rotation_degrees.x

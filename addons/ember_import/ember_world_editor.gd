@@ -102,6 +102,10 @@ var softness: SpinBox
 var compact_feature_scale: SpinBox
 var compact_detail: SpinBox
 var compact_detail_pattern: OptionButton
+var compact_shape_action: OptionButton
+var compact_shape_strength: HSlider
+var compact_shape_radius: OptionButton
+var _shape_settings: VBoxContainer
 var compact_seed: SpinBox
 var compact_direction: OptionButton
 var compact_level_from_point: CheckBox
@@ -628,7 +632,7 @@ func _compact_active() -> bool:
 	return not entry.is_empty() and entry.get("compact", false)
 
 func _set_busy(value: bool) -> void:
-	for control in [target_choice,category,tools,palette,sand_palette,surface_role_choice,material_variant_choice,material_slot_button,material_pattern_button,clip,shore_direction,compact_direction,compact_detail_pattern,compact_level_from_point,terrain_edit_scale,terrain_height_step,brush_shape]:
+	for control in [target_choice,category,tools,palette,sand_palette,surface_role_choice,material_variant_choice,material_slot_button,material_pattern_button,clip,shore_direction,compact_direction,compact_detail_pattern,compact_shape_action,compact_shape_radius,compact_level_from_point,terrain_edit_scale,terrain_height_step,brush_shape]:
 		if is_instance_valid(control): control.disabled = value
 	for control in [radius,depth,coarse_depth,plane_height,water_height,shore_width,softness,compact_feature_scale,compact_detail,compact_seed]:
 		if is_instance_valid(control): control.editable = not value
@@ -636,6 +640,7 @@ func _set_busy(value: bool) -> void:
 		if is_instance_valid(button): button.disabled = value
 	for button in category_buttons:
 		if is_instance_valid(button): button.disabled = value
+	if is_instance_valid(compact_shape_strength):compact_shape_strength.editable=not value
 	for slider in parameter_sliders:
 		if is_instance_valid(slider): slider.editable = not value
 	if is_instance_valid(_experiment_toggle): _experiment_toggle.disabled = value
@@ -1686,6 +1691,7 @@ func build_sidebar() -> Control:
 	material_pattern_button.pressed.connect(_open_material_pattern)
 	material_pattern_dialog = MaterialPatternDialog.new()
 	material_pattern_dialog.pattern_saved.connect(_on_material_pattern_saved)
+	material_pattern_dialog.light_profile_previewed.connect(_on_material_light_previewed)
 	material_pattern_dialog.pattern_created.connect(_on_material_pattern_created)
 	material_pattern_dialog.edit_closed.connect(_close_material_workspace)
 	material_pattern_dialog.variant_opened.connect(_on_material_variant_opened)
@@ -1712,6 +1718,17 @@ func build_sidebar() -> Control:
 	compact_detail_pattern = _brush_choice(settings,"detail_pattern")
 	compact_detail_pattern.tooltip_text="Фактура покрытия: каменные выступы, песчаные гребни и тихие неровности грунта. Сохраняет покраску и подводное дно; PNG выбирается в прежнем материале."
 	compact_detail_pattern.item_selected.connect(func(_value):cancel_stroke();_tool_changed())
+	compact_shape_action=OptionButton.new();settings.add_child(compact_shape_action)
+	for shape_choice in ["Править общие высоты","Гладкий вид · скруглить здесь","Гладкий вид · не скруглять","Гладкий вид · снять правило"]:compact_shape_action.add_item(shape_choice)
+	compact_shape_action.item_selected.connect(func(_value):cancel_stroke();_tool_changed();_refresh_brush_scale_settings();_update_overlay())
+	_shape_settings=VBoxContainer.new();settings.add_child(_shape_settings)
+	var shape_title:=Label.new();shape_title.text="Округление / защита · сила";_shape_settings.add_child(shape_title)
+	compact_shape_strength=HSlider.new();compact_shape_strength.max_value=1.0;compact_shape_strength.step=0.05;compact_shape_strength.value=1.0;_shape_settings.add_child(compact_shape_strength)
+	compact_shape_radius=OptionButton.new();_shape_settings.add_child(compact_shape_radius)
+	for value in [1,2,3]:compact_shape_radius.add_item("Радиус округления: %d клеток"%value)
+	compact_shape_radius.select(2)
+	compact_shape_strength.value_changed.connect(func(_value):cancel_stroke())
+	compact_shape_radius.item_selected.connect(func(_value):cancel_stroke())
 	compact_detail = _brush_slider(advanced,"detail")
 	compact_seed = _brush_spin(advanced,"seed")
 	compact_direction = _brush_choice(advanced,"direction")
@@ -1840,6 +1857,8 @@ func build_sidebar() -> Control:
 	depth = _brush_slider(parameters,"strength_detail")
 	coarse_depth = _brush_slider(parameters,"strength_steps")
 	settings.move_child(compact_detail_pattern,2)
+	settings.move_child(compact_shape_action,2)
+	settings.move_child(_shape_settings,3)
 	_brush_parameter_controls = {
 		"edit_scale":terrain_edit_scale, "height_step":terrain_height_step, "shape":brush_shape,
 		"radius":_parameter_group(radius), "strength_detail":_parameter_group(depth),
@@ -2281,7 +2300,16 @@ func _mode() -> String:
 	return str(tools.get_selected_metadata()) if tools.selected >= 0 else "raise"
 
 func _compact_edit_scale() -> String:
+	if _shape_rule_active():return "detail"
 	return "coarse" if terrain_edit_scale.selected == 0 else "medium" if terrain_edit_scale.selected == 1 else "detail"
+
+func _shape_rule_active() -> bool:
+	return _compact_active() and _mode()=="smooth" and is_instance_valid(compact_shape_action) and compact_shape_action.selected>0
+
+func _shape_rule_code() -> int:
+	if compact_shape_action.selected==1:return CompactBrush.SurfaceRules.round_code(compact_shape_strength.value,compact_shape_radius.selected+1)
+	if compact_shape_action.selected==2:return CompactBrush.SurfaceRules.protect_code(compact_shape_strength.value) if compact_shape_strength.value>0 else 0
+	return 0
 
 func _tool_changed() -> void:
 	if not is_instance_valid(palette): return
@@ -2297,6 +2325,15 @@ func _tool_changed() -> void:
 	for parameter_id: String in _brush_parameter_controls:
 		var control: Control = _brush_parameter_controls[parameter_id]
 		control.visible = parameter_id in active_parameters
+	compact_shape_action.visible=_compact_active() and _mode()=="smooth"
+	var shape_allowed: bool=_compact_active() and entry.resource.width*entry.resource.depth<=262144
+	for i in [1,2,3]:compact_shape_action.set_item_disabled(i,not shape_allowed)
+	if not shape_allowed and compact_shape_action.selected>0:compact_shape_action.select(0)
+	_shape_settings.visible=_shape_rule_active() and compact_shape_action.selected!=3
+	compact_shape_radius.visible=_shape_rule_active() and compact_shape_action.selected==1
+	if _shape_rule_active():
+		for id in ["edit_scale","height_step","strength_detail","strength_steps"]:_brush_parameter_controls[id].hide()
+		inspector_hint.text="Правило гладкого облика; общие высоты и покраска сохраняются. Один мазок — одно Undo; обновление после отпускания мыши. Первое применение: карта до32×32м."
 	material_title.visible = "palette" in active_parameters
 	material_title.text = "ЦВЕТ ВОДЫ" if category.selected == 2 else "МАТЕРИАЛ ПОВЕРХНОСТИ" if _compact_active() else "ЦВЕТ ПОВЕРХНОСТИ"
 	var show_surface_role := _compact_active() and category.selected == 1 and "palette" in active_parameters
@@ -2387,6 +2424,10 @@ func _on_material_pattern_saved(pattern: TerrainPattern, id: String) -> void:
 	if projection != null:
 		projection.set_shared_material_pattern(pattern)
 	_status("Паттерн %s сохранён. Карты с этим вариантом обновятся без пересборки земли." % id)
+
+func _on_material_light_previewed(pattern: TerrainPattern, id: String) -> void:
+	var projection:=map._visual_surface_projection as EmberTerrainPilotProjection if is_instance_valid(map) else null
+	if projection!=null:projection.preview_shared_material_light(pattern,id)
 
 
 func _on_material_pattern_created(id: String, role: String) -> void:
@@ -2866,6 +2907,7 @@ func _forward_compact(event: InputEvent) -> int:
 			var press_pick_usec := Time.get_ticks_usec() - press_pick_started if press_pick_started > 0 else 0
 			if not hover.is_empty():
 				var mode := _mode()
+				if _shape_rule_active():mode=["smooth","shape_round","shape_protect","shape_clear"][compact_shape_action.selected]
 				if event.ctrl_pressed:
 					mode = {"raise":"lower","lower":"raise","water":"dry","dry":"water"}.get(mode,mode)
 				var selected_palette := int(palette.get_selected_metadata()) if palette.selected >= 0 else 1
@@ -2881,7 +2923,7 @@ func _forward_compact(event: InputEvent) -> int:
 						"feature_scale": compact_feature_scale.value, "detail": compact_detail.value,"material_detail":compact_detail_pattern.selected==1})
 					_compact_trace.stage("press_pick", press_pick_usec)
 				var begin_started := Time.get_ticks_usec() if _compact_trace.recording else 0
-				if _compact_brush.begin(mode,radius.value,height_strength,selected_palette,roundi(water_height.value),roundi(compact_feature_scale.value),roundi(compact_detail.value),roundi(compact_seed.value),direction,target_world,_compact_edit_scale(),"square" if brush_shape.selected == 0 else "circle",height_step,compact_detail_pattern.selected==1):
+				if _compact_brush.begin(mode,radius.value,height_strength,selected_palette,roundi(water_height.value),roundi(compact_feature_scale.value),roundi(compact_detail.value),roundi(compact_seed.value),direction,target_world,_compact_edit_scale(),"square" if brush_shape.selected == 0 else "circle",height_step,compact_detail_pattern.selected==1,_shape_rule_code() if _shape_rule_active() else 0):
 					if begin_started > 0:
 						_compact_trace.stage("brush_begin", Time.get_ticks_usec() - begin_started)
 						_compact_brush.diagnostic_sink = _compact_trace

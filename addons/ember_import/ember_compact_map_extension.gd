@@ -37,6 +37,7 @@ static func expanded(source: TerrainResource, direction: String, mode := MODE_CO
 	result.palette_surface_roles = source.palette_surface_roles.duplicate()
 	result.palette_material_ids = source.palette_material_ids.duplicate()
 	result.unsupported_holes = source.unsupported_holes
+	result.surface_rules=TerrainResource.SurfaceRules.shifted(source.surface_rules,Vector2i(offset_x,offset_z))
 	result.heights = _extend_ints(source.heights, source.width, source.depth, direction, cells)
 	result.top_materials = _extend_bytes(source.top_materials, source.width, source.depth, direction, cells)
 	result.base_materials = _extend_bytes(source.base_materials, source.width, source.depth, direction, cells)
@@ -94,6 +95,7 @@ static func _expanded_sections(source: TerrainResource, direction: String, mode:
 	var result := source.sectioned_copy()
 	var shift := Vector2i(1 if direction == "west" else 0, 1 if direction == "north" else 0)
 	if shift != Vector2i.ZERO:
+		result.surface_rules=TerrainResource.SurfaceRules.shifted(result.surface_rules,shift*cells)
 		var moved := {}
 		for key: Vector2i in result.sections: moved[key + shift] = result.sections[key]
 		result.sections = moved

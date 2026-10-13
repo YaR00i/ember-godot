@@ -38,6 +38,7 @@ static func rebase(source: Terrain, selection: Dictionary) -> Terrain:
 	var moved := {}
 	for key: Vector2i in result.sections: moved[key + selection.offset] = result.sections[key]
 	result.sections = moved
+	result.surface_rules=Terrain.SurfaceRules.shifted(result.surface_rules,selection.offset*Terrain.Sections.CELLS)
 	result.width = selection.extent.x * Terrain.Sections.CELLS
 	result.depth = selection.extent.y * Terrain.Sections.CELLS
 	return result

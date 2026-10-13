@@ -33,6 +33,23 @@ const ROLE_IDS := ["soil", "grass", "sand", "stone"]
 @export_range(0.03, 1.0, 0.01) var micro_size_m := 0.09
 @export_range(0.0, 0.5, 0.01) var micro_roughness := 0.0
 
+## Light response belongs to this variant, separate from artwork colours.
+## Relative linear tints may exceed one. Legacy materials remain opt-out.
+@export_group("Grass light response")
+@export var grass_light_enabled := false
+@export_range(0.52,0.85,0.01) var grass_light_low := 0.64
+@export_range(0.0,1.0,0.01) var grass_light_tint_strength := 1.0
+@export var grass_light_cool := Color(0.96,1.0,1.04)
+@export var grass_light_warm := Color(1.075,1.0,0.94)
+@export var grass_light_shadow_color := Color(0.62,0.90,1.02)
+@export_range(0.0,0.15,0.005) var grass_light_shadow_fill := 0.07
+@export_group("")
+
+func suggested_grass_light_tones() -> Dictionary:
+	# Relative to the authored base pigment. Explicit suggestion, not image
+	# analysis and never automatically applied when base_color changes.
+	return {"grass_light_cool":Color(0.96,1.0,1.04),"grass_light_warm":Color(1.075,1.0,0.94),"grass_light_shadow_color":Color(0.62,0.90,1.02)}
+
 
 func validation_errors() -> Array[String]:
 	var errors: Array[String] = []
@@ -40,6 +57,14 @@ func validation_errors() -> Array[String]:
 		errors.append("terrain PNG texture must be within 1..4096 pixels per side")
 	if role_id not in ROLE_IDS:
 		errors.append("unknown compact terrain pattern role")
+	if grass_light_enabled and role_id != "grass": errors.append("grass light response requires grass role")
+	for spec in [["grass_light_low",0.52,0.85],["grass_light_tint_strength",0.0,1.0],["grass_light_shadow_fill",0.0,0.15]]:
+		var value: float=get(spec[0])
+		if not is_finite(value) or value < spec[1] or value > spec[2]:errors.append(str(spec[0])+" outside range")
+	for field in ["grass_light_cool","grass_light_warm","grass_light_shadow_color"]:
+		var tint: Color=get(field)
+		if not Vector3(tint.r,tint.g,tint.b).is_finite() or not is_finite(tint.a) or not is_equal_approx(tint.a,1.0) or minf(tint.r,minf(tint.g,tint.b))<0.0 or maxf(tint.r,maxf(tint.g,tint.b))>2.0:
+			errors.append(field+" must be an opaque relative tint within 0..2")
 	if pixels.size() != SIZE * SIZE:
 		errors.append("compact terrain pattern must contain 16x16 pixels")
 	else:

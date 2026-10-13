@@ -49,6 +49,10 @@ func _create_controls() -> void:
 func prepare() -> void:
 	_projection=get_node("Map")._visual_surface_projection
 	while _projection.pending_tile_count()>0:await get_tree().process_frame
+	await prepare_morph_fields()
+
+func prepare_morph_fields() -> void:
+	# Existing morph owner, reused after an explicit LAB shape comparison.
 	var source: Resource=_projection.document
 	for key: Vector2i in _projection._tiles:
 		var bounds:=Rect2i(key*64,Vector2i(64,64))
@@ -103,7 +107,7 @@ func prepare() -> void:
 		preparations[key]={"ground":ground,"collision_mesh":collision_instance,"base":base,"half":targets[0],"voxel":targets[1],"changed":changed,"current":current,"baked":ArrayMesh.new()}
 		await get_tree().process_frame
 	ready_for_morph=true;_slider.editable=true;set_phase(0.0)
-	if walk_test_enabled:_create_walker()
+	if walk_test_enabled and not is_instance_valid(walker):_create_walker()
 	print("MOUNTAIN_ANOMALY_READY affected_tiles=",preparations.size())
 
 func set_phase(value: float) -> void:

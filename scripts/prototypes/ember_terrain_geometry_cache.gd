@@ -34,8 +34,10 @@ func tile_key(source: Terrain, tile: Vector2i, revision: int, policy: Array, swa
 				if not bounds.has_area(): _fingerprints[key] = "outside"
 				else:
 					var part := source.dense_window(bounds)
-					_fingerprints[key] = Storage.digest([bounds.size, part.heights, part.top_materials,
-						part.base_materials, part.cap_depths, part.water_levels, part.water_materials, part.column_material_overrides])
+					var values: Array=[bounds.size, part.heights, part.top_materials,
+						part.base_materials, part.cap_depths, part.water_levels, part.water_materials, part.column_material_overrides]
+					if not part.surface_rules.is_empty():values.append(part.surface_rules)
+					_fingerprints[key] = Storage.digest(values)
 			dependencies.append([key, _fingerprints[key]])
 	return Storage.digest([VERSION, Engine.get_version_info().hex, source.is_sectioned(), tile,
 		source.origin_y, source.palette, policy, dependencies, swash, sheet])

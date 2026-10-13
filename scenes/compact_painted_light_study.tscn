@@ -1,0 +1,59 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_painted_light_study.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/ember_map_loader.gd" id="2"]
+[ext_resource type="Resource" path="res://content/world_terrains/painted_light_study.res" id="3"]
+
+[sub_resource type="Environment" id="Environment"]
+background_mode = 1
+background_color = Color(0.22, 0.27, 0.25, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.58, 0.67, 0.85, 1)
+ambient_light_energy = 0.45
+tonemap_mode = 2
+ssao_enabled = true
+ssao_radius = 0.65
+ssao_intensity = 0.8
+
+[node name="PaintedLightStudy" type="Node3D"]
+script = ExtResource("1")
+orbit_center = Vector3(2.8, 1.0, 2.8)
+anomaly_zones = Array[Vector4]([Vector4(2, 2, 1.6, 0.3)])
+walk_test_enabled = true
+walk_start = Vector2(4.25, 4.45)
+walk_route = PackedVector2Array(4.25, 4.45, 4.15, 2.6)
+
+[node name="Map" type="Node3D" parent="."]
+script = ExtResource("2")
+map_id = "painted_light_study"
+compact_terrain = ExtResource("3")
+compact_ground_style = 1
+compact_smooth_material_blend = true
+compact_material_light_mode = 1
+authored_size_blocks = Vector2i(6, 6)
+imported_tile_size = 1.0
+
+[node name="Look" type="Node3D" parent="Map"]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="Map/Look"]
+environment = SubResource("Environment")
+[node name="Sun" type="DirectionalLight3D" parent="Map/Look"]
+rotation_degrees = Vector3(-32, -145, 0)
+light_color = Color(1, 0.87, 0.65, 1)
+light_energy = 1.3
+light_angular_distance = 1.0
+shadow_enabled = true
+directional_shadow_max_distance = 35.0
+
+[node name="Camera3D" type="Camera3D" parent="."]
+position = Vector3(8.2, 6.6, 10)
+rotation_degrees = Vector3(-31, 37, 0)
+current = true
+fov = 40.0
+near = 0.05
+far = 100.0
+
+[node name="Instructions" type="CanvasLayer" parent="."]
+[node name="Caption" type="Label" parent="Instructions"]
+offset_left = 20.0
+offset_top = 16.0
+text = "Подготовка живописного света…"

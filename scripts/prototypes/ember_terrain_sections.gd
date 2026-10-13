@@ -34,6 +34,7 @@ static func window(source, bounds: Rect2i):
 	view.palette = source.palette
 	view.palette_surface_roles = source.palette_surface_roles
 	view.palette_material_ids = source.palette_material_ids
+	view.surface_rules=source.SurfaceRules.window(source.surface_rules,bounds)
 	var areas: Dictionary = source.sections if source.is_sectioned() else {Vector2i.ZERO: source}
 	var spans: Array = []
 	for key: Vector2i in areas:
@@ -78,10 +79,12 @@ static func convert(source):
 	var result = source.duplicate(false)
 	result.schema_version = source.SECTION_SCHEMA_VERSION
 	result.sections = {}
+	result.surface_rules=source.surface_rules.duplicate(true)
 	for z in ceili(float(source.depth) / CELLS):
 		for x in ceili(float(source.width) / CELLS):
 			var key := Vector2i(x, z)
 			result.sections[key] = window(source, Rect2i(key * CELLS, Vector2i(mini(CELLS, source.width - x * CELLS), mini(CELLS, source.depth - z * CELLS))))
+			result.sections[key].surface_rules={}
 	for channel in CHANNELS:
 		result.set(channel, PackedInt32Array() if channel in ["heights", "water_levels"] else PackedByteArray())
 	result.water_flow = PackedVector2Array()
@@ -161,6 +164,7 @@ static func validation_errors(source, local_sections: Array[Vector2i] = []) -> A
 		if part.height_limit != source.height_limit or part.origin_y != source.origin_y or part.unsupported_holes != 0: return ["terrain section height metadata differs"]
 		# Parent palette is authoritative; payloads may predate a palette edit.
 		var count: int = part.width * part.depth
+		if not part.surface_rules.is_empty():return ["Правила формы принадлежат корню земли, не payload участка."]
 		for channel in CHANNELS:
 			if part.get(channel).size() != count: return ["terrain section channel has wrong size"]
 		edge = edge.max(key * CELLS + Vector2i(part.width, part.depth))

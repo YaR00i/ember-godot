@@ -222,6 +222,7 @@ static func _build_section_tile(source: TerrainResource, x: int, z: int, size: i
 		view.palette = source.palette
 		view.palette_surface_roles = source.palette_surface_roles
 		view.palette_material_ids = source.palette_material_ids
+		view.surface_rules=source.SurfaceRules.window(source.surface_rules,Rect2i(start,Vector2i(view.width,view.depth)))
 	else:
 		view = source.dense_window(Rect2i(start, end - start))
 	var bank := PackedVector4Array()

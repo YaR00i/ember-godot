@@ -25,6 +25,7 @@ var scene_version := {}
 var elapsed_us := 0
 var worst_step_us := 0
 var _source: EmberTerrainPilotResource
+var _surface_rule_version: Dictionary={}
 var _map: EmberMapLoader
 var _root: Node
 var _frame := Transform3D.IDENTITY
@@ -264,6 +265,7 @@ static func native_hash(id: String) -> String:
 
 func begin(source: EmberTerrainPilotResource, map: EmberMapLoader, scene_root: Node, plan: Resource, catalog := {}) -> bool:
 	_source = source; _map = map; _root = scene_root
+	_surface_rule_version=source.surface_rules.duplicate(true)
 	if source == null or map == null or scene_root == null or plan == null: error = "Нет земли или плана рощи."; return false
 	var problems: Array[String] = plan.validation_errors(Vector2i(source.width/16,source.depth/16))
 	if not problems.is_empty(): error = problems[0]; return false
@@ -426,6 +428,7 @@ func step(budget_us := 4000) -> void:
 	var elapsed := Time.get_ticks_usec()-started; elapsed_us += elapsed; worst_step_us = maxi(worst_step_us,elapsed)
 
 func stale() -> bool:
+	if _source!=null and _source.surface_rules!=_surface_rule_version:return true
 	if not is_instance_valid(_map) or scene_fingerprint(_map,_frame) != scene_version: return true
 	if _map.compact_ground_style != _ground_style:return true
 	var projection:=_map._visual_surface_projection as Node3D

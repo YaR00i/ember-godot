@@ -7,6 +7,7 @@ extends Resource
 const SCHEMA_VERSION := 1
 const SECTION_SCHEMA_VERSION := 2
 const Sections = preload("res://scripts/prototypes/ember_terrain_sections.gd")
+const SurfaceRules=preload("res://scripts/prototypes/ember_terrain_surface_rules.gd")
 const CELLS_PER_BLOCK := 16
 const SURFACE_ROLE_IDS := ["soil", "grass", "sand", "stone"]
 const SURFACE_ROLE_NAMES := {"soil": "Грунт", "grass": "Трава", "sand": "Песок", "stone": "Камень"}
@@ -35,6 +36,9 @@ const Heightfield = preload("res://scripts/ember_voxel_heightfield.gd")
 @export var water_flow := PackedVector2Array()
 ## Rare authored side-color exceptions; key=column, value={voxel_y: palette_id}.
 @export var column_material_overrides: Dictionary = {}
+## Optional source-space smooth-form rules; empty preserves legacy exactly.
+## Root-owned for both dense and sectioned storage; section payloads stay empty.
+@export_storage var surface_rules: Dictionary={}
 @export var unsupported_holes := 0
 ## Schema 2: address -> payload of this same Resource. Dense root channels stay
 ## empty; schema 1 remains readable and is never rewritten just by opening.
@@ -108,6 +112,7 @@ func same_terrain_geometry(other: EmberTerrainPilotResource, ignore_height_limit
 		if ignore_height_limit and field == "height_limit": continue
 		if get(field) != other.get(field):
 			return false
+	if surface_rules!=other.surface_rules:return false
 	if sections.size() != other.sections.size(): return false
 	for key in sections:
 		if not other.sections.has(key): return false
@@ -125,6 +130,7 @@ func validation_errors(local_sections: Array[Vector2i] = []) -> Array[String]:
 		errors.append_array(surface_role_errors())
 		errors.append_array(material_id_errors())
 		errors.append_array(Sections.validation_errors(self, local_sections))
+		if errors.is_empty():errors.append_array(SurfaceRules.validation_errors(self))
 		return errors
 	if schema_version != SCHEMA_VERSION:
 		errors.append("unsupported terrain pilot schema")
@@ -173,6 +179,7 @@ func validation_errors(local_sections: Array[Vector2i] = []) -> Array[String]:
 					break
 			if not errors.is_empty():
 				break
+	if errors.is_empty():errors.append_array(SurfaceRules.validation_errors(self))
 	return errors
 
 
@@ -223,6 +230,7 @@ func working_copy() -> EmberTerrainPilotResource:
 			result.set(channel, get(channel).duplicate())
 		result.water_flow = water_flow.duplicate()
 		result.column_material_overrides = column_material_overrides.duplicate(true)
+		result.surface_rules=surface_rules.duplicate(true)
 		return result
 	var copy := duplicate(true) as EmberTerrainPilotResource
 	copy.palette_surface_roles = palette_surface_roles.duplicate()
@@ -235,6 +243,7 @@ func working_copy() -> EmberTerrainPilotResource:
 	copy.water_materials = water_materials.duplicate()
 	copy.water_flow = water_flow.duplicate()
 	copy.column_material_overrides = column_material_overrides.duplicate(true)
+	copy.surface_rules=surface_rules.duplicate(true)
 	return copy
 
 

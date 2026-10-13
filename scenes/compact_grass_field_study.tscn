@@ -1,0 +1,11 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/compact_painted_light_study.tscn" id="1_base"]
+[ext_resource type="Resource" path="res://content/world_terrains/grass_field_study.res" id="2_source"]
+
+[node name="GrassFieldStudy" instance=ExtResource("1_base")]
+
+[node name="Map" parent="." index="0"]
+map_id = "grass_field_study"
+compact_terrain = ExtResource("2_source")
+authored_size_blocks = Vector2i(12,12)

@@ -7,7 +7,8 @@ signal pattern_saved(pattern: Resource, id: String)
 signal pattern_created(id: String, role: String)
 signal edit_closed
 signal variant_opened(id: String, role: String)
-const EDIT_FIELDS := ["role_id", "base_color", "light_color", "shadow_color", "pixels", "side_pixels", "gloss", "sheen", "pixel_relief", "micro_relief", "micro_size_m", "micro_roughness", "relief_pixels", "side_relief_pixels", "roughness_pixels", "side_roughness_pixels", "pattern_size_m", "roughness_variation", "albedo_texture"]
+signal light_profile_previewed(pattern: Resource, id: String)
+const EDIT_FIELDS := ["role_id", "base_color", "light_color", "shadow_color", "pixels", "side_pixels", "gloss", "sheen", "pixel_relief", "micro_relief", "micro_size_m", "micro_roughness", "relief_pixels", "side_relief_pixels", "roughness_pixels", "side_roughness_pixels", "pattern_size_m", "roughness_variation", "albedo_texture", "grass_light_enabled", "grass_light_low", "grass_light_tint_strength", "grass_light_cool", "grass_light_warm", "grass_light_shadow_color", "grass_light_shadow_fill"]
 
 const Materials = preload("res://scripts/ember_voxel_surface_materials.gd")
 const Pattern = preload("res://scripts/ember_compact_terrain_pattern.gd")
@@ -52,6 +53,9 @@ var _file_dialog: FileDialog
 var _file_import := false
 var _texture_dialog: FileDialog
 var _texture_label: Label
+var _grass_light_switch: CheckBox
+var _grass_light_rows: VBoxContainer
+var _grass_light_pickers: Dictionary={}
 
 
 func _init() -> void:
@@ -98,6 +102,7 @@ func _ready() -> void:
 		slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL; slider.value_changed.connect(_change_finish.bind(setting[0])); row.add_child(slider)
 		var value_label := Label.new(); value_label.custom_minimum_size.x = 44; row.add_child(value_label)
 		_finish_sliders[setting[0]] = slider; _finish_values[setting[0]] = value_label
+	_create_grass_light_controls(column)
 	_channel_choice=OptionButton.new()
 	for caption in ["Цвет","Световой рельеф","Матовость"]: _channel_choice.add_item(caption)
 	_channel_choice.item_selected.connect(_select_channel); column.add_child(_channel_choice)
@@ -224,6 +229,7 @@ func open_variant(id: String, role: String) -> bool:
 func _load_variant(id: String, role: String, path: String) -> bool:
 	var source := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as Pattern
 	if source == null or source.role_id != role or not source.validation_errors().is_empty(): return false
+	_restore_grass_light_preview()
 	_id = id; _opened_path = path; _opened_hash = FileAccess.get_sha256(path)
 	_draft = source.duplicate(true) as Pattern
 	_baseline.clear()
@@ -250,6 +256,7 @@ func _resolve_variant_switch(save_changes: bool) -> void:
 	if not _load_variant(next.id, next.role, next.path): _message.text = "Следующий материал был изменён или удалён. Текущий черновик сохранён в панели."
 
 func cancel_edit() -> void:
+	_restore_grass_light_preview()
 	_draft = null; _baseline.clear(); _pending_variant.clear(); _history.clear_history()
 	_grid._painting = false; _switch_box.hide(); _new_variant_box.hide(); _file_dialog.hide(); hide()
 	edit_closed.emit()
@@ -273,6 +280,7 @@ func _refresh_grid() -> void:
 	if _draft!=null and is_instance_valid(_texture_label):
 		_texture_label.text="PNG: "+_draft.albedo_texture.resource_path.get_file()+" · рисунок ниже сохранён как запасной" if _draft.albedo_texture!=null else "Текстура PNG не выбрана · используется рисунок 16×16"
 	if _draft == null: return
+	_refresh_grass_light_controls()
 	_grid.set_tones(_draft.surface_pixels(_channel,_editing_side), _channel_colors())
 	for picker in _tones: picker.disabled=_channel!="color"
 	_ink_choice.clear()
@@ -355,6 +363,72 @@ func _set_finish(key: String, value: float) -> void:
 	(_finish_sliders[key] as HSlider).value = value
 	(_finish_values[key] as Label).text = "%.2f" % value if key in ["micro_size_m","pattern_size_m"] else "%d%%" % roundi(value / (0.3 if key in ["pixel_relief","micro_relief"] else 0.5 if key in ["micro_roughness","roughness_variation"] else 1.0) * 100.0)
 	_loading = false
+	if key.begins_with("grass_light_"):light_profile_previewed.emit(_draft,_id)
+
+
+func _create_grass_light_controls(column: VBoxContainer) -> void:
+	_grass_light_switch=CheckBox.new();_grass_light_switch.text="Свет травы · цельные мазки"
+	_grass_light_switch.toggled.connect(func(value):_change_grass_light({"grass_light_enabled":value}))
+	column.add_child(_grass_light_switch)
+	_grass_light_rows=VBoxContainer.new();column.add_child(_grass_light_rows)
+	var hint:=Label.new();hint.text="Оттенки света относительно основной краски. Рисунок и рельеф сохраняются."
+	hint.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;_grass_light_rows.add_child(hint)
+	for spec in [["grass_light_low","Яркость тёмного мазка",0.52,0.85,0.01],["grass_light_tint_strength","Сила дополнительных оттенков",0.0,1.0,0.01],["grass_light_shadow_fill","Мягкий цвет настоящей тени",0.0,0.15,0.005]]:
+		var label:=Label.new();label.text=spec[1];label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;_grass_light_rows.add_child(label)
+		var row:=HBoxContainer.new();_grass_light_rows.add_child(row)
+		var slider:=HSlider.new();slider.min_value=spec[2];slider.max_value=spec[3];slider.step=spec[4];slider.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		slider.value_changed.connect(_change_finish.bind(spec[0]));row.add_child(slider)
+		var readout:=Label.new();readout.custom_minimum_size.x=44;row.add_child(readout)
+		_finish_sliders[spec[0]]=slider;_finish_values[spec[0]]=readout
+	for spec in [["grass_light_cool","Оттенок нижней ступени"],["grass_light_warm","Оттенок верхней ступени"],["grass_light_shadow_color","Оттенок настоящей тени"]]:
+		var label:=Label.new();label.text=spec[1];label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;_grass_light_rows.add_child(label)
+		var picker:=ColorPickerButton.new();picker.edit_alpha=false;picker.custom_minimum_size.y=28
+		picker.tooltip_text="Относительная тонировка света: белый сохраняет основную краску."
+		picker.color_changed.connect(func(color):color.a=1.0;_change_grass_light({spec[0]:color}))
+		_grass_light_rows.add_child(picker);_grass_light_pickers[spec[0]]=picker
+	var button:=Button.new();button.text="Подобрать к основной траве";button.clip_text=true
+	button.tooltip_text="Предложить близкие оттенки света. Действие можно отменить; основная краска и рисунок сохраняются."
+	button.pressed.connect(_suggest_grass_light_tones)
+	_grass_light_rows.add_child(button)
+	_refresh_grass_light_controls()
+
+
+func _refresh_grass_light_controls() -> void:
+	if not is_instance_valid(_grass_light_switch):return
+	var available:=_draft!=null and _draft.role_id=="grass"
+	_grass_light_switch.visible=available;_grass_light_rows.visible=available and _draft.grass_light_enabled
+	if not available:return
+	var loading_before:=_loading;_loading=true
+	_grass_light_switch.set_pressed_no_signal(_draft.grass_light_enabled)
+	for field in _grass_light_pickers:_grass_light_pickers[field].color=_draft.get(field)
+	_loading=loading_before
+
+
+func _change_grass_light(values: Dictionary) -> void:
+	if _loading or _draft==null:return
+	var before: Dictionary={};var after: Dictionary={}
+	for field in values:
+		if _draft.get(field)!=values[field]:before[field]=_draft.get(field);after[field]=values[field]
+	if after.is_empty():return
+	var single_color:=values.size()==1 and after.size()==1 and after.values()[0] is Color
+	_history.create_action("Свет травы: "+str(after.keys()[0]) if after.size()==1 else "Подобрать оттенки травы",UndoRedo.MERGE_ENDS if single_color else UndoRedo.MERGE_DISABLE)
+	_history.add_do_method(_set_grass_light.bind(after));_history.add_undo_method(_set_grass_light.bind(before));_history.commit_action()
+
+func _suggest_grass_light_tones() -> void:
+	if _draft!=null:_change_grass_light(_draft.suggested_grass_light_tones())
+
+
+func _set_grass_light(values: Dictionary) -> void:
+	for field in values:_draft.set(field,values[field])
+	_refresh_grass_light_controls()
+	light_profile_previewed.emit(_draft,_id)
+
+func _restore_grass_light_preview() -> void:
+	if _draft==null or _baseline.is_empty():return
+	var original: Pattern=_draft.duplicate(true)
+	for field in EDIT_FIELDS:
+		if field.begins_with("grass_light_"):original.set(field,_baseline[field])
+	light_profile_previewed.emit(original,_id)
 
 
 func _show_new_variant() -> void:
