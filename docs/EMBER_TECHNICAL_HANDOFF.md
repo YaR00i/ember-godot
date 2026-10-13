@@ -692,6 +692,105 @@ export boundary, retired references и physical G4/G5 требуют отдел�
   roughness_variation(default0). Empty relief наследует color heights, empty
   roughness нейтральна; sides наследуют top. Factory пишет height в alpha прежних
   atlases, добавляет два R8 roughness atlas(128KiB) и RGBAF surface_lookup4KiB.
+  Material looks LAB: compact_material_looks_study наследует принятый grass_field,
+  PaintedLightStudy/tuft scatter и DepthStudy/POM. Existing terrain shader получает
+  opt-in EMBER_MATERIAL_LOOK_STUDY + общий material_look_study include; А использует
+  исходный shader, Б angular normal steps, В world-metric texel-centre lighting/
+  colour + независимые intensity levels. Sample normals reuse existing fragment-
+  to-light channel (Forward+≤32 varyings); PNG mip footprint прежний через textureGrad.
+  Source/Pattern/schema/editor/geometry unchanged; limits/gates — Terrain Authoring,
+  «Три подачи материала и света». Большой world foliage/low-poly не реализованы.
+  Shape editor: optional TerrainPilotResource.surface_rules — root-owned sparse
+  64×64 byte tiles, Source-space addresses. SurfaceRules leaf хранит codec/window/
+  copy-on-write patches/rebase/validation; dense/sectioned schema1/2 прежние.
+  SmoothSurface.FieldJob применяет Source rules к общим угловым высотам; пустой
+  слой exact legacy. Source working_copy/Sections/window/extension/rebase/cache
+  и Grove field/stale paths учитывают слой. GroundVoxel игнорирует его геометрию.
+  CompactTerrainBrush shape_round/protect/clear копит private cells до end,
+  один history action, cancel без writes; Projection.apply_surface_rules только
+  local halo tiles. WorldEditor «Сгладить» разделяет common heights/smooth rules;
+  existing session Save/Reopen/Discard/recovery, Source validation и styles owners.
+  Guard32×32, ручная UX/F6/perf/weak-PC приёмка OPEN — Terrain Authoring.
+  Shape LAB: compact_terrain_shape_study и ember_terrain_shape_fixture задают
+  один обычный Source8×8м. SmoothSurface.controlled_field / FieldJob opt-in profile
+  задаёт strength/radius_cells/passes, slope-aware edge weight и protected_regions
+  с feather в world metres. Default field/source/schema/cache прежние, точное
+  сравнение с frozen previous implementation PASS. Settings fixture-owned, не
+  сериализуются в Terrain Resource; смена материала не меняет derived heights.
+  Shape controller готовит все tiles перед общей публикацией через прежний
+  Projection.apply_study_smooth_tile; Player pause при перестройке. MountainAnomaly
+  prepare_morph_fields переиспользует прежний алгоритм после A/B, без второго Player.
+  Shared mesh/collision/floor/pick/nav и старые half/voxel endpoints PASS;
+  полный rebuild с morph targets около2–3с. Локальные Source rules/editor lifecycle
+  продолжены выше; большой speed budget/визуальная приёмка OPEN — Terrain Authoring.
+  LAB material depth: compact_material_depth_study + presentation subclass
+  ember_material_depth_study.gd продолжают тот же Map/Source/Smooth/Player.
+  SurfaceMaterials optional private_patterns overrides не пишут общие Resources.
+  Общий texture_mapping core: текущие world metres/actual face normal; одна
+  проекция и масштаб цвета/height. periodic_material_ids → png_lookup.a
+  отключает half-tile blend только для готовых периодических пар; legacy прежний.
+  Общий ember_material_parallax solver и ember_terrain_material_depth binding
+  включаются factory по EMBER_TERRAIN_MATERIAL_DEPTH; обычный shader не пишет DEPTH.
+  CUSTOM0/ref coords убраны: стыки/растяжение исправлены, including mid-morph.
+  Generic factory API/depth slots поддерживают любую роль, не только stone.
+  Направление объёма принято; своя оценка исправления и границы — Terrain Authoring.
+  source schema/editor/cache и existing morph/physics owners не расширены.
+  Height/coverage текстуры строятся один раз; camera input меняет только камеру.
+  Source/geometry/physics/picking/nav/coords/Save/no frame jobs/native QA PASS,
+  manual look/weak PC и +1мс close goal OPEN — Terrain Authoring.
+  LAB0б: compact_painted_light_study / ember_painted_light_study наследуют depth
+  стенд, используют новый6×6 Source и private painted_light_* Patterns. Общий
+  terrain shader opt-in EMBER_PAINTERLY_STUDY включает ember_painterly_light leaf;
+  обычные карты его не компилируют. POM/texture_mapping/physics owners прежние.
+  Sun/Environment штатные scene nodes, F6 comparison toggles временные.
+  LAB готовит stone-weighted field через Smooth.field(...,1), передаёт его в
+  прежний Smooth.build(...,prepared_field)/apply_study_smooth_tile до morph.
+  Default3 exact с прежним кодом; один field для mesh/collision/floor/nav.
+  LAB grass_tuft_mesh + study MultiMesh: поле12×12м9621 clumps/423324tri, тот же
+  ShaderMaterial/grass/light, POM off только на травинках. Bounded jittered patches
+  внутри grass покрытия и у sand края, фиксированный seed, Source unchanged.
+  compact_grass_field_study наследует painted LAB, новый Source192²; малый6×6 сохранён.
+  Footprint9 excludes stone/steps; все vertices заранее проверяют base/half/voxel
+  через общий Smooth.sample. Непригодные места исключаются один раз; ширина >=30%.
+  Вертикальные корни следуют Map.floor при morph; размер/anchors не меняются.
+  Этот способ опирается на текущую линейную смесь полей; новые зоны требуют пересчёта.
+  No physics/ветер/мелкие cast shadows; native vertex clearance во всех фазах PASS.
+  Цвет от ground Pattern, blade root/tip tint; T toggle, saved export.
+  H/grass_masses — exported LAB flag: общее world-space поле нормалей/три тона
+  для травы и земли, слабый root tint и up ambient на cards. Общий shader include,
+  не новый renderer; no remesh/scatter. H-off exact прежнему полю, H return/native
+  и exported Save/reopen PASS. Принцип для материалов — внешний Unified Looks Plan;
+  собственный проход/мерцание и крутые склоны/стенки OPEN.
+  Автору понравились световые мазки. J/grass_color — следующий exported LAB flag:
+  близкие оттенки direct light по общему ember_painted_grass_steps, H-on only;
+  отдельные цветовые clouds отвергнуты и удалены. Общий ground/cards, no ALBEDO/
+  Source/Pattern writes, нормализация яркости direct light. Native J-off
+  exact с принятыми мазками в прежней .52-пробе; shared flag/Save-reopen/no remesh PASS.
+  Принятый low=.64; grass_light_* opt-in поля теперь у CompactTerrainPattern.
+  MaterialPatternDialog использует прежний draft/Undo/Save, отдельные light controls
+  и явный подбор; base/light/shadow artwork semantics прежние. Small preview
+  сигнал WorldEditor→TerrainPilotProjection→SurfaceMaterials меняет только lookup,
+  Cancel/variant switch восстанавливают baseline, Save обновляет shared Pattern.
+  RGBAF grass_light_lookup256×4 и прежние slots/weights различают варианты;
+  defaultdisabled сохраняет legacy. LAB ground/cards делят lookup, F6 — private
+  copy сохранённого Pattern, root exports остаются совместимым study payload.
+  Shadow fill по directional ATTENUATION, не
+  расстояние внутрь кроны; no-shadow/zero-light exact native PASS. F6-панель временная,
+  постоянный профиль в Pattern editor. Evening/Day/Night — общий EmberLights
+  MATERIAL_LIGHT_PRESETS, native Sun/Environment и кнопки прежнего WorldLookPanel;
+  atomic scene Undo/Save, ambient COLOR, камера/exposure/tonemap прежние.
+  Перенос и связанные regressions/native matrix/два варианта/preview/Discard PASS;
+  grass delta<=2/255 vs LAB. Варьирующие normal duplicates убраны в light()
+  для Forward+ лимита32; bevel/POM/math владельцы прежние. Подробности/gates — Terrain Authoring.
+  Production foliage authoring/LOD/три формы пучков не реализованы.
+  Bevel LAB: compact_bevel_light_study наследует оригинальную сцену Sol +
+  ember_bevel_light_study controller. EMBER_BEVEL_STUDY в общем terrain shader
+  использует POM slopes/одну height sample через ember_bevel_light leaf для света
+  на фасках; не меняет NORMAL/DEPTH/geometry. Выключен вне отдельной компиляции.
+  Directional gain + self-shadow/ATTENUATION; thresholds пока для paired PNG Sol.
+  Native A=Sol/GPU depth exact, Source/physics/Save PASS; manual/perf OPEN.
+  Targeted/native PASS, плиты/grass light/back+lateral rim, ручная приёмка OPEN;
+  локальный morph только внутри полного тайла. Детали — Terrain Authoring, LAB0б.
   independent_surface_enabled defaultfalse защищает старые baked materials;
   set_roles включает после upload. Roughness side selector отделён от color/height
   side flags. Shader normals/roughness/derivative fade не создают geometry/physics.

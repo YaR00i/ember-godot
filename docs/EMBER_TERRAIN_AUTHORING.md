@@ -574,6 +574,86 @@ PNG — необязательное поле того же Resource, без м�
 живое удобство нового workflow и весь shell 1280×750/125% OPEN. Приёмка «+ Карта»
 по просьбе автора отложена; перенос рисунка её не закрывает.
 
+### Ручные правила гладкого облика — редактор, ручная приёмка OPEN
+
+В прежнем «Мир → Инструменты → Форма → Сгладить» выбор действия теперь отделяет
+«Править общие высоты» от «Гладкий вид · скруглить здесь / не скруглять /
+снять правило». Общая лепка и покраска меняют один Source для всех обликов;
+новые действия меняют только локальное построение гладкой поверхности.
+Сила и радиус округления задаются при нанесении; след кисти и выделенная область
+прежние. Движение собирает private candidate, pointer-up публикует один Undo.
+На движение мыши remesh/Source writes нет; cancel ничего не публикует.
+
+Owner правил — optional `EmberTerrainPilotResource.surface_rules`, sparse64×64
+плитки по4096байт с адресами исходных колонок. Это сохраняемое правило игровой
+формы, не выделение редактора или номера mesh triangles. Empty сохраняет прежние
+данные/геометрию; dense/sectioned storage1/2 прежние. У sectioned формы слой
+принадлежит root, payloads пусты. Copy/window/rebase/extension/Undo/Save/recovery
+используют тот же Source/session; старые файлы не переписываются при открытии.
+Byte0 — default;1..96 — strength/radius округления;128..255 — сила защиты.
+Четыре соседние исходные ячейки задают угловое правило, края мазка растушёвываются.
+Правила влияют на smooth mesh/collision/floor/picking/navigation, берег и новые
+Grove floor queries через тот же SmoothSurface.FieldJob; воксельная форма прежняя.
+Geometry cache учитывает локальные rule tiles; незатронутые keys не меняются.
+Лепка/генерация могут менять высоты под правилом: «не скруглять» не является
+замком исходных высот. Source rules сохраняются при повторной генерации;
+границы участков переносятся при rebase, материал не выбирает форму.
+
+Первый срез ограничен прежним smooth guard: площадь до32×32м. На больших
+источниках новые действия недоступны; общая лепка остаётся. Обычные инструменты,
+Source palette/вода/POM4см/32 и принятые lighting profiles сохраняются.
+Targeted проверяет validation/legacy/dense-sectioned/window/rebase/cache,
+один stroke Undo/Redo/Cancel, Save/Reopen/Discard и смену вида. Native editor
+подтверждает настоящие controls, pick/press/release без раннего remesh, history,
+Save/Reopen/Discard. После ожидания filesystem scan процесс завершился с exit0;
+два предыдущих QA shutdown0xC0000005 и scan-aborted warning остаются ограничением
+доказательств, не подтверждают общую editor stability.
+Evidence — `C:/Users/novos/Documents/Codex/2026-10-14/ember-shape-brush/`.
+Native Forward+ до/после мазка: plain/POM ×3 presets ×side/back, одна игровая
+камера, error ray/floor/pick<0.003мм; five morph phases и Player90 ticks с опорой
+PASS. На8×8м Source один мазок обновил затронутую плитку за553мс; больших зон/
+live feel/weak PC это не доказывает. Восемь связанных regressions и headless
+WorldEditor lifecycle PASS; 12 итоговых checks в verification.json.
+Свои мазки/удобство силы и радиуса/F6/near-far/стыки/125%/weak-PC OPEN.
+Третий granulated/low-poly облик и независимое редактирование его вершин не начаты.
+
+### Управляемая форма гладкой земли — LAB, визуальная приёмка OPEN
+
+`scenes/compact_terrain_shape_study.tscn` — один обычный fine16 Source8×8м,
+четыре полных tile: мягкий склон, площадка и две широкие грани скального гребня.
+A использует прежние три прохода; C — один проход везде; B — тот же leaf
+SmoothSurface с силой/радиусом, сохранением перепадов и локальной защитой.
+Edge weight учитывает отклонение от локального наклона, чтобы крутая плоскость
+не превращалась в защищённые зубцы исходной сетки. Защита сохраняет исходные
+угловые высоты внутри двух fixture rectangles, с плавным краем0.15м.
+Форма не зависит от material slot: перекраска даёт exact тот же height field.
+Генератор fixture пишет один Source; расчёты обликов его не меняют. Защита
+относится к производной форме, не предотвращает явную перегенерацию Source.
+Постоянные локальные правила перенесены в Source — раздел «Ручные правила
+гладкого облика». Защита исходной ручной лепки от генерации остаётся отдельной.
+
+Настройки только у LAB controller; sliders не перестраивают поверхность до
+«Обновить B». Все подготовленные tile публикуются вместе, физика Player на
+время сравнения приостановлена; mesh/collision/floor/pick/navigation используют
+тот же derived field. Morph остаётся прежним MountainAnomaly owner; режимы
+полублоков/вокселей не заменены. POM4см/32, WorldPattern, покраска и свет сохранены.
+Вся матрица A/B/C × однотонный/материалы × вечер/день/ночь × side/back снята
+native Forward+ с одной камерой EmberFollowCamera. Это 36 кадров, рядом endpoints,
+настоящая ходьба и LAB controls. Native parity <0.004мм, seam heights exact;
+Player150 ticks с опорой, переход через x=4м, gap<0.01м.
+На краю площадки A1.683м/C1.854м/B2.25м при Source2.25м; гребень
+A2.655м/B2.813м. Legacy default exact с сохранённым кодом предыдущего среза.
+Targeted, Source Save/Reopen, восемь связанных regressions и isolated import PASS.
+Evidence: `C:/Users/novos/Documents/Codex/2026-10-13/ember-material-depth/terrain-shape-study/`.
+
+Полная перестройка четырёх tile вместе с физикой и двумя morph targets занимает
+около2–3с на текущем ПК; это отдельная явная LAB-операция, не production brush
+budget. Нужны выбор формы автором и живой F6/кнопки/WASD/переходы/near-far.
+Перенос локальных правил в прежний редактор описан выше; большая карта и
+чанкированный performance budget не закрыты этой малой LAB.
+Большие карты/weak PC, навесы, произвольные объёмные предметы и low poly этим
+не доказаны. Прежняя ручная приёмка переноса grass/light остаётся открытой.
+
 ### Гладкая земля и мультяшные PNG — первый родной срез
 
 `scenes/compact_cartoon_ground_study.tscn` — отдельная редактируемая карта 24×16 м.
@@ -804,21 +884,377 @@ PASS; native Forward+ сравнение снято. Оценка формы/с�
 
 ### Фактура на сгенерированном острове — отдельная проба
 
-Следующий срез материала согласован автором 2026-10-13, ещё не реализован:
-лабораторный участок около4×4м камень→спокойный песок, одинаковые Source/свет/цвет;
-A — прежний optical relief, B — POM с уточнением пересечения, согласованными
-height/normal и лабораторной записью DEPTH/LIGHT_VERTEX. Height — отдельный
-тестовый asset, не яркость цветной PNG и не новая постоянная schema Pattern.
-Смешивание покрытий проверяется в общем поиске пересечения и в движении.
-Общие owners shader/SurfaceMaterials прежние, opt-in; Source/paint/mesh/collision/
-floor/picking/navigation не меняются. Ни silhouette clipping, ни навесы,
-ни блики песчинок/финальная пикселяция/весь мир в срез не входят. После гладкого
-вида — сохранность координат/материала в существующих трёх study-обликах.
-Gates: off/zero baseline, source/physics/Save-Reopen, отсутствие frame remesh/
-CPU texture jobs; Forward+ near/far/grazing/seams/персонаж/берег, A/B GPU/CPU/VRAM.
-Ориентир дополнительной GPU-стоимости1мс при1080p требует измерения; ручной вид OPEN.
-SSDM по Lobel требует новых экранных данных/буферов и интеграции перекрытий/воды;
-это отдельная архитектурная граница, для первого среза выбран локальный POM.
+Материальный объём камня — согласованная LAB-проба реализована:
+`scenes/compact_material_depth_study.tscn`, основная площадка4×4м + соседняя
+полоса1м для реального seam, slope/outer edge/камень→песок/обычная вода/EmberPlayer.
+A — прежний optical relief, B — один POM с32 шагами и5 уточнениями, normal,
+DEPTH/LIGHT_VERTEX и bounded8-step self-shadow от того же height. Default4см —
+полный декоративный диапазон; выключение/ноль возвращают A без записи DEPTH.
+Парные color/height256² построены из заданных граней, не из яркости PNG.
+R8 height с mipmaps + RF coverage21KiB из прежнего Smooth.material_weights
+используются внутри общего поиска пересечения, а не двух смещений цвета.
+Автор 2026-10-13 принял направление объёма и согласовал исправление стыков/
+растяжения как общую основу будущих материалов. Один renderer и прежний
+SurfaceMaterials/Pattern/Canvas остаются owners. Общая математика —
+`ember_material_texture_mapping.gdshaderinc`: координаты текущей поверхности
+в метрах, проекция по фактической грани, единые веса для цвета/height.
+Новые отвесные грани получают рисунок того же размера, включая промежуточные
+morph-фазы; замороженные CUSTOM0/reference attrs убраны.
+Периодическая пара color/height читается без half-tile seam blend: он создавал
+искусственные полосы до29.8мм через0.9м. `set_compact_terrain_roles` принимает
+opt-in periodic_material_ids и пишет derived flag в png_lookup.a. Legacy IDs
+сохраняют прежнюю обработку края; новая проекция не привязана к роли stone.
+Общий bounded POM/refinement/shadow — `ember_material_parallax.gdshaderinc`;
+terrain binding — `ember_terrain_material_depth.gdshaderinc` и
+SurfaceMaterials.compact_terrain_depth_shader/bind_compact_terrain_depth.
+Размер берётся из Pattern.pattern_size_m для обоих каналов; высота — линейная
+R8, amplitude отдельная. Одна пара solid→neutral на draw; несколько независимых
+height-пар в одном draw, новый UI paired PNG и rollout voxel-object shaders
+в этот срез не входят. Математика общая, их будущие bindings должны продолжать
+её, не создавать shader на каждый вид материала. Resource/schema/Canvas прежние.
+Depth компилируется только по opt-in EMBER_TERRAIN_MATERIAL_DEPTH; обычные карты
+не подключены. Geometry/collision/floor/picking/navigation owners прежние.
+`test_material_depth_study`: all channels/geometry/physics/picking/navigation,
+три облика и промежуточные фазы/A-B/off/zero/Save-Reopen/no camera jobs PASS;
+реальный Player playback A/B дал одинаковый endpoint. `test_material_texture_mapping`
+проверил две роли stone/grass с тем же paired PNG, другой slot2/размер1.35м,
+binding/validation/Pattern Save-Reopen. Пять material/editor/smooth regressions PASS.
+Native Forward+8 ракурсов/3 облика/2 промежуточные фазы/12 поз камеры PASS.
+GPU probe actual height query: legacy error1.0 (negative control), periodic0.0
+на top и16× taller side, проекция normal от actual current plane.
+Zero image exact; water ROI2016 pixels exact, depth delta
+≤0.02мм (encoded linear depth readback; gate0.1мм). Не весь water/contact pipeline.
+GPU1080p/RTX5070/32steps: общий A0.66мс/B1.21–1.26, close A0.72/B2.14–2.18.
+Малая fixture, не слабый ПК/весь мир. Ориентир +1мс
+в очень близком кадре НЕ достигнут;16steps close B~1.90мс. Height/coverage~106KiB,
+reference attrs0; новых screen buffers нет. Captures30FPS, timing120FPS/
+VSync off/120 samples after warmup/two AB rounds, без вывода стоимости из FPS.
+LAB evidence/HTML/PNG/native.json —
+`C:/Users/novos/Documents/Codex/2026-10-13/ember-material-depth/texture-basis-revision/`.
+Before-source/снимки исходной пробы сохранены; исправленные Forward+ кадры
+осмотрены агентом. Автор принял последний вид исправленных стыков/растяжения.
+Рисунок пока демонстрационный, ближе к плоским плитам. Ручные амплитуда/масштаб/
+движение/стыки/живой input и weak PC OPEN; внешний silhouette/
+навесы, блики песчинок, пикселяция, весь мир и настоящий low poly не добавлены.
+Прежние ручные gates глубины сохраняются. По новому согласованию автора следующей
+сделана отдельная проба0б ниже. После выбора основы А предложена проба0а
+камеры/шума/пропорций; её согласование и активная точка — в NOW.
+
+### Свет на фасках брусчатки — LAB, ручная приёмка OPEN
+
+`scenes/compact_bevel_light_study.tscn` наследует сцену глубины Сола; новый
+`ember_bevel_light_study.gd` наследует её controller. Исходные Source, paired PNG,
+масштаб0.9м, POM4см/32steps, ray search, normals, depth и self-shadow неизменны.
+Настоящие EmberPlayer/EmberFollowCamera: distance9.5/polar0.95/yaw0.35/fov40;
+B сравнивает только свет, L боковое(-32,-65)/контровое(-27,-145) солнце, F1 панель.
+
+Общий terrain shader имеет opt-in EMBER_BEVEL_STUDY + `ember_bevel_light` leaf.
+Из существующих POM derivatives берётся наклон фаски; одна дополнительная выборка
+той же height map выделяет плечо шва и исключает дно/плоскую верхушку. Нормали,
+ALBEDO, DEPTH и поверхность не меняются. Только directional light даёт акцент
+через существующую нормаль: сторона должна получать больше света, чем крупная
+поверхность. POM self-shadow и реальные ATTENUATION гасят подсветку в тени.
+Это световой акцент, не emission, не обводка всех швов и не перенос Goo.
+Height/slope thresholds подобраны под этот материал Сола; универсальность для
+произвольных height maps и настройка в editor ещё не реализованы. Отдельная
+компиляция не включает эффект в прежний painted LAB или обычные карты.
+
+`capture_bevel_light_study.gd`: native Forward+1600×900, две пары до/после с одной
+игровой камеры; A pixel-exact с исходным shader Сола и после возврата из B;
+GPU depth readback до/после exact, sun-off кадры exact. Source/mesh/collision/floor,
+height texture/параметры и exported toggle Save/reopen PASS. Вода унаследованной
+сцены заморожена через preview_time только в capture для точного сравнения кадров.
+Sol original assets/код/hash и общий shader без LAB blocks exact.
+Evidence: `C:/Users/novos/Documents/Codex/2026-10-13/ember-bevel-light/`
+(`side-before/after.png`, `back-before/after.png`, `native.json`, `preservation.json`).
+Сильнее читается на передней стенке, на верхней поверхности мягче; автору эффект
+понравился. Свои F6/B/L/движение, мерцание и weak-PC budget OPEN. Автор попросил
+в будущем доступную настройку дальности глубины. Existing owner уже имеет
+fade_near_m=6/fade_far_m=14 (export у depth study); будущий editor control должен
+использовать их, не второй fade. Значения и бюджет в текущей пробе не менялись.
+Targeted исходной глубины и painted LAB regressions — прежние owners сохранены.
+
+### Три подачи материала и света — А принята основой
+
+`scenes/compact_material_looks_study.tscn` наследует принятый
+`compact_grass_field_study`: Source192×192/12×12м, прежние9621 коротких пучков,
+ручную покраску, цельные световые мазки и grass light profile. Source, Pattern,
+scatter/tuft mesh и парные stone color/height не перерисованы. POM4см/32 сохранён;
+на травинках ground-depth tracing по-прежнему выключен. Основной редактор не менялся.
+
+А использует прежний принятый shader напрямую. Б ограничивает направления
+освещаемых нормалей в мировом пространстве, подчёркивая плоскости; это диагностическая
+подача света, не новый low-poly mesher. В показывает тот же рисунок через world-metric
+ячейки и рассчитывает свет/нормали/реальные тени у их центров. Число градаций direct
+light независимо от размера ячейки. Цветовые соотношения/энергия источника сохраняются;
+пиксельная фильтрация не является специально нарисованным pixel-art вариантом.
+
+Owner контролов — `ember_material_looks_study.gd`, наследник PaintedLightStudy.
+Математика — opt-in `ember_material_look_study.gdshaderinc` внутри прежнего
+terrain shader, compile guard `EMBER_MATERIAL_LOOK_STUDY`; обычные материалы её
+не компилируют. Привязка следует доминирующей плоскости существующей world projection.
+Derivatives переносят lighting sample к центру ячейки; POM DEPTH/height ray остаются
+прежними. PNG использует исходный footprint через textureGrad, чтобы скачки координат
+ячейки не создавали полосы mip. Вдали и при вырожденной проекции cell snap ослабляется.
+Нет screen-space пикселизации и случайного временного dithering.
+
+F6: 1/2/3 — А/Б/В; три прежних пресета, side/back, движение солнца, pixel size
+0.03125/0.0625/0.125м, 4/8/16 light levels, T/panel — прежние пучки;
+smooth/half/voxel endpoints — прежний morph. Настройки F6 временные, controls
+меняют только private ShaderMaterials, без Source writes/remesh/scatter.
+Новая форма травинок для каждого облика, ветер/LOD, прозрачные материалы,
+генераторы, игровой цикл суток и перенос новых контролов в editor не входят.
+
+Native Forward+1600×900/RTX5070: точный возврат А; 18 fixed game camera кадров
+(3 looks×3 presets×side/back), одинаковые camera/sun trajectories, far/grazing.
+Source/mesh/collision/grass buffer/парные textures неизменны, grass roots error0,
+Player60/60 floor ticks. Zero-energy shadow-fill pairs exact во всех looks.
+Material mapping/depth/workflow и Source rules regressions PASS.
+GPU median финальной выборки А3.76/Б4.56/В4.87мс, память одинаковая294274816байт;
+короткие последовательные45-frame выборки при30FPS cap не доказывают large-world
+или weak-PC budget. Финальные замеры — native.json.
+Сравнение/логи/receipt — `C:/Users/novos/Documents/Codex/2026-10-14/ember-material-looks/`.
+PNG просмотрены; HTML refs/JS проверяются отдельно, browser rendering не подтверждён.
+Автор выбрал А основой. Б/В остаются необязательными LAB-сравнениями; этот выбор
+не разрешает их перенос в основной workflow. Прежние свои motion/flicker/стыки/
+near-far/F6/125%/weak-PC gates сохраняются; новые low-poly/foliage этапы не приняты.
+А используется в следующих сравнениях диорамы; автоматические captures не
+закрывают прежнюю ручную приёмку редактора формы и большого мира.
+
+### Живописный свет — направление принято, перенос в редактор готов к приёмке
+
+`scenes/compact_painted_light_study.tscn` → F6:6×6м, каменная группа,
+спокойные травяные пятна из коротких плоских пучков, песчаный путь и настоящий EmberPlayer/
+EmberFollowCamera. Это текущая техническая проба по выбранной правой половине B
+из внешнего плана Astra, не воспроизведение эскиза один в один. По отзыву автора
+первый образец был только техническим прототипом: форма/фактура камня не подходили,
+световая кромка слабо читалась. Автор подтвердил более спокойную траву и улучшение
+камня/боковой кромки и травы цельными мазками, сдержанную цветовую рампу.
+Последний вид .64/цвет настоящих теней и три пресета приняты автором;
+новая ручная проверка относится к переносу в редактор. В fine16 Source несколько плит
+с широкими верхними плоскостями, краевыми сколами, перепадом высот и расщелиной.
+Это скальный выступ на heightfield, без навесов/отдельного объёмного rock asset.
+Для F6 только этот LAB перед подготовкой morph ослабляет сглаживание камня:
+`Smooth.field(...,1)` смешивается с прежними тремя проходами по весу stone.
+`Smooth.build(...,prepared_field)` и `apply_study_smooth_tile` используют один
+результат для mesh/collision/floor/picking/navigation; подготовка однократная.
+Общий leaf `ember_terrain_smooth_surface.gd` сохраняет default3; обычные карты
+и редакторные кисти не переключены. Это LAB-профиль, ещё не настройка editor authoring.
+Новые Source/Patterns принадлежат обычным Resources; исходные assets Sol не менялись.
+`ember_painted_light_study.gd` наследует прежний depth/morph стенд; POM4см/32steps,
+height/refinement/self-shadow и texture mapping сохранены. Общий terrain shader
+получил только opt-in `EMBER_PAINTERLY_STUDY` + leaf `ember_painterly_light.gdshaderinc`:
+широкие ступени света по крупной форме, мелкий рельеф внутри ступеней и directional
+rim с ATTENUATION. Кромка использует интерполированную нормаль крупной формы,
+ограничена каменным покрытием и направлением света; без солнца ореола нет.
+По уточнению автора кромка работает при боковом и контровом солнце: освещённый
+левый край читается светлее, обратная сторона и реальные тени не получают обводку.
+Почти фронтальный свет подавляет эффект. Это световая кромка, не общая тёмная линия.
+Трава: почти однотонный пигмент и отдельная реакция групп мазков на свет в том же leaf.
+Нормали освещения привязаны к мировым метрам, три близких ступени; основа плоская,
+TIME/движущаяся текстура не используются. Integer hash убирает разрывы между ячейками;
+мелкий рисунок ослабляется вдали. Маски продолжают существующие веса материалов.
+Другая texture/renderer/schema/editor система не добавлена.
+По запросу автора проверяется покрытие полей, а не только редкие акценты:
+`scenes/compact_grass_field_study.tscn` наследует тот же стенд, Source192×192
+fine16/12×12м строится `build_grass_field_study.gd` через прежний fixture.
+Исходный6×6 Source сохранён. Камера/герой/солнце прежние; область morph остаётся
+прежней локальной зоной у скалы. На поле9621 пучок/423324 треугольника,
+на малом стенде1110/48840; TUFT_LIMIT20000 ограничивает только эту LAB-пробу.
+Пучки примерно18–31см, один MultiMesh, два пересекающихся плоских силуэта на пучок.
+Контур вырезан геометрией без alpha-текстуры:44 треугольника на пучок.
+`grass_tuft_mesh()` живёт в fixture, расстановка/переключение — у study.
+Seed фиксирован; плотная jittered grid с небольшими просветами и FastNoiseLite
+пятнами высоты/плотности. Это пока единый MultiMesh без чанков/LOD большого мира.
+Корни остаются на grass стороне общего material blend; силуэты перекрываются
+внутри пятен и немного нависают над sand у края дороги. Один root и восемь точек
+вокруг footprint +3.5см исключают stone blend и перепад высот >5.5см. Дорожка,
+Source и покраска не переписаны. Это LAB scatter, ещё не общая authoring кисть.
+Материал — копия текущего terrain ShaderMaterial с той же ролью grass и светом;
+только на травинках выключен ground POM. Камень и общий shader не менялись.
+Цвет из прежнего grass Pattern. H (`grass_masses`, exported LAB flag) сравнивает
+прошлый газон и новую пробу цельных мазков без remesh/scatter. В новом варианте
+общий `ember_painterly_light` задаёт земле и травинкам одинаковые направленные
+пятна света в мировых метрах, три тона с узкими сглаженными границами. Свет солнца
+выбирает тон; ATTENUATION сохраняет реальные тени персонажа/камней. Низкий тон
+имеет художественный минимум, чтобы воображаемые наклоны мазков не давали чёрные ямы.
+На травинках ambient использует нормаль вверх, корневой множитель0.98→1.0 вместо
+прежнего0.68→1.06. Поэтому пучки сливаются в массу, объём остаётся в силуэте.
+H-off точно возвращает прежние нормали/свет/корни; shader flag defaultfalse,
+обычные карты не компилируют LAB include. Каменный ответ света и POM прежние.
+Это проба пологого поля; общая модель света для травы на крутых склонах и стенках
+не принята. Автору понравились цельные мазки; независимые размытые охристые пятна
+отвергнуты как слишком выраженные. Текущая проба J/grass_color — близкая цветовая
+градация самих принятых световых ступеней: низкий тон слегка прохладнее,
+средний прежний, верхний слегка теплее. Общий `ember_painted_grass_steps` задаёт
+границы яркости и оттенка; отдельного цветового noise/размытых облаков больше нет.
+Tint применяется только к direct light травы при H-on, с прежним ATTENUATION;
+ALBEDO/Source/Pattern не меняются. Яркость direct light нормализуется с учётом
+ALBEDO и LIGHT_COLOR. Shader flag defaultfalse, exported LAB flag true.
+J-off возвращает принятую нейтральную градацию, H-off отключает новую цветовую рампу.
+Тёмная ступень ослаблена: .64/.82/1 вместо .52/.76/1. Экспортируемые LAB-параметры
+grass_low/tint_strength/cool/warm/shadow_color/shadow_fill передаются одному shader
+земли и cards без remesh. Основной пигмент остаётся у ground Pattern.
+Небольшой shadow_fill=.07 добавляет художественный рассеянный свет только траве,
+по visibility настоящей directional shadow (1−ATTENUATION), с плавной градацией
+полутень/тень. Он умножается на LIGHT_COLOR; без энергии источника не светится,
+при отключённых shadow maps исчезает. Это не физический GI и не расстояние
+внутрь кроны. Проверены камень/герой; отдельная модель под деревьями не реализована.
+Нет ветра,
+случайной раскраски, collision и отбрасываемых пучками мелких теней. Тень мира
+они получают: тень героя ложится на объёмный покров. Сравнение cast on сохранено
+в evidence, но мелкая тёмная рябь отвергнута в текущем варианте.
+Вертикальные стебли берут корни из общего Map.surface_floor_sample.
+Посадка один раз проверяет все вершины в base/half/voxel полях того же morph-owner
+через Smooth.sample. Ширина подбирается для всех трёх опор; если остаётся <30%,
+место пропускается при исходной расстановке. В текущем стенде поля смешиваются
+линейно с неотрицательными весами, поэтому фиксированный footprint безопасен
+между endpoints. Это допущение нужно пересмотреть при новом morph-алгоритме.
+Во время morph меняется только высота корней внутри затронутой зоны; пучки не
+скрываются, не меняют ширину и не перерассеиваются. Допуск основания12мм,
+из которых5мм — намеренная посадка в землю. Консервативный выбор мест может
+оставлять просветы возле будущих ступеней; произвольные новые зоны/правки Source
+потребуют обновления производной расстановки, сейчас это статический LAB fixture.
+Это производный декор LAB, ещё не world foliage
+authoring/LOD/варианты формы пучков для трёх обликов.
+
+Управление: B исходный/живописный свет; R кромка; G исходная/рисованная трава; T пучки;
+H газон/цельные мазки (default on);
+J нейтральный/градация оттенков (default on, при H-on);
+C исходная/укрупнённая спокойная фактура камня; L три положения солнца; O SSAO;
+V общий/игровой вид; P ходьба по пути; WASD/ПКМ; F1 скрыть панель.
+Справа в F6 — три пресета света, яркость тёмного мазка, сила оттенков, мягкий цвет
+в тени и три color picker. «Подобрать к основной траве» восстанавливает близкие
+относительные тонировки для существующего пигмента, не анализирует изображение
+и не меняет базовый цвет. Все F6-правки временные. Постоянный профиль теперь
+принадлежит Pattern; LAB начинает с его настроек, F6 меняет private copy.
+lighting_preset: Evening сохраняет Sun(1,.87,.65)/1.3 и ambient(.58,.67,.85)/.45;
+Day: Sun(1,.98,.94)/1.15, ambient(.72,.82,1)/.55, elevation−62°;
+Night: moon(.56,.68,1)/.22, ambient(.36,.46,.72)/.16, elevation−38°.
+Камера, exposure/tonemap и SSAO одинаковы; L меняет азимут. Это presets проверки,
+не симуляция времени суток. Presets теперь общие у EmberLights и доступны
+кнопками «Вечер / День / Ночь» в прежнем «Вид мира → Свет и цвет».
+Один scene Undo сохраняет/восстанавливает Sun rotation/color/energy,
+Environment ambient source/color/energy/background color. Ambient source COLOR
+совпадает с LAB и делает тон действенным даже на картах с выключенным ambient.
+Азимут, камера, exposure/tonemap и SSAO сохраняются; фон Sky не подменяется.
+Artwork base/light/shadow colors не переиспользованы под свет.
+Глубина камня всегда включена в этом сравнении. Исходная height-карта,4см/32steps
+и решатель Sol неизменны. C меняет пигмент и общий масштаб пары color/height:
+исходные0.9м / пробные1.8м через прежний Pattern; физическая поверхность не меняется.
+Солнце/Environment сохраняются в штатных узлах `.tscn`, доступны прежней панели
+«Вид мира»; F6-кнопки остаются временным сравнением.
+
+**Основной workflow травы.** `EmberCompactTerrainPattern` хранит opt-in
+grass_light_enabled/low/tint_strength/cool/warm/shadow_color/shadow_fill.
+Defaults disabled сохраняют старые материалы; painted_light_grass включён
+с принятым профилем. Cool/warm/shadow — относительные линейные коэффициенты,
+не artwork RGB; допустимы0..2, warm1.075 не теряется при Save/Reopen.
+Существующий material dialog содержит «Свет травы · цельные мазки», sliders,
+три picker и явную кнопку подбора; изменение основной краски сохраняет ручную
+палитру света. Подбор — одно Undo-действие. Draft preview/Undo/Discard меняют
+только small GPU lookup, через WorldEditor и прежнюю TerrainPilotProjection;
+Source/mesh/collision не перестраиваются. Save остаётся у прежнего Pattern editor.
+SurfaceMaterials передаёт отдельные профили по palette slot через RGBAF256×4
+grass_light_lookup (16KiB + CPU image). Smooth blending использует прежние
+три palette/weights; один материал не переписывает настройки другого.
+Земля и existing LAB cards используют один lookup/световой leaf, cards без POM.
+Общая математическая основа painterly include теперь доступна default renderer;
+legacy/global LAB сравнение осталось, POM и bevel opt-in прежние.
+
+`test_material_light_workflow`: data/validation/legacy/две variants/binding,
+живой preview у Projection, ручная палитра при смене базы, atomic suggestion,
+Undo/Redo/Save/Reopen/Discard и scene presets PASS. Шесть связанных material/
+WorldLook/POM/painted regressions PASS. Native Forward+1600×900: оба existing
+grass_field/bevel LAB ×3 presets ×side/back, fixed game cameras, POM4см/32,
+Source/mesh/collision exact. Transferred grass vs LAB uniforms max error2/255
+в RGB (gate3/255); GPU variant probe изменил8190 pixels первого варианта,
+второй pixel-exact. No-shadow/zero-energy fill pairs exact; настоящие shadows
+сохранены. Проверены native controls/preview/Undo/Discard и short Player walk.
+Evidence — `C:/Users/novos/Documents/Codex/2026-10-13/ember-material-depth/material-workflow-transfer/`.
+Свои editor input/узкая панель/125%/Save→F6/движение и weak-PC OPEN.
+Новый foliage authoring/LOD, geometry и другие этапы этим срезом не начаты.
+Локальный morph проверяется вокруг центральной скалы внутри полного4×4 тайла:
+прежний morph-стенд не поддерживает зоны на частично заполненном краевом тайле.
+Его алгоритм не менялся; это ограничение новой6×6 пробы, не общий morph fix.
+
+`test_painted_light_study`: Source/Pattern validation, неизменные mesh/collision/floor/
+height при A/B и пяти morph-фазах, реальная одинаковая траектория Player, exported
+settings save/reopen PASS. Физические rays на плитах и у границы тайлов совпадают
+с floor query в шести фазах (<3мм). `verify_default.gd` в evidence сравнил общий
+default с исходником HEAD: все массивы mesh/collision/field четырёх тайлов exact.
+Smooth cartoon/uniform и исходный depth study regressions PASS. Прежние mapping/material-layers/material-light/
+WorldLook regressions PASS, включая существующие Undo/Redo/Save/Discard owners.
+Native Forward+1600×900: отключённая проба pixel-exact с исходным renderer,
+возврат A exact, rim исчезает без солнца, back/lateral rim и grass реально меняют
+кадр игровой камеры; три направления света с той же камеры, morph и кадры
+прохода PASS. Tuft toggle не меняет Source/mesh/collision/POM, export save/reopen PASS.
+Forward+ проверяет фактические MultiMesh roots и все уникальные mesh vertices
+против floor во всех шести фазах: не больше12мм заглубления основания, no stone vertices;
+headless Dummy RenderingServer их не возвращает, этот gate проверяется native.
+Сравнение disabled study с исходным renderer выполняется без нового декора;
+само покрытие сравнивается T-on/off при одинаковой игровой камере.
+Текущие измерения поля — `field/native.json` и `grass-field-native.log` в evidence;
+это короткие наблюдения RTX5070/1600×900/30FPS cap, не full-world/weak-PC budget.
+Для поля и малого стенда targeted PASS; для поля native PASS: шесть фаз,
+9621 неизменный instance, min clearance−11.81мм, stone vertices0, min width32%.
+Обновление корней при локальном morph0.54–0.65мс, первичная установка53мс;
+первичная генерация/проверка посадки и полная стоимость morph сюда не включены.
+GPU median A4.88/B4.35мс, p955.68/5.30мс: последовательные короткие выборки,
+не доказательство ускорения B. Исходный material_depth targeted повторно PASS.
+Evidence: `C:/Users/novos/Documents/Codex/2026-10-13/ember-painted-study/`
+(`native.json`, PNG, логи и сохранённые исходники Sol с hashes).
+Кадры осмотрены агентом. Живые управление/мерцание/оценка пучков пользователем
+и weak PC OPEN. Нарисованные обводки и перенос стиля на мир не добавлены.
+Сравнение принятого характера мазков с прежним газоном сохранено:
+`masses/gameplay-sun-0/1-masses-before/after.png`, F6/H/T/L/проход.
+AO-off сравнение тоже сохранено: в этом кадре основное объединение создаёт
+свет/отсутствие тёмных корней. Штатный SSAO сцены сохранён для общего окружения.
+Новая проба: native H-before/after при трёх направлениях солнца и exact возврат
+PASS; H-off sun1 pixel-exact с сохранённым предыдущим полем. Targeted проверяет
+отсутствие remesh/scatter/смены физики при H и Save/reopen exported flag PASS.
+Source/morph/вершины/Player и исходный depth regression повторно PASS.
+`preservation-grass-masses.json` подтверждает Sol files и shader math exact.
+Артефакты этой пробы — `masses/`, предыдущего покрытия — `field/` в том же evidence.
+Цветовая рампа — `color-ramp/gameplay-sun-0/1-color-before/after.png`: native J в трёх
+направлениях солнца/возврат exact, прежние morph/roots/Source gates PASS.
+Targeted no remesh/scatter/shared tint/export Save-reopen PASS;
+J-off sun1 pixel-exact с предыдущими принятыми мазками, Sol files/math exact
+(`preservation-grass-ramp.json`). Отвергнутые размытые пятна сохранены только в
+evidence `color/`. Принята сдержанная градация; новые настройки требуют просмотра.
+Текущее evidence — `lighting/preset-0/1/2-sun-0/1.png` и пары `-shadow-off`:
+вечер/день/ночь × контровой/боковой свет, одна игровая камера, геометрия и POM.
+`grass-previous-dark`/`grass-lighter-no-shadow-tint` отделяют ослабление мазка от
+тени. Native shadow fill on/off даёт exact при shadow-disabled и light energy0;
+в настоящей тени меняет кадр. Полный native Source/morph/roots/Player/baseline
+повторно PASS, exported параметры/выбранный preset Save-Reopen и исходный depth
+targeted PASS. `preservation-grass-lighting.json` проверяет Sol files/math.
+Прежние кадры — `iteration1/2/3`; Sol assets/shader math и принятый камень
+проверены hashes/exact (`preservation-grass-field.json`). Rim — собственная формула,
+не перенос Goo и не screen-space curvature.
+Автору понравились покрытие поля, цельные световые мазки и сдержанная рампа.
+Новая оценка нужна для ослабленного тёмного тона, настоящих теней, дня/ночи и движения.
+Внешний `EMBER_UNIFIED_VOXEL_LOOKS_PLAN_2026-10-13.md` описывает перенос настроек
+в прежние MaterialPattern/Dialog/SurfaceMaterials и WorldLook после визуального
+выбора, без второй системы. Дальнейший
+срез Sol: управляемое округление/сохранение площадок и изломов одного fine16
+Source реализовано отдельной LAB; текущий вывод/gates — «Управляемая форма
+гладкой земли». Камень не дорабатывается параллельно этой геометрической пробе.
+Ветер, editor density/height, варианты силуэтов, цветочки/листочки — позже.
+Камень остаётся мягковатым; настоящий low poly в генератор ещё не добавлен.
+Проверены открытые примеры (2026-10-13):
+[Stylized Cartoon Grass](https://godotshaders.com/shader/stylized-cartoon-grass/)
+использует top/root world color maps и alpha silhouettes, но unshaded/shadows_disabled;
+[SimpleGrassTextured](https://github.com/IcterusGames/SimpleGrassTextured) имеет
+свою кисть, custom mesh, взаимодействие и LOD;
+[GodotGrass](https://github.com/2Retr0/GodotGrass) ориентирован на отдельные травинки.
+Для текущей пробы полезны цвет основания от земли и простые силуэты; существующий
+общий material/light/floor Ember сохранён. Чужие код/ассеты не копировались,
+плагины не установлены; их производительность в Ember не проверялась.
+Для исследования найден официальный Goo Engine: узлы Shader Info разделяют
+свет/тени, Curvature выводит screen-space curvature/rim
+(`github.com/dillongoostudios/goo-engine`, `source/blender/gpu/shaders/material/`).
+Это направление адаптации, не готовый перенос и не доказательство метода Genshin.
 
 Автор 2026-10-13 принял визуальное направление предыдущего участка как
 достаточную основу («в принципе сойдёт»). Это приёмка направления по снимкам;

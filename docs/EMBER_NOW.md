@@ -1,14 +1,46 @@
 # Ember — текущая точка
 
-Актуально: 2026-10-13. Ветка: codex/runtime-water-region-activity.
-Локальная база кода/Resources/сцен/тестов — 6124184; мир/материалы — 0a7e1c5.
+Актуально: 2026-10-14. Ветка: codex/runtime-water-region-activity.
+Материалы/трава/правила формы/сцены/проверки сохранены локально в d9e33a9.
+Прежняя база игровых систем — 6124184; мир/материалы до этих срезов — 0a7e1c5.
 Настройки/наборы Lab, полный цикл, переходы, арена, условия и Старт игры сохранены;
-открытые ручные gates прежние. Документы входят в текущий checkpoint.
-Origin после fetch — fbd5478, до checkpoint расхождений не было; push не выполнялся.
-Арт/локальные файлы остаются на местах; точный архив всех 1046 изменённых/новых
+открытые ручные gates прежние. Документация сохранённой базы — 0e4b06b.
+POM, световые LAB, перенос профиля травы/пресетов и shape LAB входят в d9e33a9.
+Сохранённый upstream — fbd5478; нового fetch и push в этом checkpoint не было.
+Арт/локальные файлы остаются вне commit; архив исходных 1046 изменённых/новых
 файлов и SHA-256 manifest — `C:/Users/novos/Documents/Codex/2026-10-13/ember-material-depth/checkpoint-b7353afb/`.
 
 ## Активная цель
+
+**Автор выбрал А основой материалов и света на принятом травяном поле.**
+`compact_material_looks_study.tscn` наследует прежний grass_field: 9621 пучок,
+принятые мазки/тона/настоящие тени, POM4см/32. А — принятый shader напрямую;
+Б — гранёный характер освещения на прежней форме, В — пиксель рисунка/света.
+World-metric pixel size и light levels независимы; Source/paint/grass scatter,
+mesh/collision/floor и основной редактор прежние. Это не три готовых мира.
+Forward+ matrix×3 presets×side/back, одинаковое движение камеры/солнца,
+near/far/grazing, roots и Player support PASS; material/POM/rules regressions PASS.
+Б/В остаются LAB-сравнениями; художественный выбор А подтверждён автором.
+Следующий предлагаемый контракт — этап0а: камера → шум → пропорции диорамы,
+без заранее принятого решения уменьшать героев. До согласования не реализован.
+Прежние свои F6/input/motion/weak-PC gates сохраняются.
+Owners/ограничения — Terrain Authoring → «Три подачи материала и света».
+Evidence — C:/Users/novos/Documents/Codex/2026-10-14/ember-material-looks/.
+Геометрия low-poly, pixel-art перерисовка, LOD травы и цикл суток не начаты.
+Код/сцены/проверки в d9e33a9; push не выполнялся.
+
+## Точка возврата к ручным правилам формы
+
+Редактор «Мир → Инструменты → Форма → Сгладить» готов: common heights /
+round/protect/clear, Source.surface_rules, один Undo на pointer-up; QA PASS.
+Первое действие: свой мазок → Undo/Redo → Save/reopen → F6; форма/мышь/стыки/
+near-far/125%/weak-PC OPEN. Guard32×32, один мазок около0.55с на стенде.
+Два прежних native QA shutdown0xC0000005/scan-aborted сохранены в evidence;
+последние native editor завершения exit0 не закрывают общую stability gate.
+Owners/проверки — Terrain Authoring → «Ручные правила гладкого облика»;
+evidence — C:/Users/novos/Documents/Codex/2026-10-14/ember-shape-brush/.
+
+## Точка возврата к игровым системам
 
 **Общие игровые системы — единый «Старт игры» готов, ручная приёмка OPEN.**
 Раздел библиотеки: четыре вкладки героев, уровень 1–99/пять слотов, общая сумка
@@ -52,6 +84,11 @@ physical/export G4/G5 OPEN; long A/B не запускался, world_canvas phy
 Cleanup включён в checkpoint 841b294; отложенная ручная приёмка остаётся открыта.
 
 ## Точка возврата к материалам
+
+Перенос принятых травы/света в прежние Pattern/editor/WorldLook готов, QA PASS;
+своя ручная приёмка OPEN. Вернуться: вариант травы → параметры/подбор/Undo →
+Save/reopen → F6/три пресета/настоящая тень; mouse/narrow/125%/weak-PC OPEN.
+Owners/evidence — Terrain Authoring → «Живописный свет», material-workflow-transfer.
 
 **Гладкая мультяшная земля — первый родной тестовый срез готов к пробе.**
 `compact_cartoon_ground_study` → F6; в редакторе «Вид мира → Материалы →
@@ -102,9 +139,14 @@ native mound/continuous walk/ceiling PASS, clean exit. Smooth guard32×32 пре
 параметра сохраняют GROUP8/height4. Гора получила массив с гребнем и плечами;
 Plan11, прежние Source/кисти/покрытия/фактура/Undo owners. Проба 32×24м —
 `compact_landform_fine_study`, рядом legacy-сравнение. Автору направление формы
-понравилось; полный F6/input/performance gate OPEN. Согласован следующий Sol-срез:
-стенд4×4м камень→песок, optical relief/POM с отдельной height и прежней опорой;
-ещё не реализован. Первый шаг — стенд A/B; контракт/границы — Terrain Authoring.
+понравилось; полный F6/input/performance gate OPEN. POM-стенд камень→песок готов:
+`compact_material_depth_study` → F6/B,4см/32steps; Source/physics/QA/берег PASS.
+Автор принял направление объёма; стыки/растяжение исправлены в общем texture
+core текущего SurfaceMaterials. Native/GPU/две роли/связанные regressions PASS.
+Последний вид стыков/проекции принят автором; input/движение/weak PC и close
+budget OPEN; единая основа будущих материалов и границы — Terrain Authoring.
+Контракт0а камера→шум→пропорции предлагается следующим после выбора А;
+границы ждут согласования, рост героев заранее не менять.
 Передача: `C:/Users/novos/Documents/Codex/2026-10-12/new-chat-2/outputs/EMBER_HANDOFF_2026-10-13.md`.
 Детали и ограничения — Terrain Authoring.
 

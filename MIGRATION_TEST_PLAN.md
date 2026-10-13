@@ -380,6 +380,118 @@ gates остаются OPEN; green data report их не закрывает.
 
 ## Роли и текстуры компактной земли — ручная приёмка OPEN
 
+Material looks LAB: `capture_material_looks_study.gd` — принятый grass_field9621,
+А equals current/pre-slice accepted shader, return exact, Б/В visible changes,
+3 presets×side/back с одинаковой игровой камерой. World-metric pixel size и
+light levels независимы; Source/paint/mesh/collision/grass buffer unchanged,
+POM4см/32 и paired textures retained. Реальный process меняет/останавливает Sun;
+одинаковые camera/sun trajectories, far/grazing, zero-energy fill exact,
+all tuft roots follow shared floor, настоящий Player walk. Material mapping/depth/
+workflow и Source rules regressions. Ручная motion/flicker/стыки/near-far/F6/125%
+приёмка OPEN; Б lighting diagnostic не доказывает low-poly geometry, pixel filtering
+не доказывает готовый pixel-art. Owners/budget — Terrain Authoring → «Три подачи
+материала и света»; evidence — ember-material-looks. Рабочий editor не запускать
+headless; native capture/import выполняются в disposable QA project/cache.
+
+Source rules: `test_terrain_surface_rules.gd` проверяет bitmap validation,
+default/voxel preservation, geometry cache invalidation, dense/sectioned exact,
+window/rebase/extension/copy isolation, draft без remesh, one Undo/Redo, Cancel,
+clear, physics/floor, existing session Save/Reopen/Discard и смену вида.
+`editor_test_terrain_surface_rules.gd` — настоящий Ember plugin в disposable QA:
+controls/pick/press/release, Source heights/paint unchanged, no press remesh,
+scene Undo/Redo, voxel switch/return, native Save/Reopen/Discard. Exit0 после
+explicit FS scan; предыдущие два shutdown0xC0000005 и scan-aborted warning
+не закрывают общую стабильность рабочего редактора. Свои input/125%/F6/weak PC OPEN.
+`capture_terrain_surface_rules.gd` — saved Source rules при plain/POM, три light
+presets × side/back, shared physics/pick/floor, существующие morph endpoints,
+настоящая Player walk. Owners/limits — Terrain Authoring → «Ручные правила».
+
+Shape LAB: `test_terrain_shape_study.gd` — plateau/crest preservation, Source
+immutable/material independence, all tile height/normal seams, same mesh/collision
+triangles, budgeted/direct job exact, Source Save/Reopen. Optional argv baseline
+path сравнивает default field exact с frozen прежним Smooth script из evidence.
+`capture_terrain_shape_study.gd` — A/B/C × plain/material ×3 presets ×side/back,
+одна игровая камера, actual ray/floor/pick/navigation parity (<0.004мм), все seams
+в пяти morph phases, POM4см/32, реальные controls (draft без remesh, explicit Apply),
+Player150 ticks на склоне через seam. Targeted + smooth/cartoon/tools/uniform,
+mountain morph/depth/mapping/painted/material workflow regressions PASS.
+Ручной выбор формы, F6/мышь/near-far/weak-PC OPEN; permanent mask schema/editor
+Undo/Save/Discard и скорость большой карты не реализованы. Owners — Terrain Authoring,
+«Управляемая форма гладкой земли»; evidence — terrain-shape-study.
+
+Перенос grass light workflow: `test_material_light_workflow.gd` проверяет
+opt-in Pattern fields/validation/legacy, независимые palette variants,
+small lookup update с прежним texture instance, Projection draft preview,
+база не стирает ручные оттенки, подбор одним Undo, Save/Reopen/Discard.
+WorldLook presets — один scene Undo/Redo, saved native Sun/Environment,
+ambient source восстанавливается, azimuth/exposure/tonemap прежние.
+`capture_material_light_workflow.gd`: GPU два реальных terrain-shader варианта
+(изменяется только первый); два существующих grass/bevel LAB ×3 presets ×
+side/back с фиксированной игровой камерой; transferred vs accepted LAB uniforms
+RGB delta<=3/255 (measured<=2/255). Geometry/Source exact, POM4см/32 unchanged;
+fill exact zero при shadow-disabled/light energy0, native UI preview/Undo/Discard
+и короткая ходьба. Targeted + WorldLook/layers/patterns/depth/mapping/painted PASS.
+Свой editor mouse/125%/Save→F6/weak-PC и large world remain OPEN.
+
+Bevel LAB `compact_bevel_light_study`: `capture_bevel_light_study.gd` проверяет
+две пары с игровой камеры/side+back sun, A=Sol pixels и возврат A exact,
+GPU depth readback exact, sun-off exact, Source/mesh/collision/floor/POM и export
+Save/reopen PASS. Вода frozen preview_time только для native QA. Ручные F6/B/L,
+реакция фасок/тёмные швы/мерцание/свой проход/weak PC OPEN — Terrain Authoring.
+
+LAB0б `compact_painted_light_study`: `test_painted_light_study.gd` — validation,
+Source/height/mesh/collision/floor при A/B и morph, Player playback, save/reopen PASS.
+Rays на верхних плоскостях камня и у границы тайлов совпадают с floor (<3мм)
+в шести фазах; обычный Smooth default проверен на exact с прежним кодом в evidence.
+`capture_painted_light_study.gd` — native Forward+, исходный renderer = disabled
+study pixel-exact, A return exact, sun-off rim exact, back/lateral rim и grass on-off меняют кадр,
+три Sun-позы с той же игровой камеры, пять morph-фаз,
+кадры игрового прохода и GPU timings. Глубина Sol4см/32steps не меняется.
+Tufts: compact_grass_field_study12×12м9621 clumps/423324tri, no collision;
+малый6×6 сохраняется. Тот же test принимает optional scene path для обеих сцен.
+root/material/footprint + inner coverage tested, toggle сохраняет Source/floor/POM,
+export Save/reopen PASS; native roots совпадают с floor во всех шести morph-фазах.
+Actual unique vertices: stone0, ground clearance >=-12мм, ни один пучок не скрыт.
+Посадка проверяется заранее для трёх полей, ширина постоянна и >=30% исходной;
+native проверяет фактические transforms против общего floor в каждой фазе.
+Renderer baseline проверяется при T-off; T-on/off виден с игровой камеры.
+H/mass lighting: no remesh/scatter/Source/floor changes, shared ground/cards flag,
+export Save/reopen PASS. Native before/after в трёх Sun poses и H return exact;
+H-off sun1 exact предыдущему полю, исходный depth regression PASS.
+J/grass colour ramp: shared ground/cards flag, no geometry/scatter/Source changes,
+export Save/reopen PASS; native три Sun poses, J return exact и J-off sun1
+exact с принятыми мазками. Отвергнуты независимые размытые цветные пятна;
+текущая рампа использует общие границы light steps при H-on, ALBEDO прежний.
+Native рампы повторно PASS. Текущий low=.64 и shadow fill=.07: presets evening/day/night
+× side/back с одной камерой/Source/POM — native PASS. Реальная directional тень
+меняет тон; fill on/off exact при shadow-disabled и при light energy0. Это не
+измерение глубины кроны. Custom low/tint/shadow/warm/preset Save-Reopen PASS;
+source/geometry/POM при трёх preset unchanged. Исходный depth regression PASS.
+F6 sliders/color/presets временные, Inspector сохраняет LAB exports;
+production MaterialPattern editor/Undo/Discard для новых параметров ещё не сделаны.
+Manual OPEN: F6/B/R/G/T/H/J/C/L/O/V/P, свой проход/ПКМ/F1, контактные тени без грязи,
+читаемость камня/мазков и полного поля травы, тень героя, мерцание в движении,
+просветы у будущих ступеней, полный morph budget и weak PC. Новая ручная оценка —
+ослабленный тёмный мазок, оттенок реальной тени, день/вечер/ночь, F6 color controls.
+Evidence/ограничения частичных тайлов — Terrain Authoring, «Живописный свет».
+
+LAB глубины материала: `tools/test_material_depth_study.gd` проверяет immutable
+Source/heights/paint/water/mesh/collision/floor/picking/navigation при A/B в
+трёх существующих morph-обликах и промежуточных фазах, zero/off baseline,
+private Pattern ownership, exported scene settings/Source Save-Reopen и no
+camera remesh/CPU texture jobs. Fixed-geometry EmberPlayer playback A/B имеет
+тот же endpoint. Native `capture_material_depth_study.gd`: Forward+1080p,
+near/far/grazing/outer edge/material border/tile seam/actor, 3 облика/2 mid phases/12 поз,
+zero pixel exact, water ROI2016 pixels exact/depth readback delta≤0.02мм.
+`test_material_texture_mapping`: paired PNG в двух ролях/другом slot/масштабе,
+generic factory/validation/Pattern Save-Reopen. Native GPU probe actual height
+query: legacy negative control RED, periodic PASS на top и16× taller side;
+actual geometric normal сохраняет масштаб в середине morph, CUSTOM0 убраны.
+Targeted + material layers/smooth uniform/smooth cartoon/cartoon relief/pattern editor PASS.
+GPU/CPU warm AB измерены отдельно (30FPS captures,120FPS timing,VSync off);
+close +1мс ориентир не достигнут. Manual artwork/scale/relief/seams/motion/input/
+weak PC и весь water/contact pipeline OPEN; owners/status — Terrain Authoring.
+
 Проба объёмной фактуры: `test_cartoon_relief_study.gd` проверяет одинаковые
 материалы двух fixtures, реальное изменение высот stone/sand/soil, швы/нормали,
 точные mesh/collision triangles, physics/picking, Resource Save/Reopen и B
