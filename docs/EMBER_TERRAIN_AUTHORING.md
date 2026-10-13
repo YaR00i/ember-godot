@@ -126,6 +126,140 @@ generator job для новых адресов; отдельного editor/rend
 0,72 без округления к 0,70; допустимые границы 0,3/0,9 больше не отвергаются
 из-за float32 округления диапазона.
 
+### Общая подробная форма — сетка 16×16
+
+Новые рецепты генерации и локальные области создаются с `terrain_sampling=fine16`:
+одна выборка на каждую мелкую колонну 1/16 м, высота округляется до одного
+вокселя вместо четырёх. В существующей панели это «Сетка 16×16». Тип отображения
+не выбирает другой генератор: гладкая поверхность и изучаемые полублочные/
+воксельные аномалии выводятся из одного Source. Работа по-прежнему идёт порциями.
+Границы выделения сохраняют точные крайние колонки соседней земли.
+
+У новой горы включён «Горный массив»: вытянутый гребень, два широких плеча,
+неодинаковая длина склонов и компактное мягкое подножие. Вариант формы меняет
+направление массива. Это художественная параметрическая форма, не симуляция
+эрозии. Высота задаёт верхний предел, ширина вершины — округлую верхнюю часть.
+Покрытия и мелкая фактура остаются отдельными действиями. Масштаб всей области
+и общий smooth guard прежние; свободные объёмы/пещеры этим срезом не добавлены.
+
+План версии11 хранит новые параметры в прежних region.parameters. Версии1–10
+читаются; отсутствие параметра оставляет прежние GROUP8/высоту4 и эллиптическую
+гору. Смешанный план сохраняет точность каждого слоя отдельно. Переключение
+старой области выполняется явно в её панели. Старые карты не пересоздаются.
+Source schema, кисти, материал/Surface Canvas, Undo и collision/floor owners прежние.
+
+Проба формы: `scenes/compact_landform_fine_study.tscn` → F6, 32×24 м;
+`compact_landform_legacy_study` — сравнение с прежним расчётом на тех же параметрах.
+ПКМ/колесо — камера, кнопки — три состояния локальной аномалии. Однотонные и
+материальные captures получены в native Forward+. Точная высота/paint/cancel/
+mixed legacy/budget/repeat/off, Apply/Undo/Redo/stale/Save/Reopen проверяются
+`test_terrain_fine_land.gd`; mesh/collision/source roundtrip — `capture_fine_land.gd`.
+Авторская оценка гребня/подножия/материалов, реальный input и слабый ПК OPEN.
+
+### Настройки фактурности в генераторе — первый рабочий срез
+
+В прежней панели «Сгенерировать рельеф…» теперь три явных действия:
+
+- «Создать рельеф»: прежние hills/ridges/eroded/plains меняют форму и воду.
+  Новая явно выбранная operation сохраняет существующие top/base материалы;
+  cap-depth при необходимости подгоняется к новой высоте. Новые/пустые участки
+  получают прежние начальные покрытия. Ручная лепка внутри области заменяется.
+- «Добавить фактуру»: работает по текущей покраске и нынешним высотам, без
+  macro sampler. Сохраняет top/base/cap, воду/подводное дно, water_flow, overrides
+  и height-limit. 0% даёт точный текущий painted input. Мелкие дельты не прорезают
+  существующую толщину покрытия; тот же guard используется material-aware кистью.
+- «Распределить покрытия»: отдельный выбор «Крупные зоны» / «Прежний рисунок».
+  Меняет top/base, сохраняет heights/cap/water/flow/overrides и фактурную форму.
+  Новое открытие панели предлагает крупные зоны; старый рецепт без profile
+  открывается как прежний рисунок. Детальный seed/scale/strength не влияют.
+
+Крупные зоны: трава — спокойная основа; нерегулярные пятна грунта4–48м
+(default12), частота0–100% (default20, вероятность пятна, не доля площади);
+камень на широких склонах5–100% (default35 см перепада на метр); песок
+на расстоянии0–6м от текущей воды (default1.5, ноль отключает). Coverage seed
+отдельный0–1000000 (default731). Чистый `SurfaceFormMath.CoverageField` готовит
+локальные полуметровые средние/расстояние до authored wet source, с halo и
+порциями существующего job; уклон берётся на4м, подавляя мелкую фактуру.
+Опорные точки грунта и мягкий warp используют глобальные координаты/seed; новой
+heightfield/biome/texture-системы нет. Расстояние — приближение по coarse grid,
+не пересмотр береговой геометрии или контакта с водой.
+Legacy сохраняет прежний classifier/coverage_scale0.5–8×/coverage_sea_m0–16м.
+
+Новые ручные мазки «Покрасить» автоматически защищены, включая мазок тем же
+цветом. В прежнем Plan хранятся sparse битовые paint_locks:512 байт на плитку
+64×64 fine-ячеек. Мазок и защита имеют одну Undo-команду, cancel не оставляет
+отметок. Recipe/patch arrays не копируются на каждый мазок; старые v1/v2
+patches проходят существующий upgrade на частной копии. Gameplay terrain
+и bitmap материала не меняются; export strip удаляет весь authoring Plan.
+Старая покраска без происхождения автоматически не распознаётся: «Защитить
+покраску выделения» сохраняет её, «Снять защиту выделения» возвращает область
+генератору. Обе операции metadata-only/Undo. Coverage обходит paint_locks и
+явные voxel column overrides; ни legacy, ни крупные зоны не снимают защиту.
+Preview сообщает защищённую площадь и становится stale при правке защиты.
+Save/Reopen/Discard/rebase используют нынешний Plan/session owner.
+`test_terrain_coverage_zones` PASS: pockets/size/frequency/slope/water distance,
+independence, protected changed/same-colour paint/Undo, selection/release,
+sections/budget/cancel/validation/old recipe/Plan10. Flat24×16:12369 legacy
+границ →442 large; это автоматическая проверка фрагментации, не эстетики.
+Native Forward+ paint input/locks/selection/stale, preview=Apply, coverage
+Undo, отдельный detail, recipe fields Save/Undo/Source+Plan+locks Reopen/
+Discard и clean exit PASS. Свои вид/живой input/weak PC остаются OPEN.
+
+Фактура: сила0–100% (default0), масштаб0.5–3× (default1), seed0–1000000
+(default731). Используется тот же `SurfaceFormMath.brush_offset_voxels`, что
+«Неровности → фактура покрытия»: strength75% соответствует amplitude12 vox.
+Роль читается из существующего top material; classifier при добавлении деталей
+не запускается. Период PNG/optical relief остаётся у прежнего материала;
+brightness PNG больше не запекается отдельным кодом generator finish. Текстуры
+и scene style автоматически не заменяются. Предпросмотр сбрасывается при смене
+действия или его параметров; Apply использует exact candidate одной Undo-командой.
+
+Optional terrain_operation/coverage_* и surface_* живут в прежнем Dictionary
+generation-region прежнего Plan owner; явное действие требует Plan version9,
+coverage_profile/zone knobs/paint_locks — version10. Версии1–9 читаются без
+переписывания; новое сохранение действия/покраски/защиты повышает версию
+через прежний upgrade_local_layers (включая старую provenance). Старая версия
+аддона отвергает неподдерживаемую версию, вместо молчаливой смены поведения. Terrain
+Resource/schema и runtime остаются прежними. Без terrain_operation старый рецепт
+использует прежнюю генерацию/начальное распределение; strength0 legacy exact.
+Открытие/новое сохранение в обновлённой UI записывает явное действие и сохранение
+покраски. Новые участки допускают только generate. Detail/coverage до32×32м,
+даже strength0; generate без фактуры до96×96м. Cap всей smooth-карты отдельный.
+
+Один `EmberCompactTerrainGeneration` остаётся owner job: generate выполняет
+macro и при необходимости fine-pass, detail/coverage только fine-pass. Immutable
+section snapshot/private working copies, bounded/cancellable порции, selection
+blend и соседние данные сохранены. Water flow очищается только macro генерацией.
+`build_cartoon_generated_study.gd` теперь вызывает этот же job для shape →
+coverage → detail; отдельный алгоритм fixture удалён. Прежние сохранённые
+островные assets в этом срезе не пересоздавались.
+
+`test_terrain_generation_split.gd` проверяет сохранность paint/cap/flow/bed,
+независимость трёх групп параметров, идентичную brush математику, source/cancel/
+budget/selection, validation, old/new Plan Save/Reopen и UI. Native
+`editor_test_terrain_generation_split.gd`: два действия, stale preview, exact
+preview/Apply, по одному Undo/Redo, Plan settings Undo/Redo/Save, terrain/recipe
+Save/Reopen/Discard PASS с clean exit. Legacy generator/surface/plan/composition,
+smooth tools и прежняя saved island regression PASS. Свои мазки/распределение/
+near-far/weak PC OPEN; художественный профиль coverage ещё требует оценки.
+
+Обычный preview теперь передаёт scene smooth/blend settings прежнему mesher:
+гладкие vertices/material weights совпадают с Apply. Параметры сбрасывают
+устаревший preview; Apply повторно использует готовый candidate одной Undo-
+командой. «Сохранить в плане» сохраняет намерение отдельно от применённой земли;
+затем нужно обычное сохранение сцены. Кнопки/поля прочих influence/object modes
+не получают параметров фактурности.
+
+`test_terrain_surface_generation.gd`: legacyzero, strength/scale/independent seed,
+work-budget determinism, private macro snapshot, wet/outside preservation,
+new-sections/cancel/validation, UI/old plans/Plan Save/Reopen, smooth preview
+vertices/weights parity PASS. `editor_test_terrain_surface_generation.gd`:
+настоящая панель, stale preview, exact candidate Apply, terrain Undo/Redo,
+Plan parameter Save/Undo/Redo и scene Save/Reopen/Discard PASS. Generation,
+Plan/composition/export, generated-island и smooth regressions PASS; export
+проверен на scene с сохранёнными тремя параметрами. Художественная/input/
+near-far/ходьба/weak PC приёмка новых настроек OPEN; карты автора не записывались.
+
 Кнопка предпросмотра готовит приватный candidate по участкам; расчёт групп
 8×8 колонок идёт с бюджетом около 4 мс. Preview использует прежний tile mesher
 и реальные материалы, без новых физических объектов. Изменение параметров
@@ -411,7 +545,8 @@ Resource. Пустая роль старой карты не угадывает�
 роли могут показывать разные варианты; смена варианта обновляет атлас без remesh.
 Общие `content/terrain_materials/*.tres` хранят верхний рисунок 16×16 и
 необязательный `side_pixels` для боков в тех же трёх тонах, глянец, силу блика
-и рельеф пикселей. Пустые бока сохраняют прежний рисунок/свет. Изменение файла влияет на все
+и рельеф пикселей. Необязательная `albedo_texture: Texture2D` подключает цветовой
+PNG из проекта; без неё прежний рисунок остаётся действующим. Пустые бока сохраняют прежний рисунок/свет. Изменение файла влияет на все
 использующие его карты; источник — `EmberCompactTerrainPattern`.
 
 Редактор рисунка материала перенесён по согласованному срезу: «Цвет» →
@@ -430,13 +565,297 @@ Ctrl+Z/Y при фокусе рисования относятся к локал
 кнопкой материала. Явный Save меняет общий `.tres` и обновляет атлас без remesh;
 смена карты сохраняет независимый черновик. Новый вариант назначается только
 исходному привязанному слоту, если текущая карта/старый ID ещё совпадают;
-иначе файл создаётся без назначения другой карте. Формат и shader owner прежние.
+иначе файл создаётся без назначения другой карте. Resource и shader owner прежние;
+PNG — необязательное поле того же Resource, без миграции старых вариантов.
 `test_compact_material_patterns` и `test_compact_material_dock` PASS;
 `editor_test_compact_material_dock` native 1600×900/125% PASS для видимости сетки,
 фокуса Ctrl+Z/Y, drag/PNG, switch/save/cancel, назначения/Undo/Save/Discard,
 смены карты и сохранности mesh/terrain. Художественная приёмка фактуры/стыков,
 живое удобство нового workflow и весь shell 1280×750/125% OPEN. Приёмка «+ Карта»
 по просьбе автора отложена; перенос рисунка её не закрывает.
+
+### Гладкая земля и мультяшные PNG — первый родной срез
+
+`scenes/compact_cartoon_ground_study.tscn` — отдельная редактируемая карта 24×16 м.
+Исходные колонны 16×16 на блок принадлежат прежнему Terrain Resource. Scene-owned
+`EmberMapLoader.compact_ground_style` выбирает 0 — прежнюю воксельную землю,
+1 — гладкую; defaults старых карт не меняются. Переключение в существующем
+«Вид мира → Материалы → Поверхность земли» имеет scene Undo/Redo и сохраняется
+в `.tscn`. На первом срезе гладкий вид ограничен 262144 мелкими колоннами
+(площадь 32×32 блока): больших карт и слабого ПК этот gate не закрывает.
+
+Один `ember_terrain_smooth_surface.gd` строит производную поверхность на каждом
+мелком узле, три локальных сглаживающих прохода и общие нормали. Те же треугольники
+подаются в collision; `floor_surface_sample`, brush picking и navigation читают
+тот же расчёт высот. Правки затрагивают 11-колонный halo соседних tiles, включая
+диагональный шов. Dense/sectioned paths совпадают. Cache key различает стиль;
+smooth UV2 с индексами материалов проходит проверку cache. Прежний ground LOD
+для гладкого вида отключён, поскольку он не сохраняет новые атрибуты смешивания.
+Обычная плоская вода теперь получает гладкий берег тем же mesher; границы
+первого водного среза и незакрытая игровая приёмка описаны ниже.
+
+#### Гора и локальное превращение — отдельная проба
+
+`scenes/compact_mountain_anomaly_study.tscn` → F6: карта32×32м, вершина18м,
+два сухих пятна. Строитель `tools/build_mountain_anomaly_study.gd` использует
+прежние Generation/PlanComposition, затем coverage крупными зонами и отдельный
+detail. Новый Source сохранён отдельно; старые карты/paint locks не переписаны.
+В runtime есть ползунок, три состояния и плавный цикл с паузой; ПКМ/колесо/L
+управляют камерой/светом. Это presentation study, не gameplay event/schema.
+
+Общая SmoothSurface выводит из исходного поля targets: полублоки0,5м по X/Z
+и0,25м по высоте, затем ступени1м. Глобальная привязка и дополнительный8-cell
+halo для coarse centres сохраняют швы. Blend shapes меняют позиции/нормали
+прежнего mesh; цвет/UV/UV2 и Source остаются прежними. Короткие скосы соединяют
+ступени; это heightfield, без навесов/отдельных объёмных кусков. Пятна заданы
+scene-owned `anomaly_zones`, не игровым Terrain Resource.
+
+Физика обновляет только движущиеся треугольники; остальные остаются статичными
+в том же GroundPhysics. Projection обновляет общее field для floor/pick и
+сбрасывает navigation cache в той же фазе. Статический geometry cache не хранит
+состояние превращения. `test_mountain_anomaly_study.gd`: швы/outside exact,
+intermediate collision/floor rays, coverage/source invariance, возврат к базе,
+runtime controls/play-pause и scene Save/Reopen PASS; native Forward+ clean exit.
+На двух пятнах/8 tiles измеренный максимум phase update23,146мс после сужения
+physics (первый вариант114мс). Это не full-frame/weak-PC acceptance. Свои F6,
+движение/ходьба/визуальное направление и большие площади OPEN; ground LOD нет.
+
+Расширенная проба ходьбы — `scenes/compact_meadow_anomaly_walk_study.tscn` → F6:
+64×48м, поляна/гора сбоку18м, речка и небольшой холмик0,5м в первом пятне.
+Builder использует тот же Generation/PlanComposition, plateau/mountain/lake/river;
+coverage/detail запускаются четырьмя областями32×24, сохраняя прежний предел job.
+Обычные карты сохраняют MAX_COLUMNS262144. Явный scene-owned
+`compact_smooth_study_column_limit` разрешает этой карте786432, с hard clamp1048576;
+MapLoader передаёт этот же guard Projection и панели вида. Роща на большой
+карте остаётся под прежним guard32×32; общей large-world/LOD acceptance нет.
+
+В study добавлен прежний EmberPlayer с настоящей капсулой/stepping и FollowCamera.
+WASD/ПКМ, V переключает общий/ближний вид; кнопка прохода ведёт реальным input
+по двум точкам туда/обратно. Private disposable progress без persistence/restore
+не сохраняется в `.tscn` и не меняет игровой save. Контроллер игры не переписан.
+Фаза меняется в physics перед персонажем, с частотой до30 updates/s. Стоящий
+на derived ground игрок переносится по изменению высоты его реального контакта;
+после floor snap недостающий contact получает короткий capsule sweep. Подъём
+проверяет world clearance до изменения shapes; потолок ставит study на паузу.
+Спуск проверяет collision. Полублоки сохраняют подъём¼м; метровые стены остаются
+препятствиями. Навигация больших ступеней/jump и перенос всех NPC не реализованы.
+
+`test_meadow_anomaly_walk.gd` проверяет стояние/подъём-спуск, вперёд/назад,
+диагональ/край второго пятна при30/60/120Hz, завершённый supported step, потолок,
+Source/paint/flow invariance, Save/Reopen без transient actors; headless PASS.
+Native Forward+ на холмике и continuous playback PASS с clean exit: маршрут
+пройден в обе стороны, max centre-ray gap около0,22м во время step¼м; после
+остановки supported/<4см и step завершён. Standing без ухода опоры; ceiling
+pause/resume PASS. Max phase update54,138мс на13 tiles, не full-frame acceptance.
+Капсула во время прежней step-анимации может временно быть выше centre-ray floor
+до¼м; это не отдельная физическая поверхность. Художественный вид/F6/input,
+первая подготовка/weak PC/full-frame budget OPEN. Uniform grass tiles используют
+точный shortcut только при едином материале во всём halo8×8; mesh/normal/UV/UV2/
+color/field/collision parity и mixed/empty fallback PASS. На tile64×64 измерено
+109мс против497мс полного material-kernel пути; это не замер загрузки всей карты.
+
+#### Прежние инструменты и фактура покрытия — первый срез адаптации
+
+`scenes/compact_smooth_tools_study.tscn` — участок8×8м из прежних кистей
+подъёма/сглаживания/покраски, а не новый генератор. B сравнивает сохранённую
+ручную лепку до/после фактуры; M меняет гладкий/воксельный вид того же источника.
+Покрытия в обоих вариантах идентичны. Прежний генератор карты с четырьмя
+профилями и его данные/параметры не заменены.
+
+В существующем «Форма → Неровности» добавлен выбор «Рисунок · фактура покрытия».
+По умолчанию остаётся прежний шум. Новый выбор использует текущую роль каждого
+top_material: stone — выступы, sand — warped гребни, soil — тихие неровности,
+grass — минимальная фактура; неизвестная роль не изменяет высоту. Покраска,
+base/cap материалы и вода сохраняются. Подводное дно и пустоты не затрагиваются.
+Геометрия идёт через `EmberCompactTerrainBrush` и общий FormMath, исходные
+высоты/Terrain Resource, прежний dirty remesh/collision/floor/picking/Undo/Save.
+В этот brush не переносится классификатор role_at; PNG/световой рельеф остаются
+у существующего материала. Нового renderer/editor/data owner нет.
+
+Радиус, глубина/сила, крупность, seed, направление и форма кисти прежние;
+noise-octaves скрыты в material-режиме. Feature scale16 означает scale1×,
+32 —2×. Дельты к каждому исходному столбцу учитывают существующий шаг1/4/8
+вокселей, поэтому ранее вылепленная форма не усредняется заново. Параметры
+меняются между мазками; повторный stamp в одном мазке не накапливает высоту.
+Выделение/границы секций сохраняются. Один мазок — одно Undo. В input adapter
+исправлен прежний mapping выбора «Только вниз»: индекс2 теперь передаёт -1,
+а не +1; проверен реальный native input по камню.
+
+`test_terrain_smooth_tools.gd`: восемь прежних кистей на smooth земле,
+physics/pick, style switch без потери источника, material coverage/source,
+coarse/middle/detail и четверти/полублоки, selected area, dense/section parity,
+wet/hole/direction, Undo/Redo и Save/Reopen PASS. Native
+`editor_test_terrain_smooth_tools.gd` использует реальный WorldEditor press/release,
+controls, pick, один мазок Undo/Redo, направление, смену вида, Save/Reopen/Discard.
+Прежние overlap/scale/section brushes, generator/surface-generation/WorldEditor
+и обычный `test_voxel_surface_sculpt` без native-selector-probe PASS.
+
+Было два 0xC0000005 при завершении QA уже после PASS сценария; перенесённый
+переключатель создаётся сразу у конечного parent, QA ждёт завершения своих
+фоновых задач и запускается без накопленных открытых сцен disposable lab.
+Последующий native полный сценарий/завершение PASS. Точный native frame/причина
+не доказаны; warning Scan thread aborted сам по себе причину не подтверждает.
+Авторские вид/живые мазки/near-far/weak PC и полный native-selector gate OPEN.
+Объёмная Surface/add/remove/grab/shore/sand сохраняет прежние owners: новый
+smooth heightfield не реализует её свесы/пустоты. Адаптация объёмного вида
+отдельная; разделение действий bulk генератора уже реализовано
+(см. панель генератора выше).
+
+Опора рощи/общей расстановки адаптирована к smooth земле 2026-10-13.
+`EmberGrovePlanner` сохраняет прежние пять точек/максимум опоры и slope/spacing/
+road/protection, но при smooth берёт высоты из общего `SmoothSurface.sample`.
+Поля нужных плиток64×64 готовятся private `SmoothSurface.FieldJob` по строкам
+в существующем step-бюджете; renderer и job используют те же float32 проходы.
+Exact old/new field parity PASS; отдельного источника/renderer/schema нет.
+Smooth проверяет воду также относительно физической высоты; voxel0 сохраняет
+старые колонки и не строит гладкие поля. Общая площадь smooth ограничена
+262144 колонками (32×32 блока); смена стиля/frame делает старый preview stale.
+Targeted: две ветки grove/placement, physical queries, dense/sections/budget,
+cancel, water, transformed map, old mode, manual protection, Apply/Undo/Redo/
+Save/Reopen PASS. Старые grouped placement/eight brushes/generation split/
+shore regressions PASS. Native Forward+: реальный prefab дерева в grove,
+четыре объекта placement, physical support, preview=Apply, stale style,
+Undo/Redo, manual protection, Save/Reopen/Discard/source и clean exit PASS.
+Участок `compact_smooth_tools_study` теперь имеет обычную группу Props для
+пробы нынешней расстановки. Живой input, художественная
+оценка опоры/размеров объектов и weak PC остаются OPEN; пять probes не обещают
+точную посадку любой сложной нижней геометрии. Следующий отдельный срез —
+управление спокойными крупными зонами покрытий.
+
+#### Гладкий берег — первый срез
+
+При `compact_ground_style=1` существующий `EmberTerrainPilotMesh` пересекает
+плоскость обычной воды с треугольниками `smooth_field`. Чистый read-only leaf
+`ember_terrain_smooth_water.gd` использует ту же мелкую сетку и диагональ,
+что ground/collision/picking; береговые вершины лежат на вычисленном контуре.
+Данные высот/материалов/воды, уровень моря и форма острова не переписываются.
+Около авторских wet cells строится ограниченная полоса до halo11: она закрывает
+зазор после фильтрации земли, но не заполняет сухие низкие впадины/пустоты и
+не переносит воду через чужой водоём. Разные авторские уровни сохраняются.
+Глубина от общей поверхности передаётся в прежние UV/vertex alpha, поэтому
+существующий материал показывает плавное мелководье. Нового shader или Resource нет.
+
+Это первый срез обычной плоской воды без volume walls, waterfall sheet и swash.
+При наличии этих эффектов сохраняется прежний water path; их гладкий берег ещё
+не реализован. Воксельная земля и её cache policy прежние; smooth policy имеет
+`smooth-shore-v1`, чтобы не прочитать старые прямоугольники. Fine-grid topology
+совпадает на tile/section seams; существующий water LOD защищает контактный край.
+Шейдерное движение и `water_surface_sample()` по-прежнему используют авторскую
+мокрую маску: точный игровой wet/contact в узкой сглаженной полосе — отдельный
+OPEN gate, эта визуальная проба его не закрывает.
+
+`test_terrain_smooth_shore.gd`: контур/глубина/уровень+origin, wet collar,
+tile/section seams, dry depression/local lake, unchanged source/collision,
+legacy/volume paths, cache key и far boundary PASS. Native
+`editor_test_terrain_surface_generation.gd` дополнительно сравнивает Water arrays
+preview/Apply и точный shoreline Undo/Redo; Save/Reopen/Discard PASS. Native
+Forward+ до/после острова снят с прежними камерой, светом и Terrain Resources.
+Собственные вид в движении, контакт персонажа, weak PC и сложная вода OPEN.
+
+`cartoon_grass/soil/stone.tres` ссылаются на исходные Imagegen PNG в
+`content/terrain_materials/textures/`. В прежней панели «Рисовать паттерн…» есть
+«Выбрать текстуру PNG…» и снятие PNG, local Undo/Redo, Save/Cancel/Reopen.
+Размер рисунка задаёт размер повторения в метрах. Сетка 16×16 остаётся запасным
+цветовым рисунком; она не редактирует большой PNG. Для этой мультяшной пробы
+нет искусственного оптического micro-relief: поверхность матовая. Гладкий mesh
+передаёт три palette slots и веса треугольника существующему ground shader;
+PNG подключаются через derived texture array, камень — с трёх направлений.
+Покраска колонок меняет обычные top_materials, а не лабораторную маску.
+
+Targeted gate `test_terrain_smooth_cartoon.gd` и isolated native
+`editor_test_terrain_smooth_cartoon.gd`: швы/нормали, плотная/sectioned геометрия,
+точный collider, picking/floor query, navigation, cache/UV2, native brush,
+Undo/Redo/Save/Reopen/Discard, PNG field/dialog и выбор стиля PASS.
+Native Forward+ карта и панель PNG сняты в изолированном editor. Собственная
+оценка фактуры, краёв материалов, ходьбы, кисти/input и near/far OPEN.
+
+Первая проба фактурности — `scenes/compact_cartoon_relief_study.tscn`, 12×8 м,
+192×128 колонн. Камень получает уплощённые выступы/расселину, песок — гребни,
+грунт — спокойную неровность. Два независимых источника `cartoon_relief_base/detail`
+имеют одинаковые материалы; B в F6 сравнивает исходную/фактурную форму. Рельеф
+запечён в обычные высоты, физика и кисти используют прежний smooth owner.
+`cartoon_sand` — тихий однотонный вариант существующего Pattern; прежние PNG
+камня/грунта сохранены. Вторая проба заменяет полосы песчаными карманами,
+отдельными каменными выходами и пятнами грунта; гребни имеют warped phase и
+маску длины/амплитуды. `cartoon_relief_stone` использует тот же PNG с span3.2м:
+яркость рисунка приблизительно запекается в высоты. Optional pixel_relief0.14
+даёт мягкий optical bump на верхней поверхности; height sampling использует
+mip5 и ограничение наклона нормали, чтобы не усилить мелкий шум. На крутых
+боках optical bump затухает. Это brightness heuristic, не настоящая height map;
+оптическая мелочь не меняет физику, крупный объём остаётся общим.
+
+Scene-owned `EmberMapLoader.compact_smooth_material_blend` defaults false;
+в этой пробе true. Прежние projection/mesher строят 8-колонное взвешенное
+смешивание top_materials в производных RGB-весах, shader нормирует веса после
+GPU color quantization. Источник/геометрия не меняются от смешивания.
+Cache policy различает включение; halo11 хватает высотам и материалам.
+Три slots на треугольник достаточны для пробы; при большем числе выбираются
+три наиболее весомых, полноценный многоматериальный стык ещё не принят.
+
+`test_cartoon_relief_study.gd`: семантика/песчаные карманы, физический объём,
+швы высот/нормалей/декодированных материал-весов, dense/sectioned, collision/
+picking/physics, cache/scene flag Save/Reopen/B и кисть покраски/Undo/Redo
+через соседнюю плитку PASS. `editor_test_cartoon_relief_study.gd` в isolated
+native editor: blend flag и paint/Undo/Redo/Save/Reopen/Discard PASS.
+Связанные smooth/mesh/cache/WorldLook regressions
+PASS; native Forward+ сравнение снято. Оценка формы/смешивания/светового
+рельефа near-far, ходьба и weak PC OPEN. Дальнейший порядок —
+[план World Authoring](EMBER_WORLD_AUTHORING_ARCHITECTURE.md#фактурность-форм-гладкого-мира--первая-проба).
+
+### Фактура на сгенерированном острове — отдельная проба
+
+Следующий срез материала согласован автором 2026-10-13, ещё не реализован:
+лабораторный участок около4×4м камень→спокойный песок, одинаковые Source/свет/цвет;
+A — прежний optical relief, B — POM с уточнением пересечения, согласованными
+height/normal и лабораторной записью DEPTH/LIGHT_VERTEX. Height — отдельный
+тестовый asset, не яркость цветной PNG и не новая постоянная schema Pattern.
+Смешивание покрытий проверяется в общем поиске пересечения и в движении.
+Общие owners shader/SurfaceMaterials прежние, opt-in; Source/paint/mesh/collision/
+floor/picking/navigation не меняются. Ни silhouette clipping, ни навесы,
+ни блики песчинок/финальная пикселяция/весь мир в срез не входят. После гладкого
+вида — сохранность координат/материала в существующих трёх study-обликах.
+Gates: off/zero baseline, source/physics/Save-Reopen, отсутствие frame remesh/
+CPU texture jobs; Forward+ near/far/grazing/seams/персонаж/берег, A/B GPU/CPU/VRAM.
+Ориентир дополнительной GPU-стоимости1мс при1080p требует измерения; ручной вид OPEN.
+SSDM по Lobel требует новых экранных данных/буферов и интеграции перекрытий/воды;
+это отдельная архитектурная граница, для первого среза выбран локальный POM.
+
+Автор 2026-10-13 принял визуальное направление предыдущего участка как
+достаточную основу («в принципе сойдёт»). Это приёмка направления по снимкам;
+живую ходьбу, input, near/far и weak PC она не закрывает.
+
+`scenes/compact_cartoon_generated_study.tscn` — остров 24×16 м, 384×256 колонн.
+Крупные высоты создаёт существующий `EmberCompactTerrainGeneration` / общий
+sampler, профиль hills: seed71, sea1.25, land0.9, relief2.5, feature11, shore2.4,
+land_fraction0.86. После генерации отдельная fixture-проба распределяет роли
+травы/грунта/песка/камня по высоте/уклону и независимому рисунку; затем добавляет
+детали с seed731 и силой0.7. Это fixture, а не отдельный production-генератор.
+Сохранённая проба использовала общий generation job для крупных высот и общий
+FormMath, но выбирала роли/offsets отдельным кодом. Builder теперь использует только общий job;
+сохранённая fixture ещё относится к прежней пробе и в этом срезе не пересоздана.
+
+Чистый leaf `ember_terrain_surface_form_math.gd` принимает base samples и Image
+от caller; не читает файлы, не сохраняет карты, не владеет renderer. Общие
+rock/artwork функции прежней пробы вынесены сюда без смены её рисунка; новая
+проба использует тот же leaf для нерегулярных гребней, грунта/травы и каменных
+выступов. `build_cartoon_generated_study.gd` воспроизводит fixture; обычные
+`cartoon_generated_base/detail.res` остаются scene-owned Terrain Resource.
+Крупные исходные высоты доступны через B; материалы/optical relief одинаковы
+в обоих вариантах. Подводный грунт и исходные каналы воды не меняются.
+У воды сохранён прежний материал; её контур и глубина мелководья теперь следуют
+гладкой земле (см. «Гладкий берег» выше). Авторская оценка и общий contact OPEN.
+Декорирование всех production-карт не подключено.
+
+`test_cartoon_generated_study.gd`: происхождение крупных высот из нынешнего
+job, сохранность input/water/wet floor, детерминизм деталей, четыре роли,
+Save/Reopen/B и physics/picking PASS. Прежняя relief fixture regression после
+извлечения leaf PASS. Native Forward+ до/после снят в пяти ракурсах;
+`editor_test_cartoon_generated_study.gd` повторно использует native QA: blend
+flag/paint/Undo/Redo/Save/Reopen/Discard PASS в private copy. Собственные вид
+нового острова, четырёхматериальные стыки, ходьба, берег и weak PC OPEN.
+Пользовательский workflow теперь реализован отдельным панельным срезом —
+см. «Настройки фактурности в генераторе» выше. Build-script остаётся примером
+острова; source/view этой пробы не подменяют живую приёмку новых настроек.
 
 Проба `scenes/compact_material_relief_study.tscn` назначает отдельные
 `grass_relief/soil_relief/sand_relief/stone_relief`; оригинальные варианты и

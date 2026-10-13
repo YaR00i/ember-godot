@@ -194,6 +194,12 @@ preview/commit остаются owners. Граф нужен для ветвле�
    Delete с подтверждением/backup/Undo блокируется при найденных refs/ID;
    динамические ссылки и saves остаются явным ограничением проверки.
    Native CRUD/identity/conflict/UID/undo + Forward+ QA PASS; user acceptance OPEN.
+   «Где используется» теперь показывает saved consumers с поиском, именами/ID/
+   файлами и причинами связи. Прямые ссылки отделены от текстовых совпадений;
+   переход открывает точный файл записи в библиотеке, Back возвращает исходную
+   запись/фильтр/поиск. Внешние файлы показываются в FileSystem. Dirty draft,
+   изменённый/удалённый файл и дубли ID не приводят к подмене записи; Refresh
+   обновляет список. Это editor navigation, правила игры и deletion guard прежние.
 3. Полная предметная библиотека: формы по типу, поддерживаемые свойства,
    совместимость, бонусы, иконки и проверка использования в сумке/бою.
    Реализован один раздел с фильтрами всех семи типов, включая экипировку.
@@ -213,8 +219,13 @@ preview/commit остаются owners. Граф нужен для ветвле�
    «Примерка» собирает editor-only исходный комплект для героя/уровня и показывает
    изменения текущего draft через Party/Equipment; контекст переживает Undo.
    Layout/save/stack overflow и настоящий editor/player Forward+ QA PASS.
-   Авторские стартовые комплекты и MOVE/JUMP/knockback/wet modifiers обуви остаются
-   содержанием/правилами следующих срезов; пользовательская приёмка OPEN.
+   Единый раздел «Старт игры» задаёт уровни 1–99, пять слотов каждого из четырёх
+   героев и общую сумку. Это одна canonical recipe, не Lab preset и не прогресс.
+   Применяется только при новой игре; XP 0, полные HP/MP через PartyState.
+   Надетые вещи выдаются отдельно от сумки. Save/reopen/Undo/Redo/Discard,
+   validation и обычный бой/result/fresh Load проверены; свои комплекты/UI OPEN.
+   Исходный старт сохранён: уровень 1, пустая экипировка, 20 монет.
+   MOVE/JUMP/knockback/wet modifiers обуви остаются следующими срезами.
 5. Эффекты и статусы: доступные операции и нужные правила длительности,
    модификаторов/повторного наложения/снятия через прежний resolver. Новая
    механика требует отдельной поддерживаемой операции, не одной UI-карточки.
@@ -241,6 +252,27 @@ preview/commit остаются owners. Граф нужен для ветвле�
    list; отсутствующие IDs не пропадают молча. Native Undo/Discard/Save/reopen,
    shared refs/order/UID и новый приём → новый боец → grid preview/commit PASS.
    Forward+ constructor/steps/assignment QA PASS; авторская приёмка OPEN.
+   Проверяемые условия статусов, HP/MP и экипировки реализованы: исполнитель/цель должен
+   иметь/не иметь статус, либо HP/MP ≥/≤ порогу в очках/процентах максимума.
+   Проценты сравниваются точно без округления; максимум 0 блокирует процентное
+   условие с объяснением, для такого бойца остаются очки. Все правила соединены «И».
+   MP/HP проверяются до стоимости/эффектов; снижение MP после оплаты и рост HP
+   после лечения не отменяют допустимое действие. Именованные
+   строки поддерживают Add/Remove/Undo/Redo/Save/reopen, предотвращают повторы
+   и противоречия. Для цели-клетки доступны только условия исполнителя.
+   Экипировка: надет конкретный предмет в любом подходящем или выбранном слоте,
+   либо один из пяти слотов занят/пуст. Предмет в сумке не выполняет условие.
+   Именованные pickers связаны с общей библиотекой предметов; saved rows
+   редактируются/удаляются с Undo, missing/incompatible IDs остаются исправимыми.
+   Проверяются несовместимые предмет/слот, empty/occupied, разные предметы в одном
+   слоте и невозможный набор предметов; SELF объединяет actor/target правила.
+   Данные принадлежат Action Resource; eligible/preview/commit/подход/ИИ и
+   объяснение недоступности используют один stateless conditions leaf.
+   Старые приёмы с пустыми списками сохраняют поведение; authored записи не
+   переписаны. Targeted/15 regressions/native editor/полный цикл с новым
+   saved статусом/числовым условием/надетым оружием PASS; свои условия/мышь/narrow/125% OPEN.
+   OR и независимые stacks не входят в этот срез. Стартовые комплекты и
+   свойства обуви принадлежат этапу 4; gear predicates используют готовую экипировку.
 7. Бойцы, встречи и награды: состав, AI/loot, поле/арена/расстановка и возврат;
    arena-декор не заменяет Battlefield owner.
    Реализованы именованные AI/loot/field/arena pickers, ordered roster с фильтром
@@ -264,7 +296,32 @@ preview/commit остаются owners. Граф нужен для ветвле�
    Actual editor launch и Forward+ battle/result/Retry, unchanged progress/saves,
    normal transition/defeat/save regressions PASS; пользовательская приёмка OPEN.
    Тестирует saved content, не draft и не пользовательскую сумку/прокачку.
-   Используется общая 3D сцена Lab; декоративный arena_scene отдельно не заменён.
+   Настройки тестового отряда готовы: для каждого героя сохранённой встречи
+   можно включить уровень/пять слотов, видеть рассчитанные характеристики и
+   выбрать расходники. Состав встречи сохраняется; выключенные герои остаются
+   по карточкам без пересчёта. Расчёт принадлежит Party/Equipment, в том числе
+   для новой native hero card; игровой roster/save schema не расширены.
+   Local Undo/Redo/Reset/Cancel не затрагивают черновик. Последний запущенный
+   комплект хранится только в editor session; Retry возвращает его исходную
+   сумку и полный HP/MP. Именованные локальные наборы добавлены: Save new,
+   Update/rename, Load, Delete с подтверждением/возвратом. Они сохраняют opt-in
+   level/five slots/bag между запусками редактора, отдельно от gameplay saves.
+   Один набор подходит встречам с тем же составом героев, независимо от порядка;
+   состав встречи не меняется. Load входит в local Undo/Redo; Cancel не пишет
+   наборы, явные сохранения остаются. Fresh catalogs/validation и stale file guards
+   защищают запуск/перезапись. Cold Save→new process Load→Forward+ battle/Retry и
+   focused native editor popup/recreated dialog/actual child launch PASS.
+   Default/custom runtime и native editor launch PASS;
+   ощущение управления, narrow/125% и authored gameplay cycle OPEN.
+   Выбранная saved arena_scene подключена к игре и библиотечному тесту: оболочка Lab
+   сохраняет HUD/lifecycle, арена — прежний World projection, декор/свет/камеру.
+   Battlefield встречи назначается до _ready; preview-поле арены его не заменяет.
+   Совместимость наследованной арены проверяется без её запуска. Default/custom
+   setup, camera picking, 2D/3D/Retry и native Lab regressions PASS; ручная приёмка
+   окружения/камеры OPEN. Обычный переход из карты использует тот же installer;
+   selected decor/light/camera/field, defeat Retry/autosave Load/re-entry и
+   полный victory/rewards once/return/save/fresh Load cycle PASS. Standalone Lab
+   без authored встречи сохраняет default Arena.
    Общая «Проверка библиотеки» проверяет saved native файлы независимо от dirty
    editor cache: ID/дубли, файловые и каталожные ссылки, существующие validators
    и варианты enum. Иконки/цепочки исхода охвачены только по ID/зависимостям.
@@ -272,8 +329,21 @@ preview/commit остаются owners. Граф нужен для ветвле�
    dirty draft защищён. Автоматических исправлений нет. Текущая библиотека:
    71 запись, 0 проблем; это не игровая или балансовая приёмка. Negative fixtures,
    no-writes/cache isolation и настоящий Forward+ navigation проверены.
-   Full authored create/save/use/result/load, live input/narrow/125% и выбор
-   следующего расширения остаются gates, не автоматически выполненными этапами.
+   Сквозной автоматический cycle готов: отдельный native editor создаёт 10
+   связанных записей и назначает новый приём Мире, сохраняет/переоткрывает;
+   отдельная обычная игра открывает выбранную арену через map action adapter,
+   проверяет defeat Retry/Load и использует оружие/расходник/статус/приём/ИИ, побеждает
+   через Combat selection/commit, применяет XP/лут один раз и Save/Load меню;
+   третий процесс восстанавливает данные с диска и блокирует повторную награду.
+   Исходные карты/Resources/saves не используются; default field Create исправлен.
+   Это synthetic content acceptance, не ручная авторская или балансовая приёмка.
+   Publication exit воспроизведён коротким native gate: лишний background full
+   scan конфликтовал с Save/Undo/delete. Общая Filesystem queue теперь адресно
+   обновляет изменённую запись; прежние cache/UID/Resources сохраняются. Rapid/
+   sequential native lifecycle + FileSystem/cache/UID, полный editor и full cycle
+   PASS. Точный C++ frame без symbols/dump не установлен; это проверка данного
+   trigger, не всех native/GPU сценариев. Authored Save/Undo/Redo/reopen,
+   live input/narrow/125% и свои saves OPEN. Owners/evidence — Technical Handoff.
 
 Внешние ориентиры: [RPG Maker MZ Database](https://rpgmakerofficial.com/product/MZ_help-en/01_08.html)
 (общая организация), [ORK schematics](https://orkframework.com/guide/ork4/ork4-documentation/ork4-features/schematics/)
@@ -293,6 +363,12 @@ UI принимается в настоящем Godot по EMBER_UI_PIPELINE; т
 Для этапа 6: [RPG Maker Skill Settings](https://rpgmakerofficial.com/product/MZ_help-en/01_08_03.html)
 — группировка цели, стоимости, действия и дополнительных эффектов. В Ember
 используются текущие поддерживаемые правила, без новой формулы или второго owner.
+Для условий: [Unreal FGameplayTagRequirements](https://dev.epicgames.com/documentation/unreal-engine/API/Plugins/GameplayAbilities/FGameplayTagRequirements?lang=en-US)
+— требуемый набор должен присутствовать, запрещённый отсутствовать. В Ember
+это правила собственных статусов с remaining turns > 0, без Gameplay Tags/framework.
+Для числовых условий: [ORK General Condition Templates](https://orkframework.com/guide/ork4/ork4-documentation/section-system/general-condition-templates/)
+— проверки состояния и примеры порога здоровья. Ember использует прежний общий
+resolver и собственные редактируемые пороги, без подключения внешнего framework.
 Для этапа 7: [RPG Maker Troop Settings](https://rpgmakerofficial.com/product/MZ_help-en/01_08_07.html)
 — список участников и отдельная проверка боя. В Ember точки принадлежат Battlefield,
 а тестовый запуск выбранной встречи остаётся следующим срезом.

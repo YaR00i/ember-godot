@@ -829,7 +829,11 @@ export boundary, retired references и physical G4/G5 требуют отдел�
   `addons/ember_import/ember_voxel_model_store.gd` — подготовка независимого объекта,
   publication source/prefab и guarded baseline.
 - `addons/ember_import/ember_editor_filesystem.gd` — общий editor-only adapter
-  для filesystem refresh после публикации; он не владеет source data.
+  для filesystem refresh после публикации; он не владеет source data. `request_file`
+  объединяет normalized res:// paths и вызывает native update_file только после
+  quiet deadline, вне import/scan и weak scan leases. Полный/source scan имеет
+  приоритет над адресными updates; callback requests не теряются. Text Resources
+  игровых систем не запускают background scan всего проекта при каждом Save/Undo.
 
 Перед добавлением нового editor owner сначала искать существующие Canvas,
 generation, placement, publication и scene-authoring пути.
@@ -1006,6 +1010,24 @@ Save v2:
 
 - `ember_game_systems_catalog.gd` — editor-only read projection существующих
   item/combat catalogs и Battlefield Resources; не новый runtime catalog/schema.
+  `saved_record` и `incoming_links(..., Store.SPECS)` читают exact native paths
+  с CACHE_MODE_IGNORE, не меняя dirty source/cache. Saved consumers индексируются
+  по пути, одинаковые ID/имена не схлопываются. Семантические relations и legacy
+  static dependency/quoted-ID scan объединены в одну строку на файл; confirmed
+  direct/file refs отличаются от candidate text matches. Item's reverse loot
+  relations не считаются incoming consumers. Scan только по explicit Open/Refresh,
+  фильтр работает локально. Старый conservative `incoming` для Delete не менялся.
+- `ember_game_systems_usage_panel.gd` — bounded read-only native Tree/search/detail,
+  double-click/Open, FileSystem и Refresh. Metadata — module/id/path/saved SHA,
+  не сериализуется в gameplay data. Workspace проверяет SHA/exists/type/ID перед
+  переходом; stale/deleted rows требуют Refresh, dirty draft остаётся открытым.
+  `select_module(..., preferred_path)` + `_selected_path` выбирают exact record
+  даже при duplicate ID/filename mismatch, не обнуляют чужой dirty cache. Деталь
+  читает saved record, последующий draft остаётся под прежними live-source/path
+  guards. Side list selection/dirty Cancel/pending navigation сохраняют path.
+  Back возвращает исходную запись/category/search, переход прокручивает выбранную
+  строку и верх карточки. FileSystem route сохраняет library/draft и закрывает
+  popup. Publication даёт явный stale feedback, без automatic project rescan.
 - `ember_game_systems_workspace.gd` — общий browser/search/detail/links/commands.
   Один раздел item с фильтрами; route equipment — alias item + equipment filter,
   не второй экран/каталог. Create учитывает тип фильтра, Save сменившего тип
@@ -1020,7 +1042,10 @@ Save v2:
   Resources/ItemStore; не runtime owner/schema. clone использует Godot
   duplicate_deep(INTERNAL): встроенные rows/arrays независимы, external refs общие.
   Save сохраняет UID, Undo/Redo восстанавливают точные bytes; CACHE_MODE_REPLACE
-  обновляет published resource, catalog refresh — derived lookup. Delete сохраняет
+  обновляет published resource, catalog refresh — derived lookup. `_sync` передаёт
+  изменённый path общей Filesystem.request_file; `_on_published` обновляет только
+  UI/catalog, без дополнительного full scan. Native ResourceSaver также вызывает
+  EditorFileSystem.update_file. Delete сохраняет
   backup в user://ember-editor-resource-backups и проверяет прямые refs/quoted IDs.
 - `ember_game_systems_draft_editor.gd` — нативные controls по существующей metadata;
   предметы используют публичный setup_document/document_changed прежнего
@@ -1037,7 +1062,8 @@ Save v2:
   Effect steps — ordered shared Resource refs с descriptions и duplicate guard;
   Unit action_ids — ordered named picker, missing IDs доступны для удаления.
   Old queued form игнорирует session.changed чужого draft; publisher/Undo owners
-  прежние. UI не меняет Resource schema, боевую математику или authored loadouts.
+  прежние. Общие формы сохраняют authored loadouts; отдельное расширение Action
+  status predicates и его schema описано ниже.
   Unit/AI/Loot/Encounter формы и карточки читают behavior_summary существующих
   Resources. ИИ задаётся stable ID; loot/field/arena — прежними shared refs.
   Каталожные pickers сохраняют текущие external/inline refs и missing IDs;
@@ -1049,20 +1075,117 @@ Save v2:
   numeric history объединяется по row/key, не затрагивая shared table source.
   Encounter validation допускает только два существующих outcome enums.
   Unit/AI/result/save owners и распределение XP/loot не менялись.
+- `tools/run_game_systems_tests.py --cycle` — сквозной author/play/fresh-load gate.
+  `editor_test_game_systems_cycle.gd` использует настоящий plugin, Create dialog,
+  typed forms/pickers и Save button; Save/reopen/Discard/field Undo проверены.
+  `test_game_systems_cycle.gd` запускает обычный Transition/Lab/Result в новом
+  процессе: native selection handlers/Combat.commit, shared equipment/status/
+  effect/action/AI/loot, double Continue, menu Save/Load. Третий процесс читает
+  те же private saves через normal autoload, затем native Load; сравниваются
+  party/HP/MP/XP/5 slots/inventory/flags/group/strategy/chests/shop state и XZ.
+  Completion flag не допускает повторных наград. Fixture задаёт identities и
+  saved hash/UID evidence; native test-map alias регистрируется до cold autoload,
+  чтобы реальная destination validation видела его. Resources заморожены между
+  фазами; originals восстановлены после теста, рабочие author hashes неизменны.
+  Runtime QA windowed 1600×900/30 FPS, отдельный user dir на весь тестовый цикл.
+  `Store.blank(field)` теперь заполняет typed Array[Vector2i] через assign:
+  прежняя generic Resource assignment обычного Array падала при Create с нуля.
+  Размеры/стартовые клетки/schema не изменены; full-cycle/operations/navigation PASS.
+- `tools/run_game_systems_tests.py --stability` — regression для native publication
+  lifetime. Прежний короткий Save/Undo/Redo/reopen/delete воспроизвёл 0xC0000005
+  на втором Save; Windows debugger подтвердил invalid read без SCRIPT ERROR.
+  В обычном baseline также были get_dependencies errors: full scan читал записи
+  во время Undo/delete. Адресное update_file при прежних cache/forms прошло 24
+  цикла без AV/errors. Убран запускавший эту комбинацию full scan библиотеки;
+  pending index updates принадлежат прежней общей Filesystem queue, файлы
+  записываются синхронно, CACHE_MODE_REPLACE/UID/schema сохраняются.
+  Постоянный native gate чередует быстрые и последовательные Save/Undo/Redo/
+  reopen/edit/delete, проверяет FileSystem presence/absence, точные bytes/UID,
+  held cached Resource values и отсутствие лишних full scans. 12 циклов PASS;
+  fake queue проверяет busy/coalescing/source/full priority и reentrant callbacks.
+  Исходные полные --editor и --cycle после исправления PASS; live author data/
+  cache/saves не используются. Логи Temp/ember-game-systems-stability-rapid-fixed.log,
+  ember-game-systems-editor-stability-fixed.log, ember-game-systems-cycle-stability-fixed.log.
+  Debug evidence — Temp/ember-editor-crash-20261012 (AV code/address, baseline/
+  variant logs). Полный dump получить не удалось; точный C++ frame не установлен.
+  Исправлен воспроизводимый publication trigger, не доказана стабильность всех
+  native/GPU сценариев. Ручные обычные Save/Undo/Redo/reopen остаются OPEN.
+  Native reference: https://docs.godotengine.org/en/stable/classes/class_editorfilesystem.html#class-editorfilesystem-method-update-file;
+  Godot 4.7.2 EditorNode::_resource_saved → update_file, а update_files удаляет
+  index/UID для отсутствующего файла; renderer/importer и scene save owner прежние.
+- `ember_game_systems_lab_setup_dialog.gd` — native настройки теста и локальные
+  именованные наборы. Roster из saved Encounter; individual opt-in level/five
+  slots и shared consumable bag. Load — одна local Undo/Redo команда; Cancel
+  отбрасывает transient edits, explicit preset writes остаются. Launch context
+  по пути встречи помнится только в workspace session; наборы — отдельно на диске.
+  Save new/Update с rename, exact preset ID, Load, Delete confirmation/undo delete;
+  наборы фильтруются по отсортированному составу героев, не по встрече/порядку.
+  Numeric/picker input сохраняет controls/focus и cached catalogs; Load/reopen
+  читает свежие каталоги. Missing items видимы для исправления, launch/save blocked.
+  Размер scroll измеряется по native OK row/theme/wrapped labels; body/feedback
+  не закрывают OK/Cancel. Forward+ screenshot/geometry gate; manual 125% OPEN.
+- `ember_game_systems_lab_preset_store.gd` — единственный editor preference IO
+  owner наборов: user://ember-library-lab/presets.json, format 1, records с ID/name/
+  sorted heroes/setup. Не gameplay Resource, не initial loadout или save schema.
+  Envelope/shape/duplicate IDs/names/size limits проверяются без catalog deletion;
+  при Save существующий Setup.prepare заново валидирует items/levels/slots/counts.
+  SHA expected-file guards и publication revision защищают stale updates/undo
+  после чужого no-op Save. Staged bytes проверяются; Windows source сначала
+  сохраняется в .previous, rollback/recover missing main без потери old bytes.
+  Corrupt main не переписывается. Last delete можно вернуть до следующей записи;
+  это explicit preference operation, не author/global publication Undo owner.
+  --presets: три свежих процесса write/reopen/private battle; --presets-editor:
+  focused native forms/popup/Save/recreated dialog/Load/real adapter child PASS.
+- `scripts/prototypes/ember_combat_lab_setup.gd` — чистый transient test adapter.
+  Проверяет roster, whole level 1..99, exact five slots/hero eligibility, native
+  consumables/counts/stack cap и existing ItemStore validator. PartyState
+  `derived_stats_for_unit`/`project_combat_member` — общий расчёт/проекция для
+  campaign и saved hero cards; campaign HERO_IDS/normalize/save не менялись.
+  `normalized_input` канонизирует проверенные JSON whole level/counts в int:
+  loaded presets/native controls/Undo сравнивают одинаковый input. Payload version
+  и gameplay schema прежние. Default без overrides оставляет authored stats без пересчёта; opt-in начинает
+  с полных HP/MP/нулевого XP. Combat остаётся единственным resolver.
 - `ember_game_systems_lab_launcher.gd` — editor process adapter: saved native
   Encounter path → OS.create_process прежнего combat_lab.tscn, без project settings
   или author writes. Одно отслеживаемое окно, 1600×900/30 FPS, отдельный log.
   Workspace не запускает dirty draft; preflight валидирует saved record, runtime
   повторяет проверку. Marker EMBER_LIBRARY_LAB_READY подтверждает consumed ID.
+  Optional setup передаётся временным versioned JSON под user://ember-library-lab/
+  requests через --ember-library-setup=<absolute path>, без command-line JSON.
+  Native root/normalized path, 128 KiB/version/encounter identity, duplicate/orphan
+  args и настройки проверяются снова runtime; consumed request удаляется Lab.
   `EmberCombatTransition` парсит единственный --ember-library-encounter=res://...
-  под native encounters root; normal transition/finish в test mode запрещены.
+  под native encounters root; любой setup flag также включает isolation до saves.
+  Normal transition/finish в test mode запрещены.
   `ExploreState._ready` до чтения saves отключает persistence/restore и назначает
   process-private paths; Lab не берёт party/inventory/strategy из игрового save.
+  Test projection применяется только к opt-in heroes; private inventory snapshot
+  задаёт стартовую bag, Retry восстанавливает неизменный setup и исходные counts.
   `_library_test` — process/UI context, не Resource/save schema. Same Lab/resolver/
   Result считают бой/награду. Test outcome предлагает Retry/Close, скрывает Load,
   не применяет counters/XP/items/scripts и не возвращается на карту. Нормальный
-  игровой режим сохраняет переход/поражение/reward path. Общая Lab 3D сцена
-  проецирует выбранное Battlefield; декоративный arena_scene не подставляется.
+  игровой режим сохраняет переход/поражение/reward path. `combat_lab.tscn` —
+  Node3D shell с отдельными Arena и CombatHUDLayer. `_install_encounter_arena`
+  после завершения child-ready traversal, до UI/state, заменяет default Arena
+  выбранной saved arena_scene; Battlefield встречи назначается перед add_child.
+  Корень — прежний EmberCombatGrid3DWorld или его наследник; renderer/physics/
+  camera/input остаются прежними. Декор/свет/камера сохраняются, семантическое
+  поле арены не меняет encounter field. Активируется CameraRig/CombatCamera3D:
+  дополнительная камера декора не подменяет rendering/picking. Retry сохраняет
+  один экземпляр арены;
+  2D скрывает весь её 3D root. Installer общий для ordinary transition и library
+  test; standalone Lab без authored encounter сохраняет default Arena. Transition
+  до смены сцены валидирует saved encounter/arena; после consume HUD назначает
+  encounter field до Arena ready, затем подключает сигналы и создаёт battle state.
+  Retry не инстанцирует арену повторно; defeat Load освобождает весь shell и lock,
+  re-entry создаёт новую selected arena. Награды/return/save принадлежат прежнему
+  Transition/ExploreState; format Resources/saves и Combat resolver не менялись.
+  `EmberEncounterResource.arena_validation_errors` проверяет script ancestry и
+  обязательные typed node paths через SceneState, включая inherited/instanced
+  bases; validation не запускает author _init/_ready. Это existing Resource
+  validator, не новый scene/schema owner. Save/launch/checker используют его.
+  Неподходящая/пустая сцена блокируется; native --lab/--arena и arena picker
+  Undo/Redo/Save/reopen PASS; ручное окружение/камера/narrow/125% OPEN.
 - `ember_game_systems_library_check.gd` — read-only SceneTree utility: raw saved
   .tres paths из Store.SPECS + icon/story_action identities, fresh Resource loads.
   ID namespaces раздельны; дубли не схлопываются каталогом. Existing Resource/
@@ -1080,8 +1203,103 @@ Save v2:
   `ember_game_systems_check_panel.gd` — native report/search/detail/repeat, saved
   scope и stale reminder. Exact path → прежний Inspector route или FileSystemDock;
   ID alias не используется, dirty draft блокирует переход. Workspace не reloads
-  live catalogs при проверке. Current saved library: 71 records / 0 issues;
+  live catalogs при проверке. Current saved library: 72 records / 0 issues;
   malformed fixtures и native navigation QA проверены, user/narrow/125% OPEN.
+- `EmberGameStartResource` / `content/game_start/default.tres` — одна recipe
+  для новой игры: `hero_levels`, `hero_equipment`, `inventory`. ID default;
+  отсутствующий герой = level 1 / пустые пять слотов, bag по умолчанию 20 coin.
+  Fixed HERO_IDS/Equipment.SLOTS не меняются; XP 0, полные HP/MP рассчитывает
+  PartyState. Надетые вещи — отдельные экземпляры от указанных в общей сумке.
+  Validation проверяет целые уровни 1–99, IDs героев/предметов, exact five slots,
+  Item/Equipment совместимость и allowedHeroIds, положительные целые bag counts
+  до stackMax. Пустая сумка легальна. Author validation читает только referenced
+  Items fresh; UI держит view snapshot вариантов, не gameplay cache/owner.
+  `prepare()` строит deep-isolated party/bag через PartyState без мутации config.
+  Только `ExploreState.reset_new_game()` применяет полностью проверенную recipe;
+  при ошибке возвращает false и сохраняет весь прежний live progress.
+  Если boot не смог загрузить save и recipe отсутствует/невалидна, создаётся
+  нейтральная временная сессия с warning и persistence_enabled=false: существующие
+  файлы saves не перезаписываются. PartyState.new_game/normalize и load/migration
+  остаются нейтральными и не применяют authored старт к загруженным данным.
+  Save v2 schema прежняя. Runtime read учитывает exported Resource remaps.
+  Common Catalog/Store/Session: module start, singleton Create/Copy/Delete
+  заблокированы в UI/commands/session; обычные Save/global publication Undo/UID.
+  `ember_game_start_editor.gd` — четыре native hero tabs, level/compatible gear,
+  текущие derived HP/MP/str/def/speed и общий bag с item/count/Add/Remove.
+  Numeric input copy-on-edit/field merge, без пересборки всей формы; UI Undo
+  rebuild принадлежит общему DraftEditor. Item/Unit links идут в «Где используется»
+  и saved checker, включая malformed dictionaries без crash.
+  --start/--start-editor и расширенный --cycle проверяют рецепт → новый runtime →
+  ordinary combat/result/menu Save → fresh Load, без выдачи тестового оружия кодом.
+  --operations/--check/--usage, 15 regressions, шесть party и четыре interaction
+  gates PASS; clean checker 72 records/0 issues до malformed fixtures.
+  Исходный authored default сохраняет прежнее поведение. Свои старты, мышь,
+  узкое окно/125% и игровая приёмка OPEN; сохранения пользователя gates не читают.
+- `EmberCombatActionResource` владеет четырьмя PackedStringArray:
+  actor/target_required/forbidden_status_ids (полные имена в Resource), defaults
+  empty, и embedded `value_conditions: Array[Dictionary]`, default empty.
+  Числовая row: subject actor/target, stat hp/mp, comparison gte/lte, unit
+  points/percent, value int 0..1_000_000 points или 0..100 percent; пять exact keys.
+  `equipment_conditions: Array[Dictionary]`, default empty: четыре exact String
+  keys subject(actor/target), mode(item/occupied/empty), slot, item_id.
+  Slot — canonical Equipment.SLOTS, или пустая строка «любой» только для item;
+  item_id непустой только для item. ItemCatalog/Equipment остаются владельцами
+  идентичности предметов и совместимости пяти слотов. Items в bag не учитываются.
+  Отсутствующая equipment у unarmed unit означает пустые слоты; malformed shape
+  не проходит predicate. Occupied — непустой ID в snapshot; точный item дополнительно
+  проверяет совместимость со слотом через текущий catalog/Equipment.slots_for_item.
+  Gear validation проверяет shape/IDs/slots/duplicates/CELL и SELF merge, empty
+  против occupied/item, разные items в одном slot. Any-item requirements проходят
+  ограниченный matching пяти слотов, включая два weapons/три разных accessories
+  и fixed-slot ограничения. Actor/target независимо до SELF merge.
+  Runtime validation использует check_item_settings=false: IDs проверяются по
+  native directory/remaps, без fresh-load всех referenced Resources на каждый
+  кандидат; metadata читается при совпадении надетого ID. Author/checker validation
+  по умолчанию читает ItemCatalog fresh и проверяет совместимость до публикации.
+  Отдельного Resource/predicate registry/runtime owner нет. Projection
+  `applicationConditions`/`application_conditions()` сохраняет snake_case keys;
+  вложенные rows копируются глубоко. Signature,
+  validation и behavior summary включают их. `ember_combat_action_conditions.gd`
+  — stateless leaf: AND присутствия/отсутствия через StatusRules.has (turns > 0),
+  unknown/duplicates/conflicts/CELL target и SELF cross-contradiction validation.
+  Numeric validation отсекает malformed/unknown/duplicates и несовместимые bounds
+  в одной мере; SELF объединяет actor/target bounds. Mixed points/percent могут
+  зависеть от конкретного max; доступность проверяется на реальном бойце.
+  Точное сравнение percent: current*100 ≥/≤ threshold*maximum, без округления.
+  Max <= 0/не int блокирует percent с причиной; points проверяют current независимо
+  от max. Все predicates проверяются на pre-cost/pre-effect snapshot, включая
+  SELF healing/MP cost. Состояние игрока/цели после effects не отменяет действие.
+  Terrain wet tags не означают активный unit status. Проверяется исполнитель
+  и выбранная основная цель до effects; вторичные/соседние получатели эффектов
+  не становятся отдельными predicate targets. CELL допускает только actor rules.
+  CombatPrototype.action_condition_reason фильтрует/поясняет условия вместе с
+  eligible/valid IDs/cells, проверяет
+  preview и повторно commit; Grid/AI/HUD используют прежние общие paths.
+  Preview optional int actionConditionsHash отказывает изменённым правилам;
+  даже без hash commit заново проверяет текущие predicates. Snapshot/save schema
+  прежние, Result schema расширена optional guard. Item и synthetic held commands
+  остаются без predicates; отпускание уже поднятой цели не блокируется новыми
+  требованиями исходного lift action. Empty defaults сохраняют старый контент.
+  Common draft builder: именованные subject/presence/status → Add и removable
+  строки; numeric builder subject/stat/unit + comparison/threshold/Add, saved rows
+  напрямую меняют threshold/comparison/unit с Undo, Delete/Discard прежние.
+  Numeric input copy-on-edit, history key row/value; malformed rows остаются
+  читаемыми/removable. Повторы/противоречия блокируют Add/Save, несовместимые saved
+  IDs/target rows не скрываются. Gear rows меняют subject/mode/slot/item, copy-on-edit,
+  без второго draft/history owner. Mode→occupied/empty явно очищает item_id и
+  задаёт weapon, если прежний slot был any; один Undo возвращает целую row.
+  Несовместимый/отсутствующий item остаётся в picker и блокирует Save; malformed
+  saved row можно убрать. CELL actor-only общий для всех трёх видов rules.
+  Catalog.relations/incoming_links связывают условия со статусами и предметами;
+  saved checker проверяет неоднозначные gear item refs, conservative Delete guard
+  сохранён. --conditions/--gear-conditions/full --editor/15 --regressions и --cycle
+  с saved status/numeric/gear predicates в трёх процессах PASS.
+  Native form/width/screenshot проверены; manual свои условия/input/narrow/125%
+  OPEN. OR не реализован; стартовые комплекты описаны выше, свойства обуви позже.
+  Первый полный --editor не получил ready/log от Lab child; последовательный
+  повтор без изменения launcher PASS, причина первого запуска не установлена.
+  Evidence — Migration Plan; это не гарантия всех launch/native/GPU сценариев.
+  Авторский контент не переписан.
 - `EmberCombatStatusResource` владеет default_duration/reapply/max_duration,
   power_bonus/outgoing_damage_percent/incoming_damage_percent/remove_on_damage.
   Neutral defaults сохраняют baseline. `StatusRules` исполняет общий повтор,
@@ -1325,7 +1543,8 @@ Native catalogs — основной путь. Оставшиеся `EmberPack` 
 ## Combat Lab
 
 Battlefield остаётся dense: текущая лабораторная нагрузка не обосновывает смену
-представления.
+представления. Lab shell/выбранная тестовая arena_scene и проверки совместимости —
+«Общие игровые системы» выше; World projection owner не изменён.
 
 Существующий боевой baseline включает:
 - 10×8 и 16×12 fields;

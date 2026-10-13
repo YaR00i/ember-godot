@@ -8,6 +8,21 @@ equipment route как фильтр item, action → прежний combat edito
 Lab → existing scene, existing ItemEditor close и unsaved dialogue guard PASS.
 Frozen content/scenes/material hashes проверяются до/после; реальных saves/JOI нет.
 
+`python tools/run_game_systems_tests.py --usage` — saved native fixtures и incoming
+navigation. Два файла с одинаковыми ID/именами, dirty cached consumer без связи,
+informational ID в action text, внешний script и Resource dependency. Подтверждены
+semantic/file refs и отдельные text candidates; one row/file, no cache mutation.
+Actual usage button → filter → double-click → exact source path → Back с исходным
+поиском. Empty filter не оставляет активный Open. Dirty draft не теряется;
+stale saved SHA/deleted source не открывают ID alias, Refresh обновляет names/hash
+и разблокирует переход. External FileSystem signal сохраняет выбранную запись.
+Прежний conservative Delete guard остаётся. Frozen author data и no-writes PASS.
+`--editor` дополнительно проходит native same-ID consumer, Open/Back/dirty guard,
+bounded dialog, exact FileSystem route и прокрутку к началу destination card.
+Captures usage-links/usage-destination/usage-dirty. Связанные navigation/operations
+и existing editor Save/reopen/global Undo/plugin reload проверяются тем же runner.
+Manual mouse/keyboard, narrow/125% и dynamic links/saves остаются OPEN.
+
 `python tools/run_game_systems_tests.py --editor` — import только disposable,
 реальный Forward+ editor/Ember plugin. Все modules/width, links/editor route,
 item window close и фактические plugin disable/enable/remount/teardown PASS.
@@ -61,8 +76,37 @@ restart/delete, progression, combat items/result/prototype; fault gate прин�
 Save-publication map fixture теперь native user:// вместо retired agent_sandbox.
 Связанные retired destination/pause/transition/defeat, items/PCK/Graph и
 `python tools/test_vox_axes.py` PASS. 691 original author inputs неизменны.
-User acceptance/narrow/125% OPEN. Footwear MOVE/JUMP/knockback/wet modifiers и
-авторские стартовые комплекты ещё не реализованы.
+User acceptance/narrow/125% OPEN. Footwear MOVE/JUMP/knockback/wet modifiers
+ещё не реализованы.
+
+Старт игры: `python tools/run_game_systems_tests.py --start` — guarded native
+Resource/default fixture, уровни/пять слотов/allowedHeroIds/stackMax/missing IDs,
+пустая bag, malformed shape и singleton Create/Copy/Delete guard. Реальные form
+pickers/level/count/Add, локальные Undo/Redo/Discard, Save/reopen/UID и точный
+global publication Undo/Redo проверены. Нет записей до Save, deep recipe isolation,
+совместимость item/Unit incoming links. Прежний neutral default совпадает с
+PartyState.new_game: level1/empty gear/20 coin. Новый старт с Mira level7/weapon/
+armor/bag получает derived полные HP/MP, XP0 и battle projection, повторный reset
+не удваивает вещи. После изменения recipe Load возвращает прежние level/XP/HP/
+gear/bag/flags. Невалидный reset не меняет live progress; invalid boot создаёт
+нейтральную временную сессию с disabled persistence и понятным warning.
+`--start-editor` и общий `--editor` — настоящий plugin/Forward+ tabs/gear/bag,
+Save/reopen/Discard/publication Undo/Redo/UID, width/row-height guards и captures
+start-game/start-game-bag. Render проверяется по сохранённым снимкам.
+`--cycle` создаёт и сохраняет start в настоящей форме: надетый authored weapon,
+27 coin/3 authored potions. Новый процесс получает их через ExploreState startup;
+тест больше не выдаёт/экипирует оружие вручную. Ordinary battle/Retry/Load/победа/
+rewards once/menu Save и третий fresh Load сохраняют итог level2/bag4/flags.
+Author files frozen/restored. Clean saved checker: 72 records / 0 issues;
+invalid стартовые IDs/levels/dictionaries/item refs диагностируются в fixtures.
+Логи: Temp/ember-start-{start,editor,cycle,regressions,check,usage,operations,
+workspace,party,interactions}.log; user saves не используются. Capture:
+`C:/Users/novos/AppData/Roaming/EmberInteractionTests/game-systems-start-game-4616.png`
+и `game-systems-start-game-bag-4616.png`; оба визуально просмотрены.
+Manual OPEN: Игровые системы → Старт игры → вкладка героя/уровень/пять слотов →
+общая сумка → Undo/Redo/Save/reopen/Discard; своя новая игра/старый Load и бой.
+Проверить своё содержимое, input, узкое окно/125%. Записи не выбирать по скрытому
+Lab preset; этот раздел меняет только настоящую новую игру.
 
 Этап 5: `python tools/run_game_systems_tests.py --statuses` — новый native статус,
 apply/remove effects и composed action создаются через общий Store/Session.
@@ -98,6 +142,72 @@ Discard не меняет published MP. Новый Unit выбирает при�
 Переключение session не направляет changed в old queued form. Native Forward+
 и related operations/status/save/combat regressions PASS; manual UI gate OPEN.
 
+Этап 6, условия применения: `python tools/run_game_systems_tests.py --conditions`.
+Четыре списка actor/target required/forbidden: AND, positive remaining turns,
+unknown/duplicates/conflicts, SELF cross-conflict, CELL actor-only; wet terrain
+не заменяет unit status. Именованные UI selectors/Add/Remove, duplicate/conflict
+guard, исправление missing saved ID, несовместимая CELL запись остаётся доступна.
+Local Undo/Redo/Discard, Save/reopen и publication bytes/UID/Undo/Redo, status
+relations и confirmed incoming link PASS. Реальный Combat eligible/valid/preview/
+commit и Grid подход согласованы; при false condition нет movement/Defend/cost/
+turn. Pure preview, multi-status AND, multiple targets, SELF/CELL, AI и no-target
+reason проверены. Stale state, changed rules и malformed actionConditionsHash
+отклоняются; commit без hashes повторяет predicate check. Старый empty контент
+проходит --actions и 15 --regressions. Native --editor проверяет predicate
+controls/Undo/Redo/Save/reopen/1600×900 width; capture action-status-conditions.
+Numeric rows: actor/target HP/MP, ≥/≤, points/percent, exact integer thresholds.
+Malformed keys/enums/types/fractional/negative/>100%, duplicates, contradictory
+same-measure bounds и SELF merged conflict отсекаются. Смешанные меры оцениваются
+по конкретному максимуму бойца. Typed rows сохраняются/переоткрываются без float
+conversion; nested projection/draft edits изолированы. Add/remove, edit value/
+comparison/unit, numeric field merge Undo/Redo, Discard, publication bytes/UID
+и malformed saved row correction PASS. CELL несовместимые target rows видимы,
+Save блокируется. Exact boundary/30.69% не округляется; MP>=10 пропускает оплату
+2 MP до 8, SELF HP<=30% пропускает лечение 20→32/100. Numeric/status AND, stale
+state/rule hash и независимый commit predicate recheck, eligibility/approach/AI
+проверены. Max MP 0 блокирует percent с причиной, MP=0 points допускаются.
+--editor проверяет numeric controls/Undo/Redo/Save/reopen/width и capture
+action-value-conditions; длинная подпись вынесена над числовой строкой.
+--cycle создаёт actor forbidden frozen и HP>=1% через настоящую форму и Save;
+новый runtime process подтверждает saved rows, отказ по обоим видам условий и
+обычную победу/result/save; третий fresh Load сохраняет predicates/assignment/
+shared refs. Author inputs frozen. Логи: Temp/ember-value-conditions-{targeted,
+editor,regressions,cycle}.log.
+Manual OPEN: Игровые системы → Приёмы → копия/Редактировать → Проверяемые условия;
+потребовать Мокрый у цели, запретить Заморозку исполнителю, сохранить/переоткрыть,
+проверить объяснение в бою при появлении/исчезновении статуса, Undo/Redo/Discard.
+Добавить MP исполнителя ≥10 очков и HP цели ≤30%: проверить ровно 10/30%, ниже/
+выше границы, изменить числовую строку и меру, Undo/Redo/Save/reopen/Discard.
+Своё содержимое/мышь/клавиатура/узкое окно/125% не приняты автоматическими gates.
+OR и independent stacks остаются отдельными срезами.
+
+`python tools/run_game_systems_tests.py --gear-conditions` — отдельные guarded
+item/action fixtures, три AND-правила (надета туника, weapon occupied, shoes empty)
+вместе со статусом/MP. Saved pickers/Add/remove/редактирование row/Undo/Redo,
+missing-ID correction, CELL saved target removal, Save/reopen и exact bytes/UID
+publication Undo/Redo/Discard, deep projection isolation, confirmed item incoming
+link PASS. Five-slot compatibility, unknown/malformed rows, duplicates, empty
+против occupied/item, два разных weapons в any/exact slot, три accessories,
+совместимые два accessories и два одинаковых в разных slots, SELF merge проверены.
+Runtime bag-only отказ, any accessory2/exact accessory1, unarmed missing equipment,
+SELF и CELL actor rules, eligibility/preview/approach без fallback/cost/turn,
+pure/once-only commit и независимая проверка экипировки без stateHash, changed
+rule hash, status/MP AND, AI actor/target gear и no-target menu reason PASS.
+--editor проверяет тунику по имени, смену any→armor/Undo/Redo, shoes empty,
+Save/reopen/width; capture action-equipment-conditions после settled layout.
+Первый full --editor прошёл формы, но Lab child не дал ready/log; повторный
+последовательный full --editor PASS без изменения launcher. Лог первого отказа:
+Temp/ember-gear-conditions-editor-first.log; причина не установлена, gate запуска
+на своих данных остаётся ручным. Native --cycle сохраняет worn Fixture.WEAPON
+через настоящий picker, fresh runtime отвергает bag-only и проводит ordinary
+battle/result/Retry/Save, третий Load сохраняет gear row и assignment. Прежние
+--conditions и 15 --regressions PASS; --check/--usage проверяют общие ссылки.
+Author inputs frozen; логи Temp/ember-gear-conditions-{targeted,editor,regressions,
+previous,cycle,check,usage}.log. Manual OPEN: Приёмы → копия → Экипировка →
+надетый предмет/занятый или пустой слот → Save/reopen, Undo/Redo/Discard → бой;
+проверить исполнителя/цель и обе позиции аксессуара, отсутствие вещи и наличие
+только в сумке, объяснение отказа. Свои inputs/125%/narrow/launch ещё не приняты.
+
 Этап 7: `python tools/run_game_systems_tests.py --encounters` — new native loot
 с двумя item rows/chance/count, internal copy-on-edit, numeric Undo/Redo, invalid
 range/missing item refusal, exact publication bytes/UID, Save/reopen. New enemy
@@ -116,21 +226,140 @@ manual Save/Load/reward return и narrow/125% остаются открыты.
 
 Этап 8: `python tools/run_game_systems_tests.py --lab` — только disposable import,
 saved synthetic Encounter с Mira/Wisp и 9 XP, настоящий runtime process Forward+.
+Два запуска: default по карточкам/пустая bag и настройки Mira level 9/armor/herb 3.
 Autoload до чтения saves имеет persistence/restore off и private paths. Проверены
 request/path/duplicate-arg guards, native selected ID/roster, private party/inventory,
 victory/defeat/result/Retry, отсутствие gameplay Load/transition/reward application.
 Save/autosave не создают файлы; sentinel по default save path не меняется, private
 progress snapshot неизменен (сравнение исключает только timestamp savedAtMs).
-Captures library-lab-battle/victory/defeat. Исходные content/scenes/materials frozen.
+Настроенный запуск читает versioned private request, consumes файл, проверяет
+реальные stats/equipment/counts, Combat.preview/commit расходует одну траву и
+лечит; Retry возвращает полный HP/MP, level/equipment и три исходных расходника.
+Арена fixture наследует Thaw Keeper, содержит заметный marker и исходное другое
+поле; runtime обязан использовать selected scene/decor/camera и Battlefield встречи.
+Проверены active camera/ray picking при дополнительной current camera, произвольное
+имя decor node «script», 2D hide/3D restore, deployment и один экземпляр
+арены/HUD после Retry. Пустая/обычная 2D/3D сцена и missing core nodes блокируются;
+launcher отказывает invalid saved arena до OS.create_process. Derived-script
+fixture с _init file sentinel подтверждает отсутствие инстанцирования при validation.
+Captures library-lab-deployment/battle/victory/defeat; content/scenes/materials frozen.
+`--encounters` проверяет выбор другой арены, Undo/Redo и сохранение двух разных
+ссылок arena/field после reopen. `python tools/run_game_systems_tests.py --arena`
+запускает семь transition/defeat/Lab/arena/deployment/vertical camera/animation gates в
+disposable Forward+ 1600×900/30 FPS: shell paths обновлены, исходный fullscreen
+default проверяется до тестового windowed override; pair hover ждёт deferred
+drawer focus перед disabled help, picking ждёт actor presentation с deadline.
+Staged pose проверяется после достижения клетки, а не по короткому wall timer.
+Прежнее library-only включение в disposable baseline воспроизвело эти test races;
+исправлены только ожидания теста, assertions/игровое поведение сохранены.
+Headless не считается UI layout acceptance; native suite PASS, ручная camera/decor
+и свои сцены/narrow/125% OPEN. Normal transition использует selected arena тем же
+installer; standalone Lab без authored encounter сохраняет default Arena.
 Default navigation gate проверяет Lab button и refusal dirty draft. `--editor`
 создаёт saved encounter fixture и запускает его настоящим adapter: проверяет
-consumed ID в child log, duplicate-window guard и завершает только свой child.
+native setup controls/Undo/Redo/Cancel/reopen, remembered successful session setup,
+consumed ID/settings в child log, duplicate-window guard; завершает только свой child.
 Windows log проверяется также после закрытия child handle (active log может быть
-buffered/locked); default copy/cache/user saves не используются. Capture lab-launch.
+buffered/locked); waits используют wall-clock deadline, перед quit filesystem
+settles после удаления fixtures. Default copy/cache/user saves не используются.
+Captures lab-launch/lab-setup. Numeric edits не уничтожают focused controls.
 `--operations`, `--regressions`, `python -X utf8 tools/run_save_destination_tests.py`
 PASS — в том числе normal encounter return/reward once/defeat retry/save load.
-Manual authored launch/play/result/Retry/Close и полный save/use/result/load OPEN;
-тест пока saved-only, без персональной прокачки/сумки и декоративной смены арены.
+Manual authored launch/play/result/Retry/Close и свой save/use/result/load OPEN;
+Тест saved-only, со своей виртуальной прокачкой/сумкой, без user progress/save writes. Выбранная арена проверяется в --lab выше; session-only память
+последнего запуска дополнена именованными локальными наборами ниже.
+
+`python tools/run_game_systems_tests.py --lab-setup` — disposable native fixtures:
+custom saved hero с собственной базой, все пять slots/два аксессуара, shared
+Party formula parity, restrictions, unchanged defaults и detached inputs.
+Неверные hero/item/slot/level/count/type, legacy sixth slot, request identity/
+duplicate/orphan/path/corrupt/version/size отклоняются; dirty cached card не
+влияет на fresh setup. Native level/slot/count/hero controls, локальные Undo/Redo,
+Reset, Cancel/reopen и dirty authoring guard PASS. Workspace context не пишется
+в gameplay Resources/save. Manual mouse/keyboard/narrow/125% и authored cycle OPEN.
+
+`python tools/run_game_systems_tests.py --presets` — три процесса в отдельном
+user dir: Save→cold Load→Forward+ private Lab. CRUD/rename/duplicate name scoped
+by roster, exact ID, same roster across encounters/order, deep detached payload.
+Corrupt/version/type/oversize files не пишутся; stale Save/Delete/undo и no-op
+revision проверяются. Fault injection preserve/publish/rollback сохраняет old
+bytes, missing main читает .previous. Native controls Load Undo/Redo, Cancel,
+Delete confirm/cancel/restore; missing item остаётся в picker, save/launch blocked.
+Cold dialog emits loaded setup; third process получает level 9/armor/herb 3,
+uses herb and Retry restores исходные stats/equipment/counts. Preference bytes/
+progress snapshots неизменны в бою; сравнение исключает только savedAtMs.
+`--presets-editor` — focused actual Forward+ Ember plugin: named preset Save,
+новый экземпляр окна → select ID/Load → real adapter child consumed settings.
+Capture lab-presets; body/feedback не перекрывают native launch/cancel row.
+Frozen author inputs PASS; ручные свои наборы/мышь/narrow/125% OPEN.
+Publication 0xC0000005 диагностика и исправление — следующий --stability gate;
+последний full --editor после адресного filesystem update PASS, ручной gate OPEN.
+
+`python tools/run_game_systems_tests.py --stability` — guarded disposable native
+Forward+ editor, 12 cycles rapid/sequential Save/Undo/Redo/reopen/edit/delete.
+Нечётные cycles ждут index updates, чётные повторяют быстрый lifecycle прежнего
+repro; после каждого final delete native FileSystem должен убрать запись.
+Slow checkpoints проверяют native index presence/absence; cache values, UID и
+exact publication bytes проверяются в обоих режимах, full scan count не растёт.
+Headless queue gate проверяет file coalescing, busy import/scan, weak leases,
+source/full priority и request из callback, runtime no-EditorInterface effects.
+Прежний короткий loop воспроизвёл AV на втором Save; Windows invalid-read
+code/address сохранены в Temp/ember-editor-crash-20261012/driver-late.log.
+Baseline отдельно выдавал get_dependencies errors при изменении/удалении файла
+во время full scan. Probe с адресным update_file при прежних cache/forms —
+24 cycles без AV/errors; holding scans не падал до bounded timeout, PASS ему
+не присваивается. Отключение cache replace не доказано причиной/исправлением.
+Production fix сохраняет synchronous writes/cache/UID, убирает full scan из
+library published handler, передаёт path общей queue. Native API update_file
+восстанавливает/убирает index без background проекта scan; cache не отключается.
+Фиксированные slow и rapid gates, исходный full editor и full cycle PASS:
+Temp/ember-game-systems-stability-fixed.log, ember-game-systems-stability-rapid-fixed.log,
+ember-game-systems-editor-stability-fixed.log, ember-game-systems-cycle-stability-fixed.log.
+Author inputs frozen. Полный dump/точный C++ stack не получен; unrelated native/
+GPU stability этим gate не принимается. Ручные свои Save/Undo/Redo/reopen OPEN.
+
+`python tools/run_game_systems_tests.py --cycle` — полный автоматический цикл в
+disposable native проекте, три отдельных Forward+ процесса, максимум 30 FPS.
+Editor через общие Create/forms/pickers/Save создаёт weapon/consumable/status/
+effect/action/AI/loot/enemy/field/encounter и назначает новый приём существующей
+Mira. Проверены field Undo/Redo, Save/reopen values/UID/bytes/shared refs и Discard
+несохранённого MP. Encounter arena picker сохраняет другую inherited сцену с
+marker, авторскими CameraRig lens/pitch/light и дополнительной current decor camera.
+Normal map action adapter обязан открыть её, сохранить единственный HUD/World,
+назначить encounter field до ready, использовать правильную camera для picking,
+скрывать весь decor в 2D и возвращать в 3D. Реальный consumable расходуется перед
+forced terminal defeat; native Retry сохраняет Arena/HUD instance, восстанавливает
+units/HP/MP/equipment/deployment/bag и меняет seed без записи saves/progress.
+Второе поражение → native autosave Load → восстановленный XZ/progress/unlock →
+повторный вход снова открывает выбранную арену. Затем обычный победный путь.
+Исправлен реальный factory failure Create(field): untyped
+Array нельзя присвоить typed Array[Vector2i] через generic Resource; assign
+сохраняет тип и прежние клетки. Этот путь достигается именно Create без копии.
+Обычный Transition берёт saved Encounter, persistent party и inventory из
+тестового save owner. Native selection расходует новый potion, лечит 4 HP и
+платит action cost; новый приём платит MP и накладывает authored status, native
+AI совершает ходы. Победа получена Combat.commit, без console kill/HP=0 подмены.
+Result показывает 35 XP, level-up и гарантированный loot ×2. До Continue live
+progress неизменен; double Continue даёт уровень 2/XP5, flags/counters и итоговые
+4 potion один раз. Native menu Save/Load восстанавливает намеренно изменённое
+состояние, manual envelope v2 и SHA неизменны. Третий процесс (другой PID) читает
+private save при autoload, восстанавливает позицию, затем повторяет native menu
+Load и сравнивает party/HP/MP/XP/all5slots/inventory/flags/active group/strategy/
+chests/shop state/map/XZ. Completed encounter не запускается повторно; XP/loot
+не дублируются. Native fixture alias зарегистрирован до проверки destination.
+Сохранённые author resources/UID неизменны между фазами; temporary records и
+Mira assignment откатываются в sandbox, final content/scenes/materials frozen.
+Рабочие 691 author SHA совпали, настоящие авторские maps/saves не использованы.
+Captures author-weapon/action/encounter, deployment/defeat/defeat-loaded,
+battle/result/save/menu-loaded/fresh-loaded;
+result.json хранит save/map SHA и payload, manifest — Resource hash/UID. Последний
+полный цикл и связанные operations/navigation PASS; runtime captures 1600×900.
+Прежний native editor author exit также входил в публикационный сценарий;
+его исправление/ограничения — --stability выше. Последний full cycle после fix
+PASS: Temp/ember-game-systems-cycle-stability-fixed.log. Авторская mouse/keyboard
+приёмка, narrow/125%, свои карты/saves и декоративная смена arena остаются OPEN.
+Семь Forward+ regressions — Temp/ember-normal-arena-related-final.log PASS;
+15 save/combat/progression gates — Temp/ember-normal-arena-regressions.log PASS.
 
 Общая проверка библиотеки: `python tools/run_game_systems_tests.py --check` —
 disposable fixtures с duplicate ID в двух точных файлах, filename/envelope
@@ -150,6 +379,116 @@ roots + icon/story ID/dependencies, не full story validation, баланс и�
 gates остаются OPEN; green data report их не закрывает.
 
 ## Роли и текстуры компактной земли — ручная приёмка OPEN
+
+Проба объёмной фактуры: `test_cartoon_relief_study.gd` проверяет одинаковые
+материалы двух fixtures, реальное изменение высот stone/sand/soil, швы/нормали,
+точные mesh/collision triangles, physics/picking, Resource Save/Reopen и B
+туда/обратно без изменения источника. Вторая проба: реальные pockets,
+нормированные blend weights с GPU quantization, одинаковые веса на seam,
+dense/sectioned blend attrs, cache colour roundtrip, distinct blend policy,
+scene flag Save/Reopen и paint/Undo/Redo через соседнюю плитку PASS.
+`editor_test_cartoon_relief_study.gd`: isolated native editor blend flag/paint/
+Undo/Redo/Save/Reopen/Discard PASS.
+Native Forward+ до/после с фильтрованным PNG optical relief и regressions
+smooth/mesh/cache/WorldLook PASS; формы/переходы/near-far/ходьба/weak PC OPEN.
+Сцена — `compact_cartoon_relief_study`, прежние runtime/editor owners.
+
+Сгенерированный остров: `test_cartoon_generated_study.gd` проверяет крупную
+основу из existing generation job, неизменность input и каналов воды/подводного
+грунта, независимый surface seed, четыре роли, local offset bounds, Resource
+Save/Reopen/B и physics/picking. PASS, включая прежнюю relief regression после
+выноса общей математики в pure leaf. `editor_test_cartoon_generated_study.gd`
+повторно использует native fixture QA: blend flag/paint/Undo/Redo/Save/Reopen/
+Discard PASS. Новый остров/четырёхматериальные стыки/вода/ходьба/weak PC OPEN.
+`test_terrain_surface_generation.gd` закрывает legacyzero, strength/scale/seed,
+budget-independent immutable finishing snapshot, wet/outside/new-sections/cancel/
+validation, старые планы, три UI units и Plan Save/Reopen, smooth preview parity.
+`editor_test_terrain_surface_generation.gd`: stale preview, actual Apply without
+regeneration, one terrain Undo/Redo, Plan settings Save/Undo/Redo, scene reopen
+и Discard PASS. Export с surface params stripping PASS. По-прежнему OPEN:
+ручные вид/input/near-far/ходьба/weak PC, четырёхматериальные стыки и вода.
+
+Первый гладкий/мультяшный срез: `test_terrain_smooth_cartoon.gd` проверяет
+affine height, общие heights/normals на tile seam, dense/sectioned mesh, источник
+collision, floor/pick, navigation, style cache keys/UV2/пустой tile, brush halo,
+Undo/Redo, Resource и scene Save/Reopen, необязательную PNG и локальный Cancel.
+`editor_test_terrain_smooth_cartoon.gd` в disposable editor проверяет настоящие
+кисть/EditorUndoRedoManager/Save/Reopen/Discard, существующий выбор вида земли
+с Undo/Redo и PNG controls/Save/Reopen. Оба gate PASS; старые material/dock/mesh/
+projection/cache/light/look regressions PASS. Scene —
+`scenes/compact_cartoon_ground_study.tscn`; own view/near-far/края/берег, живые
+кисти и ходьба OPEN. Гладкий режим пока до262144 колонок и без ground LOD;
+32×32 блока — граница первого среза, а не performance acceptance.
+
+Адаптация прежних кистей: `test_terrain_smooth_tools.gd` — восемь compact tools,
+physical floor/pick, смена вида без изменения источника, material brush сохраняет
+coverings/water/holes, selected area/strides/quarter/half/dense-sectioned/Undo/Save.
+Native `editor_test_terrain_smooth_tools.gd` проверяет controls/press-release,
+материал, направление Down, one stroke Undo/Redo, style/Save/Reopen/Discard.
+Сценарии PASS; два shutdown 0xC0000005 после PASS, затем native clean exit;
+точный C++ frame/причина OPEN. Обычные voxel Surface, old brushes, WorldEditor,
+generator regressions PASS. Native-selector/live view/mouse/weak PC/objects,
+объёмный smooth вид OPEN. Bulk generator разделён: `test_terrain_generation_split`
+проверяет paint/cap/flow/wet/source/budget/cancel/validation, независимые действия
+и параметры, общую brush maths/Plan/UI. `editor_test_terrain_generation_split`
+проверяет detail и coverage exact preview/Apply, one Undo/Redo, stale preview,
+Plan settings Undo/Save/Reopen и Discard; PASS с clean exit. Художественный
+coverage view/ручной input/weak PC OPEN. Крупные зоны реализованы:
+`test_terrain_coverage_zones.gd` PASS — grass base/soil size+frequency/broad
+slope/actual-water distance, zero soil/sand, seed/budget/dense-section parity,
+source channels/detail/macros/legacy knobs independent. На flat24×16 edges:
+legacy12369→large442; это тест фрагментации, не художественная приёмка.
+Plan10 paint bitmaps: changed/same-colour stroke protection с одним Undo,
+explicit whole-selection protection/release, copy safety/rebase/roundtrip,
+legacy guard/cancel/limits/UI PASS. Старые Plan/composition/brush scale+
+overlap/generation split/surface generation/WorldEditor/smooth placement PASS.
+Native Forward+ `editor_test_terrain_coverage_zones.gd` PASS: real paint input,
+paint+locks atomic Undo/Redo, protect selection/Undo, profile/knob stale,
+protection-only stale refusal, exact preview/Apply, coverage Undo оставляет
+ручной мазок/защиту; отдельный detail не меняет covers/locks. Recipe control
+Save/Undo, Source+Plan10+locks Save/Reopen/Discard и clean exit PASS.
+Свои художественный вид/input/weak PC OPEN; старые authored assets не пересозданы.
+
+Локальная аномалия земли: `test_mountain_anomaly_study.gd` PASS на32×32м/18м
+горе, два пятна/8 tiles. Проверяет global seams и exact outside, промежуточные
+фазы0/25/50/75/100%, mesh/collision/shared-floor rays, неизменные coverage/Source,
+возврат к базе, runtime slider/три кнопки/play-pause и scene Save/Reopen.
+Native Forward+ clean exit PASS, фазовые кадры; max phase23,146мс после physics
+partition. Smooth cartoon/tools/shore/placement и generation split regressions
+PASS. Это тестовая сцена, без новых editor authoring commands/Undo или игровой
+схемы аномалии. Свои F6/вид/движение/ходьба/weak PC/большие площади OPEN;
+short bevel heightfield, навесы/отдельные кубы и ground LOD не реализованы.
+
+Общая форма fine16 / Plan11: `test_terrain_fine_land.gd` — точная выборка каждой
+колонки/высота1, отсутствие потери покраски, совпадение при разных бюджетах,
+граница выделения/cancel, массив repeat/off, смешанные старые/новые слои,
+version guard, UI defaults/roundtrip/stale, Apply/Undo/Redo/Save/Reopen.
+`capture_fine_land.gd` — native Forward+ однотонное/материальное сравнение,
+три облика того же Source, mesh/collision/field parity и точный возврат.
+Legacy generator/plan/composition/mountain/river/road/anomaly regression сохраняются.
+Авторская оценка силуэта/грязи переходов, реальный input/weak PC OPEN.
+
+Расширенный study64×48м: `test_meadow_anomaly_walk.gd` headless PASS — обычный
+smooth guard/явный study opt-in, гора сбоку/river+flow, прежний EmberPlayer,
+standing rise/fall и walk forward/reverse30/60/120Hz, diagonal/foothill edge,
+supported completion без stuck step, capsule contact/carry, ceiling pause/resume,
+Source/paint/water/flow invariance, scene Save/Reopen без runtime actor/progress.
+Native mound/continuous controller playback/ceiling PASS, clean exit;13 tiles,
+phase max54,138мс, не acceptance полного frame budget. Existing
+explore stepping (включая high wall/ceiling), camera-relative movement, old32m
+anomaly, smooth cartoon/placement, generation split и world look panel PASS.
+`test_smooth_uniform_material` PASS: exact attributes/field/collision, halo mix
+и empty palette fallback; uniform tile109мс против497мс, не whole-map benchmark.
+Manual F6/камера/input/вид/first build/weak PC OPEN; general large world/LOD,
+all actors dynamic support и jump через1м стены вне этого study.
+
+Гладкий берег обычной плоской воды: `test_terrain_smooth_shore.gd` — fractional
+ground-plane intersections, нулевая глубина контакта, source/ground collision,
+tile depth seams/dense-sectioned, dry depression/local levels, legacy/volume,
+smooth cache policy и LOD boundary PASS. Native surface-generation QA дополнительно
+сравнивает water preview/Apply arrays и точный water Undo/Redo; Save/Reopen/Discard
+PASS. Native Forward+ остров снят до/после. Свои берег/near-far/движение/weak PC,
+точный wet/contact в узкой derived полосе и volume/waterfall/swash OPEN.
 
 Боковые параметры + нижняя сетка (2026-10-07): `test_compact_material_dock.gd`
 PASS — 302 px/шрифт 20 px, видимая сетка/закреплённый Save, повтор/сворачивание,
@@ -670,6 +1009,16 @@ tombstones, fresh Save/Reopen, Discard/recovery и export strip через пр�
 UI 302 px: тип/поиск сохраняют скрытый выбор, смешанный набор/сводка/clear,
 clearance invalidates Apply, road/grove mode regression PASS. Plan/dock/exact
 placement/grove headless regressions PASS; terrain channels не расширялись.
+Smooth опора (2026-10-13): `test_terrain_smooth_placement.gd` PASS — grove/
+placement используют ту же physical поверхность, source и voxel0 сохранены;
+dense/sections/seed/budget, water, translated/rotated/scaled frame, style stale,
+limit/cancel, ручные props, Apply/Undo/Redo/Save/Reopen. Exact old/new float32
+field parity и old groups/eight brushes/generation split/shore PASS.
+`editor_test_terrain_smooth_placement.gd` Forward+ PASS: native tree grove
+support и четыре placement props; preview=Apply, stale style refusal,
+Undo/Redo/manual protection/Save/Reopen/Discard/source, clean exit.
+Own input/посадка/footprint и weak PC OPEN; пять probes не доказывают посадку
+любой сложной нижней геометрии. Ground/water source и Plan schema не расширены.
 `editor_test_terrain_plan_placement.gd` PASS в Forward+: один подготовленный
 24 м fixture/30 FPS, 10 props / tree+bush+rock. Камень опубликован прежним
 workshop transaction в QA copy; куст без recipe разрешён. Real rectangle,
@@ -687,7 +1036,27 @@ NVML/WDDM всей системы functional run: 2817,8 → 3813 MiB, max GPU 1
 Evidence — `user://ember_terrain_diagnostics/placement_20261008_13588/`.
 Авторские удобство/типы/интервалы/соседство/проход, реальные mixed карты и большой
 preview/Apply/память OPEN. Arbitrary gameplay assemblies/новые маски,
-количество/доли/кучность/паттерны не реализованы этим срезом.
+количество/доли/ряды остаются отложены; отдельный срез групп — ниже.
+
+Группы placement (2026-10-12): `test_terrain_plan_placement_groups.gd` проверяет
+повтор seed/budget, отличие реального planner от uniform, zero-strength точное
+совпадение, density endpoints, стабильные pose/variant общих кандидатов,
+maximum seed, invalid pattern/NaN/range, v8 recipe roundtrip, UI 302 px,
+invalidation strength/size/mode и отсутствие полей у старого UI/grove.
+Дельта групп: Apply=prepared pose/count и возврат исходной пустой сцены PASS;
+унаследованы mixed footprint/obstacles, caps, atomic Undo/Redo, protection,
+save/reopen/Discard/recovery/export strip. Legacy grove, plan и composition PASS.
+На QA-копии скриптовый native Forward+ 24 м проверил group recipe Save,
+size/strength stale, Preview=Apply, Undo/Redo/repeat, manual shift/off/on,
+Save/Reopen/Discard. 9 tree+bush props; F6 — 9 colliders, floor/движение PASS.
+Снимки dock с контролами и 3D просмотрены; mouse/input/художественная приёмка
+и большая населённая карта OPEN. Evidence и QA-script:
+`C:/Users/novos/Documents/Codex/2026-10-12/new-chat-2/outputs/ember-groups-verification.json`.
+Ручной сценарий: + Объекты → набор/плотность около 60–70% → Группами →
+кучность/размер → Preview/Apply → Undo/Redo → Ctrl+S/reopen. Проверить просветы,
+склон/воду/дорогу и ручной сдвиг одного объекта; старую рощу открыть без Save
+и убедиться, что она не меняется. Плотность 0%/100% сохраняет прежний отбор;
+число объектов не является фиксированной целью.
 
 Повторный `editor_test_terrain_plan_river.gd` подтвердил общий path input и весь
 native Preview/Apply/Undo/Save цикл. При последующем play-current-scene единично
@@ -1969,6 +2338,30 @@ PASS; diff --check PASS. Native Forward+ disposable gallery10 specimens PASS
 силуэт (зонтик саванны, вытянутая берёза, ярусы и вершина ели), detail/strength
 и параметры облаков. Сохранить выбранные варианты и повторно открыть Recipe.
 Новые регуляторы/режимы/полировка листовых побегов вне текущего среза.
+
+## Плоские элементы листвы B (manual gate открыт)
+
+Первый родной перенос выбранного B: только листва большого дерева, размеры
+8×4×8/4×2×4 в существующей мелкой сетке; default/absent form=0 прежний.
+Ствол/ветви/рисунок коры, palette/material roles и collision_voxels сохраняются.
+Recipe.parameters → общий provider/helper → canonical Resource → текущий
+prefab и preview/сохранение. Старые модели не пересобираются автоматически.
+`test_voxel_foliage_elements.gd`: pre-change SHA для всех5 пород, оба размера,
+freeze parity/возврат к обычному, wood/collision equality, short-height clipping,
+detached input, ручная voxel-правка/save/reopen и creation Undo/Redo PASS.
+`test_voxel_workshop_generator_save.gd` проверяет B/size во всех3 режимах:
+точные preview voxels/palette, полные parameters, reopen controls, Undo/Redo,
+Discard, stale preview и защиту manual dirty update PASS. Связанные
+generator_editing/foliage_species/tree_types PASS. Native Forward+ отдельной
+копии: три настоящих prefab с материалами Ember, 12 кадров и workspace save
+cycle PASS без script/engine errors. Автоматический цикл не проверяет hot-reload
+рабочего editor и не заменяет авторскую художественную приёмку.
+Ручной gate: открыть рецепт дерева → «Форма листвы → Плоские элементы · B» →
+оба размера → точный preview → новая вариация/Save → reopen; Undo/Redo/Discard.
+Проверить вид с родными материалами, скульпт кистью и проход у ствола.
+Большая роща/weak PC OPEN. Гладкая крона/ствол и C со скосами остаются в
+лаборатории; C требует source/editing/collision решения до реализации.
+Owners/границы — EMBER_WORLD_AUTHORING_ARCHITECTURE.
 
 ## Сохранение рецепта из воксельной мастерской (manual gate открыт)
 
