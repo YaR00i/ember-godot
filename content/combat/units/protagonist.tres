@@ -5,8 +5,8 @@
 [resource]
 script = ExtResource("1_unit")
 unit_id = "protagonist"
-display_name = "Искатель"
-description = "Главный герой: ближний бой, огонь, мобильность и рискованные решения. Имя можно сменить позже без изменения стабильного ID."
+display_name = "Кай"
+description = "Кай — главный герой: ближний бой, огонь, мобильность и рискованные решения."
 max_hp = 20
 max_mp = 36
 strength = 8

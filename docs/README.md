@@ -33,6 +33,7 @@
 - Вода, река, пена, отражение, свет:
   [EMBER_WATER_RENDERING.md](EMBER_WATER_RENDERING.md) → нужный раздел.
 - Общий визуальный ориентир: EMBER_PRODUCT_PLAN.md → «Видение», «Столпы», D5.
+- Сохранённые окружения ALLfiring: [референсы](art/references/allfiring/environments/README.md).
 - Мира: docs/art/characters/mira/README.md относительно корня репозитория.
 - Визуальная библиотека: EMBER_VISUAL_LIBRARY_DESIGN.md; освещение: ../LIGHTING_GATE.md.
 - Любой editor/player UI: EMBER_UI_PIPELINE.md → размер задачи и выбранный этап.

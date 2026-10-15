@@ -1,33 +1,154 @@
 # Ember — текущая точка
 
-Актуально: 2026-10-14. Ветка: codex/runtime-water-region-activity.
-Материалы/трава/правила формы/сцены/проверки сохранены локально в d9e33a9.
+Актуально: 2026-10-15. Ветка: codex/runtime-water-region-activity.
+Материалы/общая кромка/пять пород/их PNG/сцены/проверки сохранены в 41247dd.
+Прежние трава/POM/правила формы сохранены локально в d9e33a9.
 Прежняя база игровых систем — 6124184; мир/материалы до этих срезов — 0a7e1c5.
 Настройки/наборы Lab, полный цикл, переходы, арена, условия и Старт игры сохранены;
-открытые ручные gates прежние. Документация сохранённой базы — 0e4b06b.
+открытые ручные gates прежние. Документация сохранённой базы — 0848090.
 POM, световые LAB, перенос профиля травы/пресетов и shape LAB входят в d9e33a9.
-Сохранённый upstream — fbd5478; нового fetch и push в этом checkpoint не было.
-Арт/локальные файлы остаются вне commit; архив исходных 1046 изменённых/новых
-файлов и SHA-256 manifest — `C:/Users/novos/Documents/Codex/2026-10-13/ember-material-depth/checkpoint-b7353afb/`.
+Fetch/push в текущем checkpoint не выполнялись. Полный архив1084 файлов до commit
+(включая арт-черновики/старые captures/локальные файлы), проверенный SHA-256 manifest —
+`C:/Users/novos/Documents/Codex/2026-10-15/ember-checkpoint-trees/`.
+В Git входят нужные текстуры; тяжёлые drafts/captures и служебные файлы сохранены
+в архиве и остаются локально. Предыдущий полный архив — checkpoint-b7353afb/ от13-го.
 
 ## Активная цель
 
-**Автор выбрал А основой материалов и света на принятом травяном поле.**
-`compact_material_looks_study.tscn` наследует прежний grass_field: 9621 пучок,
-принятые мазки/тона/настоящие тени, POM4см/32. А — принятый shader напрямую;
-Б — гранёный характер освещения на прежней форме, В — пиксель рисунка/света.
-World-metric pixel size и light levels независимы; Source/paint/grass scatter,
-mesh/collision/floor и основной редактор прежние. Это не три готовых мира.
-Forward+ matrix×3 presets×side/back, одинаковое движение камеры/солнца,
-near/far/grazing, roots и Player support PASS; material/POM/rules regressions PASS.
-Б/В остаются LAB-сравнениями; художественный выбор А подтверждён автором.
-Следующий предлагаемый контракт — этап0а: камера → шум → пропорции диорамы,
-без заранее принятого решения уменьшать героев. До согласования не реализован.
-Прежние свои F6/input/motion/weak-PC gates сохраняются.
-Owners/ограничения — Terrain Authoring → «Три подачи материала и света».
-Evidence — C:/Users/novos/Documents/Codex/2026-10-14/ember-material-looks/.
-Геометрия low-poly, pixel-art перерисовка, LOD травы и цикл суток не начаты.
-Код/сцены/проверки в d9e33a9; push не выполнялся.
+**Пять пород — рабочие основы приняты; следующий срез ещё не начат.**
+Дуб21/B/кора C, берёза22, вытянутый клён23 (широкий сохранён), саванна24 и ель25
+имеют свою кору/листву в LAB. Пользователь принял последние кадры ели как основу.
+Рекомендация следующего контракта — перенос оформления в существующий generator/
+editor/save без нового renderer/редактора, сначала один вертикальный пример.
+Общий план трёх обликов продолжается после закрепления authoring/save; камера0а
+отложена автором, форма земли/общая кромка уже реализованы и имеют свои gates ниже.
+Контракт переноса надо исследовать/согласовать; данная запись не разрешает его код.
+
+**Ель25 — уплотнены верх и ярусы, кадры приняты как рабочая основа.**
+По просьбе пользователя12 ярусов вместо9 в прежней высоте; вдоль лидера13 сайтов
+хвои вместо11. Лапа/BranchLayout/PNG/свет B сохранены; прежний9-ярусный кадр — сравнение.
+Те же Provider25/shape1/Recipe/SpeciesStudy owners: cap12 только25/shape1,
+473 ветви/552 сегмента/85 опор; Source4d4733cf…;2166 full/1328 cards при60%.
+Максимум12 tiers/splits3/levels4 укладывается в прежний лимит768 сегментов.
+F6 compact_tree_spruce_bough_study: прежние7 shape controls, global/local/depth/
+receiving/rim/history, лапа3 views и4 reference species. Save appearance transient LAB.
+Проверены меньший max gap, больше верхней хвои, неизменная первая лапа и9-tier
+Source007ce55b…, shape0 dfd9f454…, seeds/extremes/attachments/nested/zero/sample.
+Recipe save/reopen/preview12→7/discard/reset/Undo/Redo/locality/cache/UI PASS;
+день/вечер/ночь×side/back×tree/game и4 related regressions PASS.
+15 protected SHA/ground/paint/grass/physics/POM4см сохранены; reference gate≤8px/max1RGB8.
+Evidence C:/Users/novos/Documents/Codex/2026-10-15/ember-spruce-density/index.html.
+Личный F6/motion и дальнейшая полировка OPEN; выбор последних кадров принят.
+Owner/gates — Terrain Authoring → «Разветвлённая лапа ели25»; предыдущая проба —
+ember-spruce-bough/. Production appearance save/ветер/LOD/forest/пикселизация вне среза.
+Код/PNG сохранены в 41247dd. PNG inspected, HTML links/JS checked; browser render unverified.
+
+**Точка возврата — саванна24 с мелкой листвой и покрытием кончиков.**
+Общая/локальная плотность, ветвление и свет редактируются в прежнем LAB;
+production-перенос сохранения листвы остаётся OPEN; текущий вид оставлен основой.
+Shape1/низкая развилка/70 ветвей/20 опор и древесина сохранены exact; shape0 отклонена.
+Свой PNG savanna_v1/leaf-atlas-v3-small-patches: маленькие округлые листочки,
+спокойные поля/прозрачные каналы, built-in imagegen, полный prompt/SHA рядом.
+Новые карточки распределены по объёмам ветвей: группы связаны с реальными побегами,
+а сами плоскости заполняют опоры кроны, включая середину. Не меняют Source/schema.
+Canopy-envelope opt-in только24/shape1; прежние карты/породы/шейдеры/свет B сохранены.
+Текущая проба — 576 full/382 cards при60%, size1.05; на45 конечных побегах по3 малые
+плоскости вдоль последних40% веточки, size×.65. Терминальные пучки имеют приоритет
+в прежнем бюджете global/local thinning;0% по-прежнему убирает всю листву.
+F6 compact_tree_savanna_leaf_study: принятый объём, новая листва,1/6-card sample;
+справа прежние «Ветви»/«Листва и свет» с Undo/Redo, shadow40%,rim45/18%,reset.
+SpeciesStudy.trial_card_options сохраняет envelope при Recipe preview/discard.
+Native3 ракурса+верх,3 presets×side/back×tree/game,60/80 density и1/6 samples PASS;
+принятые3 дерева/саванна blockout frame exact. Source b2c04fd0…, дерево и collision exact.
+Preview/discard и density reset frame exact; controls/locality/cache/stale-history/
+Undo/Redo/UI fit PASS. Save/reopen Recipe+те же LAB options повторяют full cards.
+После правки — canopy/species/foliage21 regressions;7 protected SHA/floor/paint/
+grass/physics/POM4см PASS. Шесть прежних регрессий листовой пробы сохранены.
+Evidence: C:/Users/novos/Documents/Codex/2026-10-15/ember-savanna-tip-cover/index.html;
+проба до покрытия кончиков сохранена в соседнем ember-savanna-leaf-patches/.
+Owner/границы — Terrain Authoring → «Саванна24», мелкая листва. Ближайший gate —
+личная F6/motion-проверка и возможная дальнейшая полировка саванны.
+Форма/дуб/берёза/оба клёна сохранены; источник/генератор/общий shader прежние.
+Foliage/light settings transient LAB; production save transfer/ветер/LOD/forest/
+tree collision/пикселизация вне среза. Без агентов/branch/commit/push.
+PNG просмотрены, HTML links/JS проверены, browser render не проверен.
+Перенос кромки в WorldLook/Pattern/model.material завершён; workflow/9 regressions
+и24 LAB→saved сравнения PASS. Свой editor input/125%/Save→F6/motion/weak-PC OPEN.
+Точка возврата — Terrain Authoring → «Передача общей световой кромки»;
+evidence ember-style-rim-transfer/. Рябь/избирательность внутренних теней прежние.
+
+**Точка возврата — локальная плотность и глубина тёмных участков Sol.**
+Пользователь выбрал45% пучков как ориентир, позиции подходят, нужно меньше местами.
+Foliage21Study стартует trial5: общая плотность45%, принимаемые тени40%, depth100%
+(low0.24). Выбор одной из8 частей показывает рамку, F1 скрывает её вместе с UI.
+«Пучки в выбранной части»0–100% — множитель общей плотности, целые branch+t пучки.
+Пример Часть8 справа/owner67/local50%:399→380 пучков,885→843 cards;
+все другие части/positions/UV/colour/custom macro normals прежние.
+BranchingFixture owns crown_leaf_groups + optional local_coverage в derived thinning;
+Foliage21Study owns UI/cache. Release/Enter/focus commit once, no per-drag rebuild;
+повторный набор использует тот же mesh. Новый branch preview очищает local overrides.
+Local/depth/reset Undo/Redo uses existing RecipePanel.history, Recipe.parameters прежние.
+Сброс частей/света возвращает local100% и depth100%, общую45% сохраняет.
+Глубина тёмных участков100/60/25% → existing leaf low0.24/0.544/0.81;
+меняет только градацию формы, не выключает исключительно взаимные тени.
+Shader/common light/texture/cast mode/receiving strength0.4/Sun/AO прежние.
+Внешние и наземные тени сохранены; local thinning естественно меняет тень кроны.
+Native3 presets×side/back×tree/game/near/far/side/back/motion, drag/one build/cache/
+Undo/Redo/reset/F1/zero-Sun/external blocker/ground guards PASS. Fixture local-only/
+nested/whole-puff/repeatability и foliage21/parametric regressions PASS.
+Current baseline/control-return/post-blocker frame exact; post-blocker gate допускает
+max1 RGB8 level/≤128 pixels (в текущем прогоне0). Source/full geometry/wood/Recipe/
+terrain/paint/grass/physics/POM и22 protected files exact; last one-shot thinning60ms,
+не цена полного генератора/леса. Личный F6/selection/sliders/history/edge/motion gate OPEN.
+
+Для отдельной оценки локальных правок:45% + local50% правой части + depth60% при3 пресетах.
+Точная избирательность внутренних теней остаётся отдельным решением: ATTENUATION
+не сообщает caster. Как у травы cast OFF убирает также тень кроны на земле;
+receive0 игнорирует внешнюю тень. Рябь shadow map не объявлена исправленной.
+Кучность частично fixed2–3 cards/site; отдельного распределения по пятнам пока нет.
+Производственный editor/Recipe/save transfer, view clipping/wind/LOD/атмосфера не начаты.
+
+Форма каркаса21, спокойная листва B,45%, кромка и кора C приняты основой. Локальные
+варианты плотности и личный F6/motion остаются OPEN. Historical materials доступны,
+full Source seed7/main8/splits3/levels4/variation40 и1967 cards/23604tris сохранены.
+Existing LargeTreeProvider/BranchLayout/Recipe/GeneratorPanel owners, версии1–21,
+голый21/count/editor/Undo/save gates прежние; старые19 buffers точные.
+POM4см/32steps, трава6187, ручная покраска и единая физическая поверхность сохранены.
+Atlasv8 separate leaves/alpha-safe mips на filtered sampler; default дубовая кора C,
+прежняя v4_soft доступна через отдельный LAB-переключатель. Берёза имеет свой атлас.
+Старая оптикаv7: saturation1.18/transmission0.28/rim0.23, пять стадий/ползунки доступны.
+Плоскость/группа1/6 cards и их независимый sample stage2 сохранены; новые tree controls
+в gameplay Resources не записываются. Основная игровая камера/этап0а прежние,
+в её текущем кадре часть кроны обрезается: это не принятие камеры.
+
+Evidence — C:/Users/novos/Documents/Codex/2026-10-15/ember-tree-leaf-local/;
+предыдущие density/shadow/full-tree trials — ember-tree-leaf-density/,
+ember-tree-shadow-modes/, ember-tree-leaves-40/; ранние samples/диагностика/референсы
+сохранены и перечислены в Terrain Authoring → «Исследование рисованной листвы».
+Owner/контракт — Terrain Authoring → «Построение дерева»; tree-gen/MIT — THIRD_PARTY_NOTICES.
+Полный authoring B/tree collision/forest/weak-PC остаются OPEN; кромка перенесена.
+Без агентов/commit/push; чужие незавершённые файлы сохранены.
+
+## Точка возврата к читаемости диорамы
+
+Камеру автор проверит позже. Этап0а остаётся LAB/manual choice OPEN:
+`compact_diorama_readability_study` → F6, исходная / две камеры / quiet PNG /
+условная дверь-only scale с collider. Рост Кая1.8м/Миры1.5м прежний;
+Source/paint/grass/POM, real step walk/party/save/movement/material gates PASS.
+Рекомендация — сначала камера; quiet PNG не устраняет geometry strips.
+Первое действие: кадры → камера → свой F6; input/125%/weak-PC OPEN.
+Owners/evidence — Terrain Authoring → «Читаемость диорамы — этап0а»;
+C:/Users/novos/Documents/Codex/2026-10-14/ember-diorama-readability/.
+Имя Кай в GDD/unit display_name; ID/save прежние. Три окружения ALLfiring —
+docs/art/references/allfiring/environments/README.md. Другие этапы не начаты.
+
+## Точка возврата к подаче материалов
+
+А принята основой в material_looks LAB; Б/В — необязательные lighting сравнения.
+Код/сцены/проверки сохранены в d9e33a9; прямой shaderА, grass_field9621,
+POM4см/32, 3 presets×side/back и camera/sun motion PASS. Свои F6/motion/weak-PC
+gates прежние; owners — Terrain Authoring → «Три подачи материала и света».
+Low-poly геометрия, pixel-art перерисовка, большой world foliage и цикл суток не начаты.
 
 ## Точка возврата к ручным правилам формы
 
@@ -145,8 +266,8 @@ Plan11, прежние Source/кисти/покрытия/фактура/Undo ow
 core текущего SurfaceMaterials. Native/GPU/две роли/связанные regressions PASS.
 Последний вид стыков/проекции принят автором; input/движение/weak PC и close
 budget OPEN; единая основа будущих материалов и границы — Terrain Authoring.
-Контракт0а камера→шум→пропорции предлагается следующим после выбора А;
-границы ждут согласования, рост героев заранее не менять.
+Контракт0а камера→шум→пропорции согласован; LAB готова к выбору камеры.
+Рост героев сохранён; текущая точка — выше, у активной цели.
 Передача: `C:/Users/novos/Documents/Codex/2026-10-12/new-chat-2/outputs/EMBER_HANDOFF_2026-10-13.md`.
 Детали и ограничения — Terrain Authoring.
 
