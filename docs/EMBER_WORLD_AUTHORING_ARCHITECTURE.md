@@ -104,6 +104,36 @@ Generator не должен самостоятельно решать, где н
 
 #### Формы объектов: плоская листва B и отложенные диагонали C
 
+Выбранный smooth tree LAB восстановлен для пробы материалов:
+`compact_smooth_bark_material_study.tscn` → F6. Художественный выбор OPEN;
+новая высота коры/voxel-подача после выбора, перенос формы в generator/editor
+остаётся отдельным согласуемым срезом. Material owners/gates — Terrain Authoring
+→ «Гладкое дерево и нарисованная кора». Исходное evidence —
+C:/Users/novos/Documents/Codex/2026-10-12/new-chat-2/outputs/tree-forms-comparison.html
+и tree-forms-verification.json; prototype — work/foliage-research/tree_forms.gd
+относительно этого research checkout. Основа — oak generation_version17/seed7,
+общий каркас ветвей, гладкий ствол и42 облачных lobe, редкие свисающие листья.
+Это иной образец, чем старый tree1511837690/version1 в первом bark LAB.
+Исследование существующих генераторов уже сохранено в ember-foliage-research.json:
+tree-gen, LowPolyTreeGen, Godot-Foliage, modular_tree; его выводы/код использовать
+при согласованном следующем срезе, не считать гладкую пробу перенесённой в editor.
+Общее правило материалов — Product Plan → «Общая фактура материалов для трёх миров».
+
+После оценки прежней округлой кроны автор выбрал ориентир Genshin/WuWa и
+согласовал отдельный near-view LAB альфа-плоскостей: compact_tree_leaf_cards_study.
+Ствол/scaffold/Source прежние, новая derived листва394 quad/788tris; текущая
+форма и художественная приёмка OPEN. Owners/evidence/границы — Terrain Authoring
+→ «Аниме-ориентир деревьев». Это не перенос формы в generator/editor/voxel мир.
+Текущая основа — каркас21 и крона compact_tree_foliage21_study:
+LargeTreeProvider explicit oak21/BranchLayout, прежний Source/Recipe/GeneratorPanel.
+Количество основных ветвей, повторные развилки, уровни и вариация;
+метод tree-gen/MIT, авторство сохранено.20 и промежуточная крона19 воспроизводимы,
+defaults прежние. Форма и объём21 приняты как основа; проба спокойного рисунка
+листвы и коры реализована в том же LAB, художественная приёмка текстур OPEN.
+Production renderer/editor
+transfer/tree collision не внедрены; контракт — Terrain Authoring → «Построение дерева».
+
+
 Автор оставил B (плоские элементы) и C (со скосами) как варианты для дальнейшей
 работы после отдельных native Godot образцов дерева/камня. Гладкая облачная
 крона и гладкий ствол остаются отдельным лабораторным направлением; это не

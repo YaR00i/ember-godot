@@ -57,6 +57,9 @@ static func base_material(material: Dictionary) -> Dictionary:
 	var surface: Variant = material.get(KEY,{})
 	if surface is Dictionary and surface.has("optics"):
 		result[KEY] = {"version":VERSION,"default":"legacy","palette":{},"optics":optics_parameters(material)}
+	if surface is Dictionary and surface.has("style_rim"):
+		if not result.has(KEY):assign(result,"legacy")
+		result[KEY].style_rim=surface.style_rim.duplicate(true)
 	return result
 
 static func palette_role(material: Dictionary, index: int) -> String:
@@ -87,6 +90,18 @@ static func validation_errors(material: Dictionary, palette_size: int) -> Array[
 		if not text.is_valid_int() or int(text) <= 0 or int(text) >= palette_size:
 			errors.append("object surface palette index outside palette")
 		if not PROFILES.has(overrides[key]): errors.append("unknown palette object surface")
+	if value.has("style_rim"):
+		var rim: Variant=value.style_rim
+		if not rim is Dictionary: errors.append("object_surface.style_rim must be a dictionary")
+		else:
+			for role in rim:
+				var profile: Variant=rim[role]
+				if not PROFILES.has(role) or not profile is Dictionary:
+					errors.append("invalid rim role/profile");continue
+				if not profile.get("enabled",false) is bool: errors.append("rim enabled must be boolean")
+				var strength: Variant=profile.get("strength",0.0)
+				if (not strength is float and not strength is int) or not is_finite(float(strength)) or float(strength)<0 or float(strength)>1:
+					errors.append("rim strength outside 0..1")
 	if value.has("optics"):
 		var optics: Variant = value.optics
 		if not optics is Dictionary: errors.append("object_surface.optics must be a dictionary")
@@ -126,3 +141,32 @@ static func palette_parameters(material: Dictionary, palette_size: int) -> Array
 	for index in palette_size:
 		result.append(PROFILES[overrides.get(str(index), overrides.get(index, value.default))])
 	return result
+
+
+static func rim_parameters(material: Dictionary, role: String) -> Dictionary:
+	# Useful starting strengths; missing fields stay disabled, preserving old assets.
+	var strength: float={"bark":0.45,"foliage":0.18,"stone":0.7}.get(role,0.3)
+	var surface: Variant=material.get(KEY,{})
+	if surface is Dictionary and surface.get("style_rim",{}) is Dictionary:
+		var value: Variant=surface.get("style_rim",{}).get(role,{})
+		if value is Dictionary: return {"enabled":value.get("enabled",false),"strength":value.get("strength",strength)}
+	return {"enabled":false,"strength":strength}
+
+static func with_rim(material: Dictionary, role: String, enabled: bool, strength: float) -> Dictionary:
+	var result:=material.duplicate(true)
+	if not result.has(KEY):assign(result,"legacy")
+	if not result[KEY].has("style_rim"):result[KEY].style_rim={}
+	result[KEY].style_rim[role]={"enabled":enabled,"strength":strength}
+	return result
+
+static func apply_rim(target: ShaderMaterial, material: Dictionary) -> void:
+	if target==null:return
+	var surface: Variant=material.get(KEY,{})
+	var active: bool=surface is Dictionary and surface.has("style_rim")
+	target.set_shader_parameter("object_style_rim_profiles_enabled",active)
+	if not active:return
+	var profiles:=PackedVector2Array()
+	for role in PROFILES:
+		var profile:=rim_parameters(material,role)
+		profiles.append(Vector2(1 if profile.enabled else 0,float(profile.strength)))
+	target.set_shader_parameter("object_style_rim_profiles",profiles)

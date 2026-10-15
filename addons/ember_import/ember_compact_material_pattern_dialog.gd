@@ -8,7 +8,7 @@ signal pattern_created(id: String, role: String)
 signal edit_closed
 signal variant_opened(id: String, role: String)
 signal light_profile_previewed(pattern: Resource, id: String)
-const EDIT_FIELDS := ["role_id", "base_color", "light_color", "shadow_color", "pixels", "side_pixels", "gloss", "sheen", "pixel_relief", "micro_relief", "micro_size_m", "micro_roughness", "relief_pixels", "side_relief_pixels", "roughness_pixels", "side_roughness_pixels", "pattern_size_m", "roughness_variation", "albedo_texture", "grass_light_enabled", "grass_light_low", "grass_light_tint_strength", "grass_light_cool", "grass_light_warm", "grass_light_shadow_color", "grass_light_shadow_fill"]
+const EDIT_FIELDS := ["role_id", "base_color", "light_color", "shadow_color", "pixels", "side_pixels", "gloss", "sheen", "pixel_relief", "micro_relief", "micro_size_m", "micro_roughness", "relief_pixels", "side_relief_pixels", "roughness_pixels", "side_roughness_pixels", "pattern_size_m", "roughness_variation", "albedo_texture", "grass_light_enabled", "grass_light_low", "grass_light_tint_strength", "grass_light_cool", "grass_light_warm", "grass_light_shadow_color", "grass_light_shadow_fill", "style_rim_custom", "style_rim_enabled", "style_rim_strength"]
 
 const Materials = preload("res://scripts/ember_voxel_surface_materials.gd")
 const Pattern = preload("res://scripts/ember_compact_terrain_pattern.gd")
@@ -53,6 +53,9 @@ var _file_dialog: FileDialog
 var _file_import := false
 var _texture_dialog: FileDialog
 var _texture_label: Label
+var _style_rim_switch: CheckBox
+var _style_rim_slider: HSlider
+var _style_rim_label: Label
 var _grass_light_switch: CheckBox
 var _grass_light_rows: VBoxContainer
 var _grass_light_pickers: Dictionary={}
@@ -102,6 +105,7 @@ func _ready() -> void:
 		slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL; slider.value_changed.connect(_change_finish.bind(setting[0])); row.add_child(slider)
 		var value_label := Label.new(); value_label.custom_minimum_size.x = 44; row.add_child(value_label)
 		_finish_sliders[setting[0]] = slider; _finish_values[setting[0]] = value_label
+	_create_style_rim_controls(column)
 	_create_grass_light_controls(column)
 	_channel_choice=OptionButton.new()
 	for caption in ["Цвет","Световой рельеф","Матовость"]: _channel_choice.add_item(caption)
@@ -281,6 +285,7 @@ func _refresh_grid() -> void:
 		_texture_label.text="PNG: "+_draft.albedo_texture.resource_path.get_file()+" · рисунок ниже сохранён как запасной" if _draft.albedo_texture!=null else "Текстура PNG не выбрана · используется рисунок 16×16"
 	if _draft == null: return
 	_refresh_grass_light_controls()
+	_refresh_style_rim_controls()
 	_grid.set_tones(_draft.surface_pixels(_channel,_editing_side), _channel_colors())
 	for picker in _tones: picker.disabled=_channel!="color"
 	_ink_choice.clear()
@@ -391,6 +396,7 @@ func _create_grass_light_controls(column: VBoxContainer) -> void:
 	button.pressed.connect(_suggest_grass_light_tones)
 	_grass_light_rows.add_child(button)
 	_refresh_grass_light_controls()
+	_refresh_style_rim_controls()
 
 
 func _refresh_grass_light_controls() -> void:
@@ -421,13 +427,14 @@ func _suggest_grass_light_tones() -> void:
 func _set_grass_light(values: Dictionary) -> void:
 	for field in values:_draft.set(field,values[field])
 	_refresh_grass_light_controls()
+	_refresh_style_rim_controls()
 	light_profile_previewed.emit(_draft,_id)
 
 func _restore_grass_light_preview() -> void:
 	if _draft==null or _baseline.is_empty():return
 	var original: Pattern=_draft.duplicate(true)
 	for field in EDIT_FIELDS:
-		if field.begins_with("grass_light_"):original.set(field,_baseline[field])
+		if field.begins_with("grass_light_") or field.begins_with("style_rim_"):original.set(field,_baseline[field])
 	light_profile_previewed.emit(original,_id)
 
 
@@ -530,3 +537,34 @@ func _select_channel(index: int) -> void:
 	if _grid._painting: _grid._painting=false; _finish_stroke()
 	_channel=["color","relief","roughness"][clampi(index,0,2)]
 	_channel_choice.select(index); _grid.current_tone=0; _refresh_grid()
+
+
+func _create_style_rim_controls(column: VBoxContainer) -> void:
+	_style_rim_switch=CheckBox.new();_style_rim_switch.text="Световая кромка материала"
+	_style_rim_switch.toggled.connect(func(value: bool):_change_style_rim({"style_rim_enabled":value}))
+	column.add_child(_style_rim_switch)
+	var row:=HBoxContainer.new();column.add_child(row)
+	_style_rim_slider=HSlider.new();_style_rim_slider.min_value=0;_style_rim_slider.max_value=1;_style_rim_slider.step=0.01
+	_style_rim_slider.size_flags_horizontal=Control.SIZE_EXPAND_FILL;row.add_child(_style_rim_slider)
+	_style_rim_label=Label.new();_style_rim_label.custom_minimum_size.x=40;row.add_child(_style_rim_label)
+	_style_rim_slider.value_changed.connect(func(value: float):_change_style_rim({"style_rim_strength":value}))
+
+func _refresh_style_rim_controls() -> void:
+	if _style_rim_switch==null or _draft==null:return
+	_style_rim_switch.set_pressed_no_signal(_draft.style_rim_enabled if _draft.style_rim_custom else _draft.role_id=="stone")
+	_style_rim_slider.set_value_no_signal(_draft.style_rim_strength)
+	_style_rim_label.text="%.2f"%_draft.style_rim_strength
+
+func _change_style_rim(values: Dictionary) -> void:
+	if _loading or _draft==null:return
+	var before:={"style_rim_custom":_draft.style_rim_custom,"style_rim_enabled":_draft.style_rim_enabled,"style_rim_strength":_draft.style_rim_strength}
+	var after:=before.duplicate()
+	if not _draft.style_rim_custom:after.style_rim_enabled=_draft.role_id=="stone"
+	after.style_rim_custom=true;after.merge(values,true)
+	if after==before:return
+	_history.create_action("Сила кромки материала" if values.has("style_rim_strength") else "Включение кромки материала",UndoRedo.MERGE_ENDS if values.has("style_rim_strength") else UndoRedo.MERGE_DISABLE)
+	_history.add_do_method(_set_style_rim.bind(after));_history.add_undo_method(_set_style_rim.bind(before));_history.commit_action()
+
+func _set_style_rim(values: Dictionary) -> void:
+	for field in values:_draft.set(field,values[field])
+	_refresh_style_rim_controls();light_profile_previewed.emit(_draft,_id)

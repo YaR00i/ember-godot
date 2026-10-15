@@ -1,0 +1,16 @@
+{
+  "date": "2026-10-15",
+  "method": "builtin imagegen, generated PNG copied unchanged with native alpha",
+  "file": "leaf-atlas-v3-small-patches.png",
+  "source_file": "C:/Users/novos/.codex/generated_images/01a13474-8fd3-7b91-bc60-2882a7de2d96/exec-828a84da-4206-4c56-b741-11ff03021554.png",
+  "prompt": "Production albedo alpha foliage atlas for a stylized anime fantasy game, original savanna umbrella acacia tiny foliage. Exactly FOUR distinct irregular leafy PATCHES in a strict 2x2 square atlas. True transparent RGBA background and true transparent gaps. Each patch is a small tuft of very fine double-compound acacia foliage: 80-110 TINY round-to-short-oval solid leaflets, gathered into 7-10 loose subclusters, clear thin empty channels between subclusters. Not one big feather, not a fern frond, no giant pointed leaves, no long central stem. Each subcluster has small paired leaflets but the arrangement is loose and natural, NOT rigid parallel combs. The whole patch has a broadly rounded irregular silhouette, slightly wider than tall, with many small holes and some overlapping leaves joining into calm larger painted shapes. The bottom centre of each tile x50% y94% is a short very thin almost invisible green attachment stem; most foliage is above it. All shapes stay wholly inside each tile with 6% clear margins. 50-55 percent solid leaf coverage per tile. Two VERY closely related rich warm summer olive GREENS, around #3d7e39 and #4a8c3a. Extremely calm matte painted fields, almost uniform with soft broad gradients only. Absolutely NO veins, grain, speckles, white highlights, yellow rims, black outlines, baked shadows, lighting, glow, gloss or photorealistic microtexture. The tiny leaflets should read together as clean connected leafy color patches at game distance. Four variations of the same species, similar scale and palette. Atlas alone, no surrounding scene, no full tree, no grid lines, no text, no decorations. All empty areas genuinely transparent.",
+  "scope": "LAB leaf-art/placement trial on accepted savanna24 crown_shape1; accepted wood Source unchanged",
+  "art_acceptance": "OPEN",
+  "sha256": "fa431508d071457400aaf597318bd5c2e645c14e656b72ef050bdb547fe2a07f",
+  "size": [
+    1254,
+    1254
+  ],
+  "mode": "RGBA",
+  "alpha_coverage_over_half": 0.3003
+}

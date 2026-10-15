@@ -1,0 +1,213 @@
+{
+  "role": "LAB albedo for smooth-world artistic choice",
+  "date": "2026-10-14",
+  "artwork": "painterly_bark_v2.png",
+  "creation": "imagegen built-in; new original painted bark atlas",
+  "art_sha256": "96a99e550055462184a0277c1631816e900ca4c77703c2a26e7d103563e647dc",
+  "canopy": "saved_canopy_motifs.png copied unchanged from selected 2026-10-12 LAB",
+  "restored_shape": {
+    "version": 17,
+    "seed": 7,
+    "source_sha256": "7394d61bdfc6754f001a9bde18263817633f36becc6711f0d3e1df55f4334a26",
+    "prototype_sha256": "539f67a72afe985bf25069f38e03ce91cb25b4948c6b9593456a635cf40aefcb"
+  },
+  "status": "artistic acceptance OPEN; no bark height or voxel version approved",
+  "painted_revision": {
+    "status": "LAB coarse bark and painted foliage; manual acceptance OPEN",
+    "creation": "imagegen built-in; copied unchanged into project",
+    "artworks": [
+      {
+        "path": "painterly_bark_v3_calm.png",
+        "sha256": "4ca924960f2f5ce46f194a99300b7fcc069b42903d4665ec58ddbfcce1060f8f"
+      },
+      {
+        "path": "painterly_foliage_v1.png",
+        "sha256": "87817fd055d534db5cfe81a34a4295dee0f6a28f78ac530ddf37583721db70ed"
+      }
+    ],
+    "foliage": "Object-local triplanar albedo, period 3.5m, Source colours retained as relative pigment; existing painterly light math and saved grass light profile",
+    "geometry": "same saved fixture; no cards, wind, LOD, collision or editor transfer",
+    "prompts": {
+      "painterly_bark_v3_calm.png": "Edit this game bark albedo tile into a substantially calmer hand-painted cartoon oak bark master texture. Flat square seamless repeating texture, NOT a tree or scene. Keep its restrained chestnut warm brown family and vertical flow, but eliminate at least 75 percent of the small thin internal streaks. Across the entire width show only 4 or 5 broad softly irregular vertical bark ribbons and at most 3 main narrow dark cracks, with occasional short splits. Most of the surface must be broad quiet almost uniform brush-painted colour areas, crisp deliberate edges of broad strokes rather than blur. Moderate low contrast. No photorealism, no tiny scratches, no fibres, no micrograin, no knots, no bevel or directional illumination baked into it, no highlights, no AO shadows, no text. Wrap match opposite edges both horizontally and vertically; cracks continue sensibly over vertical tile seams. This is an albedo-only game asset; coarse few hand-painted strokes matter more than details. Preserve handmade cartoon elegance while drastically simplifying texture frequency.",
+      "painterly_foliage_v1.png": "Flat square seamless tileable albedo texture for a soft hand-painted cartoon tree canopy in a game. NOT a picture of a tree, not a scene, no branches, no bark, no sky, no perspective. Full coverage canvas of calm moss and sage green foliage paint. Make broad deliberately grouped leaf-like gouache brush shapes, some softly overlapping groups; 8 to 12 main broad irregular patches across the square with quiet unified background areas between. Each group is a few simple rounded or tapered expressive brush strokes, NOT dozens of individual leaves. Low contrast restrained earthy greens, muted olive and sage, subtle cooler dark green patches, modest warmer pale green areas. Distinct painted stroke edges, no blurry cloud gradients, no photorealism, no leaf veins, no speckling, no micrograin, no outlines. No baked directional lighting or painted cast shadows; only local albedo variation. Seamlessly match opposite edges in both directions. This is for painting existing solid canopy masses, so opaque full image and no alpha holes. Artwork must remain readable at small gameplay screen size with broad simple colour masses and an elegant quiet brush finish."
+    }
+  },
+  "leaf_cards": {
+    "status": "near-view LAB; artistic acceptance OPEN",
+    "creation": "imagegen built-in; transparent PNG copied unchanged",
+    "artwork": "leaf_card_sprig_v1.png",
+    "sha256": "706020f316d04053e0725e3aeae757b1e96b4b62a4fc17f916b4c89d0885e468",
+    "geometry": {
+      "cards": 394,
+      "triangles": 788,
+      "groups": 14,
+      "placement_seed": 73014,
+      "source_sha256": "7394d61bdfc6754f001a9bde18263817633f36becc6711f0d3e1df55f4334a26"
+    },
+    "rendering": "fixed 3D planes, UV alpha scissor0.4, double-sided, Source group light normals, common painterly light/profile; no wind/LOD/collider/editor transfer",
+    "prompt": "Game foliage alpha-card texture, an original stylized semi-realistic anime woodland oak-like sprig, painted albedo only on a truly TRANSPARENT background. A SINGLE irregular asymmetric loose cluster of 18 to 26 broad pointed oval leaves attached to 3 slender branching twigs. The whole small branch fans diagonally outward from its lower-left stem into a wider crown of leaves above/right. Natural branch structure, visible gaps of transparent air between groups; irregular jagged leafy outer silhouette, no compact circular bush or solid colour blob. Some leaves overlap, most leaf shapes remain clearly readable. Restrained natural sage, moss, soft muted leaf greens, subtle warm light green variations, tiny understated central vein if any; crisp simple leaf outlines. Semi-realistic beautiful anime game environment foliage with calm clean hand-painted colour gradients, NOT loose impressionist brush patches. No photorealism, no noisy stipple, no white highlight specks, no thick outline, no glowing leaves. Soft local albedo tone variation only, no directional lighting or painted cast shadow. Occupy about 85% of a square texture, keep a transparent margin on all edges, no leaf cut off by the image boundaries. Flat 2D texture view, not a rendered tree, no landscape, no roots or tree trunk, no lettering, no watermark. Alpha transparency must be real, not a drawn checkerboard. Intended to be mapped once onto many fixed 3D foliage planes, as a painted cluster of small leaves."
+  },
+  "crown19_intermediate": {
+    "status": "Intermediate; crown not accepted; user prioritised bare branches20",
+    "creation": "Built-in imagegen; original transparent PNG copied unchanged",
+    "artwork": "leaf_cluster_atlas_v2.png",
+    "sha256": "25d1b1246bdb55edb221fb3a0d76f5c1396eb9fd803883f7cb2c2032f7dc09c7",
+    "original": "C:/Users/novos/.codex/generated_images/01a13474-8fd3-7b91-bc60-2882a7de2d96/exec-46065619-b89a-4d8c-adf8-b9c38ff61a70.png",
+    "prompt_summary": "2x2 atlas, four equal quadrants of dense original oak-like hand-painted leaf sprays; 70-110 small oval leaves per tile, 3-6 percent tile width, organic rounded irregular sprays over 75-85 percent tile extent. True transparent background and gutters, stem root UV(.5,.94), minimal hidden brown stems; restrained moss/sage green albedo, no baked lighting/trunk, neon, white speckles or photographic noise. Fixed gently curved cards form the 3D crown."
+  },
+  "foliage21_quiet_materials": {
+    "date": "2026-10-15",
+    "status": "Shape/volume21 accepted as a basis; new foliage/bark artwork trial, artistic acceptance OPEN",
+    "creation": "Built-in imagegen edits; copied unchanged, old assets preserved",
+    "artworks": [
+      {
+        "path": "leaf_cluster_atlas_v3_quiet.png",
+        "sha256": "f5adab2ab0728e7831f241755cc9d78d50dc7f6373a00ee3dfb505ef3bb3b9aa",
+        "original": "C:\\Users\\novos\\.codex\\generated_images\\01a13474-8fd3-7b91-bc60-2882a7de2d96\\exec-267a61f0-262d-40ef-ab04-56f07da81814.png",
+        "prompt": "Use case: precise-object-edit. Edit target: the supplied game foliage alpha atlas. Produce a quieter original hand-painted cartoon foliage ALBEDO atlas, not a tree render. Keep its square 2x2 layout, four equal quadrant tiles, four spray silhouettes and their orientations, transparent gutters, approximate occupied extent, overall contour and root of each spray at local UV (.5,.94). The 3D card placement is fixed; do not rearrange these sprays. Main change: radically simplify the painted interior, replacing 70-110 individually contrasting little leaves per tile with about 10-16 broad CONNECTED irregular leaf-group paint patches per tile. Merge the interior into large calm almost flat moss/sage/olive colour areas. Use only 3-4 restrained natural green tones; subtle tonal difference, no dense gradients. On the edges of a few large patches add a narrow understated coloured darker-green edge as in clean hand-painted cartoon stones, never black lines and never outlining every tiny leaf. Keep a few readable small leaf tips around the outer silhouette so it remains foliage, no circular blobs. Preserve irregular silhouette and a few organic transparent gaps; close only tiny distracting pinholes. No leaf veins, fine twigs, photographic noise, dabs, speckles, white highlights, yellow neon, visible repeated mini-leaves, microtexture, blur, baked light/shadow/AO or bevel. Very quiet connected gouache colour shapes, crisp intentional curved patch edges, not fuzzy clouds. Keep truly transparent alpha background and margins in all four tiles, no checkerboard drawing, text or scene. Each tile remains anchored on the same bottom-center stem root. Neutral unlit pigment only, dynamic lighting will come from the game.",
+        "dimensions": [
+          1254,
+          1254
+        ],
+        "mode": "RGBA"
+      },
+      {
+        "path": "painterly_bark_v4_soft.png",
+        "sha256": "3b47553ae96e4c2db3bf06f06b28c455ff918d87f077a869111580f59725114f",
+        "original": "C:\\Users\\novos\\.codex\\generated_images\\01a13474-8fd3-7b91-bc60-2882a7de2d96\\exec-571950da-3472-42ec-80a6-752e29b55f78.png",
+        "prompt": "Use case: precise-object-edit. Edit target: supplied square hand-painted game bark albedo texture. Keep the vertical organic bark flow, square full opaque canvas, warm restrained chestnut family, and seamless matching left/right and top/bottom edges. Make this bark substantially SOFTER and calmer through its actual drawn shapes, NOT Gaussian blur. Reduce the contrast by about half, and remove the near-black branching cracks completely. Across the width show about 5-7 wide irregular quiet vertical colour ribbons in close muted medium-brown and warm taupe-brown tones. Some ribbons have a gentle broad colour transition on one side and a crisp hand-painted edge on the other. Only 2-3 short understated shallow groove marks in medium brown; nothing almost black. Most area should be calm connected brush-painted colour. Not orange leather, polished plastic, muddy blur or wood planks. It must still read as beautiful stylized living oak bark, with a few broad elongated flowing strokes. No fine scratches, thin striation, micrograin, knots, black cracks, photographic noise, black outlines, baked highlights/shadows/AO, bevel, branch/root/tree render, text or watermark. This is an UNLIT albedo tile mapped to an existing tree by an existing support-axis cylindrical projection; dynamic lighting is supplied in game. Keep a coherent vertical pattern without obvious stripes or abrupt band repeats. Opaque background.",
+        "dimensions": [
+          1254,
+          1254
+        ],
+        "mode": "RGB"
+      }
+    ],
+    "geometry": "Same Source21, wood mesh, 1967 curved cards/23604tris, positions/UVs/macro normals; no generator/projection/shader/light/physical-surface change",
+    "comparison": "Existing foliage21 LAB: old artwork / quiet foliage / quiet foliage + soft bark; material buttons only; no remesh on texture switch",
+    "evidence": "C:\\Users\\novos\\Documents\\Codex\\2026-10-15\\ember-tree-quiet-materials"
+  },
+  "foliage21_minimal_leaves": {
+    "date": "2026-10-15",
+    "status": "Previous quiet atlas still too colourful for author; minimal one/two-tone trial OPEN. Shape remains accepted as basis.",
+    "creation": "Built-in imagegen edits; PNG copied unchanged; old assets retained",
+    "artworks": [
+      {
+        "path": "leaf_cluster_atlas_v6_one_tone_clean.png",
+        "sha256": "61631df4f684eb176e0aff9cd9264cea35ae41d049633239baedf759a07a2b73",
+        "original": "C:\\Users\\novos\\.codex\\generated_images\\01a13474-8fd3-7b91-bc60-2882a7de2d96\\exec-8e1ccb63-5427-401a-a1ca-19561ff32e85.png",
+        "prompts": [
+          "Use case: precise-object-edit. Edit the supplied game foliage alpha atlas into a TRULY MINIMAL ONE-COLOUR foliage texture. This is an unlit pigment/albedo game asset, not a rendered scene. Preserve the existing EXACT 2x2 layout, four equal quadrant tiles, all four spray shapes, occupied extents, transparency mask, irregular leaf-tipped outer contour, transparent gutters and root positions. Change ONLY the RGB paint inside the existing alpha shapes. Remove ALL of the current alternating light/dark patches. Make every visible leaf shape and the connected interior essentially the SAME restrained sage/moss green, centred on sRGB #748568. All four tiles use that same colour family. Allow only a barely perceptible very broad smooth pigment gradation across each entire spray, maximum about 5 RGB levels lighter/darker; NOT gradients on each little leaf. Most of each shape is almost perfectly uniform. No secondary contrasting patches, no brown stems: any existing stem is the same green. At most one or two tiny low-contrast subtle marks per entire tile, and preferably none. Natural irregular silhouette alone communicates leaves. Beautiful clean minimalist anime-game foliage, flat calm connected colour areas, no vein lines, painted leaf outlines, speckles, mottling, internal high-frequency detail, micrograin, photographic texture, internal patch boundaries, black outlines, yellow-green highlights, dark interior paint, directional illumination, painted cast shadows, AO or baked volume. Do not blur the alpha silhouette; keep it crisp and unchanged. Maintain real transparent alpha background with no painted checkerboard. Output a square RGBA atlas, no text or watermark. IMPORTANT: This must look almost like four green silhouette cutouts, not like richly textured leaf clusters.",
+          "Precise production correction of the attached ONE-TONE foliage game RGBA atlas. Keep the four quadrant silhouettes and alpha contours in the same places. The interior one muted sage green and extremely gentle broad gradation are already right. REMOVE every thin dark line around all leaf-shaped edges and remove the dark green stem strokes. Fill those pixels with exactly the neighbouring main sage green, including ALL partially opaque anti-alias edge pixels. The RGB of an edge pixel must remain the SAME green as the interior, with no darkened fringe. Alpha alone cuts the silhouette; never draw an outline. No low-alpha speckled coloured residue around the silhouettes: background must be genuinely fully transparent and clean. No veins, stems, tiny marks, dark dots, borders, grain or extra colour. Only a crisp clean alpha silhouette filled with one restrained green family, with barely noticeable smooth broad gradation. Same colour across all four tiles. No per-leaf variation. Do not replace this with a tree render or change the tile layout. Output RGBA with actual transparent background. This will be tiled over hundreds of overlapping 3D planes: even a thin dark border repeats into an ugly dark net, so absolutely NO DARK BORDER, anywhere, including anti-aliased edges. Preserve original approximate opacity extents and proportions."
+        ],
+        "dimensions": [
+          1254,
+          1254
+        ],
+        "mode": "RGBA"
+      },
+      {
+        "path": "leaf_cluster_atlas_v5_two_tones.png",
+        "sha256": "4ec900974ef194eab1c65d3638e9600f1e2ddf5543fd8f61636696bc048a6650",
+        "original": "C:\\Users\\novos\\.codex\\generated_images\\01a13474-8fd3-7b91-bc60-2882a7de2d96\\exec-8ca82fa2-e4d6-40a0-b009-27b3047308c2.png",
+        "prompts": [
+          "Use case: precise-object-edit. Edit the supplied game foliage RGBA atlas into a minimalist TWO-CLOSE-COLOUR foliage albedo. Keep the exact existing 2x2 tile layout, four spray silhouettes, extent, root locations, crisp irregular leaf-tipped outer contours, transparent margin and existing alpha mask. Only repaint RGB within the silhouettes. Remove the current multi-coloured blotches. Use ONLY two VERY CLOSE muted greens, primary sRGB #748568 over roughly 85 percent of the area, and secondary sRGB #7e8e70 over roughly 15 percent. These are two close pigment families, NOT bright vs dark lighting. Each colour can have a very gentle broad smooth gradation by at most 4 RGB levels. Place the secondary colour as just 2 or 3 large softly joined shapes per entire spray; no high-frequency mottling, tiny leaf-by-leaf colour changes, camouflage pattern or sharp contrasting bands. Apply the same two colours consistently in ALL four tiles, not a new hue in each tile. All tiny outer leaf tips should mostly share the primary colour, never a rim of bright little flecks. Stems must be green in this same palette, no brown third colour. Keep the interior mostly monolithic calm colour, with one or two barely visible broad shape accents at most. Minimalist elegant anime-game foliage, unlit albedo only. No veins, leaf outlines, dark internal patches, fine lines, speckles, dabs, micrograin, photographic noise, yellow highlights, black strokes, painted lighting/shadow/AO/bevel, rendered scene or text. Real transparent background and clean gutters, no checkerboard illustration, no stray pixels or translucent paint outside the existing foliage silhouette. Output square PNG with alpha. The purpose is to reduce colour noise once hundreds of these cards overlap in a 3D canopy."
+        ],
+        "dimensions": [
+          1254,
+          1254
+        ],
+        "mode": "RGBA"
+      }
+    ],
+    "intermediate": {
+      "path": "leaf_cluster_atlas_v4_one_tone.png",
+      "status": "First one-tone attempt retained; refined to v6 to remove stem and edge paint",
+      "original": "C:\\Users\\novos\\.codex\\generated_images\\01a13474-8fd3-7b91-bc60-2882a7de2d96\\exec-ca157130-718d-4b01-b312-f7f264f0a242.png",
+      "prompt": "Use case: precise-object-edit. Edit the supplied game foliage alpha atlas into a TRULY MINIMAL ONE-COLOUR foliage texture. This is an unlit pigment/albedo game asset, not a rendered scene. Preserve the existing EXACT 2x2 layout, four equal quadrant tiles, all four spray shapes, occupied extents, transparency mask, irregular leaf-tipped outer contour, transparent gutters and root positions. Change ONLY the RGB paint inside the existing alpha shapes. Remove ALL of the current alternating light/dark patches. Make every visible leaf shape and the connected interior essentially the SAME restrained sage/moss green, centred on sRGB #748568. All four tiles use that same colour family. Allow only a barely perceptible very broad smooth pigment gradation across each entire spray, maximum about 5 RGB levels lighter/darker; NOT gradients on each little leaf. Most of each shape is almost perfectly uniform. No secondary contrasting patches, no brown stems: any existing stem is the same green. At most one or two tiny low-contrast subtle marks per entire tile, and preferably none. Natural irregular silhouette alone communicates leaves. Beautiful clean minimalist anime-game foliage, flat calm connected colour areas, no vein lines, painted leaf outlines, speckles, mottling, internal high-frequency detail, micrograin, photographic texture, internal patch boundaries, black outlines, yellow-green highlights, dark interior paint, directional illumination, painted cast shadows, AO or baked volume. Do not blur the alpha silhouette; keep it crisp and unchanged. Maintain real transparent alpha background with no painted checkerboard. Output a square RGBA atlas, no text or watermark. IMPORTANT: This must look almost like four green silhouette cutouts, not like richly textured leaf clusters."
+    },
+    "owners": "Same Foliage21Study/BranchingFixture/PaintedBarkProjection. Material albedo variants only, barkv4 fixed. Source, mesh, positions, UV, macro normals, shader and light profile unchanged.",
+    "diagnostic": "Existing plain material with same alpha, normal shadow casting vs temporary foliage shadow casting OFF. Temporary isolated shader clone changes ONLY leaf sampler to nearest/no mip filtering: fine dark net largely disappears. All original materials/shadow settings restored pixel-exactly. No persistent shader/filter/light change. Transparent edge RGB/mip preparation is a candidate next trial, not yet verified as the fix.",
+    "research": [
+      {
+        "url": "https://media.gdcvault.com/GDC%2B2021/2021GDC%2B_%2BHaoyu%2BCai%2B_%2Bpresentation%2Bfile.pdf",
+        "status": "Primary Genshin GDC slides returned403; mirror timed out. Original foliage atlas not verified."
+      },
+      {
+        "url": "https://benedicttargett.wordpress.com/portfolio/abundant-skies-trees/",
+        "status": "Primary author description of his own Abundant Skies trees inspired by Genshin/BOTW; custom PNG leaf textures, not an original Genshin atlas."
+      },
+      {
+        "url": "https://jacinta.artstation.com/projects/ZaeJvw",
+        "status": "Author explicitly labels Vanarana as Genshin fanart; not evidence of the original game texture/pipeline."
+      },
+      {
+        "url": "https://docs.godotengine.org/en/stable/classes/class_image.html#class-image-method-fix-alpha-edges",
+        "status": "Godot provides fix_alpha_edges and generate_mipmaps. Possible next preparation trial; not tested/applied to the material owner in this slice."
+      }
+    ],
+    "evidence": "C:\\Users\\novos\\Documents\\Codex\\2026-10-15\\ember-tree-minimal-leaves"
+  },
+  "foliage21_leaf_optics": {
+    "date": "2026-10-15",
+    "status": "Approved leaf optics slice implemented in existing foliage21 LAB; artistic acceptance OPEN",
+    "artwork": "leaf_cluster_atlas_v7_air_gaps.png",
+    "sha256": "f1fc9f037ae033f5d15e02889e913d622ce0f9fab11dfa1fdd023f1b0f07d00d",
+    "original": "C:/Users/novos/.codex/generated_images/01a13474-8fd3-7b91-bc60-2882a7de2d96/exec-96e28453-2a70-40e5-930a-8c991c295d72.png",
+    "prompt": "Precise edit of the attached original minimalist foliage game RGBA atlas. Preserve the EXACT square 2x2 layout, all four spray outer contours, positions, proportions, bottom anchor area and muted one-tone sage-green pigment with barely perceptible broad smooth gradation. Keep interior paint almost monolithic, no new colour patches, outlines, veins or detail. Change only opacity within a few small interior places: cut 6 to 8 small irregular elongated organic AIR GAPS inside each spray, distributed between connected leaf-shaped lobes. Each opening roughly 2 to 4 percent of the quadrant width, avoid microscopic pinholes. The holes have actual zero-alpha transparent interior, crisp organic edges coloured the same sage green as the surrounding foliage, not black-painted holes. All openings together remove only about 3 to 5 percent of the visible painted spray area. Preserve the large connected main mass and the original irregular outer leaf-tipped silhouette. No dark outline around holes. Keep the central/bottom attachment area intact. Background/gutters truly transparent, no floating low-alpha coloured speckles, no checkerboard drawing or text. This is an albedo+opacity texture, not a rendered tree or sunbeam image: real sunlight and transmission will be computed in the game. Do not paint lighting, rays, shadows, bright rim, yellow highlights or new shapes outside the old silhouettes.",
+    "creation": "Built-in imagegen edit; PNG copied unchanged into project",
+    "alpha_statistics": {
+      "base_coverage": 0.5770783890275202,
+      "gap_coverage": 0.5755114733331808,
+      "removed_original_visible_fraction": 0.02697955293041605
+    },
+    "texture_preparation": "Existing PaintedBarkProjection.artwork(path,alpha_edges=false) keeps default path exact. Opt-in caches separately, colour-pads alpha edges, creates opacity-weighted straight-RGB mip levels and pads each level; base alpha and mip alpha preserved. Original PNG untouched.",
+    "light": "Common ember_painterly_light rim math uses material rim_weight; optional leaf transmission function in same owner. Directional LIGHT_COLOR/ATTENUATION gate both additions, no emission. Shared grass light profile/presets unchanged.",
+    "defaults": {
+      "alpha_cutoff": 0.4,
+      "art_acceptance": "OPEN",
+      "card_triangles": 23604,
+      "cards": 1967,
+      "pass": true,
+      "rim_strength": 0.23,
+      "saturation": 1.18,
+      "source_sha256": "b6009b88304c8f92621b2d7b88f524fba5512da83d64aad5cf5113cc2d6115bf",
+      "transmission": 0.28
+    },
+    "geometry": "Same Source21,1967 curved cards/23604tris, supports, UV, macro normals, wood, grass, ground/POM and physical floor",
+    "limits": "Atmospheric shafts not started. Small mask openings alter ground shadow slightly; overlapping crown remains dense. Shadow aliasing, forest/weak-PC budget and live user feel remain OPEN.",
+    "evidence": "C:\\Users\\novos\\Documents\\Codex\\2026-10-15\\ember-tree-leaf-optics"
+  },
+  "foliage21_separate_leaf_samples": {
+    "date": "2026-10-15",
+    "tool": "built-in image_gen",
+    "asset": "content/material_studies/trees/leaf_cluster_atlas_v8_separate_leaves.png",
+    "asset_sha256": "6956e77ac4c7e253c1167b9a3dd82462e8049e8b9fc0295b38cebc7aa7b18ca8",
+    "generated_source": "C:\\Users\\novos\\.codex\\generated_images\\01a13474-8fd3-7b91-bc60-2882a7de2d96\\exec-c50780f7-e2fb-4720-ad98-cb301d386cc2.png",
+    "copied_exact": true,
+    "prompt": "Use case: stylized-concept.\nAsset type: original game foliage RGBA alpha-cutout atlas for an anime-inspired environment in Ember Godot.\nCreate a clean square 2 by 2 texture atlas, four separate leaf spray tiles, true transparent background, no frame, no text. Each quadrant is a different small spray of discrete simple broadleaf silhouettes: 20 to 28 individually readable oval/tapered pointed leaves. Leaves are arranged coherently in loose fans along imagined branching stems, but DO NOT draw stems or twigs. Tiny groups of 2 or 3 leaves may touch; most leaf silhouettes have clearly transparent space separating them. Keep several bigger irregular channels through each spray. These are separate leaf-shaped spots, NOT one connected green blob with holes punched into it. The entire silhouette must be airy and organically irregular, with leaf shapes also at the outer fringe. Aim for about 35 percent painted area inside each tile's bounding rectangle. Top two tiles moderately grouped, bottom two slightly more open. Use generous clear margins around every tile with no leaf crossing the quadrant boundaries. The fan base/root is near lower-middle of every quadrant, with leaves expanding upward and outward; no foliage at the very bottom 8 percent.\nPainting: all leaves use the SAME vivid natural fresh green pigment around sRGB #659f2e, a softly warmer yellow-green variation around #76ac36 near their tops; only a restrained broad smooth gradient within the same colour family, no alternating light/dark random leaves. Minimalist matte flat paint. No veins, flecks, pores, hatching, outlines, speckles, glows, white highlight or shadows baked into artwork. No moss-grey, pastel sage, beige or desaturated olive. Lighting, volume and shadows will be added by the game shader. Smooth crisp opaque leaf interiors and clean alpha edges, real empty transparent spaces between all detached leaf shapes. This is a flat texture asset, NOT a rendered tree, NOT a picture of texture cards, NOT a collage of screenshots. Original artwork guided by the user's examples of simple separate leaf patches and rich green game foliage; do not reproduce proprietary assets.\n",
+    "reference_role": "User screenshots guided the visual direction; original artwork, not extracted game textures.",
+    "native": {
+      "art_acceptance": "OPEN",
+      "leaf_low": 0.24,
+      "pass": true,
+      "pigment_saturation": 1.0,
+      "rim": 0.07,
+      "sample_cards": [
+        1,
+        6
+      ],
+      "source_sha256": "b6009b88304c8f92621b2d7b88f524fba5512da83d64aad5cf5113cc2d6115bf",
+      "transmission": 0.14,
+      "tree_cards": 1967,
+      "tree_transfer": "NOT_STARTED"
+    },
+    "coverage_alpha_cutoff_04": 0.21033426686914472,
+    "owners": "Existing Foliage21Study, PaintedBarkProjection artwork alpha-safe mip cache, voxel toon shader and shared painterly light.",
+    "geometry": "One card and six cards extracted from existing tree21 mesh; original tree Source/wood/cards/UV/macro normals remain exact.",
+    "light": "Only new sample material uniforms: saturation1, low0.24, shadow fill0.025, transmission0.14, rim0.07. Three scene presets, grass/stone profiles and shader math unchanged.",
+    "acceptance": "Plane/group art review OPEN; candidate not transferred to tree.",
+    "limitations": "Small shadow stipple remains on curved cards; sparse atlas may still become dense on the full overlapping crown. Atmosphere/glow/forest/LOD/wind not started.",
+    "evidence": "C:\\Users\\novos\\Documents\\Codex\\2026-10-15\\ember-leaf-plane-group"
+  }
+}

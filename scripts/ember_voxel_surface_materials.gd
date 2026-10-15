@@ -74,6 +74,8 @@ static func set_compact_terrain_roles(material: ShaderMaterial, roles: PackedStr
 	var png_lookup:=Image.create(256,1,false,Image.FORMAT_RGBAF)
 	var grass_light:=Image.create(256,4,false,Image.FORMAT_RGBAF)
 	var has_grass_light:=false
+	var rim_lookup:=Image.create(256,1,false,Image.FORMAT_RGBAF)
+	var has_rim:=false
 	var png_mean:=Image.create(256,1,false,Image.FORMAT_RGBAF)
 	var png_tint:=Image.create(256,1,false,Image.FORMAT_RGBAF)
 	var palette_lookup:=Image.create(256,1,false,Image.FORMAT_RGBAF)
@@ -117,6 +119,9 @@ static func set_compact_terrain_roles(material: ShaderMaterial, roles: PackedStr
 		var tile := images[id] as Image
 		if tile == null: continue
 		var finish := patterns[id] as TerrainPattern
+		if finish.style_rim_custom:
+			has_rim=true
+			rim_lookup.set_pixel(index,0,Color(1,1 if finish.style_rim_enabled else 0,finish.style_rim_strength,0))
 		if finish.grass_light_enabled:
 			has_grass_light=true
 			grass_light.set_pixel(index,0,Color(finish.grass_light_low,finish.grass_light_tint_strength,finish.grass_light_shadow_fill,1))
@@ -163,6 +168,9 @@ static func set_compact_terrain_roles(material: ShaderMaterial, roles: PackedStr
 	material.set_shader_parameter("grass_light_lookup",ImageTexture.create_from_image(grass_light))
 	material.set_shader_parameter("grass_light_profiles_enabled",has_grass_light)
 	material.set_meta("ember_grass_light_image",grass_light)
+	material.set_shader_parameter("style_rim_lookup",ImageTexture.create_from_image(rim_lookup))
+	material.set_shader_parameter("style_rim_profiles_enabled",has_rim)
+	material.set_meta("ember_style_rim_image",rim_lookup)
 	material.set_shader_parameter("png_mean_lookup",ImageTexture.create_from_image(png_mean))
 	material.set_shader_parameter("png_tint_lookup",ImageTexture.create_from_image(png_tint))
 	material.set_shader_parameter("palette_color_lookup",ImageTexture.create_from_image(palette_lookup))
@@ -251,3 +259,16 @@ static func wake_material() -> ShaderMaterial:
 		return material
 	push_warning("Ember Surface: water wake material is missing; using contact material")
 	return contact_material()
+
+
+static func update_style_rim_profile(material: ShaderMaterial, slot: int, pattern: TerrainPattern) -> void:
+	if material==null or slot<1 or slot>255 or pattern==null or not pattern.validation_errors().is_empty(): return
+	var image: Image=material.get_meta("ember_style_rim_image",null)
+	var texture: ImageTexture=material.get_shader_parameter("style_rim_lookup")
+	if image==null or texture==null: return
+	image.set_pixel(slot,0,Color(1 if pattern.style_rim_custom else 0,1 if pattern.style_rim_enabled else 0,pattern.style_rim_strength,0))
+	texture.update(image)
+	var enabled:=false
+	for i in 256:
+		if image.get_pixel(i,0).r>0.5: enabled=true;break
+	material.set_shader_parameter("style_rim_profiles_enabled",enabled)

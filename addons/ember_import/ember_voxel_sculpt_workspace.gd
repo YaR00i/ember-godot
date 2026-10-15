@@ -94,6 +94,7 @@ var _editor_interface: EditorInterface
 var _actions: EmberVoxelSculptActions
 var _resource: EmberVoxelModelResource
 var _resource_path := ""
+var _saved_material := {}
 var _saved_voxels := PackedByteArray()
 var _saved_palette := PackedColorArray()
 var _saved_transparency := PackedByteArray()
@@ -313,6 +314,7 @@ func setup(
 	_actions = Actions.new() as EmberVoxelSculptActions
 	_actions.configure(undo_redo)
 	_actions.source_changed.connect(_on_source_changed)
+	_actions.material_changed.connect(_on_style_rim_changed)
 	_native_preview = NativePreview.new()
 	_view_store = view_store if view_store != null else EditorViewStore.new()
 	_load_tool_profiles()
@@ -636,6 +638,7 @@ func _open_surface_unchecked(
 	if _resource == null:
 		_set_status("Surface Canvas Resource не загрузился", true)
 		return
+	_saved_material = _resource.material.duplicate(true)
 	_saved_voxels = _resource.voxels.duplicate()
 	_saved_palette = _resource.palette.duplicate()
 	_saved_transparency = _resource.transparency.duplicate()
@@ -731,7 +734,8 @@ func has_unsaved_changes() -> bool:
 	return (
 		_resource != null
 		and (
-			_resource.voxels != _saved_voxels
+			_resource.material != _saved_material
+			or _resource.voxels != _saved_voxels
 			or _resource.size_blocks != _saved_size_blocks
 			or _resource.height_voxels != _saved_height_voxels
 			or _resource.palette != _saved_palette
@@ -820,6 +824,7 @@ func discard_changes() -> void:
 		_groups_panel.cancel_isolation()
 	if _resource == null:
 		return
+	_resource.material = _saved_material.duplicate(true)
 	_resource.voxels = _saved_voxels.duplicate()
 	_resource.size_blocks = _saved_size_blocks
 	_resource.height_voxels = _saved_height_voxels
@@ -1635,6 +1640,7 @@ func _build() -> void:
 	_palette_panel.name = "VoxelWorkshopPersistentPalette"
 	_palette_panel.color_selected.connect(_select_palette_color)
 	_palette_panel.operation_requested.connect(_apply_palette_operation)
+	_palette_panel.rim_requested.connect(_apply_object_style_rim)
 	_palette_panel.pick_requested.connect(_toggle_color_pick)
 	_palette_panel.editing_started.connect(_finish_palette_gesture)
 	_tool_rail.add_child(_palette_panel)
@@ -2789,6 +2795,9 @@ func _rebuild_chunk(chunk: Vector2i, draft_relief := false) -> void:
 	)
 	var voxel_size := 1.0 / float(preview_resource.normalized_density())
 	var opaque := SurfaceMaterials.opaque_material()
+	if _resource.material.get("object_surface",{}).has("style_rim"):
+		opaque=opaque.duplicate() as ShaderMaterial
+		preload("res://scripts/ember_voxel_material_profiles.gd").apply_rim(opaque,_resource.material)
 	var transparent := SurfaceMaterials.water_material()
 	var foam := SurfaceMaterials.foam_material()
 	var include_water := _shows_water_overlay() and _isolation_resource == null
@@ -5975,6 +5984,7 @@ func _save() -> bool:
 			_set_status(str(result.get("error", "Сохранение не завершено")), true)
 			return false
 		_resource_path = str(result.get("path", ""))
+		_saved_material = _resource.material.duplicate(true)
 		_saved_voxels = _resource.voxels.duplicate()
 		_saved_palette = _resource.palette.duplicate()
 		_saved_transparency = _resource.transparency.duplicate()
@@ -6025,6 +6035,7 @@ func _save() -> bool:
 	_resource_path = save_path
 	if is_instance_valid(_resource_path_label):
 		_resource_path_label.text = save_path
+	_saved_material = _resource.material.duplicate(true)
 	_saved_voxels = _resource.voxels.duplicate()
 	_saved_palette = _resource.palette.duplicate()
 	_saved_transparency = _resource.transparency.duplicate()
@@ -6412,3 +6423,26 @@ func _set_status(message: String, error := false, color := Color(0.66, 0.74, 0.8
 		_status.modulate = actual_color
 	_update_workshop_shell()
 	status_changed.emit(actual_message, actual_color)
+
+
+func _apply_object_style_rim(resource: EmberVoxelModelResource, role: String, enabled: bool, strength: float) -> void:
+	if resource!=_resource:return
+	_finish_palette_gesture()
+	_actions.apply_style_rim(resource,role,enabled,strength)
+
+func _on_style_rim_changed(resource: EmberVoxelModelResource) -> void:
+	if resource!=_resource:return
+	var profiles=preload("res://scripts/ember_voxel_material_profiles.gd")
+	var base:=SurfaceMaterials.opaque_material()
+	var material:=base
+	if resource.material.get("object_surface",{}).has("style_rim"):
+		material=base.duplicate() as ShaderMaterial;profiles.apply_rim(material,resource.material)
+	for visual: MeshInstance3D in _chunk_meshes.values():
+		if visual.mesh==null:continue
+		for surface in visual.mesh.get_surface_count():
+			if visual.mesh.surface_get_name(surface) not in ["water","water_foam"]:
+				visual.set_surface_override_material(surface,material)
+	_palette_panel.sync(resource,int(_palette.get_item_metadata(_palette.selected)))
+	if not _world_entry.is_empty() and is_instance_valid(_world_entry.get("preview")):
+		_world_entry.preview.refresh_style_rim_materials()
+	show_current_status()

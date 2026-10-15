@@ -1,0 +1,4 @@
+[gd_scene load_steps=2 format=3]
+[ext_resource type="PackedScene" path="res://scenes/compact_tree_maple_study.tscn" id="1_base"]
+[node name="MapleUprightStudy" instance=ExtResource("1_base")]
+maple_shape_variant = 1

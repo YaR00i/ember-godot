@@ -11,6 +11,7 @@ const MAX_HEIGHT := 256
 const MAX_STORAGE_CELLS := 4_194_304
 const MAX_OCCUPIED_VOXELS := 360_000
 const LATEST_VERSIONS := [14, 17, 13, 12, 15]
+const BranchLayout = preload("res://addons/ember_import/ember_tree_branch_layout.gd")
 const TreeVariation = preload("res://addons/ember_import/ember_voxel_tree_variation.gd")
 const BarkPattern = preload("res://addons/ember_import/ember_voxel_bark_pattern.gd")
 const FoliagePattern = preload("res://addons/ember_import/ember_voxel_foliage_pattern.gd")
@@ -69,13 +70,19 @@ static func normalize(parameters: Dictionary) -> Dictionary:
 	var density := 32 if height > 128 or int(parameters.get("density", fallback.density)) == 32 else 16
 	var tree_type := clampi(int(parameters.get("tree_type", 0)), 0, 4)
 	var direction := clampi(int(parameters.get("branch_direction", 0)), 0, 3)
-	var version := clampi(int(parameters.get("generation_version", 1)), 1, 17)
+	# Explicit oak18 is an opt-in construction LAB; saved recipes/UI retain 1–17.
+	var requested := int(parameters.get("generation_version", 1))
+	var version := requested if requested in [18, 19, 20, 21] and tree_type == 1 else clampi(requested, 1, 17)
+	if requested == 22 and tree_type == 2: version = 22 # Birch LAB only; saved defaults unchanged.
+	if requested == 23 and tree_type == 3: version = 23 # Maple LAB; no preset migration.
+	if requested == 24 and tree_type == 0: version = 24 # Savanna LAB; no preset migration.
+	if requested == 25 and tree_type == 4: version = 25 # Spruce LAB; no preset migration.
 	if version in [16, 17] and tree_type != 1: version = LATEST_VERSIONS[tree_type]
 	if version in [13, 14, 15] and tree_type != {13: 2, 14: 0, 15: 4}[version]: version = LATEST_VERSIONS[tree_type]
 	if version == 12 and tree_type != 3: version = LATEST_VERSIONS[tree_type]
 	if version == 11 and tree_type != 1: version = LATEST_VERSIONS[tree_type]
 	if tree_type > 0 or direction > 0: version = maxi(3, version)
-	if tree_type == 4 and version != 15: version = 10
+	if tree_type == 4 and version not in [15,25]: version = 10
 	if version == 10 and tree_type != 4: version = LATEST_VERSIONS[tree_type]
 	if version == 9 and tree_type != 0: version = 8 if tree_type == 1 else (5 if tree_type == 2 else 7)
 	if version == 8 and tree_type != 1: version = 7 if tree_type == 3 else (5 if tree_type == 2 else 3)
@@ -122,6 +129,12 @@ static func normalize(parameters: Dictionary) -> Dictionary:
 		"foliage_color": Color(foliage if foliage is Color else fallback.foliage_color, 1.0),
 	}
 	result.merge(BarkPattern.normalized(parameters))
+	if version in [21,22,23,24,25]:
+		var tier_limit:=12 if version==25 and int(result.crown_shape)==1 else 10
+		result["main_branch_count"] = clampi(int(parameters.get("main_branch_count",4+roundi(float(result.branchiness)*0.05))),3,tier_limit)
+		result["branch_splits"] = clampi(int(parameters.get("branch_splits",3)),1,3)
+		result["branch_levels"] = clampi(int(parameters.get("branch_levels",4)),2,4)
+		result["branch_count_variation"] = clampi(int(parameters.get("branch_count_variation",40)),0,100)
 	return result
 
 
@@ -145,6 +158,8 @@ static func _build_shape(
 	parameters: Dictionary, seed: int, fallback_color: Color, material: Dictionary,
 	title: String, model_id: String,
 ) -> Dictionary:
+	if int(normalize(parameters).generation_version) in [18, 19, 20, 21, 22, 23, 24, 25]:
+		return _build_oak_branching(normalize(parameters), seed, material, title, model_id)
 	if int(normalize(parameters).generation_version) == 1:
 		return _build_legacy(parameters, seed, fallback_color, material, title, model_id)
 	if int(normalize(parameters).generation_version) == 4:
@@ -368,12 +383,75 @@ static func _emit(
 		"occupied": source.voxels.size() - source.voxels.count(0),
 		"colliding": source.collision_voxels.count(1),
 		"pivot_bias": Vector2i(offset.x - grid.x / 2, offset.z - grid.z / 2),
+		# Transient build evidence for the material LAB; not Recipe/Source storage.
+		"bark_support_lines": lines,
+		"bark_support_offset": offset,
 	}
 
 
 ## Quarter-voxel support coordinates survive text Recipe serialization exactly.
 static func _support_point(point: Vector3) -> Vector3:
 	return (point * 4.0).round() / 4.0
+
+
+static func _build_oak_branching(settings: Dictionary, seed: int, material: Dictionary,
+	title: String, model_id: String) -> Dictionary:
+	var wood := {}
+	var collision := {}
+	var leaves := {}
+	var lines: Array = []
+	var groups: Array = []
+	var branches := BranchLayout.plan(settings, seed)
+	for branch: Dictionary in branches:
+		var path: Array = branch.path
+		for i in path.size() - 1:
+			var t0 := float(i) / (path.size() - 1)
+			var t1 := float(i + 1) / (path.size() - 1)
+			_record_line(lines, wood, collision, path[i], path[i + 1],
+				BranchLayout.radius(branch, t0), BranchLayout.radius(branch, t1), true, branch.order > 0, t0, t1)
+			lines[-1].merge({"branch_id": branch.id, "parent_id": branch.parent,
+				"parent_t": branch.attachment, "order": branch.order})
+		if int(settings.generation_version)==25:
+			for support: Dictionary in branch.get("crown_supports",[]):
+				_record_crown_volume(groups,support.center,support.radii)
+				groups[-1]["branch_id"]=branch.id
+			continue
+		var umbrella: bool=settings.generation_version==24 and int(settings.crown_shape)==1
+		if (branch.order >= 2 or branch.order == 0 or (umbrella and branch.order==1)) and (settings.generation_version not in [21,22,23,24,25] or branch.order <= 3):
+			if umbrella and branch.order not in [1,2]:continue
+			var leaf_radius := float(settings.height) * 0.072 * float(settings.cluster_size) / 130.0
+			var center: Vector3 = BranchLayout.sample(path, 0.90)
+			var radii: Vector3 = branch.get("crown_radii", Vector3(leaf_radius, leaf_radius * 0.80, leaf_radius))
+			if settings.generation_version == 19 and branch.order == 0:
+				center = path[-1] + Vector3.UP * float(settings.height) * 0.025
+				radii = Vector3(0.13,0.12,0.13) * float(settings.height)
+			_record_crown_volume(groups, center, radii)
+			if settings.generation_version == 22: radii *= Vector3(0.72,0.80,0.72)
+			# Reuse the provider's crown supports; no separate birch mesh owner.
+			if settings.generation_version == 22:
+				groups[-1].radii = _support_point(radii).max(Vector3.ONE)
+				groups[-1].radius = maxf(groups[-1].radii.x,groups[-1].radii.z)
+			if settings.generation_version == 23:
+				groups[-1].radii = _support_point(radii*Vector3(1.10,0.75,1.10)).max(Vector3.ONE)
+				groups[-1].radius = maxf(groups[-1].radii.x,maxf(groups[-1].radii.y,groups[-1].radii.z))
+			if settings.generation_version == 24:
+				groups[-1].radii = _support_point(radii*Vector3(1.25,0.35,1.25)).max(Vector3.ONE)
+				if int(settings.crown_shape)==1:
+					groups[-1].center=_support_point(BranchLayout.sample(path,0.98 if branch.order==1 else 0.90)+Vector3.UP*float(settings.height)*(0.045 if branch.order==1 else 0.025))
+					var cap_radius:=float(settings.height)*(0.29 if branch.order==1 else 0.14)*(1.0+sin(float(branch.id)*1.7)*0.06)
+					groups[-1].radii=_support_point(Vector3(1.0,0.28,1.0)*cap_radius).max(Vector3.ONE)
+				groups[-1].radius = maxf(groups[-1].radii.x,groups[-1].radii.z)
+			if settings.generation_version in [19,20,21,22,23,24,25]: groups[-1]["branch_id"] = branch.id
+	var noise_radius := float(settings.height) * 0.072
+	var noise := _volume_noise(seed, noise_radius)
+	_paint_crown_volumes(leaves, wood, groups, settings, settings, noise)
+	var result := _emit(settings, wood, collision, leaves, noise, seed, material, title, model_id, lines)
+	if not result.has("error"):
+		result["structure"] = {"version": 1, "lines": lines, "groups": groups,
+			"parameters": settings.duplicate(true), "pivot_bias": result.pivot_bias,
+			"grid": result.grid, "noise_radius": noise_radius}
+		if settings.generation_version in [21,22,23,24,25]: result.structure["branch_seed"] = seed
+	return result
 
 
 static func _record_crown_volume(groups: Array, center: Vector3, radii: Vector3, along := false) -> void:
@@ -1384,14 +1462,16 @@ static func _record_group(groups: Array, leaves: Dictionary, wood: Dictionary,
 static func structure_errors(structure: Dictionary) -> Array[String]:
 	if int(structure.get("version", 0)) != 1 or not structure.get("lines") is Array or not structure.get("groups") is Array or not structure.get("parameters") is Dictionary or not structure.get("pivot_bias") is Vector2i:
 		return ["Каркас дерева повреждён или имеет неизвестную версию."]
-	if structure.lines.is_empty() or structure.lines.size() > 128 or structure.groups.size() > 128:
+	var generation := int(structure.parameters.get("generation_version", 0))
+	var support_limit := 768 if generation in [21,22,23,24,25] else (256 if generation==20 else 128)
+	if structure.lines.is_empty() or structure.lines.size() > support_limit or structure.groups.size() > 128:
 		return ["Недопустимый размер каркаса дерева."]
 	if int(structure.parameters.get("generation_version", 0)) >= 4:
 		var noise_radius: Variant = structure.get("noise_radius")
-		var expected_type := int({4: 1, 5: 2, 6: 3, 7: 3, 8: 1, 9: 0, 10: 4, 11: 1, 12: 3, 13: 2, 14: 0, 15: 4, 16: 1, 17: 1}.get(int(structure.parameters.generation_version), 0))
+		var expected_type := int({4: 1, 5: 2, 6: 3, 7: 3, 8: 1, 9: 0, 10: 4, 11: 1, 12: 3, 13: 2, 14: 0, 15: 4, 16: 1, 17: 1, 18: 1, 19: 1, 20: 1, 21: 1, 22: 2, 23: 3, 24: 0, 25: 4}.get(generation, 0))
 		if int(structure.parameters.get("tree_type", 0)) != expected_type or (not noise_radius is float and not noise_radius is int) or not is_finite(float(noise_radius)) or float(noise_radius) <= 0 or float(noise_radius) > 64:
 			return ["Некорректный профиль кроны дерева."]
-	if absi(structure.pivot_bias.x) > 128 or absi(structure.pivot_bias.y) > 128 or int(structure.parameters.get("generation_version", 0)) not in [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]:
+	if absi(structure.pivot_bias.x) > 128 or absi(structure.pivot_bias.y) > 128 or generation not in [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]:
 		return ["Недопустимая привязка каркаса дерева."]
 	if structure.has("grid"):
 		if not structure.grid is Vector3i or structure.grid.x < 1 or structure.grid.z < 1 or structure.grid.x > 256 or structure.grid.z > 256:
@@ -1418,11 +1498,26 @@ static func structure_errors(structure: Dictionary) -> Array[String]:
 			return ["Недопустимая опора листвы."]
 		if not is_finite(float(group.radius)) or not group.get("top") is bool or (not bool(group.top) and not group.get("state") is int):
 			return ["Некорректный профиль листвы."]
+	if generation in [21,22,23,24,25] and (not structure.get("branch_seed") is int or structure.branch_seed<0):
+		return ["У ветвистого каркаса нет корректного seed."]
+	if generation in [18, 19, 20, 21, 22, 23, 24, 25]:
+		return BranchLayout.structure_errors(structure.lines, 4 if generation in [20,21,22,23,24,25] else 3)
 	return []
 
 
 static func build_on_structure(parameters: Dictionary, structure: Dictionary, seed: int,
 	material: Dictionary, title: String, model_id: String) -> Dictionary:
+	if structure_errors(structure).is_empty() and int(structure.parameters.generation_version) in [21,22,23,24,25]:
+		var settings := normalize(parameters)
+		var base := normalize(structure.parameters)
+		if int(settings.generation_version)!=int(base.generation_version) or int(settings.tree_type)!=int(base.tree_type):
+			return {"error":"Настройки ветвления не соответствуют сохранённой породе и версии каркаса."}
+		var changed := seed!=int(structure.branch_seed)
+		if int(base.generation_version) in [23,24,25]:changed=changed or settings.crown_shape!=base.crown_shape
+		for key in ["main_branch_count","branch_splits","branch_levels","branch_count_variation",
+			"branch_curve","branch_thickness","height","trunk_width","crown_spread"] + (["branch_start","root_flare"] if int(base.generation_version) in [22,23,24,25] else []):
+			changed = changed or settings[key]!=base[key]
+		if changed:return build(parameters,seed,Color.WHITE,material,title,model_id)
 	return _apply_foliage_form(_build_on_structure_shape(parameters, structure, seed, material, title, model_id))
 
 
@@ -1454,8 +1549,9 @@ static func _build_on_structure_shape(parameters: Dictionary, structure: Diction
 		if bool(line.branch):
 			r0 *= scale_radius * lerpf(1.0, new_tip, float(line.t0)) / lerpf(1.0, old_tip, float(line.t0))
 			r1 *= scale_radius * lerpf(1.0, new_tip, float(line.t1)) / lerpf(1.0, old_tip, float(line.t1))
-		r0 = clampf(r0, 0.65, 24)
-		r1 = clampf(r1, 0.65, 24)
+		var minimum_radius := 0.001 if base.generation_version in [18, 19, 20, 21, 22, 23, 24, 25] else 0.65
+		r0 = clampf(r0, minimum_radius, 24)
+		r1 = clampf(r1, minimum_radius, 24)
 		_paint_tapered_line(wood, collision, line.start, line.finish, r0, r1, bool(line.physical))
 		if settings.bark_pattern:
 			var painted_line: Dictionary = line.duplicate()

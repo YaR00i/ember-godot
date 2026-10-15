@@ -48,6 +48,7 @@ var _water: Node
 var _light_rows: VBoxContainer
 var _water_rows: VBoxContainer
 var _tabs: TabContainer
+var _rim_switch: CheckBox
 var _gray_switch: CheckBox
 var _contact_switch: CheckBox
 var _material_light_buttons: Array[Button]=[]
@@ -80,6 +81,12 @@ func _ready() -> void:
 	_tabs.add_child(material_rows)
 	for key in MATERIAL_VALUES:
 		_add_slider(key, material_rows)
+	_rim_switch = CheckBox.new()
+	_rim_switch.text = "Световая кромка · вся карта"
+	_rim_switch.toggled.connect(func(value: bool):
+		if not _syncing and is_instance_valid(_map):
+			_commit("compact_style_rim_enabled", _map.compact_style_rim_enabled, value, false))
+	material_rows.add_child(_rim_switch)
 	_gray_switch = CheckBox.new()
 	_gray_switch.text = "Сравнить в одном сером цвете"
 	_gray_switch.toggled.connect(func(value: bool):
@@ -221,6 +228,7 @@ func apply_runtime_water(scene_path: String, node_path: NodePath, values: Dictio
 
 func _target(key: String) -> Object:
 	if not is_instance_valid(_scene): return null
+	if key == "compact_style_rim_enabled": return _map if is_instance_valid(_map) else null
 	if MATERIAL_VALUES.has(key) or key == "compact_material_gray_preview":
 		return _map if is_instance_valid(_map) and _map.compact_terrain != null else null
 	if WATER_VALUES.has(key): return _water if is_instance_valid(_water) else null
@@ -230,7 +238,7 @@ func _target(key: String) -> Object:
 
 
 func _property(key: String) -> String:
-	if MATERIAL_VALUES.has(key) or key in ["compact_material_gray_preview", "ssao_enabled"]: return key
+	if MATERIAL_VALUES.has(key) or key in ["compact_material_gray_preview", "compact_style_rim_enabled", "ssao_enabled"]: return key
 	if WATER_VALUES.has(key): return key
 	if key == "shadows": return "shadow_enabled"
 	return str(VALUES[key][1]) if VALUES.has(key) else str(COLORS[key][1])
@@ -320,6 +328,8 @@ func refresh() -> void:
 			choice.disabled = terrain == null or terrain.width*terrain.depth > _map.smooth_column_limit()
 			choice.tooltip_text = "Проба гладкой земли: до 262144 мелких колонок (32 × 32 блока)." if choice.disabled else "Сетка 16 × 16 сохраняется; меняется форма поверхности."
 		if target != null: choice.select(int(_value(target, _property(key))))
+	_rim_switch.disabled = not is_instance_valid(_map)
+	if is_instance_valid(_map): _rim_switch.set_pressed_no_signal(_map.compact_style_rim_enabled)
 	_gray_switch.disabled = _target("compact_material_gray_preview") == null
 	if not _gray_switch.disabled: _gray_switch.set_pressed_no_signal(_map.compact_material_gray_preview)
 	_contact_switch.disabled = not available
@@ -471,7 +481,7 @@ func _commit(key: String, previous: Variant, next: Variant, enabled_before: bool
 	var enabled_after := true if property.begins_with("adjustment_") else enabled_before
 	_apply_value(target, property, previous, enabled_before, restore_sky)
 	if previous == next: return
-	var caption := "Тени от солнца" if key == "shadows" else "Сравнить материалы в сером" if key == "compact_material_gray_preview" else "Мягкое затемнение в стыках" if key == "ssao_enabled" else str(_slider_spec(key)[0]) if _sliders.has(key) or _choices.has(key) else str(COLORS[key][0])
+	var caption := "Световая кромка" if key == "compact_style_rim_enabled" else "Тени от солнца" if key == "shadows" else "Сравнить материалы в сером" if key == "compact_material_gray_preview" else "Мягкое затемнение в стыках" if key == "ssao_enabled" else str(_slider_spec(key)[0]) if _sliders.has(key) or _choices.has(key) else str(COLORS[key][0])
 	var action := "Вид мира: %s" % caption
 	if _history is EditorUndoRedoManager:
 		(_history as EditorUndoRedoManager).create_action(action, UndoRedo.MERGE_DISABLE, _scene)

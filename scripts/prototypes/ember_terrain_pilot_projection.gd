@@ -344,9 +344,12 @@ func preview_shared_material_light(pattern: TerrainPattern, id: String) -> void:
 	for slot in document.palette_surface_roles.size():
 		if document.material_id_for_palette(slot)!=id:continue
 		Materials.update_grass_light_profile(_ground_material as ShaderMaterial,slot,pattern)
+		Materials.update_style_rim_profile(_ground_material as ShaderMaterial,slot,pattern)
 		for region: Dictionary in _water_regions.values():
 			var material: ShaderMaterial=region.get("ground")
-			if material!=null:Materials.update_grass_light_profile(material,slot,pattern)
+			if material!=null:
+				Materials.update_grass_light_profile(material,slot,pattern)
+				Materials.update_style_rim_profile(material,slot,pattern)
 
 
 func _refresh_material_atlas() -> void:

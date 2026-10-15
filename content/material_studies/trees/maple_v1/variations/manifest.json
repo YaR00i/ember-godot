@@ -1,0 +1,32 @@
+{
+  "date": "2026-10-15",
+  "owner": "Existing EmberVoxelGeneratorRecipe; no new preset schema",
+  "wide": {
+    "recipe": "maple-wide-v23.tres",
+    "scene": "res://scenes/compact_tree_maple_study.tscn",
+    "status": "User-liked wide variation, preserved; upright is now the accepted primary maple silhouette",
+    "expected_source_sha256": "6d913467e81eea357731f93eef0b7cc2971c56e2fce2b1942110db941a52bb7c",
+    "recipe_sha256": "571804beb0ef632703bd441a265d45a8c96c2b6c7c18041d7ce06a4110c54a8e"
+  },
+  "upright": {
+    "recipe": "maple-upright-v23.tres",
+    "scene": "res://scenes/compact_tree_maple_upright_study.tscn",
+    "status": "User accepted as the primary maple silhouette on 2026-10-15; manual motion and production transfer gates remain open",
+    "recipe_sha256": "c3af83f48b2869e2d4f2f0f0c0b50f9d8858d562c1a34d0474c72de796b9993d",
+    "expected_source_sha256": "fc3b1683cb56bd32f6248e7303c0f6479f07c47f092cd4f19762af5130a305d8"
+  },
+  "appearance": "Both reuse maple_v1/leaf-atlas-v2-rooted.png, bark_species_v1/maple-v1.png and the existing B light/rim response and LAB density60; only crown support construction differs",
+  "scope": "Shape Recipes plus existing LAB scenes/artwork reproduce the comparison; production foliage/light save transfer remains separate",
+  "research": [
+    {
+      "title": "Van den Berk вЂ” Acer rubrum Bowhall",
+      "url": "https://www.vdberk.com/trees/acer-rubrum-bowhall/",
+      "use": "Narrow pyramidal crown character; original stylized approximation, not botanical exactness or copied texture"
+    },
+    {
+      "title": "Morton Arboretum вЂ” Acer rubrum cultivars",
+      "url": "https://mortonarb.org/plant-and-protect/trees-and-plants/red-maple/",
+      "use": "Pyramidal Redpointe and upright cultivar forms; distinguish the maple silhouette from the accepted broad oak"
+    }
+  ]
+}

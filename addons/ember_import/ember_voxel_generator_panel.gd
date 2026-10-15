@@ -102,6 +102,8 @@ func open_source(source: EmberVoxelModelResource, next_context := {}) -> bool:
 	_variation_name.text = "Новая вариация"
 	_save_button.text = "Сохранить вариацию и поставить"
 	_info.text = ("Seed сохранён. Настройки меняют форму и цвет камня." if recipe.generator_id == Generator.ROCK else "Структура закреплена. Настройки меняют её оформление.") + "\nПредпросмотр — только рецепт; ручная лепка не переносится. Исходник не изменится."
+	if recipe.generator_id==Generator.LARGE_TREE and int(recipe.parameters.generation_version) in [21,22,23,24,25]:
+		_info.text="Количество ветвей и развилок меняет каркас. Цвет меняет оформление.\nПредпросмотр — только рецепт; ручная лепка не переносится. Исходник не изменится."
 	_rebuild_fields()
 	_preview_button.disabled = false
 	return true
@@ -116,7 +118,7 @@ func _rebuild_fields() -> void:
 	controls.clear()
 	var section := ""
 	_syncing = true
-	for field in Generator.editing_fields(recipe):
+	for field in _editing_fields():
 		if str(field.group) != section:
 			section = str(field.group)
 			var heading := Label.new()
@@ -219,7 +221,7 @@ func _assign(key: String, value: Variant) -> void:
 func _sync_controls() -> void:
 	if recipe == null:
 		return
-	var descriptors := Generator.editing_fields(recipe)
+	var descriptors := _editing_fields()
 	var changed := descriptors.size() != controls.size()
 	for field in descriptors:
 		if not controls.has(field.key): changed = true
@@ -239,6 +241,12 @@ func _sync_controls() -> void:
 			controls[key].value = recipe.parameters[key]
 	_sync_rock_fields()
 	_syncing = false
+
+
+func _editing_fields() -> Array:
+	var fields := Generator.editing_fields(recipe)
+	if not context.has("field_keys"):return fields
+	return fields.filter(func(field: Dictionary):return field.key in context.field_keys)
 
 
 func undo_parameters() -> void:

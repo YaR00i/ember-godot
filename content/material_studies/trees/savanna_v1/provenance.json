@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-15",
+  "method": "builtin imagegen; generated PNGs copied unchanged with native alpha",
+  "scope": "savanna24 LAB only, original stylized artwork; not botanical reconstruction",
+  "accepted": false,
+  "use": "leaf-atlas-v2-calm.png; v1 retained as first color/texture study",
+  "bark": "../bark_species_v1/savanna-v1.png",
+  "prompts": {
+    "leaf-atlas-v1.png": "Create a production game foliage alpha texture atlas, square PNG true transparent background, four equally sized isolated acacia/savanna compound-leaf sprays arranged in a strict 2 by 2 grid with generous clear margins and no overlap between quadrants. Each quadrant is its own one-sided branch-attached foliage card. CRITICAL ORIENTATION: stem ROOT at bottom middle of each tile, exactly around x=50%, y=94%; stem grows UP and fans outward toward the TOP of tile. There must be no leaves or stems starting at the top and hanging down. Shape is a broad, slightly horizontal spreading fan of compound leaves with clearly separated elongated oval leaflets in paired rows. Stylized anime game painted foliage, calm graphic leaf shapes, softly graded saturated warm olive green to yellow-green, at most two closely related color families. Match the elegant painted broad strokes of a stylized game, neither photorealism nor icon outlines. Medium-sized readable paired leaflets, not tiny noisy speckles. Many clean transparent gaps between leaflets and compound fronds, moderate coverage around 40%, natural irregular edge. Each of four variations has an asymmetrical fan of 3 to 5 short compound fronds, maybe 30 to 45 oval leaflets, quiet continuous color gradients. Very faint thin olive stems, leaves visually dominant. No veins, no bark, no cast shadows, no bloom, no white fringe, no lettering, no surrounding tree, no texture grain, no extra backdrop. Four similar but distinct upward rooted fans, each entirely in its quadrant. The whole image is the texture atlas alone.",
+    "leaf-atlas-v2-calm.png": "Edit this four-tile alpha foliage atlas for a stylized anime game. Preserve the exact 2x2 layout, same silhouettes, individual paired oval leaflets, open gaps, proportions, and ROOT AT BOTTOM MIDDLE of EACH tile. Simplify the PAINT and COLOR ONLY. Make all leaves a rich saturated medium summer olive GREEN, close to #438238 and #5a963e, with a very gentle broad gradient inside each leaflet. Remove every yellow edge, yellow rim, fine vein, mottling, texture grain, small highlights, dark internal vein, photographic leaf texture, and baked lighting. Clean calm flat painted color fields, no outlines. Two very closely related rich greens, no pale whitish areas or yellow tips. Thin stem same green. These are unlit albedo colors; the game will add lighting. Remain true transparent RGBA, four separate rooted sprays entirely inside their quadrants, no extra leaves or objects, no backdrop or grid."
+  },
+  "edit_reference": "leaf-atlas-v1.png",
+  "assets": {
+    "leaf-atlas-v1.png": {
+      "sha256": "767cdf9e12d64b04b2ee09ec16f36c6ab6ad8fe08e1ab2e96f2e7923ce4dfb3b",
+      "size": [
+        1254,
+        1254
+      ],
+      "mode": "RGBA",
+      "alpha_coverage_over_half": 0.2116
+    },
+    "leaf-atlas-v2-calm.png": {
+      "sha256": "fc76c0192c9655b3d1c13f806f47a9188ffaf0eb4a7ed87aaa4501492a345c86",
+      "size": [
+        1254,
+        1254
+      ],
+      "mode": "RGBA",
+      "alpha_coverage_over_half": 0.2547
+    }
+  }
+}

@@ -35,6 +35,10 @@ const ROLE_IDS := ["soil", "grass", "sand", "stone"]
 
 ## Light response belongs to this variant, separate from artwork colours.
 ## Relative linear tints may exceed one. Legacy materials remain opt-out.
+@export var style_rim_custom := false
+@export var style_rim_enabled := false
+@export_range(0.0,1.0,0.01) var style_rim_strength := 0.7
+
 @export_group("Grass light response")
 @export var grass_light_enabled := false
 @export_range(0.52,0.85,0.01) var grass_light_low := 0.64
@@ -53,6 +57,7 @@ func suggested_grass_light_tones() -> Dictionary:
 
 func validation_errors() -> Array[String]:
 	var errors: Array[String] = []
+	if not is_finite(style_rim_strength) or style_rim_strength < 0.0 or style_rim_strength > 1.0: errors.append("style_rim_strength outside 0..1")
 	if albedo_texture != null and (albedo_texture.get_width()<=0 or albedo_texture.get_height()<=0 or albedo_texture.get_width()>4096 or albedo_texture.get_height()>4096):
 		errors.append("terrain PNG texture must be within 1..4096 pixels per side")
 	if role_id not in ROLE_IDS:

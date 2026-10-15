@@ -35,6 +35,19 @@ static func marks(wood: Dictionary, lines: Array, seed: int, parameters: Diction
 	var settings := normalized(parameters)
 	var result := {}
 	if not settings.bark_pattern or settings.bark_pattern_density == 0: return result
+	var support := support_frames(lines)
+	for cell in wood:
+		if not _surface(wood, cell): continue
+		var coordinates := support_coordinates(Vector3(cell), support)
+		if int(settings.bark_pattern_version) == 1:
+			if _stroke(coordinates[0], coordinates[1], seed, settings): result[cell] = true
+		elif _scattered_stroke(coordinates[0], coordinates[1], coordinates[2], seed, settings):
+			result[cell] = true
+	return result
+
+## Derived coordinates shared by voxel marks and the optional surface LAB.
+## These helpers do not add fields to the Recipe or voxel Resource.
+static func support_frames(lines: Array) -> Dictionary:
 	var frames: Array[Dictionary] = []
 	var buckets := {}
 	for line in lines:
@@ -65,41 +78,43 @@ static func marks(wood: Dictionary, lines: Array, seed: int, parameters: Diction
 					var key := Vector3i(x, y, z)
 					if not buckets.has(key): buckets[key] = []
 					buckets[key].append(index)
-	for cell in wood:
-		if not _surface(wood, cell): continue
-		var point := Vector3(cell)
-		var along := point.y
-		var around := point.x
-		var support_radius := 1.0
-		var best := INF
-		for index in buckets.get(_bucket(point), []):
-			var frame: Dictionary = frames[index]
-			var relative: Vector3 = point - frame.start
-			var projection := clampf(relative.dot(frame.axis), 0.0, frame.length)
-			var radial: Vector3 = relative - frame.axis * projection
-			var radius := maxf(0.65, lerpf(frame.r0, frame.r1, projection / frame.length))
-			var distance := radial.length_squared() / (radius * radius)
-			if distance >= best: continue
-			best = distance
-			support_radius = radius
-			along = frame.origin + projection
-			var radial_v := radial.dot(frame.v)
-			var radial_u := radial.dot(frame.u)
-			# Text serialization discards negative zero. atan2(-0, -x) and
-			# atan2(+0, -x) otherwise choose opposite sides of the cylinder seam.
-			if absf(radial_v) < 0.00001: radial_v = 0.0
-			if absf(radial_u) < 0.00001: radial_u = 0.0
-			around = atan2(radial_v, radial_u) * radius
-		if int(settings.bark_pattern_version) == 1:
-			if _stroke(along, around, seed, settings): result[cell] = true
-		elif _scattered_stroke(along, around, support_radius, seed, settings):
-			result[cell] = true
-	return result
+	return {"frames": frames, "buckets": buckets}
+
+static func support_coordinates(point: Vector3, support: Dictionary, only_frame := -1) -> PackedFloat64Array:
+	# Keep the original GDScript scalar precision; Vector3 would round the
+	# angle/radius again and could change marks at an authored contour boundary.
+	var coordinates := PackedFloat64Array([point.y, point.x, 1.0, -1.0])
+	var best := INF
+	for index in ([only_frame] if only_frame>=0 else support.buckets.get(_bucket(point), [])):
+		var frame: Dictionary = support.frames[index]
+		var relative: Vector3 = point - frame.start
+		var projection := clampf(relative.dot(frame.axis), 0.0, frame.length)
+		var radial: Vector3 = relative - frame.axis * projection
+		var radius := maxf(0.65, lerpf(frame.r0, frame.r1, projection / frame.length))
+		var distance := radial.length_squared() / (radius * radius)
+		if distance >= best: continue
+		best = distance
+		var radial_v := radial.dot(frame.v)
+		var radial_u := radial.dot(frame.u)
+		# Preserve the existing saved-pattern negative-zero convention.
+		if absf(radial_v) < 0.00001: radial_v = 0.0
+		if absf(radial_u) < 0.00001: radial_u = 0.0
+		coordinates[0] = frame.origin + projection
+		coordinates[1] = atan2(radial_v, radial_u) * radius
+		coordinates[2] = radius
+		coordinates[3] = index
+	return coordinates
 
 ## Independent, jittered marks with margins. No shared horizontal row centre;
 ## short cross strokes cannot occupy more than a fifth of the circumference.
 static func _scattered_stroke(along: float, around: float, radius: float,
 	seed: int, settings: Dictionary) -> bool:
+	return scattered_stroke_distance(along, around, radius, seed, settings) <= 0.0
+
+## Signed edge distance in source voxels; the original boolean marks are its
+## zero contour. A caller can soften that contour without inventing new marks.
+static func scattered_stroke_distance(along: float, around: float, radius: float,
+	seed: int, settings: Dictionary) -> float:
 	var direction := int(settings.bark_pattern_direction)
 	var length := float(settings.bark_pattern_length)
 	if direction != 1: length = minf(length, maxf(1.0, TAU * radius * 0.20))
@@ -115,6 +130,7 @@ static func _scattered_stroke(along: float, around: float, radius: float,
 	var spacing := 5.5
 	var tile_x := floori(x / span)
 	var tile_y := floori(y / spacing)
+	var distance := INF
 	# Adjacent rows are tested because a mark can cross its jittered row boundary.
 	for row in range(tile_y - 1, tile_y + 2):
 		var variation := int(hash(Vector3i(tile_x, row, seed))) & 0x7fffffff
@@ -123,12 +139,11 @@ static func _scattered_stroke(along: float, around: float, radius: float,
 		var jitter := float((variation / 100003) % 1000) / 1000.0
 		var mark_length := maxf(1.0, length * lerpf(0.40, 0.85, phase))
 		var start := float(tile_x) * span + 1.0 + (length - mark_length) * jitter
-		if x < start or x > start + mark_length: continue
 		var center := (float(row) + 0.5) * spacing + (jitter - 0.5) * spacing * 0.60
 		center += sin(x * 0.50 + phase * TAU) * 0.20
 		var width := lerpf(0.40, 0.70, phase)
-		if absf(y - center) <= width: return true
-	return false
+		distance = minf(distance, maxf(maxf(start-x, x-start-mark_length), absf(y-center)-width))
+	return distance
 
 static func _stroke(along: float, around: float, seed: int, settings: Dictionary) -> bool:
 	var x := around

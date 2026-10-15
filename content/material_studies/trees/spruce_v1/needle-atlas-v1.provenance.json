@@ -1,0 +1,16 @@
+{
+  "date": "2026-10-15",
+  "method": "builtin imagegen, generated RGBA copied unchanged",
+  "file": "needle-atlas-v1.png",
+  "source_file": "C:/Users/novos/.codex/generated_images/01a13474-8fd3-7b91-bc60-2882a7de2d96/exec-664e6e3f-fbf8-4c8c-ad8a-70fe42433c14.png",
+  "prompt": "Use case: stylized-concept. Asset type: original production albedo + alpha texture atlas for spruce needle branch cards in a stylized anime fantasy game. Exactly FOUR complete spruce foliage SPRAYS in a strict 2x2 square atlas. Real transparent RGBA background and transparent gaps. Each quadrant contains ONE compact, tapered triangular spruce bough spray, bottom attachment x50% y94%, central stem growing upward, 7-9 short lateral twig fingers angled outward and slightly downward, narrower toward the tip. Stylized small pointed spruce needle tufts merge into calm broad connected brush shapes along the twig fingers, irregular serrated silhouette, several clean empty channels between fingers. Needle texture should be restrained and readable, NOT hundreds of noisy individual lines. NOT broad leaves, NOT a fern, NOT a palm frond, NOT an oval fluffy blob. Mostly one deep fresh evergreen green around #387544 with a second very close mid green #468550 in very soft broad gradients; muted rich pigment, absolutely no teal mint or neon yellow. Flat hand-painted minimalist matte game albedo, coherent color patches, no baked directional lighting or shadows, no black outlines, no veins, speckles, grain, photographic texture, white highlights, glow, gloss, border highlights. Very thin subtle dark green stem, same palette, no thick wooden branch. Four natural variations of same species, same visual scale. Keep every spray completely inside its own quadrant, 7% transparent margins, no contact between quadrants. Target 50-60% opaque coverage within each spray tile; disconnected edge needles allowed but most needles grouped as calm tufts. Atlas only, no tree, no scenery, no pot, no grid or labels, no text, no decorative objects. All empty regions must have genuine alpha transparency.",
+  "scope": "LAB needle placement on provisional spruce25 structure; form not accepted",
+  "art_acceptance": "OPEN",
+  "sha256": "cbd4616ced8fa101a18c54257fd7931850082583aa1318dcb92d51ff1e938aac",
+  "size": [
+    1254,
+    1254
+  ],
+  "mode": "RGBA",
+  "alpha_coverage_over_half": 0.3095618740922191
+}

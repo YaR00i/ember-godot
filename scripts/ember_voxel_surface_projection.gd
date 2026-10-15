@@ -44,6 +44,7 @@ var _regional_notification := false
 var _pending_height_columns := {}
 var editor_hide_water := false
 var _hidden_water_material: StandardMaterial3D
+var _style_rim_material: ShaderMaterial
 # Null outside an explicitly recorded editor session; runtime has no trace work.
 var editor_diagnostic_sink: RefCounted
 
@@ -94,6 +95,7 @@ func configure(
 	if _surface != null:
 		_surface.changed.connect(_on_surface_changed)
 		_surface.geometry_changed.connect(_on_geometry_changed)
+	refresh_style_rim_materials()
 	_begin_rebuild(not source_changed and not _chunks.is_empty())
 
 
@@ -122,7 +124,14 @@ func _apply_editor_materials(visual: MeshInstance3D) -> void:
 		_hidden_water_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	for index in visual.mesh.get_surface_count():
 		var surface_name: StringName = (visual.mesh as ArrayMesh).surface_get_name(index)
-		visual.set_surface_override_material(index, _hidden_water_material if editor_hide_water and surface_name in ["water", "water_foam"] else null)
+		visual.set_surface_override_material(index, _hidden_water_material if editor_hide_water and surface_name in ["water", "water_foam"] else _style_rim_material if surface_name not in ["water", "water_foam"] else null)
+
+func refresh_style_rim_materials() -> void:
+	_style_rim_material=null
+	if _surface!=null and _surface.material.get("object_surface",{}).has("style_rim"):
+		_style_rim_material=SurfaceMaterials.opaque_material().duplicate() as ShaderMaterial
+		preload("res://scripts/ember_voxel_material_profiles.gd").apply_rim(_style_rim_material,_surface.material)
+	for visual: MeshInstance3D in _chunks.values():_apply_editor_materials(visual)
 
 func _on_geometry_changed(indices: PackedInt32Array) -> void:
 	_regional_notification = true

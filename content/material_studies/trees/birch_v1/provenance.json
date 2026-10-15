@@ -1,0 +1,16 @@
+{
+  "method": "built-in imagegen; PNG copied unchanged; true generated alpha preserved",
+  "created": "2026-10-15",
+  "asset": "leaf-atlas-v1.png",
+  "dimensions": [
+    1254,
+    1254
+  ],
+  "mode": "RGBA",
+  "prompt": "Create a production foliage alpha atlas for a painterly anime game birch tree. Square image, TRUE transparent background. A precisely arranged 2 by 2 atlas, four equal square tiles, NO grid lines, each tile containing one distinct airy birch leafy twig spray. Each spray has 10 to 14 broad small diamond/triangular birch leaves with softly serrated silhouette, clearly tapered pointed tips and broad flat painted interiors; visibly different from oval oak leaves. Leaf groups follow a thin tiny brown-green twig starting at tile-local UV (0.5,0.94) near bottom center, spreading upward and outward, staying entirely inside the tile with at least 8 percent transparent margin. Leaves partly overlap in a few groups but leave generous clean transparent holes between leaves; about 40 percent leaf coverage in each tile. One calm rich spring green family with a subtle broad gradient per leaf, maximum two closely related green tones. Broad clean shapes, absolutely no veins, speckles, grain, individual highlights, outline stroke or micro brush texture. Flat orthographic asset, even neutral ambient light, NO baked cast shadows, NO glossy shading. Four sprays same scale but different asymmetrical silhouette. No scene, no captions, no border, no checkerboard background. Intended on existing gently curved 3D alpha-tested leaf cards with live light, not a whole tree render. Hand-painted minimalist Genshin-inspired foliage character, original artwork. Transparent alpha throughout all gaps, no detached dust or tiny fragments.",
+  "scope": "birch22 LAB trial only; existing oak leaf B unchanged",
+  "accepted": true,
+  "bark": "../bark_species_v1/birch-v1.png",
+  "sha256": "16e73688d379432df120a1ca25c55e64e0e8fb5898e242500551ac26806f6d82",
+  "acceptance_scope": "User accepted birch22 look as base on 2026-10-15; production workflow and other worlds deferred"
+}

@@ -1,0 +1,16 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/compact_grass_field_study.tscn" id="1_base"]
+[ext_resource type="Script" path="res://scripts/prototypes/ember_diorama_readability_study.gd" id="2_study"]
+[ext_resource type="Resource" path="res://content/world_terrains/diorama_readability_study.res" id="3_source"]
+
+[node name="DioramaReadabilityStudy" instance=ExtResource("1_base")]
+script = ExtResource("2_study")
+anomaly_zones = Array[Vector4]([])
+walk_start = Vector2(4.25,7.45)
+walk_route = PackedVector2Array(4.25,7.45,4.25,5.35)
+
+[node name="Map" parent="." index="0"]
+map_id = "diorama_readability_study"
+compact_terrain = ExtResource("3_source")
+compact_ground_style = 0

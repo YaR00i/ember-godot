@@ -52,6 +52,11 @@ const TerrainProjection := preload("res://scripts/prototypes/ember_terrain_pilot
 @export_range(0, 16, 1) var compact_water_mesh_step := 0
 @export var compact_water_volume_sides := false
 ## Scene-owned material comparison. Old maps retain their existing light.
+@export var compact_style_rim_enabled := true:
+	set(value):
+		compact_style_rim_enabled = value
+		refresh_style_rim()
+
 @export_enum("Прежний свет", "Естественный мультяшный", "Игрушечный пластик") var compact_material_light_mode := 0:
 	set(value):
 		compact_material_light_mode = clampi(value, 0, 2)
@@ -218,6 +223,8 @@ func set_lighting_test_profile(shadow_count: int) -> void:
 
 
 func _ready() -> void:
+	get_tree().node_added.connect(_style_rim_node_added)
+	refresh_style_rim.call_deferred()
 	apply_authored_lighting()
 	_refresh_visual_surface_projection()
 
@@ -1121,3 +1128,45 @@ func _maybe_interact(
 		values.note = str(region.get("note", ""))
 	var area := EmberSceneAuthoring.make_interact(values, tile_size)
 	inst.add_child(area)
+
+
+func _exit_tree() -> void:
+	if get_tree().node_added.is_connected(_style_rim_node_added):
+		get_tree().node_added.disconnect(_style_rim_node_added)
+
+func _style_rim_node_added(node: Node) -> void:
+	if node is GeometryInstance3D: _apply_style_rim_instance.call_deferred(node)
+
+func refresh_style_rim() -> void:
+	if not is_inside_tree(): return
+	var scope := get_parent() if get_parent() != null else self
+	_apply_style_rim_branch(scope)
+
+func _apply_style_rim_branch(parent: Node) -> void:
+	# Derived preview/projection meshes may be internal children.
+	for child in parent.get_children(true):
+		if child is EmberMapLoader and child!=self:continue
+		if child is GeometryInstance3D:_apply_style_rim_instance(child)
+		_apply_style_rim_branch(child)
+
+func _apply_style_rim_instance(node: Node) -> void:
+	if not is_instance_valid(node) or not node.is_inside_tree(): return
+	var scope := get_parent() if get_parent() != null else self
+	if not scope.is_ancestor_of(node): return
+	var parent := node.get_parent()
+	while parent != null and parent != scope:
+		if parent is EmberMapLoader and parent != self: return
+		parent = parent.get_parent()
+	var visual := node as GeometryInstance3D
+	var materials: Array[Material] = []
+	if visual.material_override != null: materials.append(visual.material_override)
+	elif visual is MeshInstance3D and visual.mesh != null:
+		for index in visual.mesh.get_surface_count(): materials.append(visual.get_active_material(index))
+	elif visual is MultiMeshInstance3D and visual.multimesh != null and visual.multimesh.mesh != null:
+		for index in visual.multimesh.mesh.get_surface_count(): materials.append(visual.multimesh.mesh.surface_get_material(index))
+	for material in materials:
+		if material is ShaderMaterial and material.shader != null:
+			var code: String = material.shader.code
+			if code.contains("ember_stylized_rim.gdshaderinc") or code.contains("ember_painterly_light.gdshaderinc"):
+				visual.set_instance_shader_parameter("ember_style_rim_master", compact_style_rim_enabled)
+				return

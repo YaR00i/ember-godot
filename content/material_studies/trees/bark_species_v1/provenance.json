@@ -1,0 +1,75 @@
+{
+  "date": "2026-10-15",
+  "creation": "imagegen built-in; generated PNGs copied unchanged",
+  "role": "Smooth-world bark artwork; oak C and birch22 accepted as LAB bases; other species candidates",
+  "reference": "docs/art/references/genshin/trees/07-stylised-wood-types.png",
+  "reference_usage": "Style direction from supplied illustrated wood icons; no copied game texture or icon composition",
+  "runtime_scope": "Existing oak21 Foliage21Study defaults to C; birch-v1 is now also an opt-in birch22 LAB trial",
+  "other_species": "Birch22 LAB look accepted; spruce/maple/savanna remain candidates",
+  "prompts": {
+    "oak-v1.png": "Use case: stylized-concept. Asset type: seamless square 2D game bark ALBEDO texture, not a tree illustration. Create exactly one flat full-bleed square texture for mature OAK bark in a restrained hand-painted anime fantasy game style. The intended visual reference is stylised illustrated wood resource icons: large crooked lengthwise plates and broad carved grooves, soft painted planar colour fields, gentle thin warm edges, restrained two-to-three earth brown tones. Main neutral warm medium brown (#79604a approx), quieter slightly darker brown grooves and gentle muted tan plane changes. Features should be sparse and LARGE: only about six major vertical irregular bark ribbons across the entire tile, a few interrupted diagonal joins, lots of calm connected areas. Edges of plates have sculpted angular organic shape; not uniform parallel wavy stripes. Minimal visual noise and low-to-moderate contrast suitable for a whole branching oak seen from a game camera. Very small number of broad softly graded colours, no fine wood grain, no tiny speckles, no scratches, no mottled cloudy noise, no photorealism, no outlines in pure black, no golden highlights. This is colour artwork only: neutral even flat lighting without baked directional shadows, ambient occlusion, glossy highlights or bloom; the existing game shader supplies shape, shadows and rim light. Vertical wood fibres run from top to bottom. Must tile seamlessly left/right and top/bottom with coherent continuation of large shapes and no border frame. No trunk silhouette, no logs, no cut ends, no end-grain rings, no leaves, no scenery, no labels, no text, no watermark. Opaque full coverage. Square 1024 by 1024 if possible.",
+    "oak-v2-calm.png": "Edit this OAK bark game albedo texture to be significantly more MINIMAL and less noisy. KEEP the overall vertical fibre orientation, the six broad irregular major groove shapes and the opaque square seamless full coverage. Change ONLY the level of colour detail and the paint finish: remove ALL the many little interior brown slivers, tiny paint variations and thin secondary fibres. Inside each major wide ribbon make nearly UNIFORM connected matte colour fields, like clean hand-painted cel-like gouache shapes, with at most ONE very broad subtle gradient. Use ONLY a main muted medium warm brown and a somewhat darker related groove brown, plus a very gentle sparse muted light accent at some big plate edges. Groove contrast should be restrained; lighten the darkest crevices slightly so they are not black or intensely dark. Break the overly straight narrow band look using 4-6 LARGE softly angular painted plate facets per WHOLE tile, not dozens of little marks. The desired style is the quiet large connected painted masses of stylized game grass and rock, with clear shaped broad bark grooves. Not blur: retain clear deliberate edges of the few major shapes, eliminate small shapes instead. Preserve seamless continuation at opposite edges; no border/vignette. Flat neutral albedo, NOT baked 3D lighting, no highlights, cast shadows, AO, bevel, gloss, speckles, micrograin, fibres, scratches, clouds, knots, text or watermark. No scenery or tree/log illustration. This must remain a flat reusable bark texture.",
+    "birch-v1.png": "Use case: stylized-concept. Asset: exactly one flat full-bleed square seamless BIRCH bark albedo texture for a hand-painted anime fantasy game. This belongs to a family of minimal illustrated bark materials inspired by stylized wood resource icons. Very calm broad ivory-grey colour fields, slightly warm light grey-beige (#c6c3b2 approximately), with only a few broad charcoal grey horizontal lenticel marks and sparse large irregular peeling shapes. Approximately 8-12 short horizontal charcoal marks spread asymmetrically over the WHOLE tile, mainly separate from one another, different lengths, softly angular rather than noisy dots. Keep 80 percent of the surface quiet light bark with large connected pale areas. Dark accents muted grey-brown, never black. Three related broad colour levels maximum, very restrained painted gradients within each. No tiny cracks, no fine grain, no tiny flecks, no speckles, no brush scratch noise, no dense repeating black stripes. Minimal hand-painted planes, soft bounded shapes, not photorealistic. Neutral even flat albedo lighting; no cast shadows, ambient occlusion, directional shine, bloom, lighting or 3D relief baked into the texture. Vertical bark direction, lenticels horizontal. Tile seamlessly left/right and top/bottom; no frame, vignette or distinct centre. A flat bark texture covering the entire image, NOT an image of a trunk or a log. No leaves, branches, end grain, rings, scene, labels, text or watermarks. Opaque square 1024x1024 if possible.",
+    "spruce-v1.png": "Use case: stylized-concept. Asset: one flat full-bleed square seamless SPRUCE bark albedo game texture, part of a consistent minimal hand-painted anime fantasy bark family. Main muted cool grey-brown (#6d6458 approx), a few broad softly angular elongated scales, like flat stacked irregular plates with gently fractured ends. About 7 broad vertical regions across the entire tile and only 3-4 large overlapping scale ends down its height. Long calmer thin sections above and below each scale; avoid a dense brick layout. Subtle related slate-brown, warm grey and slightly lighter taupe, no more than three broad colour levels with restrained gentle gradients. Lower contrast than realistic bark, appropriate for game-camera stylized foliage. Shapes must look deliberately painted, soft edges on broad plane colour and clear but muted grooves. NO fine grains, tiny cracks, stippling, flecks, scratches, mottled noise or photorealism. Neutral even colour map, no baked lighting, cast shadow, ambient occlusion, glossy highlights, 3D shading, bloom or bevel rendering. Not an illustration of a tree or log: bark covers every pixel. Vertical fibre orientation, coherent seamless top/bottom and left/right continuation, no border or vignette. No endgrain, knots, leaves, scene, text or watermark. Opaque square 1024x1024 if possible.",
+    "maple-v1.png": "Use case: stylized-concept. Asset: exactly one flat full-bleed square seamless MAPLE bark albedo texture for a coherent hand-painted anime fantasy game tree family. Main gentle muted rose-taupe grey-brown (#887460 approx), a smoother bark than oak with about five wide lengthwise flowing ridges across the whole tile. A handful of broad tapered shallow painted grooves and large calm connected planes; very few small interruptions. Hand-painted angular organic shapes with two related muted brown/taupe tones and a softly graded third accent. Minimalist and quiet from game distance. Different species character from rugged oak: smoother elongated gently sinuous forms, shallower lighter grooves, no grid of chunky scales. The groove colour is just slightly darker, not black; no heavy black line art. No tiny cracks, fine grain, dots, flecks, scratchy brushwork, knots, realistic noise, photorealism, dramatic baked shadows, ambient occlusion, bevel shading, directional highlights, lighting or bloom. Colour artwork for a shader-lit surface, evenly lit and matte. Fibres run vertically top to bottom. Seamless wrap on all four edges, full coverage, no borders, labels, tree/log illustrations, leaves, scenery, text or watermark. Opaque square 1024x1024 if possible.",
+    "savanna-v1.png": "Use case: stylized-concept. Asset: exactly one full-bleed flat square seamless bark albedo texture for a SAVANNA ACACIA-style game tree. Part of a consistent minimalist hand-painted anime fantasy tree material family. Main dry muted earthy olive-grey brown (#79735e approx). Large angular polygonal bark plates with broad interrupted lengthwise cracks: about five columns of plates across the WHOLE texture and three large plate changes from top to bottom, deliberately irregular and gently diagonally staggered rather than brick-shaped or a grid. Dry rugged character but restrained LOW contrast, muted dark olive-brown groove shapes; maximum three closely related broad colour levels with smooth gentle transitions inside flat plates. Clear large painted shapes at a game-camera distance, lots of calm connected colour. No tiny cracks, micro-grain, speckles, fine scratches, mottled clouds, photorealism, thick black outlines or extreme white/gold edges. Neutral evenly lit albedo, no baked directional light, cast shadows, ambient occlusion, gloss, bevel shading, 3D relief rendering or bloom. Vertical fibre direction, seamless four-edge wrapping with coherent continuation, no borders or vignette. Bark must cover every pixel; not a picture of a log, trunk or tree. No leaves, branches, rings, end grain, scenery, labels, text, watermark. Opaque square 1024x1024 if possible."
+  },
+  "assets": {
+    "birch-v1.png": {
+      "sha256": "6634cd97ff7ead5ee03e70dc3be5bec8f0365887408bcc64d7e250804c034200",
+      "size": [
+        1254,
+        1254
+      ],
+      "mode": "RGB",
+      "accepted": true,
+      "acceptance_scope": "Accepted birch22 LAB base, 2026-10-15"
+    },
+    "maple-v1.png": {
+      "sha256": "936ede1f483c6822ad0fbd5dae0f4043394e053a77bffcbfd74e8665a5dbd9d5",
+      "size": [
+        1254,
+        1254
+      ],
+      "mode": "RGB",
+      "accepted": false
+    },
+    "oak-v1.png": {
+      "sha256": "2802748e11becdfe572265d34204958e872ed64ff1d9a888eaef6da4fa6f9b4e",
+      "size": [
+        1254,
+        1254
+      ],
+      "mode": "RGB",
+      "accepted": false
+    },
+    "oak-v2-calm.png": {
+      "sha256": "e16fa9f7d2e54c21dd286a9dcc98f0ee4a41ee056b62d75025e2815c383f6e75",
+      "size": [
+        1254,
+        1254
+      ],
+      "mode": "RGB",
+      "accepted": true,
+      "acceptance_scope": "User accepted C as oak base on 2026-10-15; no other species acceptance"
+    },
+    "savanna-v1.png": {
+      "sha256": "a00c3044501ac6ad8a2142215a31839142bfbf15c038184a2431b74a489c6873",
+      "size": [
+        1254,
+        1254
+      ],
+      "mode": "RGB",
+      "accepted": false
+    },
+    "spruce-v1.png": {
+      "sha256": "1353422a81aed378540556973d18c10f819e13bc618306921092629f167d0332",
+      "size": [
+        1254,
+        1254
+      ],
+      "mode": "RGB",
+      "accepted": false
+    }
+  }
+}

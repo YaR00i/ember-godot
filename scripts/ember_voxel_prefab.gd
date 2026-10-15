@@ -379,6 +379,9 @@ static func refractive_material(material: Dictionary) -> ShaderMaterial:
 
 static func _apply_visual_materials(mesh: ArrayMesh, material: Dictionary = {}) -> void:
 	var opaque := voxel_material()
+	if material.get("object_surface",{}).get("style_rim",{}) != {}:
+		opaque=opaque.duplicate() as ShaderMaterial
+		preload("res://scripts/ember_voxel_material_profiles.gd").apply_rim(opaque,material)
 	var transparent := voxel_transparent_material()
 	# An explicit source opt-in selects optics; legacy alpha and ordinary roles stay unchanged.
 	var refractive := refractive_material(material) if preload("res://scripts/ember_voxel_material_profiles.gd").optics_parameters(material).enabled else null

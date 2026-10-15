@@ -293,6 +293,23 @@ static func editing_fields(recipe: Resource) -> Array:
 		{"key": "foliage_color", "label": "Цвет листвы", "group": "Цвета", "type": "color"},
 		{"key": "bark_color", "label": "Цвет коры", "group": "Цвета", "type": "color"},
 	]
+	if int(recipe.parameters.generation_version) in [21,22,23,24,25]:
+		if int(recipe.parameters.generation_version)==25:
+			fields.append({"key":"crown_shape","label":"Построение ели","group":"Каркас","options":["Первая проба","Разветвлённые лапы"],"values":[0,1]})
+			fields.append({"key":"crown_spread","label":"Ширина кроны · %","group":"Каркас","min":25,"max":85})
+			fields.append({"key":"branch_start","label":"Начало ярусов · % высоты","group":"Каркас","min":20,"max":55})
+		if int(recipe.parameters.generation_version)==23:
+			fields.append({"key":"crown_shape","label":"Форма клёна","group":"Каркас","options":["Широкая · сохранённая","Вытянутая · основа"],"values":[0,1]})
+		for field in [
+			{"key":"main_branch_count","label":"Основные ветви","group":"Ветвление","min":3,"max":10},
+			{"key":"branch_splits","label":"Ответвлений на ветвь","group":"Ветвление","min":1,"max":3},
+			{"key":"branch_levels","label":"Уровни ветвления","group":"Ветвление","min":2,"max":4},
+			{"key":"branch_count_variation","label":"Разнообразие развилок · %","group":"Ветвление","min":0,"max":100}]:
+			if int(recipe.parameters.generation_version)==25:
+				if field.key=="main_branch_count":field.label="Ярусы ветвей"
+				if field.key=="main_branch_count" and int(recipe.parameters.crown_shape)==1:field.max=12
+				if field.key=="branch_count_variation":field.label="Неравномерность ярусов · %"
+			fields.append(field)
 	if int(recipe.parameters.get("tree_type", 0)) > 0 or int(recipe.parameters.get("generation_version", 1)) in [9, 14]:
 		fields.insert(3, {"key": "foliage_along", "label": "Листва вдоль ветвей · %", "group": "Листва", "min": 0, "max": 100})
 	if LargeTreeProvider.FoliagePattern.supported(recipe.parameters):

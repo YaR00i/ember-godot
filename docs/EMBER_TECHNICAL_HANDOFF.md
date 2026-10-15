@@ -692,6 +692,253 @@ export boundary, retired references и physical G4/G5 требуют отдел�
   roughness_variation(default0). Empty relief наследует color heights, empty
   roughness нейтральна; sides наследуют top. Factory пишет height в alpha прежних
   atlases, добавляет два R8 roughness atlas(128KiB) и RGBAF surface_lookup4KiB.
+  Smooth bark LAB: RestoredTreeFixture keeps selected17/7 scaffold/clouds/wood
+  from the old LAB; Source SHA/counts match. PaintedBarkProjection binds existing
+  bark role + derived CUSTOM1 support pairs and RGBAF frame lookup. Optional
+  painted include on existing toon shader projects artwork in local coordinates,
+  blends neighbours, unwraps atan derivatives, uses source-owned PNG/mipmaps.
+  The same factory now compares old/coarse bark and painted foliage. Optional
+  foliage include samples object-local triplanar3.5m, retains original paint as
+  relative pigment, reuses painterly light helpers and painted_light_grass profile.
+  No canopy geometry/normal/UV changes; old painted render matches A exactly.
+  Leaf-card LAB extends the same material factory/renderer: saved scaffold →
+  TreeLeafCardsFixture fixed quad layers + CUSTOM1 group normals, one mesh;
+  optional LEAF_CARDS define supplies UV alpha scissor/cull_disabled. 394quads/
+  788tris, source paint unchanged. TreeLeafCardsStudy inherits the old fixture
+  and keeps rounded A; targets/limits — Terrain Authoring → «Аниме-ориентир деревьев».
+  Ground POM/grass/floor retained; tree has no new collision/authoring transfer.
+  Active parametric LAB: LargeTreeProvider opt-in oak21 → pure BranchLayout
+  recursive growth (tree-gen/MIT attribution in THIRD_PARTY_NOTICES). Existing
+  Recipe.structure version1/Source owner, four bounded count/depth/variation
+  parameters.21 allows≤768 supports/order4 (worst603), crown markers≤128;
+  old20 keeps256,1–19 keep128, defaults/LATEST_VERSIONS remain17.
+  branch_seed metadata + topology comparison regenerate changed21 scaffold;
+  appearance-only edits retain lines. Generator descriptors expose controls,
+  same GeneratorPanel/Creation transaction; context.field_keys focuses LAB only.
+  ParametricStudy compares20/21 plain/bark, density presets and cache restore
+  on preview removal; no collider/cards/camera-owner transfer. Source/Recipe
+  save/reopen, existing panel Undo/Redo/discard/preview equality checked.
+  Foliage21 LAB adds existing crown_cards optional branch_growth path; Source21
+  remains bare/unchanged. Last two branch levels own stem UV vertices; one
+  derived curved-card mesh (normal1967/23604tris), existing atlasv2 and material
+  factory. Group+whole-crown normals, accepted grass light profile, no shader/
+  collider/new asset changes. Foliage21Study extends ParametricStudy and caches
+  baseline foliage for preview removal; production renderer transfer deferred.
+  Shape/volume21 accepted as a basis; foliage/bark artwork needs refinement.
+  Material-only LAB revision2026-10-15: Foliage21Study clones existing materials,
+  swaps only albedo (atlasv3_quiet/barkv4_soft), and offers old/leaf/leaf+bark buttons.
+  Support projection/mesh/UV/normals/light owners unchanged; native previous frame
+  is pixel-exact. Artwork acceptance OPEN — Terrain Authoring → «Построение дерева».
+  Minimal one/two-tone atlas variants follow in the same LAB; factory/geometry
+  owners unchanged. Temporary nearest/no-mip sampler clone largely removes dark
+  edge net; original material restored exactly, shader files remain unchanged.
+  Approved leaf-optics trial2026-10-15: same factory artwork(path, alpha_edges)
+  opt-in cache prepares padded RGB + alpha-weighted straight-colour mipmaps;
+  default path and authored PNG/alpha unchanged, filtered sampler retained.
+  Shared painterly light owns material rim weight and pure transmission helper;
+  leaf-card uniforms default0/saturation1 preserve prior materials. Directional
+  LIGHT_COLOR/ATTENUATION drive both additions, no emission. Foliage21Study owns
+  five comparison stages and transient saturation1.18/transmission0.28/rim0.23
+  sliders; v7_air_gaps is optional artwork, same mesh/UV/normals/Source/wood.
+  Native previous-frame and zero-Sun comparisons are pixel-exact. Ground light
+  changes from gaps are subtle; atmosphere rays and production/editor profile
+  transfer deferred. Artistic/F6 gates — Terrain Authoring → «Построение дерева».
+  Separate-leaf first-stage samples: Foliage21Study opt-in button extracts1/6
+  existing curved cards into preview-only meshes away from the tree. Original
+  tree arrays/material stay exact; v8 atlas and local material uniform comparison
+  use existing artwork cache/toon/common light. No new geometry/data owner or
+  profile schema. Historical tree frame pixel-exact; new LAB variant described
+  below, production material transfer awaits art review — Terrain Authoring →
+  «Построение дерева».
+  Shadow diagnostic on same samples: QA-only controls confirm real shadow path,
+  sensitive to depth bias/PCSS; macro/geometric normal controls don't eliminate
+  ripple. Bias1.6 clears one card but alters group/receiver shadow coverage, so
+  no global bias/light profile change applied. ATTENUATION has no caster
+  identity; selective internal-shadow response needs a separate boundary choice.
+  Source/study/shader assets and baseline return exact; evidence and gates —
+  Terrain Authoring → «Исследование рисованной листвы».
+  Whole-tree trial approved next: Foliage21Study material variant5 clones sample
+  stage2 with requested shadow0.4;0.35/1.0 and original return available in LAB.
+  Transient material/panel only, original default and sample independent; no
+  shader/factory/generator/schema/camera changes. Native3×2×tree/game, near/far/
+  side/back/motion and original return exact; same-atlas ground shadow ROI exact.
+  Canopy remains dense, grain and art/input gate OPEN. Game framing still clips
+  part of canopy; no camera direction accepted. Contract/evidence — Terrain
+  Authoring → «Исследование рисованной листвы», ember-tree-leaves-40/.
+  Density trial follows user's feedback: existing BranchingFixture owns pure
+  thin_crown_cards(full,coverage), stable whole branch+t puffs ranked per crown
+  owner; nested subsets retain positions/UV/colour/custom macro normals exactly.
+  Packed geometric normals retain direction (max error0.00012894), full buffers
+  untouched;100% returns full instance. Foliage21Study owns transient slider/cache,
+  release/Enter/focus commit, no per-drag rebuild; only material variant5 thinned.
+  Existing shader/material40%/Source/wood/floor/physics preserved; normal count
+  889→534 puffs at60%,1967→1186 cards. Old100 frame and return exact, fixture and
+  native3×2×tree/game/near/far/orbit guards PASS. Artistic density/F6/input and
+  production Recipe transfer OPEN; evidence — ember-tree-leaf-density/.
+  User now prefers45% as next visual basis and wants local thinning/internal
+  shading controls. QA only `capture_tree_shadow_modes.gd` clones low0.55/0.80,
+  caster OFF/receive0/AO controls,3×2×tree/game/external shield. Cast OFF like grass
+  loses canopy ground shadow; receive0 loses external response; macro/AO darkening
+  is separate. All25 protected files/baseline45/return exact; no installed change.
+  Local density/dark-form UI contract now implemented below; true
+  caster-selective internal shadow requires separate boundary,
+  not a renaming of general strength. Evidence — ember-tree-shadow-modes/.
+  Current LAB: Foliage21Study starts trial5/global45/shadow0.4/depth100(low0.24).
+  BranchingFixture.crown_leaf_groups + optional local_coverage in thin_crown_cards
+  own eight actual crown parts; UI frame highlights full part bounds, hidden F1,
+  caster OFF/GI disabled. Local factor retains other owners exactly; cache key
+  includes local percentages; new branch preview clears local overrides/selection.
+  Form-depth slider sets existing leaf low only, no shader/math/schema change.
+  Existing RecipePanel.history owns local/depth/reset Undo/Redo; recipe unchanged.
+  Native3×2×tree/game/views/motion/local drag-one-build/cache/reset/F1/zero-Sun/
+  external/ground guards PASS; baseline/control-only/current post-blocker return
+  exact; post-blocker numeric precision gate max1 RGB8 level/≤128 pixels.
+  Personal art/input/production transfer OPEN. Evidence — ember-tree-leaf-local/.
+  Grass-family A/B: same Foliage21Study set_tree_leaf_shared_light owns a temporary
+  material clone; existing foliage include adds RGB artwork strength default1,
+  candidate .18 + current-card pigment reference/base/response from grass Pattern.
+  No mesh/alpha/shadow casting changes, receiving .4 retained. Native3×2×tree,
+  exact original A/return, ground ROI/data/POM/external/zero-Sun guards PASS.
+  Fixed B turns off on form/shadow edits; old controls/resources preserved.
+  User accepted calmer B direction; movement/production gate OPEN; details — Terrain Authoring, evidence
+  ember-tree-grass-light/. No production schema or selective self-shadow fix.
+  Tree rim LAB: ember_stylized_rim.gdshaderinc owns shared pure response extracted
+  exactly from painterly light; voxel_toon exposes object_style_rim_enabled/strength,
+  defaults false/0. Directional LIGHT_COLOR × raw ATTENUATION, existing normals.
+  Foliage21Study owns B/wood clones and transient toggle + wood .45/leaf .18 sliders.
+  OFF restores base bark; A/form/shadow disables rim. Native baseline/off/return,
+  ground ROI, Source/mesh/Recipe/POM, strength0/zero-Sun/full-shadow guards PASS.
+  User accepted B + .45/.18 rim. Permanent controls now live in WorldLook/Pattern/
+  existing model.material.object_surface.style_rim; PalettePanel + canonical Actions
+  handle object role controls. Material-only bindings cover Canvas, world draft,
+  Prefab and SurfaceProjection; per-instance map master preserves shared assets.
+  Single shared include; no new renderer/preset family. Native/targeted PASS,
+  editor/F6/125%/movement manual OPEN. Full B artwork authoring remains deferred.
+  Current evidence — ember-style-rim-transfer/; details/gates — Terrain Authoring.
+  Bark species trial: Foliage21Study owns transient A/B/C albedo selector, default C;
+  same PaintedBark projection/material instances and Source rim bindings retained.
+  Six imagegen assets/provenance in material_studies/trees/bark_species_v1; only oak
+  fitted, C user-accepted. Other bark assets candidates; own F6/motion OPEN.
+  Native/fixture guards PASS; owners/gates — Terrain Authoring → «Крупная рисованная
+  кора и кандидаты пород»; evidence ember-bark-species/.
+  Birch22: explicit tree_type2 opt-in in same LargeTreeProvider/BranchLayout; defaults
+  remain14/17/13/12/15 and oak21 exact. Same Recipe normalization/validation,
+  build_on_structure rebuild, editing descriptors/RecipePanel history/save paths.
+  SpeciesFixture/SpeciesStudy derive LAB meshes/cards only; five old support-mass
+  diagrams plus accepted oak, own birch atlas/bark via unchanged painted shader.
+  Native/5 targeted checks PASS; birch look accepted, manual/production OPEN. Owners/gates —
+  Terrain Authoring → «Пять пород и берёза22»; evidence ember-birch-species/.
+  SpeciesStudy owns transient birch controls via existing RecipePanel.history;
+  BranchingFixture owns whole-puff global/local thinning, Profiles existing rim binding.
+  Accepted60%/388 cards/B/40%/.45/.18 retained; release once/bounded32 mesh cache;
+  stale local history guarded by Source identity. LAB foliage settings not Recipe data.
+  Current birch controls/evidence — ember-birch-controls/; maple follow-up below.
+  Maple23 opt-in/type3 uses same Provider/BranchLayout/Recipe, short trunk/wide forks;
+  old defaults and oak21/birch22 unchanged. MapleStudy configures shared SpeciesStudy
+  via species hooks, no separate light/controls/thinning implementation. New own atlas
+  maple_v1/v2-rooted plus saved maple bark candidate; no shader edits. Native matrix,
+  maple and birch controls PASS, art/manual/production OPEN. Owners/gates — Terrain
+  Authoring → «Клён23»; current evidence ember-maple-species/.
+  Maple shape follow-up: old crown_shape0/default scene preserved exactly;1 routes
+  new upright supports through same BranchLayout, provider rebuild/validation and
+  Recipe. Shared SpeciesStudy.trial_field_keys exposes fifth form field only maple.
+  Existing Recipe variants saved under maple_v1/variations; wide liked/preserved,
+  upright accepted as primary on 2026-10-15. Assets/light unchanged; current evidence
+  ember-maple-shapes/, details/gates — Terrain Authoring → «Клён23».
+  Savanna24 opt-in/type0: BranchLayout._savanna_plan uses same recursive supports,
+  Provider validation/Source and Generator/Panel count fields. Shallow crown guides/
+  card orientation gated24 only; accepted21/22/23 outputs exact. SpeciesFixture and
+  SavannaStudy reuse same controller/Recipe/history, directory hook and accepted
+  reference factory. Own savanna_v1/v2-calm atlas, existing savanna bark; shader intact.
+  Native matrix/controls/Recipe checks and4 regressions PASS; art/F6/motion and
+  production foliage serialization OPEN. Current evidence ember-savanna-species/;
+  owners/gates — Terrain Authoring → «Саванна24». Shape0 rejected by user, retained.
+  Savanna shape1 blockout: _savanna_umbrella_plan and shared recursion feed same
+  Provider/Recipe supports; shape toggle rebuild gated24. Species.crown_blockout
+  reuses existing Rounded implicit-volume union with inverse vertical scaling.
+  SavannaShapeStudy keeps same Recipe/history, hides final-foliage tab; reference
+  trees/light exact. Native callbacks/3 views+above/light matrix and5 regressions
+  PASS, silhouette accepted as base; manual motion OPEN. Evidence
+  ember-savanna-canopy/. SavannaLeafStudy continues that same Source with v3-small-
+  patches atlas and opt-in Branching canopy_envelope placement inside branch-owned
+  supports. Derived root.point is card anchor; root.attachment is actual shoot
+  attachment. No Resource/schema owner change. SpeciesStudy.trial_card_options
+  preserves placement in Recipe preview. Terminal t1 puffs now replace3 attempts
+  with small flat fans along actual final shoot segment; derived tip_priority
+  retains them first within the same density budget,0% still removes all.
+  Support-envelope exception only for these tagged fans; Source/history/light exact.
+  Native matrix/controls/Source/wood/collision exact; canopy/species/foliage21
+  regressions after tip coverage,6 original patch regressions PASS; leaf art/
+  motion/production transfer OPEN. Current evidence ember-savanna-tip-cover/;
+  previous leaf placement preserved in ember-savanna-leaf-patches/.
+  Spruce25 first silhouette: explicit25/tree4 only, existing Provider/BranchLayout
+  plan/Recipe and same SpeciesStudy/RecipePanel owners. _spruce_plan has continuous
+  leader, staggered whorls/twigs and branch-owned overlapping crown supports.
+  Rounded.smooth_wood optional ellipsoid_radii reuses same extraction; default
+  capsules and previous species frames unchanged. Species.crown_blockout(flatten0)
+  consumes actual ellipsoid radii. Six shape controls; foliage tab hidden, no
+  needle artwork or production appearance save. test/capture_spruce_shape owns
+  Source/Recipe/preview/history/3 views/light matrix/reference guards; scalar branch
+  text roundtrip tolerance1e-6, Source/collision/crown faces exact. Evidence
+  ember-spruce-shape/; visual form/F6/motion OPEN. User then authorized needle trial
+  while explicitly questioning protrusions; shape is not accepted. Species.
+  spruce_needles/compact_tree_spruce_needles_study reuse same controller and Source.
+  Branching.crown_cards needle_sprays opt-in25 anchors drooping/tapered fans on real
+  shoots, terminal priority in same global/local thinning. crown_card_sample
+  optional start_card keeps default sample path unchanged. Own spruce_v1 needle
+  atlas/provenance, existing spruce bark, shader/light intact;1032 full/617 at60%.
+  Same Recipe options survive preview/discard and save/reopen reconstruction;
+  appearance still transient LAB. test/capture_spruce_needles + generic controls
+  own gates; reference frame tolerance max1 RGB8/≤8px, actual0–1px; other data guards
+  strict. Evidence ember-spruce-needles/. Art/form/upper coverage/F6/motion OPEN.
+  User rejected that needle/form trial; new spruce25 crown_shape1 routes to
+  BranchLayout._spruce_bough_plan: paired laterals/fine hanging shoots,473 branches/
+  552 segments/85 supports, Source4d4733cf…; previous shape0 dfd9f454… preserved.
+  Provider.build_on_structure regenerates shape switch for25. Branching needle_boughs
+  only25/shape1: real shoot anchors, smaller tips, basal+terminal priority in same
+  thinning;2166 full/1328 at60%. Same atlas/bark/shaders/light. Species.spruce_limb
+  selects actual primary subtree; leaves exact displayed subset, wood rebuilt as
+  tubes from same supports. SpruceBoughStudy inherits NeedlesStudy, same Recipe/
+  controls/history owners,7 shape controls; recipe dir spruce25-bough-lab. Native
+  bough/whole-tree/matrix/controls and4 regressions PASS;15 protected SHA exact.
+  User-requested density pass:12 tiers instead9 at same height,13 leader sites
+  instead11; first bough/BranchLayout exact. cap12 only25/shape1; max hierarchy
+  fits existing768-segment budget. Old9-tier Source007ce55b… preserved.
+  Evidence ember-spruce-density/ (before: ember-spruce-bough/); final crown frames
+  accepted as working base. Personal F6/motion and production appearance transfer OPEN.
+  Evidence — ember-tree-rim-light/; contract/gates — Terrain Authoring.
+  Earlier grass-light report game frames duplicated tree view; rim capture now
+  restores gameplay transform/FOV explicitly and asserts distinct cameras.
+  Approved response trial: existing toon/leaf include owns opt-in directional
+  painted_leaf_shadow_strength(default1); same LIGHT_COLOR, alpha/casting and
+  local-light attenuation. Foliage21Study sample stage2 alone owns transient
+  slider; old sample stages/tree unchanged. Native default/before/return/zero-Sun/
+  Omni frames exact, external shield confirms both received shadow kinds weaken;
+  ground ROI exact for3×2×3 comparisons. Grain contrast reduced, strict noise gate
+  still FAIL. Prior60% recommendation superseded by user's40% whole-tree trial
+  above; no gameplay schema/geometry/common math or production transfer.
+  Evidence/gates/contract —
+  Terrain Authoring → «Исследование рисованной листвы».
+
+  Artistic colour/height/voxel/editor gates — Terrain Authoring →
+  «Гладкое дерево и нарисованная кора». Old blurry bark look rejected.
+  Bark LAB: existing BarkPattern owns support coordinates and signed v2 stroke
+  contour; old v1/v2 marks stay exact. LargeTree build output supplies transient
+  lines/offset, no Resource/schema changes. BarkFixture derives one RGBA3D field
+  from private Recipe/palette; private object_surface bark roles1–3, leaves legacy.
+  Existing voxel toon shader opt-in include reuses shared parallax solver24,
+  inward relief<=5.04mm, no DEPTH/geometry/collision changes. Instance materials
+  share the field, retain individual local Sun. Production cache/editor transfer
+  and artistic acceptance OPEN — Terrain Authoring → «Кора — первая LAB-проба».
+  Readability LAB: compact_diorama_readability_study продолжает PaintedLightStudy
+  на existing voxel Source fixture; Map floor owns terrain and tuft support.
+  Existing Player/PartyFollowers/private ExploreState retain hero scale; Kai name
+  only Unit.display_name (protagonist ID/save unchanged). Camera settings use
+  FollowCamera with explicit height reset. Existing Prefab.prepare_resource creates
+  private door/tree; conditional door scale uses existing shared visual/collider
+  configure path. Quiet PNG include is opt-in in existing terrain shader, POM intact.
+  Permanent reference owner — docs/art/references/allfiring/environments/README.md.
+  Limits/manual choice — Terrain Authoring → «Читаемость диорамы — этап0а».
   Material looks LAB: compact_material_looks_study наследует принятый grass_field,
   PaintedLightStudy/tuft scatter и DepthStudy/POM. Existing terrain shader получает
   opt-in EMBER_MATERIAL_LOOK_STUDY + общий material_look_study include; А использует

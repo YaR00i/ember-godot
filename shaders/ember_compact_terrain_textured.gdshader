@@ -43,6 +43,9 @@ uniform float sand_wet_strength = 0.0;
 #include "res://shaders/ember_material_texture_mapping.gdshaderinc"
 #include "res://shaders/ember_painterly_light.gdshaderinc"
 varying vec2 painterly_weights;
+uniform sampler2D style_rim_lookup : filter_nearest, repeat_disable;
+uniform bool style_rim_profiles_enabled = false;
+varying float style_rim_weight;
 uniform sampler2D grass_light_lookup : filter_nearest, repeat_disable;
 uniform bool grass_light_profiles_enabled = false;
 varying float grass_profile_weight;
@@ -58,6 +61,9 @@ varying vec3 terrain_world_normal;
 varying vec3 texture_projection_normal;
 varying float palette_slot;
 varying flat vec3 smooth_slots;
+#ifdef EMBER_DIORAMA_READABILITY
+#include "res://shaders/ember_diorama_readability.gdshaderinc"
+#endif
 #ifdef EMBER_MATERIAL_LOOK_STUDY
 #include "res://shaders/ember_material_look_study.gdshaderinc"
 #endif
@@ -94,7 +100,11 @@ vec3 png_colour_sample(vec2 uv,float layer,vec2 uv_dx,vec2 uv_dy) {
 	// would choose different mip levels at alternating cell boundaries.
 	if (look_study_mode==2) return textureGrad(png_albedo_bank,vec3(uv,layer),uv_dx,uv_dy).rgb;
 #endif
-	return texture(png_albedo_bank,vec3(uv,layer)).rgb;
+	vec3 result = texture(png_albedo_bank,vec3(uv,layer)).rgb;
+#ifdef EMBER_DIORAMA_READABILITY
+	result = ember_readability_colour(uv,layer,result);
+#endif
+	return result;
 }
 
 vec3 png_tile(vec2 uv,float layer,bool periodic,vec2 uv_dx,vec2 uv_dy) {
@@ -202,16 +212,19 @@ void fragment() {
 	#endif
 	texture_projection_normal = ember_texture_surface_normal(terrain_world_position, terrain_world_normal);
 	painterly_weights = vec2(0.0);
+	style_rim_weight=0.0;
 	grass_profile_weight=0.0;
 	grass_profile_values=vec3(0.0);grass_profile_cool=vec3(0.0);grass_profile_warm=vec3(0.0);grass_profile_shadow=vec3(0.0);
 	ivec3 painted_slots = smooth_surface_enabled ? ivec3(round(smooth_slots)) : ivec3(int(round(palette_slot * 255.0)));
 	vec3 painted_blend = smooth_surface_enabled ? max(COLOR.rgb,vec3(0.0)) : vec3(1.0,0.0,0.0);
 	painted_blend /= max(dot(painted_blend,vec3(1.0)),0.00001);
-	if(painterly_enabled || grass_light_profiles_enabled) for (int i=0; i<3; i++) {
+	if(painterly_enabled || grass_light_profiles_enabled || style_rim_profiles_enabled) for (int i=0; i<3; i++) {
 		float role = texelFetch(role_lookup,ivec2(painted_slots[i],0),0).b * 255.0;
 		painterly_weights.x += painted_blend[i] * (abs(role - 1.0) < 0.1 ? 1.0 : 0.0);
 		// LAB stone slot is explicit, same slot bound by the existing depth study.
-		painterly_weights.y += painted_blend[i] * (painted_slots[i] == 1 ? 1.0 : 0.0);
+		vec3 rim_profile=style_rim_profiles_enabled ? texelFetch(style_rim_lookup,ivec2(painted_slots[i],0),0).rgb : vec3(0.0);
+		painterly_weights.y += painted_blend[i] * (painted_slots[i] == 1 && rim_profile.r<0.5 ? 1.0 : 0.0);
+		style_rim_weight += painted_blend[i]*rim_profile.r*rim_profile.g*rim_profile.b;
 		if(grass_light_profiles_enabled && abs(role-1.0)<0.1) {
 			vec4 settings=texelFetch(grass_light_lookup,ivec2(painted_slots[i],0),0);
 			float weight=painted_blend[i]*settings.a;
@@ -442,6 +455,10 @@ void light() {
 #ifdef EMBER_TERRAIN_MATERIAL_DEPTH
 	if (LIGHT_IS_DIRECTIONAL) terrain_light_attenuation *= material_depth_light;
 #endif
+	if (LIGHT_IS_DIRECTIONAL && style_rim_weight>0.0) {
+		vec3 rim_form=normalize(mat3(VIEW_MATRIX)*normalize(look_form));
+		SPECULAR_LIGHT+=LIGHT_COLOR*terrain_light_attenuation*ember_stylized_rim(rim_form,VIEW,LIGHT,style_rim_weight)/PI;
+	}
 #ifdef EMBER_BEVEL_STUDY
 	if (bevel_light_enabled && LIGHT_IS_DIRECTIONAL) {
 		float accent = ember_bevel_light(NORMAL, normalize(mat3(VIEW_MATRIX)*normalize(terrain_world_normal)), LIGHT);

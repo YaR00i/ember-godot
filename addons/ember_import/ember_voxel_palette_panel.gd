@@ -6,6 +6,13 @@ signal color_selected(index: int)
 signal operation_requested(resource: EmberVoxelModelResource, operation: Dictionary)
 signal pick_requested
 signal editing_started
+signal rim_requested(resource: EmberVoxelModelResource, role: String, enabled: bool, strength: float)
+const Profiles=preload("res://scripts/ember_voxel_material_profiles.gd")
+var _rim_switch: CheckBox
+var _rim_slider: HSlider
+var _rim_caption: Label
+var _rim_role := "legacy"
+var _rim_dragging := false
 
 var _resource: EmberVoxelModelResource
 var _colors := PackedColorArray()
@@ -38,6 +45,15 @@ func _init() -> void:
 	_label.modulate = Color(0.60, 0.82, 0.94)
 	_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	add_child(_label)
+	_rim_switch=CheckBox.new();_rim_switch.text="Световая кромка";add_child(_rim_switch)
+	_rim_caption=Label.new();add_child(_rim_caption)
+	_rim_slider=HSlider.new();_rim_slider.min_value=0;_rim_slider.max_value=1;_rim_slider.step=0.01;add_child(_rim_slider)
+	_rim_switch.toggled.connect(func(value: bool):
+		if _resource!=null:rim_requested.emit(_resource,_rim_role,value,_rim_slider.value))
+	_rim_slider.drag_started.connect(func():_rim_dragging=true)
+	_rim_slider.drag_ended.connect(func(_changed: bool):_rim_dragging=false;_request_rim())
+	_rim_slider.value_changed.connect(func(_value: float):
+		if not _rim_dragging:_request_rim())
 	_swatch_scroll = ScrollContainer.new()
 	_swatch_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_swatch_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
@@ -150,6 +166,18 @@ func sync(resource: EmberVoxelModelResource, selected: int) -> void:
 	_merge.disabled = _colors.size() <= 2
 	_ramp.disabled = _resource == null or _colors.size() + 2 > 256
 	_pick.disabled = _resource == null
+	var available:=_resource!=null
+	_rim_switch.visible=available;_rim_slider.visible=available;_rim_caption.visible=available
+	if available:
+		_rim_role=Profiles.palette_role(_resource.material,_selected)
+		var rim:=Profiles.rim_parameters(_resource.material,_rim_role)
+		_rim_switch.set_pressed_no_signal(rim.enabled)
+		if not _rim_dragging:_rim_slider.set_value_no_signal(rim.strength)
+		var names:={"legacy":"Общий материал","bark":"Кора","foliage":"Листва","stone":"Камень","ice":"Лёд","crystal":"Кристалл","glass":"Стекло"}
+		_rim_caption.text="%s · сила %.2f\nВся модель"%[names.get(_rim_role,_rim_role),float(rim.strength)]
+
+func _request_rim() -> void:
+	if _resource!=null:rim_requested.emit(_resource,_rim_role,_rim_switch.button_pressed,_rim_slider.value)
 
 
 func set_pick_active(active: bool) -> void:

@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-15",
+  "method": "builtin imagegen; generated PNGs copied unchanged, native alpha kept",
+  "scope": "maple23 LAB trial, not production or other worlds",
+  "accepted": false,
+  "prompts": {
+    "leaf-atlas-v1-hanging.png": "Create an original production MAPLE foliage alpha texture atlas for a minimalist hand-painted anime fantasy game. TRUE transparent background. Exactly four separate leafy sprays arranged as a precise 2x2 square atlas with four equal tiles and NO grid. Each tile has 7 to 9 clearly readable five-lobed maple leaves with pointed palmate lobes, broad recognizable maple silhouette (not birch hearts or oak ovals). A thin inconspicuous green-brown twig branches from local tile UV (0.5,0.94) upward/outward; leaves radiate in a fan. Every spray wholly inside its tile with generous 8 percent transparent margins. About 35-40 percent leaf coverage with clear open alpha holes; a few grouped overlapping leaves, no filled solid blob. Large clean painted leaf fields in ONE restrained rich summer-green family, maximum two closely related green tones, very subtle broad gradient per leaf, absolutely no veins, grain, speckles, fine texture, scratches, colored edge noise or bright rim. Flat unlit orthographic asset with no baked shadows, highlights, ambient occlusion or gloss; live game shader supplies lighting. Four slightly different asymmetrical sprays, same visual scale. Clean crisp alpha silhouette with transparent gaps and background; no checkerboard, no scene, whole tree, captions, outlines, borders or watermark. Foliage card asset, calm painterly strokes matching stylized grass and stone, original art. Square image.",
+    "leaf-atlas-v2-rooted.png": "Edit this transparent 2x2 maple foliage atlas. KEEP the same beautiful minimalist five-lobed green leaf shapes, colors, clean gradients, transparency, airy coverage and four equal tiles. CORRECT THE TWIG ORIENTATION AND ROOT POSITION ONLY: in EVERY tile the single bare twig ROOT MUST be at exactly tile-local x=50 percent, y=94 percent (BOTTOM CENTER), then branch UPWARD to leaves above. Right now these sprays hang from the TOP, which is wrong for the game's attachment. Recompose/rotate each spray so its stem is at BOTTOM CENTER and all leaves extend UP from it. No bare stem at the top edge. Keep 8 percent margins for the leaf shapes, no cropping. No extra leaves, no extra details, no veins, noise, shadows, rim highlights, outlines, grid lines, backdrop, text or borders. Keep TRUE transparent background in every gap. Four tile atlas, not a single large spray. Exact bottom-center stem anchor is critical."
+  },
+  "use": "v2-rooted; v1 kept as rejected attachment orientation study",
+  "bark": "../bark_species_v1/maple-v1.png",
+  "assets": {
+    "leaf-atlas-v1-hanging.png": {
+      "sha256": "eac77e9173706ada93fdf0d210f1a09224e35071fb4677ca2590ed8c53943a6e",
+      "size": [
+        1254,
+        1254
+      ],
+      "mode": "RGBA"
+    },
+    "leaf-atlas-v2-rooted.png": {
+      "sha256": "cd86506d8e4ca7d16e9546cd36350fdf5579c1283dda191e16df0d01d3be660e",
+      "size": [
+        1254,
+        1254
+      ],
+      "mode": "RGBA"
+    }
+  }
+}

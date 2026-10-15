@@ -13,11 +13,17 @@ varying flat vec3 surface_axis_y;
 varying flat vec3 surface_axis_z;
 
 void vertex() {
+#ifdef EMBER_OBJECT_LEAF_CARDS_STUDY
+	leaf_card_group_normal=normalize(MODELVIEW_NORMAL_MATRIX*CUSTOM1.xyz);
+#endif
 	surface_parameters = CUSTOM0;
 	surface_local_position = VERTEX;
 	surface_axis_x = MODELVIEW_NORMAL_MATRIX[0];
 	surface_axis_y = MODELVIEW_NORMAL_MATRIX[1];
 	surface_axis_z = MODELVIEW_NORMAL_MATRIX[2];
+#ifdef EMBER_OBJECT_PAINTED_BARK_STUDY
+	painted_bark_frames = CUSTOM1.xy;
+#endif
 }
 
 bool ember_object_surface_active() {

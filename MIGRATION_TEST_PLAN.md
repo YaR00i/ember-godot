@@ -380,6 +380,399 @@ gates остаются OPEN; green data report их не закрывает.
 
 ## Роли и текстуры компактной земли — ручная приёмка OPEN
 
+Smooth bark LAB: `test_smooth_bark_material_study.gd` — exact saved Source SHA,
+selected17/7 scaffold42/109/63, vertices/indices/paint retained, normal repack,
+stable and valid support pairs. `capture_smooth_bark_material_study.gd`:
+3 modes (previous/coarse bark/coarse bark+foliage)×3 presets×side/back,
+overview/trunk/fork/rear/canopy, trunk/canopy motion and near-far,
+transforms, frame table/shape/Source/grass/terrain POM retained, returnА exact,
+clean exit0. Existing bark/mapping and old committed marks compatibility PASS.
+Foliage material retains source arrays/paint and accepted grass light profile;
+new artworks have mipmaps/local scale, old painted image matches A exactly.
+This is colour-artwork only; bark height, voxel variant, tree collision/editing
+and production generator transfer deferred. Artistic/input/seams/repetition/
+weak-PC OPEN — Terrain Authoring → «Гладкое дерево и нарисованная кора».
+
+Leaf-card LAB: `test_tree_leaf_cards_study.gd` — saved scaffold immutable,
+deterministic fixed planes/UV/paint/group normals, true transparent margins/
+alpha coverage/mipmaps/shared light profile. `capture_tree_leaf_cards_study.gd`:
+plain/painted share alpha/geometry, А keeps old rounded render exact;3 presets×
+side/back, close/under/rear/motion/orbit8/near-far, Source/terrain/POM/paint guards,
+returnА and clean exit0 PASS. One mesh394quad/788tris; current capture includes
+visible/shadow primitives and GPU timings. Short one-tree pass does not close
+forest overdraw/weak-PC or artistic acceptance. Wind/LOD/voxel/editor/collision
+remain deferred — Terrain Authoring → «Аниме-ориентир деревьев».
+
+Branch construction LAB: `test_tree_branching_study.gd` — existing Source17 SHA,
+explicit18/no preset upgrade, canonical Source18 and hierarchy validation,
+bounded121 supports/48 branches, taper/parent attachments across6 seeds,
+deterministic Source/UV/light normals, real sprite roots, private Recipe/Source
+save/reopen and existing build_on_structure byte/collision parity. Broken
+hierarchy rejected. `capture_tree_branching_study.gd`: previous leaf-card17 A,
+bare18 B/leaf18 C; returnА exact, immutable old/new Source/geometry/grass/floor,
+UV/group normals independent of camera. Native3 presets×side/back in game and
+full overview, under/orbit8/motion/near-far, POM4cm/profile guards, clean exit0.
+Legacy1–17/seed7,31 parity uses preserved provider-before in isolated QA;
+main UI presets unchanged. Artistic/F6/branch joins/card repetition/weak-PC
+remain OPEN; initial game camera crops the crown, camera0a gate unchanged.
+Owners/evidence — Terrain Authoring → «Построение дерева», ember-tree-construction.
+
+Bare branch network20: `test_tree_branch_network_study.gd` — same Source/Recipe
+owner, four parent orders,≤256 lines/≤128 groups (old versions retain128),
+seed/taper/real attachments, invalid parent/detached fork/budget rejection,
+private save/reopen/rebuild/collision parity, full233-row bark table. Targeted PASS.
+`capture_tree_branch_network_study.gd`: bare18/plain20/bark20 comparison,
+exact return, three presets×side/back in game and complete tree views,
+front/side/rear/overview/orbit8/close/near-far/motion, Source/terrain/paint/grass/
+physical floor guards, exit0 PASS. Preserved provider1–19/seed7,31 Source/structure/
+palette/collision parity and old18/19 targeted tests PASS in isolated QA.
+Art gate OPEN: branch shape/density, sharp endings, bark joins, subpixel fine
+shoots, F6/input/weak-PC; game camera still crops tree (unchanged0a gate).
+Decorative LAB only; forest budget/editor/collision/foliage acceptance deferred.
+Evidence — C:/Users/novos/Documents/Codex/2026-10-14/ember-tree-branch-network/.
+
+Parametric branch21: `test_tree_parametric_study.gd` — opt-in/no preset upgrade,
+main count/splits/depth/variation, deterministic Source and real parent radius/
+attachment,≤768 supports/≤128 groups, worst count406/supports603, six seeds.
+Frozen recipe responds to all four topology edits and seed; appearance retains
+supports, incompatible profile rejected. Private Source/Recipe save/reopen,
+existing GeneratorPanel descriptors/Undo/Redo/discard, deferred exact Creation
+preview and persisted updated structure PASS. Same generic panel; LAB filter
+context stays out of Resources. `capture_tree_parametric_study.gd`: bare20/21
+plain/bark, three light presets×side/back/game, orbit8/close/near-far/motion,
+density35/274/389 branches, preset one-Undo/Redo and discard visual return,
+Source/grass/ground mesh/collision/POM/profile guards, exit0 PASS.
+Legacy1–20/seed7,31 Source/palette/collision/structure parity uses before21;
+existing generator-editing/save/update, old18/19/20 and bark/mapping regressions.
+Manual shape/angles/bark joins/thin-shoot aliasing/F6/input/weak-PC/forest budget
+remain OPEN; production renderer/collision/leaf transfer deferred.
+Evidence — C:/Users/novos/Documents/Codex/2026-10-14/ember-tree-parametric/.
+
+Foliage on21: `test_tree_foliage21_study.gd` — deterministic curved UV cards
+on existing Source branch supports, exact stem/root vertices/atlas UV(.5,.94),
+finite unit group+whole-crown normals, batch budget across3 presets, unchanged
+bare Source21 and shared grass light profile PASS. `capture_tree_foliage21_study`:
+bare/plain/painted same scaffold, camera-independent UV/macro normals,3 light
+presets×side/back/game, orbit8/close/near-far/motion, existing parameter presets/
+Undo-Redo/discard return, grass/paint/ground mesh/collision/POM guards PASS.
+Bare21 Source SHA matches parametric evidence; previous19 Source/wood/cards
+arrays match pre-foliage fixture exactly. Parametric/crown19/mapping regressions PASS.
+Native GPU sample belongs to this complete LAB on RTX5070, not a forest/weak-PC
+budget. Author accepted shape/volume21 as a basis; foliage edges/frequency and
+bark artwork/shadows/F6/input remain OPEN. Material-only revision2026-10-15:
+old/quiet-leaf/quiet-leaf+soft-bark native comparisons,3 lights×side/back/game,
+near/far/leaf/bark close-ups, exact return to previous artwork, unchanged
+wood/cards/UV/normals/Source/light/ground/grass/physics/POM guards PASS.
+Previous accepted front frame matches pixel-for-pixel. Existing native
+parameter presets/Undo/Redo/discard PASS; artwork acceptance remains manual.
+Contract and evidence — Terrain Authoring → «Построение дерева».
+Minimal leaf revision2026-10-15:3 colour variants×3 lights×side/back/game,
+near/far/side/rear/close and unchanged wood/cards/UV/macro normals/Source/light/
+floor/grass/POM PASS. Old quiet trial frame returns pixel-exactly. Temporary
+flat-colour/cast-shadow-off and nearest/no-mip sampler controls restore normal
+material/light state pixel-exactly. Nearest largely removes fine dark net;
+this is diagnostic evidence, not an accepted rendering replacement. Minimal
+artwork acceptance remained OPEN at that diagnostic checkpoint.
+Evidence — C:/Users/novos/Documents/Codex/2026-10-14/ember-tree-foliage21/.
+
+Approved leaf-optics trial2026-10-15: `test_tree_leaf_optics.gd` uses private
+user:// RGBA fixture; default/opt-in cache identity, unchanged authored PNG,
+base alpha of v6/v7, all mip alpha of fixture, retained green mip colour and
+filtered mip availability PASS. `capture_tree_leaf_optics.gd`: five stages,
+3 presets×side/back/game, near/far/motion, separate rim/transmission, exact
+zero-Sun and previous-return frames; Source/wood/cards/UV/macro normals/bark/
+base light/paint/grass/ground/collision/POM guards PASS. Controls rendered in
+native Forward+; personal F6/input and artistic strength/colour acceptance OPEN.
+Foliage21, material texture mapping (including save/reopen), painted-light
+regressions PASS. Optical sliders are transient LAB values, not a new saved
+profile: their persistent save/reopen is outside this contract. Alpha gaps
+produce subtle real ground illumination changes; atmosphere rays, forest
+budget/wind/LOD and production transfer deferred.
+Evidence — C:/Users/novos/Documents/Codex/2026-10-15/ember-tree-leaf-optics/.
+
+Separate-leaf samples first stage: texture test includes v8 exact authored RGBA/
+base alpha/filtered mips. `capture_leaf_plane_group.gd` extracts one/six existing
+cards and compares old/new artwork and new local light; native3 presets×side/
+back, near/far/angle5, zero-Sun exact, original tree return and baseline frame
+pixel-exact. Source/wood/cards/UV/macro normals/material/grass/paint/floor/
+collision/POM guards and existing foliage21 test PASS. Candidate not applied to
+tree; personal F6/buttons, artistic colour/mask acceptance, full-tree game camera
+and shadow stipple remain OPEN. Evidence — C:/Users/novos/Documents/Codex/2026-10-15/ember-leaf-plane-group/.
+
+Leaf shadow diagnostic: `capture_leaf_shadow_diagnostic.gd` runs private native
+controls (no-shadow/angular/bias/filter/geometric/shading normals/solid alpha),
+then restores every property/material/mesh. Same baseline frame before/return
+and prior sample are pixel-exact; zero-Sun comparison exact. Source/wood/cards/
+UV/macro normals/texture mips/grass/floor/physics/POM guards PASS. QA-only floor
+and grounded cube receive shadows under3 presets×side/back; near/far/angle/back
+captures retained. Depth bias1.6 clears the single-card noise gate (14.95%→0%),
+but group and ground shadow coverage/contrast change: don't label this a global
+fix or full visual PASS. All project shader/study/material files remain exact.
+User art/motion/contact/forest gates OPEN. Evidence — C:/Users/novos/Documents/Codex/2026-10-15/ember-leaf-shadow-diagnostic/.
+
+Leaf receiving response: `capture_leaf_shadow_response.gd` uses private native
+Forward+100/60/35/15%×3 presets×side/back, near/far/angle/back. Old/default tree
+and samples, baseline return, zero Sun and Omni attenuation pixel-exact. External
+shadow-only shield measurably shades right leaf group; shadow contrast weakens
+monotonically with strength. Ground receiver ROI exact in all18 comparisons and
+external shield control. Source/wood/cards/UV/macro normals/texture mips/grass/
+physical floor/POM and21 protected files exact; foliage21/leaf-optics/mapping/
+painted-light targeted tests PASS. Single-card strict noise gate remains FAIL
+at every strength: do not call this noise repair or caster-selective shading.
+Transient sample slider default100%, original stages/tree material unchanged;
+personal F6/slider/reset, artistic choice60/35%, motion and tree transfer OPEN.
+Evidence — C:/Users/novos/Documents/Codex/2026-10-15/ember-leaf-shadow-response/.
+
+Whole-tree leaf trial: `capture_tree_leaf_transfer.gd` compares original and v8
+sample-stage2 clone at100/40/35% under3 presets×side/back×whole-tree/game cameras;
+near/far/side/back and8 orbit frames. Old before/default/return and zero-Sun
+frames exact. Public sample→tree40% route, independent sample35%, panel return
+guards PASS. Source/wood/cards/UV/macro normals/bark/texture/terrain/paint/grass/
+physical floor/POM retained;23 protected files exact including shaders/factory.
+Same-atlas ground ROI exact at100/40/35% under all3×2 lights and overhead view;
+old/new atlas masks differ as expected. Foliage21/leaf-optics tests PASS.
+Art35/40%, canopy density/grain, personal F6/input/motion and production transfer
+OPEN; unchanged game framing clips canopy, not a camera acceptance. Evidence —
+C:/Users/novos/Documents/Codex/2026-10-15/ember-tree-leaves-40/.
+
+Leaf density: `test_tree_foliage21_study.gd` now tests whole-puff retention,
+nested reductions, deterministic reproduction,100% original instance/0% empty,
+exact remaining positions/UV/colour/custom macro normals/stem/index bounds for
+all3 presets; geometric normal packing roundtrip max0.00012894 below0.0005.
+Full buffers remain exact; branching/parametric regressions PASS.
+`capture_tree_leaf_density.gd`:100/75/60/45%×3 presets×side/back×tree/game,
+near/far/side/back/8 orbit frames. Public slider drag does not alter committed
+mesh/build count; release commits once, cache instances reused; original material
+full mesh/new trial subset routing and0% visibility guards PASS. Default100 and
+return100 exact against preserved previous native tree40 frame; baseline
+provenance recorded in verification.
+Source/wood/bark/texture/shader/material/terrain/paint/grass/physics/POM/light and
+22 protected files unchanged. Density alters canopy/ground shadow as expected.
+Personal slider/keyboard/F6, artistic density/edge/motion, residual shadow noise
+and production Recipe save/reopen integration OPEN. Evidence —
+C:/Users/novos/Documents/Codex/2026-10-15/ember-tree-leaf-density/.
+
+Shadow-mode investigation at user-preferred45%: `capture_tree_shadow_modes.gd`
+temporary material clone/cast OFF/receive0/AO-off/no-shadow/low0.55/0.80 controls
+under3 presets×side/back×tree/game and external shield. Baseline45 equals prior
+density45/return exactly; Source/wood/cards/floor/grass and25 protected files exact.
+No-leaf-cast changes ground shadow and still receives external; receive0 ground
+ROI exact and external drop nearly0 (eroded canopy mask has mixed gaps, not a
+pure stencil). Soft/flat form controls retain external/ground shadow response;
+AO/form shading remains separate. Project controls unchanged. Artistic local
+density/dark-form contract and true internal-only shadow boundary OPEN; don't
+label this installed suppression or production acceptance. Evidence —
+C:/Users/novos/Documents/Codex/2026-10-15/ember-tree-shadow-modes/.
+
+Leaf/grass style A/B: `capture_tree_grass_light.gd` tests three presets × two
+directions × tree camera. Its old game captures duplicate tree (found in rim audit);
+real gameplay capture fixed in capture_tree_rim_light below. A equals baseline/return;
+new RGB-only blend preserves alpha,885 cards/45% density, mesh arrays/identity,
+Source/wood/Recipe/floor/terrain/grass/POM4cm. Ground shadow ROI exact, external
+blocker remains visible, zero-Sun rim/transmission no emission. Native PASS.
+Targeted foliage21/material-depth PASS; native A form/shadow controls exit B,
+including unchanged depth value. HTML rendering/images/view selectors checked.
+User accepted calmer B direction; personal movement and F6 toggle OPEN.
+Production editor save/Undo and selective self-shadow are outside this LAB.
+Evidence — C:/Users/novos/Documents/Codex/2026-10-15/ember-tree-grass-light/.
+
+Tree directional rim: `capture_tree_rim_light.gd` uses accepted B for both states.
+Three presets × side/back × tree/game; pre-extraction baseline/OFF/return exact,
+rock/actors/grass ROI exact. Mesh identity/arrays,45%/885 cards,Source/wood/Recipe/
+terrain/floor/grass/POM4cm retained. Separate bark/leaf contributions; zero strength,
+zero-Sun and full external shadow yield exactly zero added rim. Base wood and
+historical A restore correctly. Native PASS;11 protected files exact. Controls fit
+capture; HTML rendered/images/selectors verified. Art/F6/button/sliders/motion
+and weak-PC cost OPEN. Runtime LAB controls temporary, no production Undo/save claim.
+Evidence — C:/Users/novos/Documents/Codex/2026-10-15/ember-tree-rim-light/.
+Targeted foliage21/material-depth/painted-light PASS. Gameplay capture explicitly
+restores comparison0/FOV before freezing and asserts distinct tree/game transforms.
+Native button signals/independent sliders PASS; real mouse feel remains manual.
+Gameplay frame crops the crown top; full-tree framing is explicitly separate.
+
+Permanent rim workflow: test_style_rim_workflow covers optional Pattern/model fields,
+validation/legacy, independent palette/role settings, small GPU lookup, preserved paint,
+real material dialog/PalettePanel/Canvas callbacks, one-release/no remesh, Undo/Redo,
+Save/Reopen/Discard and saved map master. Related9 material/WorldLook/Canvas/projection/
+POM/foliage regressions PASS; world projection uses generated mixed-editor sandbox.
+capture_style_rim_workflow:3 presets×side/back×tree/game,24 accepted LAB→saved pairs
+exact; map/role controls, Source reopen, zero-Sun,6 full-shadow pairs and ground/POM
+PASS. Raster baseline/return gate max1 RGB8/≤16 changed channels; raw geometry/Source/
+paint/grass/floor exact. Five protected files SHA-256 exact. Native controls inspected;
+actual editor mouse/125%/Save→F6/motion and weak-PC OPEN. Shape/B unchanged.
+Evidence: C:/Users/novos/Documents/Codex/2026-10-15/ember-style-rim-transfer/.
+
+Oak bark trial: capture_oak_bark_trial checks A→B→C→A at3 presets×side/back×tree/game;
+all12 returns pixel-exact. Near/far/static camera shift, callbacks/UI fit1600×900,
+same wood material instances and saved Source rim binding, every wood/leaf uniform
+except bark albedo, Source/mesh/45%/885 cards/B/terrain/paint/grass/physics/POM guards PASS.
+test_tree_foliage21_study PASS;10 protected SHA exact. Native screenshots inspected;
+HTML links/JS checked, local browser rendering unverified. Six bark PNG candidates
+saved; only oak fitted. C accepted by user; F6/input/continuous
+motion/junction seams/weak-PC OPEN. No production bark Undo/save integration claim;
+LAB selector transient/default C. Birch follow-up below; other three unchanged.
+Evidence: C:/Users/novos/Documents/Codex/2026-10-15/ember-bark-species/.
+
+Birch22 species trial: test_birch_species_study records five legacy kinds×seed7/31
+and oak21 before edits, compares raw Source/collision/palette/structure hashes.
+22 opt-in/type boundaries, hierarchy/Source validation, repeatability/seed bounds,
+every card on a real branch, count rebuild/mismatch rejection; existing RecipePanel
+draft without rebuild/Undo/Redo/prepare/discard/preview→saved Source output equality,
+Source/Recipe save/reopen PASS. Four related parametric/foliage/type/editor checks PASS.
+capture_birch_species_study: five support-mass comparisons, A13/Б22/В22, bare/near/far/
+static shift,3 presets×side/back×tree/game;12 A-return pairs exact. Accepted oak C
+return and previous bark-study capture exact; oak material/shape/B/Source/terrain/
+paint/grass/physics/POM4cm exact. Visible4 fields/UI1600×900 and7 protected SHA PASS.
+LAB smooth mass diagrams are not a claim about unchanged production renderer output.
+Birch look accepted; manual F6/input/continuous motion/white thin shoots/junction seams/weak-PC OPEN.
+No production atlas/forest/collision migration. Evidence — ember-birch-species/.
+
+Birch controls: capture_birch_controls checks exact accepted initial frame,
+global/local slider callbacks, no per-drag build/one release/cache Undo/Redo,
+every other crown owner retained, light-only uniforms without mesh rebuild,
+reset/Undo-reset/Redo and3 presets×side/back exact returns. Old local history must
+not cut a new scaffold after preview regeneration. Same Source/wood/oak/paint/grass/
+floor guards; two tab controls fit1600×900. Runtime LAB controls do not claim
+production leaf-setting serialization. Evidence — ember-birch-controls/.
+
+Maple23: test_maple_species_study covers type opt-in/unchanged old defaults,
+Source/hierarchy/Recipe validation, seed repeatability/bounds, leaf attachment,
+Source reopen through saved Recipe, four same fields/draft/no rebuild/Undo/Redo/
+prepare/preview=commit/discard. Source birch22 matches accepted hash.
+capture_maple_species_study:3 presets×side/back×tree/game,12 A-return pairs exact,
+accepted oak21/C and birch22 exact against previous captures; near/far/static shift,
+same terrain/paint/grass/physics/POM guards. capture_maple_controls reuses existing
+birch control checks for730 cards; accepted birch control regression rerun.
+Shared species hooks must preserve old birch directory/controls/shape/light.
+Seven protected files exact. Maple art/manual F6/motion/junction seams/weak-PC and
+production leaf-setting serialization OPEN. Evidence — ember-maple-species/.
+
+Maple shape variation: test_maple_shapes protects exact wide Source6d9134… and
+asserts meaningfully narrower/taller new card bounds, hierarchy/seed validity,
+same fifth Recipe field draft/no build/Undo/Redo/prepare/reopen/discard. Existing
+Recipe variations reopened to exact Source; no author map writes. Native shape
+callback reconstructs old wide exactly; discard/reset restores new upright exactly.
+3 presets×side/back×tree/game yield12 exact wide returns; accepted oak/birch exact.
+Controls/one-release density, unchanged ground/paint/grass/physics/POM and7 protected
+files PASS. Upright art accepted on 2026-10-15; F6/motion/weak-PC and production transfer OPEN.
+Evidence — ember-maple-shapes/; saved recipes maple_v1/variations/.
+
+Savanna24: test_savanna_species_study covers opt-in/type/default boundaries,
+hierarchy/Source/repeatability/seed bounds/extreme branch counts, shallow3D canopy,
+every stem attached, Recipe save/reopen and shared four-field preview=commit/
+Undo/Redo/prepare/discard. Accepted birch and both maple Source hashes exact.
+capture_savanna_species_study:3 presets×side/back×tree/game,12 old-return pairs
+exact, oak21/birch22/upright23 frames exact; near/far/static shift/ground/paint/
+grass/physics/POM preserved. capture_savanna_controls reuses same842-card callbacks,
+release once/cache/locality/light-only/reset/stale-history/UI fit checks. All PASS;
+birch/maple-shapes/parametric/voxel-types regressions and7 protected SHA exact.
+Own art/form/F6/motion/weak-PC and production leaf-setting transfer OPEN.
+Evidence — ember-savanna-species/; spruce unchanged, no forest performance claim.
+
+Savanna silhouette1: test_savanna_canopy protects rejected shape0 Source exact;
+new hierarchy/Source/seed/extreme counts, crown3D bounds/support connectivity,
+branch-following centres with quarter-cell rounding, crown_shape rebuild, existing
+Recipe save/reopen, count draft/Undo/Redo/prepare/preview=commit/discard PASS.
+capture_savanna_canopy:3 directions/bare/mass/rejected + above,3 presets×side/back×
+tree/game; count5→7 preview/discard frame exact. Accepted oak/birch/upright maple
+and rejected frames exact. Ground/paint/grass/physics/POM/protected SHA exact.
+Old savanna/birch/maple-shapes/parametric/voxel-types regressions PASS.
+Mass is diagnostic, not final leaf material/shadow. Silhouette accepted as base;
+manual motion OPEN. Leaf follow-up below; evidence — ember-savanna-canopy/.
+
+Savanna leaf patches: test_savanna_leaf_patches protects accepted shape1 Source,
+structure/layout/wood/collision; actual group attachments vs separate card anchors,
+envelope positions except small tip fans; all45 terminal shoots covered at60%,
+small fan size/last-segment attachment,zero removes all,repeatability/UV/nested
+thinning/sample buffers and Recipe+
+same LAB placement reproduction. capture_savanna_leaf_patches:1/6 samples,3 views/
+above,3 presets×side/back×tree/game, density60/80, preview count5→7 keeps envelope;
+discard/reset frames exact. Accepted3 species+blockout frames exact. Same generic
+control callbacks with382 cards: drag/release/cache/locality/Undo/Redo/reset/
+stale-history/material-only/UI fit PASS. Canopy/species/foliage21 regressions after
+tip coverage;6 prior patch regressions preserved.7 protected SHA and
+ground/paint/grass/physics/POM exact. Leaf artwork/coverage/edge/manual motion OPEN;
+production foliage save remains separate. Evidence — ember-savanna-tip-cover/;
+previous placement report — ember-savanna-leaf-patches/.
+
+Spruce25 silhouette: test_spruce_shape validates opt-in species/defaults, attached
+bounded scaffold/alternate seeds/extreme counts, continuous crown support graph;
+Recipe save/reopen Source/collision/groups/diagnostic faces exact, scalar branch
+values within1e-6 text Resource precision. Same RecipePanel draft/Undo/Redo/
+preview==commit/discard. capture_spruce_shape checks3 views×old/wood/crown,above,
+preview7→9/discard frame exact,seed31/197 in same daylight,keyboard1–3,
+3 presets×side/back×tree/game,6 controls fit;
+accepted savanna/oak/birch/upright maple and legacy spruce frames exact. Ground/
+paint/grass/physics/POM and9 protected files unchanged. Related regressions:
+savanna patches/maple shapes/parametric/voxel types. Evidence — ember-spruce-shape/.
+Visual form/F6/motion OPEN; that displayed crown is diagnostic. Needle follow-up:
+test_spruce_needles checks Source/layout/wood/collision exact, real branch/t and
+mesh stem anchors, endpoint tufts at60%, deterministic/nested/zero density,
+offset1/6 samples, Recipe+same LAB options reproduce full buffers. Native checks
+3 views/above/1–6 samples/60–80%, preview7→9 preserves needle options, discard/reset
+frame exact,3 presets×side/back×tree/game. Provisional volume frame exact;
+4 previous species reference gate max1 RGB8/≤8pixels (actual0–1pixel), data strict.
+capture_spruce_needle_controls inherits generic release/cache/locality/history/
+reset/stale/material-only/UI checks. Foliage21/savanna patches/spruce shape related
+regressions,12 protected SHA/ground/paint/grass/physics/POM guards. Evidence
+ember-spruce-needles/. Form and needle art not accepted; upper coverage/F6/motion OPEN.
+
+Spruce bough follow-up (old needle/form rejected): test_spruce_bough checks
+paired hierarchy/attachments/budgets/seeds/extremes/shape0↔1 fresh==edited Source,
+old shape0/9-tier Source/first bough exact;12-tier upper cards>20% increase,
+max gap≥15% reduction, max12/splits3/levels4 fits768 segments;
+real leaf stem anchors, endpoint/nested/zero density, sample
+subset with current density, Recipe save/reopen Source/collision/full cards,
+same7-field RecipePanel draft/Undo/Redo/preview==commit/discard. Native captures
+one actual limb top/side/wood, sample→whole-tree visibility,3 views/above/60–80%,
+preview12→7 preserving same options/discard/reset exact,3 presets×side/back×tree/game.
+Generic bough controls cover release/cache/locality/history/reset/stale/material/
+UI fit. Related regressions: savanna patches/foliage21/spruce shape/spruce needles.
+4 accepted species+previous needle tree reference gate≤8pixels/max1RGB8;15 protected
+SHA/ground/paint/grass/physics/POM unchanged. Evidence ember-spruce-density/; prior9-tier frames ember-spruce-bough/.
+Current2166 full/1328 at60%; Source4d4733cf…; shape0 dfd9f454… preserved.
+Latest crown frames accepted as working base; personal F6/motion remain OPEN;
+production appearance save is not yet implemented.
+
+Local leaf density/form controls: fixture tests optional local coverage affects
+only selected owner, nested/repeatable/neutral100% returns original instance;
+existing positions/UV/custom normals and other groups retained. Native
+`capture_tree_leaf_local.gd`:3 presets×side/back×tree/game, near/far/side/back/orbit;
+local drag commits once, cached Undo/Redo, reset/undo-reset, F1 frame visibility,
+old material full mesh, zero-Sun and unchanged Recipe/Source/wood/terrain/grass/
+physics/POM guards PASS. Form-depth100/60/25 retains external shade; shade-only
+ground ROI exact in12 pairs. Initial45 and control-return before blocker exact
+against prior density45 PNG; current post-blocker frame exact, numerical
+post-blocker gate ≤128 pixels/max1 RGB8 level.22 protected files
+exact. Transient LAB controls don't claim gameplay Recipe save/reopen integration.
+Personal F6/selection/sliders/history/art/edge/motion/weak-PC gates OPEN. Evidence —
+C:/Users/novos/Documents/Codex/2026-10-15/ember-tree-leaf-local/.
+
+First bark look rejected: `test_bark_material_study.gd` — deterministic field, inward bounds,
+exact previous committed marks v1/v2, branch frame rotation, private source/paint/
+roles, matching Recipe reproduction and occupied/collision cells. Existing
+test_voxel_bark_pattern covers UI/Undo/Save/Reopen and retained versions;
+object lighting/mapping regressions PASS. `capture_bark_material_study.gd`:
+4 modes×3 presets×side/back, flat/trunk close comparisons, movement, near/far,
+transform/local Sun, Source/terrain/grass/physics/POM preserved, return/disabled
+exact, relief changes pixels independently of colour, clean exit0. Artistic
+selection/F6/input/seams at branch joins/weak-PC and production cache OPEN.
+Owners/evidence — Terrain Authoring → «Кора — первая LAB-проба», ember-bark-material.
+
+Readability stage0a: `capture_diorama_readability_study.gd` — one voxel Source,
+Kai/Mira from real Player/PartyFollowers/private state, stable1.8/1.5m dimensions.
+Fixed source/light/paint: original camera, two candidates, quiet PNG detail,
+conditional door-only scale including collider. Measure real body silhouette
+in isolated unlit masks; report AABB separately, not as silhouette pixels.
+ReturnА exact, Source/terrain geometry/grass buffer/POM retained, Map floor/ray,
+matched camera motion and real step crossing with unchanged capsule. Related:
+camera-relative movement, material mapping/workflow and party followers/save-v2
+through `run_party_tests.py` guarded disposable projects. Their UID text-path
+fallback warnings remain in logs; no UID migration implied. F6/mouse/125%/motion/
+flicker and camera/door artistic choice OPEN. No global scale/author maps changed;
+quiet material filtering does not remove geometry step strips. Evidence/owners —
+Terrain Authoring → «Читаемость диорамы — этап0а», ember-diorama-readability.
+
 Material looks LAB: `capture_material_looks_study.gd` — принятый grass_field9621,
 А equals current/pre-slice accepted shader, return exact, Б/В visible changes,
 3 presets×side/back с одинаковой игровой камерой. World-metric pixel size и

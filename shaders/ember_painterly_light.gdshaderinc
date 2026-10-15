@@ -1,4 +1,5 @@
 // Opt-in LAB light response in the existing terrain renderer; no depth changes.
+#include "res://shaders/ember_stylized_rim.gdshaderinc"
 uniform bool painterly_enabled = false;
 uniform bool painterly_rim_enabled = true;
 uniform bool painterly_grass_enabled = true;
@@ -80,7 +81,7 @@ vec3 ember_painted_grass_normal(vec3 form, vec3 world_position) {
 }
 
 vec2 ember_painterly_light(vec3 form, vec3 detail, vec3 rim_normal, vec3 grass_normal,
-		vec3 view, vec3 light, float grass_weight, float stone_weight) {
+		vec3 view, vec3 light, float grass_weight, float rim_weight) {
 	float nl = max(dot(form, light), 0.0);
 	float width = max(painterly_band_softness, fwidth(nl));
 	float bands = 0.20 * smoothstep(0.0, width, nl)
@@ -104,13 +105,16 @@ vec2 ember_painterly_light(vec3 form, vec3 detail, vec3 rim_normal, vec3 grass_n
 	diffuse = mix(diffuse, grass_light, grass_weight);
 	// Use the interpolated macro normal for continuous edges. POM detail must
 	// not create a luminous outline around every tiny cavity.
-	float nv = max(dot(rim_normal, view), 0.0);
-	float rim = 1.0 - smoothstep(0.10, 0.32, nv);
-	// Backlight may reach a grazing face even when its N.L is slightly negative.
-	rim *= smoothstep(-0.25, 0.25, dot(rim_normal, light));
-	// Keep the sun-facing edge for lateral as well as back lighting. Only
-	// near-frontal light suppresses it; N.L and shadows select the lit side.
-	rim *= (1.0 - smoothstep(0.65, 0.90, dot(view, light))) * stone_weight;
+	float rim = ember_stylized_rim(rim_normal, view, light, rim_weight);
 	rim *= painterly_rim_enabled ? painterly_rim_strength : 0.0;
 	return vec2(diffuse, rim);
+}
+
+// Thin foliage response shares the same material-light owner. The caller
+// supplies strength, light energy and actual visibility; this is not emission
+// or a replacement for cast shadows or atmospheric light shafts.
+float ember_painterly_leaf_transmission(vec3 form, vec3 view, vec3 light) {
+	float backlight=smoothstep(-0.05,0.65,dot(view,-light));
+	float thin_side=0.35+0.65*(1.0-smoothstep(0.0,0.65,dot(form,light)));
+	return backlight*thin_side;
 }

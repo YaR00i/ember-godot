@@ -4,6 +4,7 @@ extends RefCounted
 ## Common Godot/headless Undo owner for one sculpt stroke.
 
 signal source_changed(indices: PackedInt32Array)
+signal material_changed(resource: EmberVoxelModelResource)
 
 var _undo_redo: Object
 var active_part := 0
@@ -37,6 +38,23 @@ func apply_fragment(resource: EmberVoxelModelResource, plan: Dictionary) -> bool
 
 func configure(undo_redo: Object) -> void:
 	_undo_redo = undo_redo
+
+
+func apply_style_rim(resource: EmberVoxelModelResource, role: String, enabled: bool, strength: float) -> bool:
+	if resource==null or _undo_redo==null:return false
+	var profiles=preload("res://scripts/ember_voxel_material_profiles.gd")
+	var after: Dictionary=profiles.with_rim(resource.material,role,enabled,strength)
+	if not profiles.validation_errors(after,resource.palette.size()).is_empty() or after==resource.material:return false
+	_create_action("Кромка материала · "+role,resource)
+	_add_do_property(resource,&"material",after)
+	_add_undo_property(resource,&"material",resource.material.duplicate(true))
+	_add_do_method_with_args(self,&"_notify_material_changed",[resource])
+	_add_undo_method_with_args(self,&"_notify_material_changed",[resource])
+	_commit_action()
+	return true
+
+func _notify_material_changed(resource: EmberVoxelModelResource) -> void:
+	material_changed.emit(resource)
 
 
 func record_editor_state(
