@@ -6,6 +6,7 @@ extends VBoxContainer
 const Generator = preload("res://addons/ember_import/ember_voxel_generator.gd")
 const Creation = preload("res://addons/ember_import/ember_voxel_tree_object_creation.gd")
 const VectorField = preload("res://addons/ember_import/ember_voxel_vector_field.gd")
+const TreePartField = preload("res://addons/ember_import/ember_tree_part_density_field.gd")
 
 signal preview_changed(packed: PackedScene, source: EmberVoxelModelResource)
 signal variant_created(prop: EmberVoxelProp)
@@ -127,7 +128,10 @@ func _rebuild_fields() -> void:
 		var label := Label.new()
 		label.text = field.label
 		_fields.add_child(label)
-		if str(field.get("type", "number")) == "vector3i":
+		if str(field.get("type", "number")) == "tree_parts":
+			var part:=TreePartField.new();part.configure(recipe.parameters,recipe.seed)
+			part.value_changed.connect(set_tree_part_density);_fields.add_child(part);controls[field.key]=part
+		elif str(field.get("type", "number")) == "vector3i":
 			var vector := VectorField.new()
 			vector.setup(int(field.min), int(field.max))
 			vector.set_vector_value(recipe.parameters[field.key])
@@ -217,6 +221,13 @@ func _assign(key: String, value: Variant) -> void:
 	_info.text = "Параметры изменены. Соберите новый точный предпросмотр. Исходник не меняется."
 	_sync_controls()
 
+func set_tree_part_density(value: Dictionary,revision: String) -> void:
+	if _syncing or recipe==null:return
+	history.create_action("Листва в выбранной части")
+	history.add_do_method(_assign.bind("tree_leaf_local",value));history.add_do_method(_assign.bind("tree_leaf_revision",revision))
+	history.add_undo_method(_assign.bind("tree_leaf_local",recipe.parameters.tree_leaf_local.duplicate(true)))
+	history.add_undo_method(_assign.bind("tree_leaf_revision",recipe.parameters.tree_leaf_revision));history.commit_action()
+
 
 func _sync_controls() -> void:
 	if recipe == null:
@@ -228,7 +239,9 @@ func _sync_controls() -> void:
 	if changed: _rebuild_fields()
 	_syncing = true
 	for key in controls:
-		if controls[key] is VectorField:
+		if controls[key] is TreePartField:
+			controls[key].configure(recipe.parameters,recipe.seed)
+		elif controls[key] is VectorField:
 			controls[key].set_vector_value(recipe.parameters[key])
 		elif controls[key] is ColorPickerButton:
 			controls[key].color = recipe.parameters[key]
@@ -308,6 +321,8 @@ func prepare() -> void:
 			return
 	creation = Creation.new()
 	creation.recipe_directory = recipe_directory
+	creation.source_directory=str(context.get("source_directory",creation.source_directory))
+	creation.prefab_directory=str(context.get("prefab_directory",creation.prefab_directory))
 	creation.asset_changed.connect(func(id: String): assets_changed.emit(id))
 	var title := name if _save_mode.selected == 2 else family_title + " · " + name
 	if not creation.prepare_recipe(candidate, title, _source_id if _save_mode.selected == 1 else ""):

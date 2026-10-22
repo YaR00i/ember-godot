@@ -136,14 +136,62 @@ static func change_linked_surface(
 		set_cell_tags(state, resolved, cell, add_tags, remove_tags)
 
 
+static func target_conditions_met(effect: Dictionary, target: Dictionary) -> bool:
+	return target_condition_reason(effect, target, false).is_empty()
+
+
+static func target_condition_reason(effect: Dictionary, target: Dictionary, explain := true) -> String:
+	# One predicate owner. The resolver needs only a cheap nonempty sentinel on
+	# failure; player intent additionally resolves authored status names.
+	var required: Array = effect.get("targetRequiredStatusIds", [])
+	var forbidden: Array = effect.get("targetForbiddenStatusIds", [])
+	if required.is_empty() and forbidden.is_empty(): return ""
+	if target.is_empty(): return "на клетке нет бойца" if explain else "missing_target"
+	for id in required:
+		if not StatusRules.has(target, str(id)):
+			return "нет статуса «%s»" % StatusRules.display_name(str(id)) if explain else "missing_required"
+	for id in forbidden:
+		if StatusRules.has(target, str(id)):
+			return "есть запрещённый статус «%s»" % StatusRules.display_name(str(id)) if explain else "has_forbidden"
+	return ""
+
+
+static func conditional_intent(action: Dictionary, target: Dictionary, target_chosen: bool) -> String:
+	# Read only the pre-effect target. Never inspect preview, rolls or outcome.
+	var lines := PackedStringArray()
+	for effect in action.get("effects", []):
+		if effect.get("targetRequiredStatusIds", []).is_empty() and effect.get("targetForbiddenStatusIds", []).is_empty(): continue
+		if not target_chosen: return "Условные эффекты: выберите цель для проверки."
+		var reason := target_condition_reason(effect, target)
+		lines.append("• %s: %s." % [str(effect.get("name", "Эффект")), "условия выполнены" if reason.is_empty() else "пропустится — " + reason])
+	if lines.is_empty(): return ""
+	return "Эффекты по статусам до приёма:\n" + "\n".join(lines) + "\nЭффекты зависят от попадания и устойчивости."
+
+
+static func conditions_hash(action: Dictionary) -> int:
+	var rules: Array = []
+	for effect in action.get("effects", []):
+		rules.append([effect.get("id", ""), effect.get("targetRequiredStatusIds", []), effect.get("targetForbiddenStatusIds", [])])
+	return hash(rules)
+
+
+static func _has_base_effect(action: Dictionary, state: Dictionary) -> bool:
+	if str(action.get("element", "")) == "fire" and field_power_bonus(state, _unit_definition(state, _current_unit_id(state)), "fire") > 0: return true
+	return str(action.get("effect", "damage")) != "effect_chain" or int(action.get("power", 0)) > 0 or action.get("effects", []).is_empty()
+
+
 static func effect_steps_apply_to_cell(state: Dictionary, action: Dictionary, cell: Vector2i) -> bool:
 	var effects: Array = action.get("effects", [])
 	if effects.is_empty() or not _grid_inside(state, cell):
 		return false
 	var definition := _grid_cell_definition(state, cell)
 	var occupant_id := _grid_occupant(state, cell)
+	var target: Dictionary = (state.get("units", {}) as Dictionary).get(occupant_id, {})
+	var active := false
 	for raw_effect in effects:
 		var effect := raw_effect as Dictionary
+		if not target_conditions_met(effect, target): continue
+		active = true
 		match str(effect.get("operation", "")):
 			"apply_status", "push":
 				if occupant_id.is_empty():
@@ -187,7 +235,7 @@ static func effect_steps_apply_to_cell(state: Dictionary, action: Dictionary, ce
 			"activate_focus":
 				if not _is_grid_focus_cell(state, cell) or "activated" in definition.get("tags", []):
 					return false
-	return true
+	return active or (not occupant_id.is_empty() and _has_base_effect(action, state))
 
 
 static func apply_authored_effects(
@@ -204,6 +252,9 @@ static func apply_authored_effects(
 	for raw_effect in action.get("effects", []):
 		var effect := raw_effect as Dictionary
 		var effect_name := str(effect.get("name", effect.get("id", "Эффект")))
+		if not target_conditions_met(effect, target):
+			(resolved.get("notes", []) as Array).append("%s: условия статусов цели не выполнены, эффект пропущен." % effect_name)
+			continue
 		match str(effect.get("operation", "")):
 			"apply_status":
 				if not target.is_empty():
@@ -233,12 +284,15 @@ static func apply_authored_effects(
 			resolved["reaction"] = effect_name
 
 
-static func authored_effects_allow_unit_target(action: Dictionary, target: Dictionary) -> bool:
+static func authored_effects_allow_unit_target(action: Dictionary, target: Dictionary, state: Dictionary = {}) -> bool:
+	var active := false
 	for raw_effect in action.get("effects", []):
 		var effect := raw_effect as Dictionary
+		if not target_conditions_met(effect, target): continue
+		active = true
 		if str(effect.get("operation", "")) == "restore_hp" and int(target.get("hp", 0)) >= int(target.get("maxHp", 1)):
 			return false
-	return true
+	return active or _has_base_effect(action, state)
 
 
 static func _apply_actor_move_effect(state: Dictionary, resolved: Dictionary, actor: Dictionary, destination: Vector2i) -> void:

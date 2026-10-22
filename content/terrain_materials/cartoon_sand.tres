@@ -1,11 +1,15 @@
 [gd_resource type="Resource" script_class="EmberCompactTerrainPattern" format=4]
 
 [ext_resource type="Script" path="res://scripts/ember_compact_terrain_pattern.gd" id="1_k2vlg"]
+[ext_resource type="Texture2D" path="res://content/terrain_materials/textures/soil-painted-genshin-v4-runtime.png" id="2_road_painted"]
 
 [resource]
 script = ExtResource("1_k2vlg")
 role_id = "sand"
-base_color = Color(0.84313726, 0.7529412, 0.54901963, 1)
+base_color = Color(0.7254902, 0.6431373, 0.4862745, 1)
+albedo_texture = ExtResource("2_road_painted")
+albedo_periodic = true
+albedo_relief_enabled = false
 light_color = Color(0.8901961, 0.8156863, 0.62352943, 1)
 shadow_color = Color(0.7647059, 0.6666667, 0.47058824, 1)
 pixels = PackedByteArray("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==")

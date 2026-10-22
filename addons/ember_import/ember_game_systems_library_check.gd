@@ -140,9 +140,14 @@ func _links(record: Dictionary) -> void:
 		"item": _reference(record, "icon", str(resource.definition.get("iconId", "")))
 		"action":
 			if str(resource.call("effect_id")) in ["duo_pulse", "steam_breach"]: _reference(record, "unit", str(resource.get("partner_unit_id")))
-			for row in resource.get("equipment_conditions"):
-				if row.get("mode", "") == "item": _reference(record, "item", str(row.get("item_id", "")))
+			for rules in preload("res://scripts/prototypes/ember_combat_action_conditions.gd").condition_sets(resource.call("application_conditions")):
+				var rows: Variant = rules.get("equipment_conditions", [])
+				if rows is Array:
+					for row in rows:
+						if row is Dictionary and row.get("mode", "") == "item": _reference(record, "item", str(row.get("item_id", "")))
 		"effect":
+			for key in ["target_required_status_ids", "target_forbidden_status_ids"]:
+				for id in resource.get(key): _reference(record, "status", str(id))
 			match str(resource.call("operation_id")):
 				"apply_status": _reference(record, "status", str(resource.get("status_id")))
 				"remove_status":

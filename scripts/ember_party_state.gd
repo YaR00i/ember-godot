@@ -158,6 +158,10 @@ static func derived_stats_for_unit(unit: EmberCombatUnitResource, member: Dictio
 	var level := maxi(1, int(member.get("level", 1)))
 	var equipment := EmberEquipment.normalize(member.get("equipment", {}))
 	var combat_stats := EmberEquipment.combat_stats(equipment, items)
+	var shoes := EmberEquipment.footwear_bonuses(equipment, items)
+	var definition := unit.to_definition() if unit != null else {}
+	var status_resistances: Dictionary = definition.get("statusResistances", {}).duplicate(true)
+	status_resistances["wet"] = maxi(0, int(status_resistances.get("wet", 0)) + int(shoes.wetResistanceBonus))
 	var base_hp := unit.max_hp if unit != null else 1
 	var base_mp := unit.max_mp if unit != null else 0
 	var max_hp := base_hp + (level - 1) * 2 + _equipment_bonus(equipment, items, "hpBonus")
@@ -190,7 +194,11 @@ static func derived_stats_for_unit(unit: EmberCombatUnitResource, member: Dictio
 		"luck": luck_value,
 		"eva": maxi(0, floori(float(speed_value) * 0.5 + float(luck_value) * 0.25)),
 		"crit": clampi(5 + floori(float(luck_value) * 0.5), 0, 35),
-		"resistances": unit.to_definition().get("resistances", {}).duplicate(true) if unit != null else {},
+		"resistances": definition.get("resistances", {}).duplicate(true),
+		"moveRange": maxi(0, int(definition.get("moveRange", 0)) + int(shoes.moveBonus)),
+		"jumpHeight": maxi(0, int(definition.get("jumpHeight", 0)) + int(shoes.jumpBonus)),
+		"pushResistance": maxi(0, int(definition.get("pushResistance", 0)) + int(shoes.pushResistanceBonus)),
+		"statusResistances": status_resistances,
 		"arenaAtk": int(combat_stats.get("arenaAtk", EmberEquipment.UNARMED_ATK)),
 	}
 
@@ -232,6 +240,11 @@ static func project_combat_member(source: Dictionary, member: Dictionary, derive
 	for stat_key in ["str", "mag", "def", "res", "speed", "acc", "luck", "eva", "crit"]:
 		unit[stat_key] = int(derived.get(stat_key, unit.get(stat_key, 0)))
 	unit["resistances"] = (derived.get("resistances", {}) as Dictionary).duplicate(true)
+	for key in ["moveRange", "jumpHeight", "pushResistance"]:
+		unit[key] = int(derived.get(key, unit.get(key, 0)))
+	var status_resistances: Dictionary = unit.get("statusResistances", {}).duplicate(true)
+	if derived.has("statusResistances"): status_resistances["wet"] = int(derived.statusResistances.get("wet", status_resistances.get("wet", 0)))
+	unit["statusResistances"] = status_resistances
 	unit["arenaAtk"] = int(derived.get("arenaAtk", EmberEquipment.UNARMED_ATK))
 	return unit
 

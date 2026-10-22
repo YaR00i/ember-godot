@@ -12,6 +12,15 @@ uniform bool independent_surface_enabled = false;
 uniform bool smooth_surface_enabled = false;
 uniform sampler2DArray png_albedo_bank : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D png_lookup : filter_nearest, repeat_disable;
+#ifdef EMBER_MATERIAL_COLOUR_PROBE
+// Colour-only LAB binding uses the existing PNG owner without turning colour
+// into height. Other slots and normal production variants keep the old path.
+uniform int colour_probe_slot = -1;
+// A pigment-only probe can retain the previous bank layer for optical height.
+uniform int colour_probe_height_slot = -1;
+uniform vec4 colour_probe_height_png = vec4(0.0);
+uniform bool colour_probe_shared_height = false;
+#endif
 uniform sampler2D png_mean_lookup : filter_nearest, repeat_disable;
 uniform sampler2D png_tint_lookup : filter_nearest, repeat_disable;
 uniform sampler2D palette_color_lookup : filter_nearest, repeat_disable;
@@ -59,6 +68,25 @@ varying vec3 terrain_normal;
 varying vec3 terrain_world_position;
 varying vec3 terrain_world_normal;
 varying vec3 texture_projection_normal;
+// Opt-in probe for derived solid hulls (default off keeps every other surface unchanged).
+// Mode 1: object-local periodic projection chosen by a continuous per-vertex form normal
+// (CUSTOM0.xyz) instead of the facet plane; solid_form_rim feeds the same normal to the rim.
+uniform int solid_projection_mode = 0;
+uniform bool solid_form_rim = false;
+uniform float solid_local_unit_m = 1.0;
+uniform float solid_blend_sharpness : hint_range(2.0, 48.0) = 16.0;
+uniform float solid_height_blend : hint_range(0.0, 16.0) = 0.0;
+// Share of the facet plane in axis choice: 0 = fully continuous, 1 = facet-only.
+uniform float solid_facet_bias : hint_range(0.0, 1.0) = 0.0;
+// Rim band for solid hulls: (inner, outer) facing range; default equals the shared rim.
+uniform vec2 solid_rim_edge = vec2(0.10, 0.32);
+// Cells per model unit for the voxel look: the pattern is read once per voxel (0 = off).
+uniform float solid_pixel_cells = 0.0;
+// Rim frame: the width (metres) comes from the material (style_rim_lookup alpha); the rim is limited to a
+// strip along silhouette edges of solid hulls (CUSTOM1..3), never thinner than solid_rim_min_px pixels.
+uniform float solid_rim_min_px = 1.5;
+varying vec3 solid_edge_dist;
+varying vec3 solid_form_local;
 varying float palette_slot;
 varying flat vec3 smooth_slots;
 #ifdef EMBER_DIORAMA_READABILITY
@@ -81,6 +109,22 @@ void vertex() {
 	terrain_world_normal = normalize(MODEL_NORMAL_MATRIX * NORMAL);
 	palette_slot = COLOR.a;
 	smooth_slots = vec3(UV,UV2.x)*255.0;
+	solid_form_local = CUSTOM0.xyz;
+	// Silhouette test per vertex: an edge frames the rim only when this facet faces the camera
+	// and the neighbouring facet across that (convex) edge faces away. Meshes without the data
+	// (all zero) keep distance 0 = no restriction.
+	vec3 edge_distance = CUSTOM1.xyz;
+	vec3 neighbour0 = CUSTOM2.xyz;
+	vec3 neighbour1 = CUSTOM3.xyz;
+	vec3 neighbour2 = vec3(CUSTOM1.w, CUSTOM2.w, CUSTOM3.w);
+	if (dot(neighbour0, neighbour0) + dot(neighbour1, neighbour1) + dot(neighbour2, neighbour2) > 0.5) {
+		vec3 to_camera = normalize(CAMERA_POSITION_WORLD - terrain_world_position);
+		float facing = dot(terrain_world_normal, to_camera);
+		edge_distance.x = (facing > 0.0 && dot(MODEL_NORMAL_MATRIX * neighbour0, to_camera) < 0.0) ? edge_distance.x : 1000000.0;
+		edge_distance.y = (facing > 0.0 && dot(MODEL_NORMAL_MATRIX * neighbour1, to_camera) < 0.0) ? edge_distance.y : 1000000.0;
+		edge_distance.z = (facing > 0.0 && dot(MODEL_NORMAL_MATRIX * neighbour2, to_camera) < 0.0) ? edge_distance.z : 1000000.0;
+	}
+	solid_edge_dist = edge_distance;
 }
 
 vec2 mirrored_tile(vec2 uv) {
@@ -115,6 +159,51 @@ vec3 png_tile(vec2 uv,float layer,bool periodic,vec2 uv_dx,vec2 uv_dy) {
 	return mix(a,b,blend.y);
 }
 
+vec2 ember_axis_uv(vec3 p, int axis) {
+	return axis == 0 ? p.zy : (axis == 1 ? p.xz : p.xy);
+}
+
+// Object-local periodic projection. Weights come from a continuous form normal, so both
+// facets sharing an edge evaluate the same function there. Two taps (top two axes);
+// textureGrad uses derivatives of the continuous local position, not of a switching UV.
+vec3 ember_solid_local_rgb(int slot, float layer, float span_m) {
+	vec3 local_position = terrain_position;
+	vec3 gradient_position = terrain_position * solid_local_unit_m / max(span_m, 0.125);
+	if (solid_pixel_cells > 0.0) {
+		// Step slightly inside the voxel behind the face, then use the voxel centre.
+		vec3 inward = normalize(solid_form_local) * (0.25 / solid_pixel_cells);
+		local_position = (floor((terrain_position - inward) * solid_pixel_cells) + 0.5) / solid_pixel_cells;
+	}
+	vec3 p = local_position * solid_local_unit_m / max(span_m, 0.125);
+	vec3 dpx = dFdx(gradient_position), dpy = dFdy(gradient_position);
+	vec3 w = pow(abs(normalize(solid_form_local)), vec3(solid_blend_sharpness));
+	w /= max(dot(w, vec3(1.0)), 0.00001);
+	if (solid_facet_bias > 0.0) {
+		vec3 wf = pow(abs(normalize(terrain_normal)), vec3(solid_blend_sharpness));
+		w = mix(w, wf / max(dot(wf, vec3(1.0)), 0.00001), solid_facet_bias);
+	}
+	int a0 = w.x >= w.y ? (w.x >= w.z ? 0 : 2) : (w.y >= w.z ? 1 : 2);
+	vec3 rest = w;
+	rest[a0] = -1.0;
+	int a1 = rest.x >= rest.y ? (rest.x >= rest.z ? 0 : 2) : (rest.y >= rest.z ? 1 : 2);
+	vec2 g0x = ember_axis_uv(dpx, a0), g0y = ember_axis_uv(dpy, a0);
+	vec2 g1x = ember_axis_uv(dpx, a1), g1y = ember_axis_uv(dpy, a1);
+	vec3 c0 = textureGrad(png_albedo_bank, vec3(ember_axis_uv(p, a0), layer), g0x, g0y).rgb;
+	vec3 c1 = textureGrad(png_albedo_bank, vec3(ember_axis_uv(p, a1), layer), g1x, g1y).rgb;
+	float w0 = w[a0], w1 = w[a1];
+	if (solid_height_blend > 0.0) {
+		// Painted value decides the overlap, so the transition follows brush shapes.
+		vec3 luma = vec3(0.2126, 0.7152, 0.0722);
+		float mean_l = dot(texelFetch(png_mean_lookup, ivec2(slot, 0), 0).rgb, luma);
+		float h0 = w0 + (dot(c0, luma) - mean_l) * solid_height_blend;
+		float h1 = w1 + (dot(c1, luma) - mean_l) * solid_height_blend;
+		float top = max(h0, h1);
+		w0 = max(h0 - (top - 0.15), 0.0001);
+		w1 = max(h1 - (top - 0.15), 0.0001);
+	}
+	return (c0 * w0 + c1 * w1) / (w0 + w1);
+}
+
 vec3 slot_albedo_at(int slot, vec3 world_position, vec3 world_normal) {
 	vec4 png=texelFetch(png_lookup,ivec2(slot,0),0);
 	vec3 n=abs(normalize(world_normal));
@@ -127,8 +216,11 @@ vec3 slot_albedo_at(int slot, vec3 world_position, vec3 world_normal) {
 #endif
 		vec3 rgb;
 		bool periodic=png.a>0.5;
+		bool solid_local=periodic && solid_projection_mode==1 && dot(solid_form_local,solid_form_local)>0.0;
 		if(periodic)n=abs(texture_projection_normal);
-		if(png.b>3.5 || periodic) {
+		if(solid_local) {
+			rgb=ember_solid_local_rgb(slot,png.r-1.0,png.g);
+		}else if(abs(png.b)>3.5 || periodic) {
 			vec3 weights=ember_texture_axis_weights(n);
 			rgb=vec3(0.0);
 			if(weights.x>0.00001)rgb+=png_tile(p.zy,png.r-1.0,periodic,texture_dx.zy,texture_dy.zy)*weights.x;
@@ -173,10 +265,21 @@ vec3 png_relief_tile(vec2 uv,float layer,bool periodic) {
 	return rgb;
 }
 
-float slot_optical_height(int slot) {
+float slot_optical_height(int slot, float shared_amplitude) {
+#ifdef EMBER_MATERIAL_COLOUR_PROBE
+	if(slot==colour_probe_slot)return 0.0;
+#ifdef EMBER_TERRAIN_MATERIAL_DEPTH
+	if(colour_probe_shared_height && slot==colour_probe_height_slot) {
+		return (material_depth_height_at(terrain_world_position,texture_projection_normal)-0.5)*shared_amplitude;
+	}
+#endif
+#endif
 	vec4 png=texelFetch(png_lookup,ivec2(slot,0),0);
+#ifdef EMBER_MATERIAL_COLOUR_PROBE
+	if(slot==colour_probe_height_slot)png=colour_probe_height_png;
+#endif
 	float amount=texelFetch(finish_lookup,ivec2(slot,0),0).b*0.3;
-	if(png.r<0.5 || amount<0.0001)return 0.0;
+	if(png.r<0.5 || png.b<0.0 || amount<0.0001)return 0.0;
 	vec3 p=ember_texture_coordinates(terrain_world_position,png.g);
 	// First heightfield slice follows top artwork; steep sides fade below.
 	// Avoid differentiating triplanar weights, which reveals the fine mesh.
@@ -206,6 +309,15 @@ float submerged_side_weight() {
 	return side * smoothstep(-0.5, 1.5, surface_y - terrain_world_position.y);
 }
 
+// 1 on the rim strip along convex hull edges, 0 beyond it (always 1 when the limit is off).
+float solid_rim_frame(float width_m) {
+	if (width_m <= 0.0) return 1.0;
+	float distance_m = min(solid_edge_dist.x, min(solid_edge_dist.y, solid_edge_dist.z)) * solid_local_unit_m;
+	float aa = max(fwidth(distance_m), 0.00001);
+	float width = max(width_m, solid_rim_min_px * aa);
+	return 1.0 - smoothstep(width - aa * 0.5, width + aa * 0.5, distance_m);
+}
+
 void fragment() {
 	#ifdef EMBER_BEVEL_STUDY
 	bevel_light_mask = 0.0;
@@ -213,6 +325,7 @@ void fragment() {
 	texture_projection_normal = ember_texture_surface_normal(terrain_world_position, terrain_world_normal);
 	painterly_weights = vec2(0.0);
 	style_rim_weight=0.0;
+	float rim_width_sum = 0.0;
 	grass_profile_weight=0.0;
 	grass_profile_values=vec3(0.0);grass_profile_cool=vec3(0.0);grass_profile_warm=vec3(0.0);grass_profile_shadow=vec3(0.0);
 	ivec3 painted_slots = smooth_surface_enabled ? ivec3(round(smooth_slots)) : ivec3(int(round(palette_slot * 255.0)));
@@ -222,9 +335,10 @@ void fragment() {
 		float role = texelFetch(role_lookup,ivec2(painted_slots[i],0),0).b * 255.0;
 		painterly_weights.x += painted_blend[i] * (abs(role - 1.0) < 0.1 ? 1.0 : 0.0);
 		// LAB stone slot is explicit, same slot bound by the existing depth study.
-		vec3 rim_profile=style_rim_profiles_enabled ? texelFetch(style_rim_lookup,ivec2(painted_slots[i],0),0).rgb : vec3(0.0);
+		vec4 rim_profile=style_rim_profiles_enabled ? texelFetch(style_rim_lookup,ivec2(painted_slots[i],0),0).rgba : vec4(0.0);
 		painterly_weights.y += painted_blend[i] * (painted_slots[i] == 1 && rim_profile.r<0.5 ? 1.0 : 0.0);
 		style_rim_weight += painted_blend[i]*rim_profile.r*rim_profile.g*rim_profile.b;
+		rim_width_sum += painted_blend[i]*rim_profile.r*rim_profile.g*rim_profile.b*rim_profile.a;
 		if(grass_light_profiles_enabled && abs(role-1.0)<0.1) {
 			vec4 settings=texelFetch(grass_light_lookup,ivec2(painted_slots[i],0),0);
 			float weight=painted_blend[i]*settings.a;
@@ -242,13 +356,38 @@ void fragment() {
 #ifdef EMBER_TERRAIN_MATERIAL_DEPTH
 	DEPTH = FRAGCOORD.z;
 	material_depth_light = 1.0;
-	material_depth_lod = clamp(log2(max(length(fwidth(terrain_world_position / material_depth_span())) * float(textureSize(material_depth_height,0).x),1.0)),0.0,6.0);
-	vec3 depth_normal = texelFetch(png_lookup,ivec2(material_depth_slots.x,0),0).a>0.5 ? texture_projection_normal : normalize(terrain_world_normal);
+	float selected_depth_amount=material_depth_amplitude_m;
+	bool selected_depth_enabled=material_depth_enabled;
+#ifdef EMBER_TERRAIN_SECONDARY_DEPTH
+	material_depth_lod=0.0;
+	if(material_depth_secondary_enabled) {
+		material_depth_lod=-1.0;
+		if(material_depth_weight(terrain_world_position)<=0.00001)material_depth_lod=0.0;
+	}
+	bool secondary_profile=material_depth_lod<0.0;
+	if(secondary_profile) {
+		selected_depth_amount=material_depth_secondary_amplitude_m;
+		selected_depth_enabled=material_depth_secondary_enabled;
+	}
+#endif
+	vec3 depth_footprint=fwidth(terrain_world_position / material_depth_span());
+#ifdef EMBER_TERRAIN_SECONDARY_DEPTH
+	// Different material spans must not create artificial derivatives at the
+	// coverage boundary. Evaluate both uniform footprints before selecting.
+	vec3 primary_footprint=fwidth(terrain_world_position / max(texelFetch(png_lookup,ivec2(material_depth_slots.x,0),0).g,0.125));
+	vec3 secondary_footprint=fwidth(terrain_world_position / max(texelFetch(png_lookup,ivec2(material_depth_secondary_slots.x,0),0).g,0.125));
+	depth_footprint=secondary_profile?secondary_footprint:primary_footprint;
+#endif
+	material_depth_lod = clamp(log2(max(length(depth_footprint) * float(material_depth_image_size()),1.0)),0.0,6.0);
+#ifdef EMBER_TERRAIN_SECONDARY_DEPTH
+	if(secondary_profile)material_depth_lod=-material_depth_lod-1.0;
+#endif
+	vec3 depth_normal = texelFetch(png_lookup,ivec2(material_depth_current_slots().x,0),0).a>0.5 ? texture_projection_normal : normalize(terrain_world_normal);
 	vec3 depth_view_direction = normalize(CAMERA_POSITION_WORLD - terrain_world_position);
 	float depth_facing = dot(depth_normal, depth_view_direction);
 	float depth_distance_fade = 1.0 - smoothstep(material_depth_fade_near_m, material_depth_fade_far_m, length(VERTEX));
-	float depth_amplitude = material_depth_amplitude_m * depth_distance_fade * smoothstep(0.04, 0.12, depth_facing);
-	bool depth_active = material_depth_enabled && depth_amplitude > 0.00001 && !IN_SHADOW_PASS && !reflection_pass_enabled && material_depth_weight(terrain_world_position)>0.00001;
+	float depth_amplitude = selected_depth_amount * depth_distance_fade * smoothstep(0.04, 0.12, depth_facing);
+	bool depth_active = selected_depth_enabled && depth_amplitude > 0.00001 && !IN_SHADOW_PASS && !reflection_pass_enabled && material_depth_weight(terrain_world_position)>0.00001;
 #endif
 	// The mirrored study camera sits below the surface. Ground below that
 	// plane must not appear as a reflection of the shore.
@@ -333,18 +472,27 @@ void fragment() {
 	if(use_smooth_baseline) {
 		ivec3 slots=ivec3(round(smooth_slots));
 		vec3 weights=max(COLOR.rgb,vec3(0.0));weights/=max(dot(weights,vec3(1.0)),0.00001);
-		ALBEDO=slot_albedo(slots.x)*weights.x+slot_albedo(slots.y)*weights.y+slot_albedo(slots.z)*weights.z;
+		if(solid_projection_mode==1 && slots.x==slots.y && slots.y==slots.z)ALBEDO=slot_albedo(slots.x);
+		else ALBEDO=slot_albedo(slots.x)*weights.x+slot_albedo(slots.y)*weights.y+slot_albedo(slots.z)*weights.z;
 		ROUGHNESS=0.98;SPECULAR=0.05;
 		// Optional fine optical relief follows the existing PNG artwork and
 		// material's authored relief amount. Coarse volume still lives in terrain.
 		float bump_m=0.0;
 		for(int i=0;i<3;i++) {
 			int slot=slots[i];
-			if(texelFetch(png_lookup,ivec2(slot,0),0).r>0.5) {
+#ifdef EMBER_MATERIAL_COLOUR_PROBE
+			if(slot==colour_probe_slot)continue;
+#endif
+			vec4 png_entry=texelFetch(png_lookup,ivec2(slot,0),0);
+			if(png_entry.r>0.5 && png_entry.b>=0.0) {
 				bump_m+=weights[i]*texelFetch(finish_lookup,ivec2(slot,0),0).b*0.3;
 			}
 		}
-		vec3 heights=vec3(slot_optical_height(slots.x),slot_optical_height(slots.y),slot_optical_height(slots.z));
+		float shared_amplitude=0.0;
+#ifdef EMBER_TERRAIN_MATERIAL_DEPTH
+		shared_amplitude=depth_amplitude;
+#endif
+		vec3 heights=vec3(slot_optical_height(slots.x,shared_amplitude),slot_optical_height(slots.y,shared_amplitude),slot_optical_height(slots.z,shared_amplitude));
 		vec3 n=normalize(terrain_world_normal);
 		vec3 dx=dFdx(terrain_world_position),dy=dFdy(terrain_world_position);
 		vec3 r1=cross(dy,n),r2=cross(n,dx);
@@ -356,6 +504,9 @@ void fragment() {
 			if(abs(det)>0.00000001) {
 				vec3 slope=sign(det)*gradient/abs(det);
 				slope*=min(1.0,0.30/max(length(slope),0.00001));
+#ifdef EMBER_MATERIAL_COLOUR_PROBE
+				if(!colour_probe_shared_height)
+#endif
 				slope*=smoothstep(0.62,0.9,abs(n.y));
 				vec3 painted_normal=normalize(n-slope);
 				NORMAL=normalize((VIEW_MATRIX*vec4(painted_normal,0.0)).xyz);
@@ -378,7 +529,7 @@ void fragment() {
 		SPECULAR = 0.05;
 		vec3 tangent = normalize(cross(abs(n.y) > 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0), n));
 		vec3 bitangent = cross(n, tangent);
-		float epsilon = max(material_depth_span() * exp2(material_depth_lod) / float(textureSize(material_depth_height, 0).x), 0.001);
+		float epsilon = max(material_depth_span() * exp2(material_depth_mip()) / float(material_depth_image_size()), 0.001);
 		float dh_t = (material_depth_height_at(hit + tangent * epsilon, n) - material_depth_height_at(hit - tangent * epsilon, n)) * amplitude / (2.0 * epsilon);
 		float dh_b = (material_depth_height_at(hit + bitangent * epsilon, n) - material_depth_height_at(hit - bitangent * epsilon, n)) * amplitude / (2.0 * epsilon);
 		NORMAL = normalize((VIEW_MATRIX * vec4(normalize(n - tangent * dh_t - bitangent * dh_b), 0.0)).xyz);
@@ -441,6 +592,15 @@ void fragment() {
 		LIGHT_VERTEX = ember_look_extrapolate(LIGHT_VERTEX, look_sample_delta);
 	}
 #endif
+	// Solid hulls: the rim (read in light()) follows the continuous form normal and is limited
+	// to a thin strip along convex edges. texture_projection_normal is free after fragment().
+	if (solid_form_rim && dot(solid_form_local, solid_form_local) > 0.0) {
+		texture_projection_normal = normalize(MODEL_NORMAL_MATRIX * solid_form_local);
+	}
+	float rim_width_m = style_rim_weight > 0.0 ? rim_width_sum / style_rim_weight : 0.0;
+	style_rim_weight *= solid_rim_frame(rim_width_m);
+	// Solid hulls only (never painterly): tell light() whether the thin frame band applies.
+	if (solid_form_rim && dot(solid_form_local, solid_form_local) > 0.0) painterly_weights.y = rim_width_m > 0.0 ? 1.0 : 0.0;
 }
 
 void light() {
@@ -456,8 +616,9 @@ void light() {
 	if (LIGHT_IS_DIRECTIONAL) terrain_light_attenuation *= material_depth_light;
 #endif
 	if (LIGHT_IS_DIRECTIONAL && style_rim_weight>0.0) {
-		vec3 rim_form=normalize(mat3(VIEW_MATRIX)*normalize(look_form));
-		SPECULAR_LIGHT+=LIGHT_COLOR*terrain_light_attenuation*ember_stylized_rim(rim_form,VIEW,LIGHT,style_rim_weight)/PI;
+		vec3 rim_source=(solid_form_rim && dot(solid_form_local,solid_form_local)>0.0) ? texture_projection_normal : normalize(look_form);
+		vec3 rim_form=normalize(mat3(VIEW_MATRIX)*rim_source);
+		SPECULAR_LIGHT+=LIGHT_COLOR*terrain_light_attenuation*ember_stylized_rim_shaped(rim_form,VIEW,LIGHT,style_rim_weight,(solid_form_rim && painterly_weights.y > 0.5) ? solid_rim_edge : vec2(0.10, 0.32))/PI;
 	}
 #ifdef EMBER_BEVEL_STUDY
 	if (bevel_light_enabled && LIGHT_IS_DIRECTIONAL) {

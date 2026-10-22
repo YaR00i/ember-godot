@@ -40,6 +40,20 @@ func _run() -> void:
 	workspace.open_resource("systems", "systems_library")
 	await _frames(10)
 	var hub := workspace.get("_game_systems_workspace") as Control
+	if OS.get_environment("EMBER_GAME_SYSTEMS_EDITOR_FOCUS") == "effect-picker":
+		await _effect_picker_forms(hub)
+		await _settle_filesystem()
+		if _errors.is_empty(): print("PASS game systems native effect search/selection/preview/conditions/empty/used/Undo/Redo/Save/reopen/Discard and width")
+		else: printerr("FAIL effect picker: ", "; ".join(_errors))
+		get_tree().quit(0 if _errors.is_empty() else 1)
+		return
+	if OS.get_environment("EMBER_GAME_SYSTEMS_EDITOR_FOCUS") in ["periodic", "stacks"]:
+		await _periodic_forms(hub)
+		await _settle_filesystem()
+		if _errors.is_empty(): print("PASS game systems focused periodic status authoring/Undo/Redo/Discard/Save/reopen/UID/global publication")
+		else: printerr("FAIL periodic editor: ", "; ".join(_errors))
+		get_tree().quit(0 if _errors.is_empty() else 1)
+		return
 	if OS.get_environment("EMBER_GAME_SYSTEMS_EDITOR_FOCUS") == "start":
 		await _start_forms(hub)
 		await _settle_filesystem()
@@ -190,6 +204,88 @@ func _run() -> void:
 	else: print("PASS game systems actual Forward+ modules, draft fields/Undo/Save/reopen, global publication Undo/Redo, item form, unload/reload")
 	get_tree().quit(0 if _errors.is_empty() else 1)
 
+
+func _effect_picker_forms(hub: Control) -> void:
+	const EFFECT_ID := "editor_picker_conditional"
+	const ACTION_ID := "editor_picker_action"
+	var effect_path := Store.path_for("effect", EFFECT_ID)
+	var action_path := Store.path_for("action", ACTION_ID)
+	var effect := Store.clone(Catalog.Effects.resource("apply_frozen"))
+	effect.effect_id = EFFECT_ID
+	effect.display_name = "Заморозка мокрой цели"
+	effect.description = "Дополнительный холодный шаг для проверки подбора."
+	effect.target_required_status_ids = PackedStringArray(["wet"])
+	if Store.write("effect", effect, effect_path) != OK:
+		_errors.append("native picker fixture write failed")
+		return
+	hub.call("select_module", "action", "strike")
+	var session = hub.get("_session")
+	if not session.create("action", ACTION_ID, "Удар с условным холодом", Catalog.Actions.resource("strike")):
+		_errors.append("native picker action draft failed")
+		Store.restore({"path": effect_path, "exists": false})
+		return
+	hub.call("_mount_draft")
+	var form := hub.get("_draft_editor") as Control
+	var original: String = session.draft.content_signature()
+	for query in [EFFECT_ID, "заморозка мокрой", "холодный шаг", "есть все: wet"]:
+		var search := form.find_child("DraftEffectSearch", true, false) as LineEdit
+		search.text = query
+		search.text_changed.emit(query)
+		var choice := form.find_child("DraftEffectChoice", true, false) as OptionButton
+		var preview := form.find_child("DraftEffectPreview", true, false) as Label
+		if choice.item_count != 1 or choice.selected != 0 or choice.get_item_metadata(0).effect_id != EFFECT_ID:
+			_errors.append("native picker query failed: " + query)
+		if "wet" not in preview.text or "Проверка до применения" not in preview.text or preview.tooltip_text != effect_path:
+			_errors.append("native preview lost shared conditions/path")
+	var all_search := form.find_child("DraftEffectSearch", true, false) as LineEdit
+	all_search.text = ""
+	all_search.text_changed.emit("")
+	var all_choice := form.find_child("DraftEffectChoice", true, false) as OptionButton
+	for index in all_choice.item_count:
+		if str(all_choice.get_item_metadata(index).effect_id) == "apply_wet":
+			all_choice.select(index)
+			all_choice.item_selected.emit(index)
+	if "apply_wet" not in (form.find_child("DraftEffectPreview", true, false) as Label).text: _errors.append("selection did not update effect preview")
+	all_search.text = EFFECT_ID
+	all_search.text_changed.emit(EFFECT_ID)
+	if session.draft.content_signature() != original or session.can_undo(): _errors.append("search/selection changed Resource/history")
+	await _frames(5)
+	var scroll := hub.get("_detail").get_parent() as ScrollContainer
+	var search := form.find_child("DraftEffectSearch", true, false) as LineEdit
+	scroll.scroll_vertical += roundi(search.global_position.y - scroll.global_position.y - 55)
+	await _capture("effect-picker-preview")
+	if form.get_combined_minimum_size().x > form.size.x + 1: _errors.append("native picker width overflow")
+	search.text = "nothing_matches_this_query"
+	search.text_changed.emit(search.text)
+	if not (form.find_child("DraftAddEffect", true, false) as Button).disabled or (form.find_child("DraftEffectChoice", true, false) as OptionButton).item_count != 0:
+		_errors.append("empty search left actionable selection")
+	await _capture("effect-picker-empty")
+	search.text = EFFECT_ID
+	search.text_changed.emit(search.text)
+	(form.find_child("DraftAddEffect", true, false) as Button).pressed.emit()
+	if session.draft.effect_steps.size() != 1 or session.draft.effect_steps[0].effect_id != EFFECT_ID: _errors.append("filtered Add used wrong shared effect")
+	if (form.find_child("DraftEffectSearch", true, false) as LineEdit).text != EFFECT_ID or not (form.find_child("DraftAddEffect", true, false) as Button).disabled:
+		_errors.append("Add lost filter or duplicate guard")
+	await _capture("effect-picker-used")
+	form.call("_undo_draft")
+	if not session.draft.effect_steps.is_empty() or (form.find_child("DraftAddEffect", true, false) as Button).disabled: _errors.append("filtered Add Undo failed")
+	form.call("_redo_draft")
+	if session.draft.effect_steps.size() != 1 or not (form.find_child("DraftAddEffect", true, false) as Button).disabled: _errors.append("filtered Add Redo failed")
+	hub.call("_save_draft")
+	await _frames(5)
+	var sha := Store.signature(action_path)
+	var uid := ResourceLoader.get_resource_uid(action_path)
+	hub.call("begin_edit")
+	if session.draft == null or session.draft.effect_steps.size() != 1 or session.draft.effect_steps[0].target_required_status_ids != PackedStringArray(["wet"]):
+		_errors.append("filtered shared step Save/reopen failed")
+	if session.draft != null: session.set_value("display_name", "Несохранённое название")
+	hub.call("discard_changes")
+	if Store.signature(action_path) != sha or ResourceLoader.get_resource_uid(action_path) != uid: _errors.append("Discard changed saved action/UID")
+	Store.restore({"path": action_path, "exists": false})
+	Store.restore({"path": effect_path, "exists": false})
+	get_undo_redo().clear_history(EditorUndoRedoManager.GLOBAL_HISTORY, false)
+
+
 func _start_forms(hub: Control) -> void:
 	var path := Store.path_for("start", "default")
 	var before := Store.snapshot(path)
@@ -321,6 +417,62 @@ func _usage_navigation(hub: Control) -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(source_path))
 	Catalog.refresh()
 	await _settle_filesystem()
+
+func _periodic_forms(hub: Control) -> void:
+	const ID := "periodic_fixture_poison"
+	var path := Store.path_for("status", ID)
+	hub.call("begin_new", "status", Catalog.Statuses.resource("poison"))
+	hub.get("_create_id").text = ID
+	hub.get("_create_name").text = "Яд проверки"
+	hub.get("_create_dialog").confirmed.emit()
+	hub.get("_create_dialog").hide()
+	var session = hub.get("_session")
+	var form := hub.get("_draft_editor") as Control
+	var amount := form.find_child("DraftField_turn_end_hp_change", true, false) as SpinBox
+	if amount == null:
+		_errors.append("native periodic amount missing")
+		return
+	amount.value = -6
+	form.call("_undo_draft")
+	if session.draft.turn_end_hp_change != -5: _errors.append("native periodic Undo failed")
+	form.call("_redo_draft")
+	if session.draft.turn_end_hp_change != -6: _errors.append("native periodic Redo failed")
+	if OS.get_environment("EMBER_GAME_SYSTEMS_EDITOR_FOCUS") == "stacks":
+		(form.find_child("DraftField_max_stacks", true, false) as SpinBox).value = 3
+		form.call("_undo_draft")
+		if session.draft.max_stacks != 1: _errors.append("native dose limit Undo failed")
+		form.call("_redo_draft")
+		if session.draft.max_stacks != 3: _errors.append("native dose limit Redo failed")
+	var scroll := hub.get("_detail").get_parent() as ScrollContainer
+	await _frames(5)
+	if OS.get_environment("EMBER_GAME_SYSTEMS_EDITOR_FOCUS") == "stacks":
+		var limit := form.find_child("DraftField_max_stacks", true, false) as Control
+		scroll.scroll_vertical += roundi(limit.global_position.y - scroll.global_position.y - 150)
+		await _capture("status-dose-limit")
+	amount = form.find_child("DraftField_turn_end_hp_change", true, false) as SpinBox
+	scroll.scroll_vertical += roundi(amount.global_position.y - scroll.global_position.y - 230)
+	await _frames(5)
+	if form.get_combined_minimum_size().x > form.size.x + 1: _errors.append("periodic form width overflow")
+	await _capture("periodic-status-form")
+	hub.call("_save_draft")
+	await _frames(5)
+	var sha := Store.signature(path)
+	var uid := ResourceLoader.get_resource_uid(path)
+	hub.call("select_module", "status", ID)
+	hub.call("begin_edit")
+	form = hub.get("_draft_editor") as Control
+	if session.draft == null or session.draft.turn_end_hp_change != -6: _errors.append("native periodic Save/reopen failed")
+	if OS.get_environment("EMBER_GAME_SYSTEMS_EDITOR_FOCUS") == "stacks" and session.draft.max_stacks != 3: _errors.append("native stack limit lost at Save/reopen")
+	(form.find_child("DraftField_turn_end_hp_change", true, false) as SpinBox).value = -9
+	hub.call("discard_changes")
+	if Store.signature(path) != sha: _errors.append("periodic Discard changed file")
+	var history := get_undo_redo().get_history_undo_redo(EditorUndoRedoManager.GLOBAL_HISTORY)
+	history.undo()
+	if FileAccess.file_exists(path): _errors.append("periodic publication Undo did not remove new file")
+	history.redo()
+	if Store.signature(path) != sha or ResourceLoader.get_resource_uid(path) != uid: _errors.append("periodic publication Redo changed bytes/UID")
+	get_undo_redo().clear_history(EditorUndoRedoManager.GLOBAL_HISTORY, false)
+	hub.call("select_module", "status", ID)
 
 func _status_forms(hub: Control) -> void:
 	hub.call("select_module", "status", "wet")

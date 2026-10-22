@@ -143,7 +143,7 @@ func _test_encounter() -> void:
 	(_form.find_child("DraftAddRoster_enemy_unit_ids", true, false) as Button).pressed.emit()
 	var enemies := _form.find_child("DraftRoster_enemy_unit_idsChoice", true, false) as OptionButton
 	for index in enemies.item_count:
-		_check(Catalog.Units.resource(str(enemies.get_item_metadata(index))).team_id() == "enemy" and str(enemies.get_item_metadata(index)) != UNIT_ID, "roster offered wrong side or duplicate")
+		_check(Catalog.Units.resource(str(enemies.get_item_metadata(index))).team_id() == "enemy", "roster offered wrong side")
 	(_form.find_child("DraftRoster_party_unit_idsUp_1", true, false) as Button).pressed.emit()
 	_check(_session.draft.party_unit_ids[0] == "orik", "party order failed")
 	_form.call("_undo_draft")

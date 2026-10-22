@@ -20,8 +20,8 @@ static func build(
 	var defeated_tags := {}
 	if outcome == "victory":
 		var units: Dictionary = state.get("units", {})
-		for raw_id in encounter.enemy_unit_ids:
-			var unit_id := str(raw_id)
+		for entry in encounter.enemy_instances():
+			var unit_id := str(entry.id)
 			var unit: Dictionary = units.get(unit_id, {})
 			if unit.is_empty() or int(unit.get("hp", 0)) > 0:
 				continue
@@ -100,7 +100,8 @@ static func loot_preview(
 	var rolled: Array[Dictionary] = []
 	for index in defeated_ids.size():
 		var unit_id := defeated_ids[index]
-		var unit := UnitCatalog.resource(unit_id)
+		var snapshot: Dictionary = state.get("units", {}).get(unit_id, {})
+		var unit := UnitCatalog.resource(str(snapshot.get("templateId", unit_id)))
 		if unit == null or unit.loot_table == null:
 			continue
 		var context_key := "%s|turn:%d|enemy:%s|slot:%d" % [

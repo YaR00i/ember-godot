@@ -14,6 +14,10 @@ const ROLE_IDS := ["soil", "grass", "sand", "stone"]
 ## Optional full-colour project texture. Existing 16x16 artwork remains editable
 ## and supplies the fallback when no texture is selected.
 @export var albedo_texture: Texture2D
+## Legacy PNGs keep their existing sampling/height. Painted colour-only variants
+## can opt out of luminance relief without changing independent authored channels.
+@export var albedo_relief_enabled := true
+@export var albedo_periodic := false
 ## Optional side artwork. Empty keeps the original top artwork on every face.
 @export var side_pixels := PackedByteArray()
 ## Optional independent three-level artwork. Empty retains legacy colour heights.
@@ -38,6 +42,17 @@ const ROLE_IDS := ["soil", "grass", "sand", "stone"]
 @export var style_rim_custom := false
 @export var style_rim_enabled := false
 @export_range(0.0,1.0,0.01) var style_rim_strength := 0.7
+## Frame width of the rim on solid hulls, millimetres; 0 = not limited (other surfaces ignore it).
+@export_range(0.0,50.0,0.5) var style_rim_width_mm := 0.0
+## Detailed look: optical depth (mm, total) derived from the painted colour itself; 0 = none.
+## Softness is the blur radius of the soft base in texels, sharpness the share of the strongest
+## painted edges that become steps (see EmberMaterialHeight). Used by solid objects' detailed look.
+@export_range(0.0,30.0,0.5) var depth_mm := 0.0
+@export_range(0.5,6.0,0.1) var depth_softness := 2.5
+@export_range(0.0,1.0,0.01) var depth_sharpness := 0.1
+## Detailed look: how far (mm, at most) the faces of a solid object may drift from the flat low-poly hull
+## toward the shape of the voxel Source; 0 = flat faces. Edges, silhouette and the collider stay exact.
+@export_range(0.0,60.0,0.5) var form_pull_mm := 0.0
 
 @export_group("Grass light response")
 @export var grass_light_enabled := false
@@ -58,6 +73,11 @@ func suggested_grass_light_tones() -> Dictionary:
 func validation_errors() -> Array[String]:
 	var errors: Array[String] = []
 	if not is_finite(style_rim_strength) or style_rim_strength < 0.0 or style_rim_strength > 1.0: errors.append("style_rim_strength outside 0..1")
+	if not is_finite(style_rim_width_mm) or style_rim_width_mm < 0.0 or style_rim_width_mm > 50.0: errors.append("style_rim_width_mm outside 0..50")
+	if not is_finite(depth_mm) or depth_mm < 0.0 or depth_mm > 30.0: errors.append("depth_mm outside 0..30")
+	if not is_finite(depth_softness) or depth_softness < 0.5 or depth_softness > 6.0: errors.append("depth_softness outside 0.5..6")
+	if not is_finite(depth_sharpness) or depth_sharpness < 0.0 or depth_sharpness > 1.0: errors.append("depth_sharpness outside 0..1")
+	if not is_finite(form_pull_mm) or form_pull_mm < 0.0 or form_pull_mm > 60.0: errors.append("form_pull_mm outside 0..60")
 	if albedo_texture != null and (albedo_texture.get_width()<=0 or albedo_texture.get_height()<=0 or albedo_texture.get_width()>4096 or albedo_texture.get_height()>4096):
 		errors.append("terrain PNG texture must be within 1..4096 pixels per side")
 	if role_id not in ROLE_IDS:

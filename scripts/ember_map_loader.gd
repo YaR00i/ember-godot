@@ -284,6 +284,8 @@ func _apply_compact_material_light() -> void:
 	if is_instance_valid(_visual_surface_projection) and _visual_surface_projection is TerrainProjection:
 		_visual_surface_projection.set_material_light(mode, gray)
 	if is_inside_tree():
+		for prop in get_tree().get_nodes_in_group(&"ember_solid_surface"):
+			if is_ancestor_of(prop):prop.apply_solid_light(mode,gray)
 		_tune_look_environment()
 
 
@@ -675,7 +677,26 @@ func refresh_visual_surface_projection() -> void:
 func surface_floor_sample(global_point: Vector3) -> Dictionary:
 	if not is_instance_valid(_visual_surface_projection):
 		return {"solid": false}
-	return _visual_surface_projection.call("floor_surface_sample", global_point)
+	var terrain: Dictionary=_visual_surface_projection.call("floor_surface_sample", global_point)
+	var solid:=_solid_floor_sample(global_point)
+	return solid if solid.get("solid",false) and (not terrain.get("solid",false) or solid.position.y>terrain.position.y) else terrain
+
+
+func _solid_floor_sample(global_point: Vector3) -> Dictionary:
+	var result: Dictionary={"solid":false}
+	if not is_inside_tree():return result
+	for prop in get_tree().get_nodes_in_group(&"ember_solid_surface"):
+		if not is_ancestor_of(prop):continue
+		var sample: Dictionary=prop.surface_floor_sample(global_point)
+		if sample.get("solid",false) and (not result.get("solid",false) or sample.position.y>result.position.y):result=sample
+	return result
+
+
+func _solid_navigation_revision() -> int:
+	var values: Array=[]
+	for prop in get_tree().get_nodes_in_group(&"ember_solid_surface"):
+		if is_ancestor_of(prop):values.append([prop.get_instance_id(),prop.global_transform,prop.get_node("Mesh").mesh.get_instance_id(),prop._floor_revision,prop.get_node("Collision/Shape").disabled,prop.get_node("Collision").collision_layer])
+	return hash(values)
 
 
 func surface_navigation_path(
@@ -685,6 +706,9 @@ func surface_navigation_path(
 ) -> PackedVector3Array:
 	if not is_instance_valid(_visual_surface_projection):
 		return PackedVector3Array()
+	if _visual_surface_projection is EmberTerrainPilotProjection:
+		_visual_surface_projection.object_floor_sampler=_solid_floor_sample
+		_visual_surface_projection.set_object_navigation_revision(_solid_navigation_revision())
 	return _visual_surface_projection.call(
 		"navigation_path", global_start, global_goal, max_step_voxels
 	) as PackedVector3Array
@@ -717,6 +741,7 @@ func _refresh_visual_surface_projection() -> void:
 			_visual_surface_projection.set_smooth_material_blend(compact_smooth_material_blend)
 			_visual_surface_projection.open_document(terrain)
 		_visual_surface_projection.scale = Vector3.ONE * (imported_tile_size / float(TerrainResource.CELLS_PER_BLOCK))
+		_visual_surface_projection.object_floor_sampler=_solid_floor_sample
 		var terrain_visual := _content_node("Terrain/Mesh") as Node3D
 		var terrain_collision := _content_node("Terrain/Collision") as StaticBody3D
 		if terrain_visual != null:
@@ -1135,7 +1160,12 @@ func _exit_tree() -> void:
 		get_tree().node_added.disconnect(_style_rim_node_added)
 
 func _style_rim_node_added(node: Node) -> void:
-	if node is GeometryInstance3D: _apply_style_rim_instance.call_deferred(node)
+	if node is GeometryInstance3D: _apply_style_rim_weak.call_deferred(weakref(node))
+
+func _apply_style_rim_weak(reference: WeakRef) -> void:
+	# Canvas may remove a transient preview before the deferred binding runs.
+	var node:=reference.get_ref() as Node
+	if is_instance_valid(node):_apply_style_rim_instance(node)
 
 func refresh_style_rim() -> void:
 	if not is_inside_tree(): return
@@ -1167,6 +1197,6 @@ func _apply_style_rim_instance(node: Node) -> void:
 	for material in materials:
 		if material is ShaderMaterial and material.shader != null:
 			var code: String = material.shader.code
-			if code.contains("ember_stylized_rim.gdshaderinc") or code.contains("ember_painterly_light.gdshaderinc"):
+			if code.contains("ember_stylized_rim.gdshaderinc") or code.contains("ember_painterly_light.gdshaderinc") or code.contains("ember_voxel_toon_body.gdshaderinc"):
 				visual.set_instance_shader_parameter("ember_style_rim_master", compact_style_rim_enabled)
 				return

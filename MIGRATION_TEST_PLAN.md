@@ -76,8 +76,31 @@ restart/delete, progression, combat items/result/prototype; fault gate прин�
 Save-publication map fixture теперь native user:// вместо retired agent_sandbox.
 Связанные retired destination/pause/transition/defeat, items/PCK/Graph и
 `python tools/test_vox_axes.py` PASS. 691 original author inputs неизменны.
-User acceptance/narrow/125% OPEN. Footwear MOVE/JUMP/knockback/wet modifiers
-ещё не реализованы.
+User acceptance/narrow/125% OPEN.
+
+Обувь: `python tools/run_game_systems_tests.py --footwear` — guarded disposable
+native item/real form, optional integer/range validation, hidden metadata,
+Undo/Redo/Discard/Save/reopen/UID и unsaved fitting. Реальные equip/unequip/Load
+через Explore; MOVE открывает новую клетку, JUMP — ступень выше base, отрицательные
+бонусы ограничены нулём, вещь вне shoes slot бонусов не даёт. Реальный composed
+push+Wet action: сила2 блокируется стойкостью2, Wet3 сокращается до2; barefoot
+контроль толкается и получает Wet3, полная защита блокирует статус. Exact
+preview/commit/AI совпадают, grid/tags сохранены. V2 хранит shoes ID без derived
+stats. `--cycle` дополнительно создаёт обувь в настоящем Forward+ editor,
+сохраняет/повторно открывает, сравнивает четыре свойства, выдаёт через Старт игры;
+новый игровой процесс снимает/надевает её через native сумку, проверяет боевую
+проекцию, result/rewards once/Retry/Save/fresh Load. Author inputs frozen/restored.
+Логи: Temp/ember-footwear-{targeted,operations,cycle,regressions,lab-setup,start,
+check,party}.log. Дополнительный party suite: bag/health PASS; первый followers
+не прошёл только perf gate40 switches (115619us), адресный повтор PASS;
+defeat/save-v2/layout PASS. Порог не ослаблялся. Native footwear cycle exit0.
+Снимки shoes-fields/shoes-fitting/footwear-inventory в
+`C:/Users/novos/AppData/Roaming/EmberSystemsCycle-ember-game-systems-xf15x0uw/ember-tests/game-systems-cycle/`.
+Manual OPEN: Игровые системы → Экипировка → Обувь → четыре значения → Примерка
+→ Undo/Redo/Save/reopen/Discard → выдать через Старт игры → новая игра → сумка,
+снять/надеть → бой, дальность/ступень/толчок/Мокрый → результат/Save/Load.
+Сравнить с голым героем; проверить свои числа, ввод, narrow/125% и баланс.
+WASD/overworld jump и мокрые свойства клеток сохраняются.
 
 Старт игры: `python tools/run_game_systems_tests.py --start` — guarded native
 Resource/default fixture, уровни/пять слотов/allowedHeroIds/stackMax/missing IDs,
@@ -93,10 +116,10 @@ gear/bag/flags. Невалидный reset не меняет live progress; inva
 `--start-editor` и общий `--editor` — настоящий plugin/Forward+ tabs/gear/bag,
 Save/reopen/Discard/publication Undo/Redo/UID, width/row-height guards и captures
 start-game/start-game-bag. Render проверяется по сохранённым снимкам.
-`--cycle` создаёт и сохраняет start в настоящей форме: надетый authored weapon,
-27 coin/3 authored potions. Новый процесс получает их через ExploreState startup;
+`--cycle` создаёт и сохраняет start в настоящей форме: надетые authored weapon
+и shoes, 27 coin/3 authored potions. Новый процесс получает их через ExploreState startup;
 тест больше не выдаёт/экипирует оружие вручную. Ordinary battle/Retry/Load/победа/
-rewards once/menu Save и третий fresh Load сохраняют итог level2/bag4/flags.
+rewards once/menu Save и третий fresh Load сохраняют итог level2/bag8/flags (три экземпляра врага).
 Author files frozen/restored. Clean saved checker: 72 records / 0 issues;
 invalid стартовые IDs/levels/dictionaries/item refs диагностируются в fixtures.
 Логи: Temp/ember-start-{start,editor,cycle,regressions,check,usage,operations,
@@ -114,14 +137,171 @@ Default duration, все четыре reapply policies, cap, resistance, self-ac
 decay/expiry проверяются через настоящий Combat.preview/commit. Power/outgoing/
 incoming modifiers, removal от ненулевого damage и сохранение при zero damage,
 порядок apply→remove/remove→apply, invalid Resource/dependent effect/runtime и
-stale statusRulesHash guard PASS. Snapshot остаётся ID→turns; baseline defaults
-не меняют старые пять специальных реакций. Отдельных стаков/periodic damage нет.
+stale statusRulesHash guard PASS. Snapshot одиночных статусов остаётся ID→turns; opt-in dose timers описаны ниже; baseline defaults
+не меняют старые пять специальных реакций. Periodic и opt-in дозы — ниже.
 Проверены все восемь operation-specific форм, скрытые значения, именованный
 status picker/checklist, field Undo/Redo, точные publication bytes/UID/Undo/Redo,
 native Save/reopen и удаление fixtures в обратном порядке зависимостей.
 `--editor` дополнительно проверяет status rules через native controls/Undo/Save/
 reopen и effect picker/checklist/operation switching, captures status-rules,
 status-modifiers, effect-status/effect-remove. Настоящий Forward+ 1600×900 PASS.
+
+Условия отдельных эффектов: `python tools/run_game_systems_tests.py --effect-conditions`
+— Saved effect/action refs, named status checklists, Undo/Redo/Discard/reopen,
+точные publication bytes/UID, independent clone/definition arrays, outgoing и
+confirmed incoming refs PASS. Invalid/missing/duplicate/contradictory/whitespace
+IDs и target predicates на MOVE_ACTOR блокируются. Все required/ни одного
+forbidden, dose presence, SELF/CELL occupant и отсутствие субъекта на пустой
+клетке; базовое действие/раннее наложение/снятие не меняют исходную проверку.
+Skipped bonus не отменяет базовый урон и не накладывает свой статус; skipped heal
+не блокирует самостоятельную атаку. Pure all-skipped chain исключена из targets/
+Grid/ИИ; active branch используется actual enemy_command. Fire focus base damage
+сохранён. Spread footprint только активного шага; stale/malformed hash guards
+не расходуют ход. Targeted и related conditions/condition-groups/operations/usage/
+check/15 save-combat-progression regressions PASS.
+`--cycle` — native авторинг условия «не Горение»/Undo/Redo/Save/reopen → fresh
+normal battle (positive/skipped bonus checks) → Retry/autosave Load/re-entry →
+victory3/loot6/XP once → menu Save/Load → cold process Load PASS, exit0 у всех
+трёх процессов. Исходные content/scenes/materials заморожены. Forward+ формы и
+бой просмотрены, final captures:
+`C:/Users/novos/AppData/Roaming/EmberSystemsCycle-ember-game-systems-6b0fam9f/ember-tests/game-systems-cycle/author-effect-conditions-forbidden.png`
+и рядом author-effect-conditions/battle/result/fresh-loaded.png. Logs:
+`%TEMP%/ember-effect-conditions-{targeted,conditions,condition-groups,operations,usage,check,regressions,cycle}.log`.
+Свои условные сочетания, input, narrow/125% и баланс OPEN; это не manual acceptance.
+
+Пояснения условных эффектов: `--effect-conditions` дополнительно проверяет
+имена missing/forbidden статусов, success без обещания попадания, unset target,
+SELF actor, CELL/empty/staged occupancy, независимые дозы и отсутствие подмены
+статуса тегом поверхности/эффектом базового действия. 64 rngSeed при одинаковых
+статусах покрывают hit и miss и дают один intent без мутации snapshot; ни rolls,
+crit, вычисленного damage/HP или процентов в fixture-тексте нет.
+`python tools/run_game_systems_tests.py --effect-intent` — disposable Forward+
+1600×900: реальная Combat Lab, смешанная цепочка двух conditional steps, выбор
+команды → wet target / frozen target / empty hover обновляет видимый ability info
+и прежний intent panel. Hover/Cancel сохраняют state/MP/turn, progress nonpersistent.
+Fixture authoring form удаляется перед запуском сцены; scene fullscreen явно
+переключён в windowed для проверки реальной ширины карточки. Тот же запуск
+проверяет прежний native test_combat_lab: focus/target/Cancel, movement/approach,
+radial/drawers/lift/2D-3D и скрытые исходы PASS. 15 --regressions PASS; schema,
+авторский контент и правила применения не менялись. Logs:
+`%TEMP%/ember-effect-intent-{targeted,native,regressions}.log`; final captures
+`C:/Users/novos/AppData/Roaming/EmberInteractionTests/effect-intent-{wet,frozen,empty}-75904.png`, также paths в native log.
+Форма в игре просмотрена; manual свой ввод/длинные цепочки/narrow/125% OPEN.
+
+Нативная проверка узкого UI/125%: `python tools/run_game_systems_tests.py --ui-layout`.
+По умолчанию evidence в `%TEMP%/ember-ui-layout-evidence`; переменная process env
+`EMBER_UI_EVIDENCE` задаёт отдельную папку. Disposable APPDATA хранит собственный
+EditorSettings с display_scale3; actual EditorInterface.get_editor_scale=1.25
+проверяется, глобальный пользовательский профиль не меняется. Настоящий Forward+
+editor1280×800, затем1600×900: module navigation, status/effect/action/unit/AI/loot/
+encounter/start/item forms, Save/Back bounds, поиск/shared Add и сложные HP/gear/
+AND-OR условия. Native Add/Undo/Redo/Save/reopen и compact module navigation →
+dirty Cancel/Discard сохраняют файл и session. Create/delete (long name)/dirty/
+usage/check/Lab setup dialogs проверены по границам окон/кнопок; реальная saved
+library check завершена. Удаление проверочного файла — только в sandbox,
+подтверждение Delete не выполняется; destructive mechanics принадлежат --operations.
+В игре content_scale_factor1.25, окно1280×800 (logical viewport1280×720): шесть
+conditional steps с длинными именами, wet/frozen/empty hover, scroll к концу,
+Cancel без MP/turn/state mutation. Header Reset/Menu, console/input, footer,
+Timeline и широкое ability info не выходят за viewport. Inputs/content/scenes/
+materials заморожены. --operations/--actions/--usage/--lab-setup/обычный workspace
+и native --effect-intent + прежний test_combat_lab — связанные regressions.
+Reproduced fixes: library/form toolbar clips; низ навигации; create500×2229;
+long-name delete width>1280; боевой Reset вне viewport и ability info шириной145;
+после reflow консоль/footer подогнаны по реальному text minimum.
+Final captures просмотрены:
+`C:/Users/novos/Documents/Codex/2026-10-22/ember-ui-125/`
+(editor-library/form-action/effect-picker/create/delete/dirty-cancel/usage/check/
+lab-setup/wide-library.png, battle-wet/frozen/empty/scrolled.png). Before рядом в
+before/. Logs `%TEMP%/ember-ui-layout-{editor,combat,workspace,operations,actions,usage,lab-setup}.log`.
+Один отдельный editor exit0xC0000005 после QA зафиксирован в
+`%TEMP%/ember-ui-layout-editor-exit-failure.log`; далее fixture UI освобождён до
+удаления, Filesystem settle awaited и завершающие процессы exit0. Это не диагноз
+native crash и не закрытие общей stability gate. Собственный ввод/другие DPI/
+размеры/ощущение остаются manual OPEN; выбранный layout gate технически закрыт.
+
+Повторная диагностика native exit (2026-10-22): исходный AV не воспроизведён.
+Disposable Forward+ cold/warm editor, periodic/dose forms, прежний порядок
+fixture cleanup, быстрый выход без settle, 30 FPS/unlimited, активный FileSystem
+scan и очередь настоящих scene/material previews проверены отдельными процессами.
+24 rapid/sequential Save/Undo/Redo/reopen/edit/delete cycles под Windows debugger
+и обычное закрытие через deferred EditorNode close notification завершились exit0.
+Первый полный --ui-layout также PASS; исходные authored Resources/maps/saves
+не менялись. Это результаты конкретных повторов, не доказательство нового fix.
+Evidence: `%TEMP%/ember-editor-crash-20261022/` — repeat.py/debug.py, repro-*.log,
+stress-debug.log, exit-compare.log, native-close.log, preview-exit-valid.log.
+Первый полный запуск — `%TEMP%/ember-editor-crash-20261022-baseline.log`.
+После изменения runner обычный --stability (12 cycles) и frozen authored data
+PASS; журнал final-stability.log в той же папке.
+Промежуточные диагностические ошибки не считаются PASS: повторное создание уже
+существующей fixture, отсутствующая папка preview, прерванный неподключённый close
+signal. Неправильная recursive root.propagate_notification(WM_CLOSE_REQUEST)
+заблокировала remove_child при unload и дала отдельный AV +0x245241b; этот probe
+отброшен, исходные тесты так не закрывались. Он не доказывает причину старого AV.
+Правильный close не обходит дерево под lock и прошёл; исходный native stack/dump
+для последних исторических вылетов по-прежнему отсутствует.
+
+Исправлена потеря диагностического состояния: `run_game_systems_tests.py`
+при exit0xc0000005/0xc0000374/0xc0000409 сохраняет guarded sandbox/cache/log и
+параметры запуска в `%TEMP%/ember-native-crash-*` до TemporaryDirectory cleanup.
+Отдельный APPDATA внутри sandbox переносится; внешний профиль/посторонние env
+не копируются. Каталог содержит состояние в момент аварии, а не чистый fixture
+до начала теста: повторный запуск может потребовать минимизации сохранённого
+сценария. Это не автоматический native dump/stack capture. Исходный FAIL остаётся
+ошибкой процесса. `python tools/test_game_systems_crash_capture.py` — 2 tests PASS;
+retention assertion на прежнем runner FAIL. Synthetic exit проверяет capture,
+не воспроизводит Godot AV. Следующее действие при новом native сбое — сохранить
+этот каталог и подключить debugger к точному сценарию, а не считать exit0 fix.
+
+Периодические HP: `python tools/run_game_systems_tests.py --periodic` — native
+templates poison/regeneration и authorable field, новые saved статус/effect/action,
+signed control/Undo/Redo/Discard/Save/reopen/UID/invalid bounds. Fixed HP идут после
+action effects: сначала все лечения до max HP, затем весь periodic урон, затем
+снятие removeOnDamage/decay. HP10/10 при +4/−6 → 4, HP3/10 → 1 независимо от
+порядка dictionary; no resurrection, last tick, self/ally timing, cleanse before
+tick, bypass guard/процентных modifiers, stale rules и once-only commit PASS.
+Exact internal turn_end_preview и commit совпадают без source mutation; player
+intent не раскрывает скрытые rolls/итог HP. AI/movement-only fallback, победа/
+поражение от яда и освобождение удерживаемого при смерти носителя проверены.
+`--periodic-editor` — настоящий native draft/Save/reopen/Undo/Redo/Discard/global
+publication bytes/UID, затем отдельный fresh Forward+ процесс с сохранённым −6 HP.
+Native Защита: Mira HP3 → 8 (регенерация +5) → 2 (яд −6), оба счётчика 2→1,
+HP bars/status names/journal actual amounts и scroll-follow проверены по снимку.
+Прежние --statuses, 15 --regressions, --conditions и --check PASS; clean74/0.
+Логи: Temp/ember-periodic-{targeted,editor-repeat,statuses,regressions,conditions,
+check}.log. Снимки: `C:/Users/novos/AppData/Roaming/EmberInteractionTests/`
+`game-systems-periodic-status-form-40848.png`, `periodic-after-74764.png` просмотрены.
+Один повторный editor завершился 0xC0000005 после PASS формы при выходе;
+Temp/ember-periodic-editor-failure.log сохранён. Первое прохождение и следующий
+последовательный повтор завершились штатно; причина не доказана, crash не считать
+исправленным. Рабочий editor/cache/авторские карты и пользовательские saves не
+использовались. Manual OPEN: Статусы → Яд/Регенерация → HP/длительность → Save →
+Effect apply_status → свой приём/бой, обе фазы/снятие/истечение; input/narrow/125%.
+Независимые дозы: `python tools/run_game_systems_tests.py --stacks` — guard только
+на disposable project. Real form limit/HP, local Undo/Redo/Discard/Save/reopen и
+publication exact bytes/UID; max_stacks1..12, >1 только periodic, нейтральный
+default1. Реальный resolver: два наложения в цепочке, раздельные сроки/последний
+тик/истечение, cap обновляет минимальный timer, исходные arrays неизменны.
+Heal-first/clamp/lethal/no resurrection, cleanse всех доз до тика,
+removeOnDamage, неизменные power/damage modifiers, legacy scalar и malformed
+snapshot arrays; shared exact preview/commit/state+status content stale guards,
+conditions и actual AI. `--stacks-editor` — родной plugin: cap3/−6 HP, Undo/Redo,
+Save/reopen/Discard/publication, затем отдельный fresh Forward+ Lab: HP25→30→18,
+яд ×2 со сроками1/3 → ×1 со сроком2; HUD/3D badge/журнал −12 HP. Снимки:
+`C:/Users/novos/AppData/Roaming/EmberInteractionTests/game-systems-status-dose-limit-74460.png`,
+`stacks-before-61216.png`, `stacks-after-61216.png` в той же папке просмотрены.
+Один editor exit0xC0000005 после PASS формы до runtime: точный лог
+Temp/ember-stacks-editor-exit-failure.log; повтор editor+runtime exit0.
+Причина не доказана, успешный повтор не закрывает общую stability gate.
+`--cycle` также авторит periodic −1/cap2, обычный map battle накапливает две дозы,
+завершает результат/rewards once/Save/fresh Load. Исходные авторские файлы frozen.
+Логи Temp/ember-stacks-{stacks,periodic,editor,regressions,conditions,
+gear-conditions,condition-groups,operations,check,cycle}.log.
+Manual OPEN: Статусы → копия Яда/Регенерации → HP/предел доз → Save/reopen →
+приём apply_status → бой → несколько наложений с разными сроками/предел/
+очистка/смерть/Retry; сравнить журнал и счётчики. Свои числа/input/narrow/125%/
+баланс не приняты. Сила/множители не умножаются, статусы не переносятся в save.
+
 `--regressions` включает Status Resource, Effect Library, Action Resource, Grid,
 ActionPlan и Personal Actions. Combat Lab отдельно PASS в disposable Forward+
 1600×900: headless запуск дал пять layout failures, оконный gate их не повторил.
@@ -141,6 +321,21 @@ Discard не меняет published MP. Новый Unit выбирает при�
 ширину 1600×900; captures action-constructor/action-steps/action-assignment.
 Переключение session не направляет changed в old queued form. Native Forward+
 и related operations/status/save/combat regressions PASS; manual UI gate OPEN.
+
+Этап 6, подбор общих эффектов: установить process env
+`EMBER_GAME_SYSTEMS_EDITOR_FOCUS=effect-picker`, запустить
+`python tools/run_game_systems_tests.py --editor`. Disposable Forward+ gate
+создаёт fixture эффекта с условием Wet и черновик приёма. Поиск по русскому имени/
+ID/описанию/тексту условий, очистка и ручная смена OptionButton selection обновляют
+preview с правилами/точным path. No matches/all used блокируют Add; filter
+переживает Add/Undo/Redo. Поиск/выбор не меняют Resource signature/local history.
+Shared ref/условие сохраняются после Save/reopen, Discard сохраняет bytes/UID;
+min width 1600×900 PASS, исходные author data frozen. Проверены --actions и
+--effect-conditions; runtime/schema не менялись, full combat cycle повторно не
+требовался. Логи `%TEMP%/ember-effect-picker-{actions,conditions,editor}.log`.
+Native captures `user://game-systems-effect-picker-{preview,empty,used}-<pid>.png`
+выведены полными путями в editor log; состояния просмотрены. Свой ввод/подбор/
+narrow/125% OPEN.
 
 Этап 6, условия применения: `python tools/run_game_systems_tests.py --conditions`.
 Четыре списка actor/target required/forbidden: AND, positive remaining turns,
@@ -179,7 +374,32 @@ Manual OPEN: Игровые системы → Приёмы → копия/Ре�
 Добавить MP исполнителя ≥10 очков и HP цели ≤30%: проверить ровно 10/30%, ниже/
 выше границы, изменить числовую строку и меру, Undo/Redo/Save/reopen/Discard.
 Своё содержимое/мышь/клавиатура/узкое окно/125% не приняты автоматическими gates.
-OR и independent stacks остаются отдельными срезами.
+Независимые периодические дозы проверяются отдельным gate ниже.
+
+`python tools/run_game_systems_tests.py --condition-groups` — плоские ALL/ANY
+группы поверх прежних mandatory AND rules. Real form Add/mode/remove и Undo/Redo,
+пустая/невалидная группа не Save, malformed saved content не исправляется молча
+и явно удаляется, publication exact bytes/UID Undo/Redo, reopen/Discard, deep
+projection/copy и confirmed usage links. Runtime: Wet OR Burning (каждая ветка/
+обе/ни одна), mandatory MP и AND разных групп, mixed actor/target alternative,
+HP/MP и надетая вещь (bag не считается), ALL/ANY переключение. Eligible/valid,
+Grid approach, pure preview/стоимость/один commit, changed-group hash и
+независимый CELL commit recheck, SELF/CELL/actual AI используют общие правила.
+Malformed/unknown/duplicates/nested/empty groups блокируются; несовместимые
+alternative bounds/gear разрешены только в ANY, SELF joint conflict — только ALL.
+Native `--cycle` создаёт mixed group «цель Мокрая ИЛИ не Заморожена» в общей форме,
+проверяет mode Undo/Redo/Save/reopen и сохранённые mandatory status/numeric/gear.
+Fresh ordinary map battle проверяет обе ветки/отказ, result/Save/fresh Load;
+author data frozen/restored. Actual Forward+ group form просмотрен, проверяется
+workspace width; selector режима и status picker на отдельных строках.
+Логи: Temp/ember-groups-{targeted,conditions,gear-conditions,operations,usage,
+check,regressions,cycle}.log. Native cycle exit0. Capture:
+`C:/Users/novos/AppData/Roaming/EmberSystemsCycle-ember-game-systems-eud9b_80/ember-tests/game-systems-cycle/author-condition-groups.png`.
+Manual OPEN: Приёмы → Проверяемые условия → оставить MP исполнителя ≥10 в
+обязательных → Добавить группу → ИЛИ → цель Мокрая/цель Горит → Save/reopen →
+бой. Проверить каждую альтернативу и отсутствие обеих, переключить И и проверить
+оба статуса одновременно; Undo/Redo/Discard, AI, input/narrow/125% и удобство.
+Все группы соединены И, вложенности нет; старые Action defaults сохраняются.
 
 `python tools/run_game_systems_tests.py --gear-conditions` — отдельные guarded
 item/action fixtures, три AND-правила (надета туника, weapon occupied, shoes empty)
@@ -213,7 +433,7 @@ previous,cycle,check,usage}.log. Manual OPEN: Приёмы → копия → Э
 range/missing item refusal, exact publication bytes/UID, Save/reopen. New enemy
 выбирает AI по ID и shared loot; inline current ref не пропадает, Discard не
 меняет HP. Encounter выбирает field/arena refs и ordered rosters с правильной
-стороной/без дублей, Undo/Redo и correction неподдерживаемого outcome enum.
+стороной/без повторов героев; enemy templates можно повторять. Undo/Redo и correction неподдерживаемого outcome enum.
 Reopen → native deployment order → Grid.enemy_command без source mutation →
 Result.build: guaranteed loot, deterministic repeated projection, equal XP
 каждому из двух героев; поражение без victory XP/loot PASS.
@@ -223,6 +443,31 @@ shared enemy refs и roster/order/XP через настоящую форму, w
 Captures loot-rows/enemy-links/encounter-summary/encounter-roster. Исходные author
 inputs заморожены. Полный запуск выбранного draft в Lab — этап 8; user feel,
 manual Save/Load/reward return и narrow/125% остаются открыты.
+
+Повторные враги: `python tools/run_game_systems_tests.py --enemy-instances` —
+один saved Unit+Loot → три ordered строки Encounter через настоящие controls.
+Remove/Undo/Redo, Save/reopen/Discard/UID, deep clone и confirmed incoming file
+link; прежний Inspector предлагает уже используемый enemy template. Герои
+не повторяются, missing template и недостаток deployment cells блокируют Save.
+Runtime IDs стабильны, обходят столкновения с authored participant IDs; первый
+ID и unique roster definitions сохранены. HP/MP/status/cells/nextAt независимы;
+новый initial_state не наследует урон/статусы. Shared template edit обновляет
+всех в новом бою, не активный snapshot. Actual AI/eligible targets/Grid approach,
+три defeated/counters и три независимых rolls общей loot table; повторный Result
+детерминирован, defeat без loot. Номер перед именем различим в узкой очереди.
+`--cycle` — native Add одинакового шаблона дважды/Undo/Redo/Save/reopen/width;
+ordinary map battle с тремя врагами, defeat Retry/autosave Load/re-entry и чистая
+победа через штатные действия. Результат: три врага, XP35 один раз, loot6;
+потрачен один из трёх potions, после Continue bag8. Double Continue/fresh Load
+не дублируют награды. Original author hashes/UID сохранены; все процессы exit0.
+Логи: Temp/ember-instances-{targeted,encounters,regressions,lab-setup,operations,
+usage,check,cycle}.log. Native captures просмотрены:
+`C:/Users/novos/AppData/Roaming/EmberSystemsCycle-ember-game-systems-b87zrv2c/ember-tests/game-systems-cycle/author-enemy-instances.png`,
+`battle.png`, `result.png` в той же папке. Manual OPEN: Встречи → один шаблон
+врага добавить несколько раз → порядок строк/точки Battlefield → Undo/Redo/
+Save/reopen/Discard → Lab и обычный бой → отдельные цели/статусы/убийства/Retry/
+результат/Save/Load; свои входы/узкое окно/125% и удобство. Вариации характеристик
+отдельных экземпляров и авто-выбор партнёра по шаблону не входят в этот срез.
 
 Этап 8: `python tools/run_game_systems_tests.py --lab` — только disposable import,
 saved synthetic Encounter с Mira/Wisp и 9 XP, настоящий runtime process Forward+.
@@ -339,7 +584,7 @@ Array нельзя присвоить typed Array[Vector2i] через generic R
 тестового save owner. Native selection расходует новый potion, лечит 4 HP и
 платит action cost; новый приём платит MP и накладывает authored status, native
 AI совершает ходы. Победа получена Combat.commit, без console kill/HP=0 подмены.
-Result показывает 35 XP, level-up и гарантированный loot ×2. До Continue live
+Result показывает трёх побеждённых, 35 XP, level-up и гарантированный loot ×6. До Continue live
 progress неизменен; double Continue даёт уровень 2/XP5, flags/counters и итоговые
 4 potion один раз. Native menu Save/Load восстанавливает намеренно изменённое
 состояние, manual envelope v2 и SHA неизменны. Третий процесс (другой PID) читает
@@ -372,8 +617,8 @@ source hashes и parent dirty cache неизменны. Duplicate start блок
 readable bounded feedback/report, FileSystem selection и Inspector exact filepath
 для дубля; captures library-check-dirty/report. No auto repair; discard остаётся
 явным действием. Service process пропускает gameplay save restore и MCP shared
-ready registration. Read-only проверка рабочего saved каталога: 71 запись,
-0 issues; author hashes сравниваются отдельно. Это охват девяти game-system
+ready registration. Read-only проверка saved каталога в копии: 74 записи,
+0 issues; author hashes сравниваются отдельно. Это охват десяти game-system
 roots + icon/story ID/dependencies, не full story validation, баланс или dead code.
 Ручная оценка удобства отчёта/узкого editor/125% и прежние authored gameplay
 gates остаются OPEN; green data report их не закрывает.
@@ -732,7 +977,163 @@ UI fit. Related regressions: savanna patches/foliage21/spruce shape/spruce needl
 SHA/ground/paint/grass/physics/POM unchanged. Evidence ember-spruce-density/; prior9-tier frames ember-spruce-bough/.
 Current2166 full/1328 at60%; Source4d4733cf…; shape0 dfd9f454… preserved.
 Latest crown frames accepted as working base; personal F6/motion remain OPEN;
-production appearance save is not yet implemented.
+production appearance save was outside that LAB slice; it is now implemented below.
+
+Main editor transfer (15–16 Oct2026): `test_tree_editor_transfer.gd` covers five ordinary
+presets, accepted voxel SHA/counts, complete bark/card prefab, library Undo/Redo exact
+bytes, published signature, Source/prefab roundtrip, cold rebuild without Recipe,
+scene commit Undo/Redo/map roundtrip, actual RecipePanel global/local signals,
+local history/revision guard/preview/discard, existing variation update + scene Undo/Redo,
+zero density, invalid controls, Source paint and sculpt fallback. `editor_test_painted_tree_transfer`
+uses the real library button, species selection, candidate preview, save-best, reopen
+in the existing workshop and its Recipe controls. Disposable editor only.
+`test_painted_tree_runtime` runs in a fresh Forward+ process on editor-published objects
+or canonical `vox_painted_*` via normal Catalog/Prefab; validates both mesh surfaces
+against Source-only reconstruction, trunk ray/collision, map save/reopen. No Recipe run.
+`capture_tree_editor_transfer` compares3 presets×side/back×tree/game plus real cast
+shadow; preview→publication→reopen separately. Geometry/channel/shader/PNG guards strict;
+LAB→published oak uses measured max5RGB8 and mean≤0.15RGB8/frame, other species max1RGB8
+at≤32pixels. These are separate from strict preview/save/reopen. Do not report the
+LAB oak transfer as pixel-exact. Native game camera/grass/floor/POM guards remain.
+Related old generator tests explicitly request legacy presets; shared shader/body and
+Store/parity paths require material/rim/workshop/save-snapshot regressions. Toon body
+move must be byte-identical to the old body, apart from its entry line.
+Evidence: `ember-tree-editor-transfer/`. Own main-editor/F6/motion/weak-PC/forest gates OPEN.
+
+Oak colour B transfer17 Oct: `test_oak_bark_transfer.gd` freezes the old derived
+oak in the disposable checkout (`--seed-stale` before the binding change), then
+checks oak-only signature invalidation, all five Source hashes, exact wood/leaf
+arrays, collision and every non-art shader input. Exercises ordinary stale Prefab
+rebuild and existing SceneRefresh on user:// fixtures, including placed instance
+Undo/Redo, map save/reopen and rejection of manual bark tint/leaf shadow changes.
+`test_tree_editor_transfer` retains preview/paint/history/discard gates; related
+`test_voxel_scene_refresh` and `test_voxel_save_snapshots` cover protected overrides.
+`capture_oak_bark_transfer` records54 C/B pairs/54 exact returns and19 measured
+preview/runtime/reopen cases (all pixel-exact in this run),3 presets×side/back,
+game/tree/bark cameras, real cast shadow. A fresh `test_painted_tree_runtime --bases`
+checks canonical Sources/prefabs and collision without recipes. Smooth production;
+faceted/voxel remain existing LAB derivatives. Bark relief stays LAB-only.
+Evidence: `ember-oak-bark-editor-transfer/`; personal F6/input/motion/weak-PC OPEN.
+
+Oak two-look pilot16 Oct: `test_oak_looks.gd` checks deterministic buffers, shared
+399 sites/885 cards, unchanged Source/smooth buffers, zero/local density, preserved
+leaf receive/tonal controls, source paint on voxel bark, derived mesh and Source
+save/reopen/rebake. `capture_oak_looks.gd` compares3 presets × side/back × whole/crown/
+bark/game, two cell sizes6.25/12.5cm, smooth/split/voxel and exact return; baseline
+uses pre-change common shaders and geometry. Companion excluded from fixed captures;
+Kai remains scale reference. Motion/boundary frames, cache build count, Source/wood
+collider identity+faces and grass/floor guards. No new editor data or Undo path.
+Manual art/F6/input/shimmer/forest gates OPEN; no claim of closed seam,
+sphere or export-ready bake. Details — Terrain Authoring → «Три облика одного дуба»;
+evidence `C:/Users/novos/Documents/Codex/2026-10-16/ember-oak-looks/`.
+
+Three-look continuation: `test_oak_three_looks` checks deterministic faceted geometry,
+13764 triangles vs smooth58868, same399 sites/885 patches, alpha art/receive settings,
+zero/local density, source paint, derived roundtrip, unchanged58421 voxel cells and
+338328 triangles. CUSTOM2 supplies the source-group rim normal; diffuse CUSTOM1 kept.
+`capture_oak_rim_probe` isolates master on/off, face/form rim normal and no-shadow
+diagnostic (never adopted). `capture_oak_three_looks`:24 lighting/camera cases,
+smooth and return exact, voxel with original rim math exact, two split alternatives,
+12 camera/11 boundary frames, no rebake, single collider/Source/floor/grass unchanged.
+`test_oak_looks` and `test_style_rim_workflow` PASS. Actual shared rim contribution
+is measured from on/off images; artistic acceptance is separate. Ten protected
+Source/material/PNG/POM owners unchanged by SHA. Report48 split selections/23 motion
+frames rendered in headless Edge. Evidence `ember-oak-three-looks/verification.json`.
+No general world/object switch, stone/road trial, export/LOD or character conversion.
+
+Faceted alpha recipe: `test_oak_three_looks` additionally checks deterministic
+96 separate components, original artwork unchanged, filtered derived mask and
+Resource roundtrip. `capture_oak_leaf_shapes` PASS:18 lighting/camera combinations,
+three shapes ×70/100%, previous faceted at0 and return exact, smooth/voxel exact
+(72 comparisons),12 orbit frames, no remesh and unchanged Source/ground/grass/collider.
+Evidence: `ember-oak-leaf-shapes/`. Controls are temporary LAB settings. Shape is
+alpha clipping, not area-preserving polygon replacement; visible coverage decreases.
+Day/evening/night artistic acceptance, personal F6/input/flicker remain OPEN.
+
+Material recipe pilot: `test_material_shape_recipes` PASS for identity/determinism,
+source/height/alpha protection, deep-groove colour and periodic edges, grass mesh
+scale and finite buffers. `test_painted_light_study` regression PASS including
+geometry/floor/POM/Source/morph/Player/save-reopen. `capture_material_shapes` PASS:
+24 day/evening/night ×side/back ×game/crown/rock/tree cases, three styles,
+48 neutral/return exact comparisons, separate POM on/off/return for all3,
+16 movement frames; fixed terrain/wood physics, Source, height bytes, grass
+instance transforms, no rebake. Ten protected files SHA exact. Evidence:
+`ember-material-shapes/`. Whole terrain/rock geometry conversion is not tested:
+all views deliberately use the same existing smooth terrain. Recipe authoring,
+export/LOD/GPU cost and manual art/input/flicker acceptance remain OPEN.
+
+Coherent world-look LAB16 Oct: `test_terrain_look_bake` PASS — planar anchor and
+edge/diagonal continuity, immutable field/art, deterministic rectangular mip cells,
+coarse grass survival/fewer strips. `test_material_shape_recipes` regression PASS.
+`capture_coherent_looks` Forward+ PASS:3 presets ×3 views ×3 looks;9 coarse-grass
+alternates;9 pixel-exact smooth returns;3 POM on/off/return pairs;16 motion frames.
+One unchanged physical field/wood collider, Source, authored height, original
+scatter and per-look x/z/basis/count guards. Geometry now changes: voxel uses the
+canonical mesher, faceted uses shared-field planes. Art/flicker/manual input OPEN;
+facet displacement up to0.56m means gameplay contact/morph not accepted. Evidence:
+`ember-coherent-world-looks/`. No production cache/export/LOD/general world switch.
+
+Natural rock follow-up16 Oct: `test_natural_rock` PASS — bounded field error at every
+fine vertex, boundary anchors, finite complete plane normals, deterministic paired
+art and geometry, sparse fractures, untouched field. `capture_natural_rock` PASS:
+day/evening/night ×side/back ×rock/game, plain/material ×3 looks;24 exact returns,
+3 POM on/off/return pairs, original grass buffers/meshes/materials, physics and
+Source guards. Measured field error3.74cm; transition paint fringe has separate
+blending. Real art/moving camera/contact/LOD/editor integration OPEN. Evidence:
+`ember-natural-rock/`. Original paving pair retained.
+
+Ordinary form controls16 Oct: natural-rock art rejected (rounded foundation).
+`capture_rock_form_rules` Forward+ PASS: existing Source rules radius1/protection75%,
+1619 stone columns, day/evening ×rock/game ×3 variants,4 exact baseline returns.
+Mesh/collision/floor advance together; measured readback difference≤3.13µm from
+ArrayMesh face rounding. Source/grass buffers/mesh/material and Sol height guards
+PASS;10 protected-file hashes unchanged. `test_terrain_surface_rules` PASS.
+HTML8 paired views/B reference/zoom PASS, evidence `ember-rock-form-controls/`.
+This control showed that filtering alone could not create missing fractures.
+The author then approved Source sculpting: `test_rock_planes` PASS for deterministic
+subtractive cuts, untouched input/paint/non-rock columns, retained2.5m peak and
+Source save/reopen.213 changed stone columns, cut≤37.5cm. `capture_rock_planes`
+Forward+ PASS:12 plain frames/4 exact returns; Source/grass/material/depth guards,
+same physical mesh/field/floor, crease-normal processing preserves vertex positions.
+Existing adaptive fit error≤3.716cm; neighboring stone normals blend within30°.
+Follow-camera look height1.35m in this LAB only, same before/after FOV/distance/pose.
+HTML4 pairs/B/zoom PASS; evidence `ember-rock-planes/`, private chiselled-source.res.
+The author rejected that art result, then approved the direction of the tilted
+flat-face probe. Current `capture_rock_three_looks` compares detailed/faceted/voxel
+from one private voxel Resource;14/18-plane fits and native VoxMesher6.25cm.
+PASS: Resource validation and save/reopen including part ownership; Source stays
+unchanged in all looks; detailed/faceted use identical side slopes, large-rock
+lean changes<2° from accepted probe; exact return-frame; same camera/material/light;
+original terrain/grass/depth and protected Sol file hashes unchanged. HTML three
+panels/full-frame expansion PASS. Evidence `ember-rock-three-looks/`.
+OPEN: art, general segmentation, surface correspondence, collider/floor/navigation.
+AABB-corner discrepancy≤26.7cm is measured but is not a surface-error bound or pass.
+Follow-up Source-first macro cuts, explicitly authorized: `test_rock_surface_detail`
+PASS for deterministic source edits, only two permitted masses changed, original
+fixture preserved, captured Source equal to independent regeneration, closed
+oriented edge pairs in ordinary/faceted meshes, common principal slopes and
+voxel-bound extent delta≤6.25cm. Native save/reopen/return-frame/source/grass/depth/
+camera guards PASS; prior2° large-rock lean gate retained.727 runtime/material/
+content hashes unchanged. HTML A/B + three full frames PASS; evidence
+`ember-rock-source-breaks/`. Other looks intentionally regenerated from edited
+Source after explicit approval; no longer claim byte-identical endpoints.
+Author accepted form as sufficient for continued material work on16 October;
+final B art/physics/surface correspondence/general extraction/anomalies OPEN.
+Known recipe directions guide convex fitting; not a generic converter.
+Next manual material gate: detailed -> faceted -> voxel, then all three side by
+side and each with terrain/road/grass/tree. Check game/close camera, motion,
+day/evening/night and side/back light; preserve depth/rim/foliage/manual paint.
+Scene-wide endpoint style acceptance precedes a separate moving anomaly sphere
+slice; no spatial transition or production world-switch acceptance claimed.
+
+Rock material follow-up: source hash + geometry stats exact to Source-first
+probe; detailed/faceted height bytes unchanged. `test_material_shape_recipes`
+and `test_natural_rock` PASS; native same4cm/32 POM, actual on/off contribution and
+exact return for3 looks, common Source save/reopen and scene guards PASS.
+Captured3 lighting presets and evening back sun, synchronized POM sun direction.
+725 runtime/material/content files unchanged. Report presets/zoom checked in
+headless browser. Art, motion shimmer, moving-object anchor, anomaly morph and
+production editor/physics gates remain OPEN. Evidence `ember-rock-material-looks/`.
 
 Local leaf density/form controls: fixture tests optional local coverage affects
 only selected owner, nested/repeatable/neutral100% returns original instance;
@@ -1067,6 +1468,104 @@ Manual: ground_finish_study F/G/L/ПКМ → новая трава/грунт и
 Цвет → Рисовать паттерн… выбрать слой и грань, проверить реальный mouse stroke,
 Undo/Save/Cancel/PNG/Reopen; shadow/reflection feel, швы/near-far/weak PC OPEN.
 Отделка не меняет geometry/collision, полный catalogue не переносится автоматически.
+
+Soil v4 production transfer17 Oct: `test_soil_editor_transfer` checks exact accepted
+256px artwork, legacy opt-in defaults, existing PNG controls/history, fallback
+paint Undo, Save/Reopen/Discard, signed PNG role/periodic metadata, unchanged
+height/roughness/finish/light and non-soil lookup rows. Run with the output folder
+containing before/content/terrain_materials/soil_grain.tres. Six targeted tests PASS;
+`test_compact_material_dock` width gate remains OPEN: frozen/current minimum326px
+versus expected302px from old light/rim controls; new PNG controls do not widen it.
+`capture_soil_editor_transfer` verifies ordinary projection atlas refresh without
+remesh, source/paint/physics,54 pairs/54 exact LAB matches/54 exact returns/108 motion
+frames, original stone POM on/off/return, native material panel. `--cold` reloads
+published material/terrain in a new process and compares six game frames exactly.
+Six frozen old-shader controls: at most3 pixels/max2RGB8 rounding (separate bounded
+gate≤32/max2), never report old shader as pixel-exact. New soil height stays LAB.
+Evidence `ember-soil-editor-transfer/`; manual F6/input/weak-PC acceptance OPEN.
+
+Road B production transfer17 Oct: `test_road_editor_transfer` checks existing
+cartoon_sand tint b9a47c/span1.5m/exact shared accepted PNG, periodic colour-only
+metadata, existing PNG controls/tint Undo/Redo, Save/Reopen/Discard, unchanged
+finish/height/roughness/light and all other material sampling/mean/tint inputs.
+Source texture stays256px after bank builds (resize/mip preparation uses duplicate).
+`test_material_texture_mapping` now isolates legacy periodic=false explicitly.
+Seven targeted tests PASS including soil editor regression. Configurable existing
+soil capture plus road subclass:54 pairs/54 exact LAB/54 exact returns/108 motion,
+POM on/off/return and native panel; road cold Save/Reopen six frames strict exact.
+Historical soil close comparison uses --cold --close-only --historical-reference:
+separate sparse compiler-rounding bound≤32/max2 with exact count and metrics saved;
+ordinary cold remains strict. Six frozen road shader controls≤3 pixels/max2RGB8.
+Historical soil:4 exact frames;2 evening frames differ at grass-edge(1,46) only,
+one pixel/1RGB8. Isolated soil region exact in all6, recorded by report check.
+Smooth production/other looks LAB; no new depth. Evidence ember-road-editor-transfer/;
+personal live/weak-PC and old UI width gate remain OPEN.
+
+Stone painted colour transfer17 Oct: test_stone_editor_transfer verifies exact raw
+B/C paint256px, tint90938f/span2.4m, colour-only periodic metadata, unchanged
+authored height/roughness/finish/light/other slots, existing panel Undo/Redo/manual
+paint/discard/save/reopen and optional POM binding unchanged after bank publication.
+Eight targeted tests PASS including depth/paint-relief and road/soil regressions.
+capture_stone_editor_transfer uses actual normal projection shader/material for
+54 pairs/54 exact recipe-colour replay/54 returns/108 motion; six cold game frames
+exact. Geometry unchanged; two derived textures LAB. Historical4cm/32 POM tested
+separately on/off/return; no activation on normal maps. Shader source unchanged,
+same compiled resource used for frozen-source guard; initial separate compilation
+2 pixels/max9RGB8 delta retained as failed diagnostic, not pixel-exact proof.
+Six historical POM-stand frames exact against preserved road-transfer reference;
+comparison uses copied controls/output so previous report stays unchanged.
+Evidence ember-stone-editor-transfer/; personal live/weak-PC/new3mm choice OPEN.
+
+Grass ground material transfer17 Oct: test_grass_editor_transfer compares exact
+embedded accepted artwork/base/span/profile, unchanged other authored fields and
+other material lookup inputs, ordinary editor light preview/manual painting/history/
+Save-Reopen/Discard.10 tests PASS including light workflow/grass recipe/depth and
+stone/road/soil transfer regressions. Native capture uses actual production bank:
+54 pairs/54 exact recipe-colour replay/54 returns/108 motion, editor lookup identity,
+GPU preview Undo/Discard exact, no remesh; grass-only ROI(1120,650,350,190) responds
+to real sun shadows at all3 presets, exact returns. Clump shapes/count/transforms
+unchanged. Bank1254→256 means other-layer GPU resampling may differ; only source
+art/parameters are claimed unchanged. Existing POM checked separately on/off/return.
+Six fresh-process game frames and six historical POM-stand frames exact; previous
+report/reference preserved through copied controls in current output folder.
+Evidence ember-grass-editor-transfer/; manual live/weak-PC/UI width gate OPEN.
+
+Accepted rock form transfer17 Oct: test_rock_shape_transfer checks exact accepted
+occupancy/part IDs, canonical Source validation, 372 triangles vs independent LAB
+reference (max vertex delta1.823mm, gate2mm), same render/collision faces, missing
+profile negative control, existing object Session/cache/save/Undo/Redo/reopen.
+Sculpt falls back to exact voxels; profile arrays must not alias between drafts.
+Canvas tracks solid_surface in dirty/save/discard. Native editor test exercises
+actual scene open/Canvas Save/Undo/Redo/Discard/ordinary scene Save, user:// assets.
+Native saved-scene reopen covers3 light presets×2 directions×2 cameras;12 cold
+frames exact, extra overview6 frames, real shadow on/off/return exact. Six rock
+physics rays and transformed floor queries agree≤0.1mm; real Player capsule lands
+on the plane. Compact navigation reads the new physical surface/cache revision.
+Evidence ember-rock-shape-transfer/. Manual art/F6/weak-PC and global conversion OPEN.
+
+Rock form look 20 Oct: test_rock_form_transfer (native) — library mesh has CUSTOM0 and
+the same triangles/collider as the previous prefab, floor equals physics ray, GPU rim
+lookup 0.5 + crisp band, silhouette frame data CUSTOM1..3 present, 10 mm width, 6 frames match the chosen option (Wb); test_rim_width_control — validation, GPU lookup alpha, live slider preview, Undo/Redo, Save/Reopen, Discard; map rim switch/real shadow/return exact, and with the sun off the rock
+image is unchanged by yaw 22.5/45° or a 1.3 m shift (legacy changes ≈200k pixels).
+publish_rock_form checks positions bit-identical and paint/UV unchanged. measure_rock_form_probe
+and capture_rock_form_probe keep the A/B/C comparison. Manual art/streaks/weak-PC OPEN.
+Detailed look 20 Oct: test_rock_detailed_look (native) — key 6 keeps the collider/floor/Source (living faces of
+the stone shown, zero pull = the hull), plain
+shader for low poly, height map equals the accepted probe C2 (≤1/255), 9 frames within mean 0.02 of the
+probe (zero pull), depth sticks to the rock under yaw/shift, key 5 returns 9 low poly frames pixel-exact;
+test_depth_control — validation, live amplitude, height re-derived on release only, Undo/Redo, Save/
+Reopen, Discard. Motion/flicker, low angles and weak PC OPEN.
+Living faces 22 Oct: test_rock_living_faces (native) — stone pull 30 mm validated (NaN/-1/61 rejected), hull
+build unchanged by the face refactor (equals the saved library mesh), living mesh 4676 triangles/111 faces/0
+fallback, max displacement ≤3 cm (30 mm) and ≤6 cm (60 mm), every hull corner present unchanged, extent within
+hull + pull, outward winding, no degenerate triangles, cached + deterministic, zero pull = no mesh; in the scene key 6
+uses it with same collider and floor, depth stays bound, editor draft pull 60/30/0 swaps mesh/saved/hull, 5→4→6
+reuses the cache, low poly frames return pixel-exact; test_depth_control also covers the pull slider
+(release-only preview, Undo/Redo, Save/Reopen). Manual art acceptance, motion/low angle and weak PC OPEN.
+Rock look switch 20 Oct: test_rock_look_switch (native) — key 4 builds one quad per exposed
+voxel face (11094 vs independent count), corners on the 1/16 grid, outward winding, same
+collider/floor/Source; pattern sticks under yaw/shift in the voxel look; key 5 returns the
+hull mesh and 6 low-poly frames pixel-exact; voxel mesh built once and reused.
 
 Painted grass: test_ground_material_surface также проверяет validation,
 прежнюю палитру, отдельный top/side рисунок, совпадение terrain geometry/soil IDs

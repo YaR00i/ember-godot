@@ -51,7 +51,7 @@ func _run() -> void:
 	_check(not EmberCombatTransition.isolated_editor_process_requested(), "full cycle accidentally entered reward-disabled library test mode")
 	_errors.append_array(Fixture.file_errors())
 	if _loading:
-		_check(_progress.flags.get("cycle_won", false) and _progress.party.mira.level == 2 and _progress.inventory.get(Fixture.POTION) == 4, "cold autoload did not read private saved progress")
+		_check(_progress.flags.get("cycle_won", false) and _progress.party.mira.level == 2 and _progress.inventory.get(Fixture.POTION) == 8, "cold autoload did not read private saved progress")
 	if not _errors.is_empty():
 		_finish()
 		return
@@ -85,6 +85,21 @@ func _play() -> void:
 	_check(_progress.set_active_hero_ids(["mira"], false), "native active party setup failed")
 	_check(_progress.party.mira.equipment.weapon == Fixture.WEAPON and _progress.party.mira.level == 1 and _progress.party.mira.xp == 0, "fresh new game lost authored worn starter weapon")
 	_check(_progress.inventory.get(Fixture.POTION) == 3 and _progress.inventory.get("coin") == 27 and not _progress.inventory.has(Fixture.WEAPON), "fresh new game lost authored bag or duplicated worn weapon")
+	_check(_progress.party.mira.equipment.shoes == Fixture.SHOES, "fresh game lost starter shoes")
+	var inventory := current_scene.find_child("InventoryUI", true, false) as EmberInventoryUi
+	_check(inventory != null, "normal inventory missing for footwear")
+	if inventory == null: return
+	inventory.open()
+	inventory.set("_mode", EmberInventoryUi.MODE_EQUIPMENT)
+	inventory.set("_slot_index", EmberEquipment.SLOTS.find("shoes"))
+	inventory.call("_refresh")
+	inventory.confirm()
+	_check(_progress.party.mira.equipment.shoes == null and _progress.party_member_view("mira").moveRange == Catalog.Units.resource("mira").move_range, "native unequip did not restore base MOVE")
+	_check(inventory.select_item(Fixture.SHOES), "normal inventory could not select authored shoes")
+	inventory.confirm()
+	_check(_progress.party.mira.equipment.shoes == Fixture.SHOES and "MOVE" in str(inventory.view_state().equipment), "native equip did not apply/display shoe stats")
+	await _capture("footwear-inventory")
+	inventory.close()
 	var member: Dictionary = _progress.party.mira
 	var derived := EmberPartyState.derived_stats("mira", member, EmberItemCatalog.definitions())
 	member.hp = int(derived.maxHp) - 6
@@ -116,8 +131,9 @@ func _play() -> void:
 	await _capture("deployment")
 	hud.call("_confirm_deployment")
 	var initial: Dictionary = hud.call("state_snapshot")
-	_check(not hud.get("_library_test") and initial.encounterId == Fixture.ENCOUNTER and initial.units.size() == 2, "normal battle did not consume new saved content")
+	_check(not hud.get("_library_test") and initial.encounterId == Fixture.ENCOUNTER and initial.units.size() == 4, "normal battle did not consume new saved content")
 	_check(initial.units.mira.equipment.weapon == Fixture.WEAPON and initial.units.mira.maxHp == derived.maxHp and int(initial.units.mira.str) == int(derived.str), "authored equipment bonus failed battle projection")
+	_check(initial.units.mira.moveRange == derived.moveRange and initial.units.mira.jumpHeight == derived.jumpHeight and initial.units.mira.pushResistance == derived.pushResistance and initial.units.mira.statusResistances.wet == derived.statusResistances.wet, "authored footwear failed normal map-to-battle projection")
 	_check(Fixture.ACTION in Combat.command_ids_for_current_actor(initial) and "item:" + Fixture.POTION in Combat.combat_item_ids(initial), "new action/consumable absent from battle menu")
 	hud = await _defeat_paths(hud, initial)
 	if hud == null or not _errors.is_empty(): return
@@ -132,6 +148,15 @@ func _play() -> void:
 	blocked.units.mira.equipment.weapon = null
 	blocked.inventory[Fixture.WEAPON] = 1
 	_check(not Combat.action_condition_reason(blocked, Fixture.ACTION, Fixture.ENEMY).is_empty() and not Combat.preview(blocked, Fixture.ACTION, Fixture.ENEMY).get("ok", true), "saved gear predicate accepted bag-only weapon in fresh runtime")
+	blocked = initial.duplicate(true)
+	blocked.units[Fixture.ENEMY].statuses = {"burning": 2}
+	var skipped := Combat.preview(blocked, Fixture.ACTION, Fixture.ENEMY)
+	_check(skipped.get("ok", false) and skipped.damage.has(Fixture.ENEMY) and not skipped.get("setStatuses", {}).get(Fixture.ENEMY, {}).has(Fixture.STATUS), "saved effect predicate did not skip only bonus step")
+	blocked = initial.duplicate(true)
+	blocked.units[Fixture.ENEMY].statuses = {"frozen": 2}
+	_check(not Combat.preview(blocked, Fixture.ACTION, Fixture.ENEMY).get("ok", true) and "ИЛИ" in Combat.action_condition_reason(blocked, Fixture.ACTION, Fixture.ENEMY), "saved OR did not block both failed alternatives")
+	blocked.units[Fixture.ENEMY].statuses.wet = 2
+	_check(Combat.preview(blocked, Fixture.ACTION, Fixture.ENEMY).get("ok", false), "saved OR did not accept Wet alternative in fresh runtime")
 	await _capture("battle")
 	# These are the same selection handlers used by the native action buttons.
 	hud.call("_select_action", "item:" + Fixture.POTION)
@@ -141,20 +166,29 @@ func _play() -> void:
 	_check(consumed.inventory.get(Fixture.POTION) == 2 and int(consumed.units.mira.hp) == int(initial.units.mira.hp) + 4, "authored consumable failed native selection/commit")
 	_check(_progress.party == persistent_party and _progress.inventory == persistent_inventory, "battle input mutated progress before Continue")
 	var marked := false
-	for attempt in 12:
+	var stacked := false
+	for attempt in 24:
 		var before: Dictionary = hud.call("state_snapshot")
 		if Combat.outcome(before) != "active": break
 		_check(Combat.current_unit_id(before) == "mira", "enemy AI did not return control to hero")
+		var target_id := ""
+		for enemy in encounter.enemy_instances():
+			if int(before.units[enemy.id].hp) > 0:
+				target_id = enemy.id
+				break
+		_check(not target_id.is_empty(), "living enemy instance missing before victory")
 		hud.call("_select_action", Fixture.ACTION)
-		hud.call("_select_target", Fixture.ENEMY)
+		hud.call("_select_target", target_id)
 		await _frames(10)
 		var after: Dictionary = hud.call("state_snapshot")
-		if int(after.units[Fixture.ENEMY].statuses.get(Fixture.STATUS, 0)) > 0: marked = true
+		var doses: Variant = after.units[target_id].statuses.get(Fixture.STATUS, 0)
+		if Combat.StatusRules.remaining(doses) > 0: marked = true
+		if doses is Array and doses.size() == 2: stacked = true
 		_check(after.turn > before.turn and int(after.units.mira.mp) == int(before.units.mira.mp) - 2, "authored action failed commit/cost")
 	var final: Dictionary = hud.call("state_snapshot")
-	_check(marked and Combat.outcome(final) == "victory", "saved action/effect/status failed actual victory")
+	_check(marked and stacked and Combat.outcome(final) == "victory", "saved action/effect/independent doses failed actual victory")
 	var report := EmberCombatResult.build(encounter, final, "victory")
-	_check(report.xpReward == 35 and report.lootRewards.size() == 1 and report.lootRewards[0].itemId == Fixture.POTION and int(report.lootRewards[0].count) == 2, "authored result lost XP or guaranteed enemy loot")
+	_check(report.xpReward == 35 and report.lootRewards.size() == 1 and report.lootRewards[0].itemId == Fixture.POTION and int(report.lootRewards[0].count) == 6 and report.defeatedEnemyIds.size() == 3 and report.counterDeltas.combat_defeated_total == 3, "authored result lost XP or guaranteed enemy loot")
 	var result := current_scene.find_child("CombatResultOverlay", true, false) as Control
 	_check(result != null and result.visible and "Настой проверки" in str(hud.get("_result_body").text), "native result did not show authored loot")
 	_check(_progress.party == persistent_party and _progress.inventory == persistent_inventory, "result preview applied rewards prematurely")
@@ -177,7 +211,7 @@ func _play() -> void:
 	_check(is_equal_approx(returned_player.global_position.x, 43.25) and is_equal_approx(returned_player.global_position.z, 27.5), "victory lost departure position")
 	_check(not _progress.combat_party_locked, "victory kept the active party locked")
 	_check(_progress.party.mira.level == 2 and _progress.party.mira.xp == 5 and _progress.party.mira.equipment.weapon == Fixture.WEAPON, "XP/level/equipment did not return once")
-	_check(_progress.inventory.get(Fixture.POTION) == 4 and _progress.flags.get("cycle_won", false) and _progress.flags.get("combat_victories") == 1, "loot/consumption/result flag/counter did not apply once")
+	_check(_progress.inventory.get(Fixture.POTION) == 8 and _progress.flags.get("cycle_won", false) and _progress.flags.get("combat_victories") == 1, "loot/consumption/result flag/counter did not apply once")
 	_check(EmberCombatTransition.finish(self, "victory", _progress, final) == ERR_ALREADY_IN_USE, "duplicate victory applied twice")
 	var pause := current_scene.get_node_or_null("CanvasLayer/ExplorePauseUI") as EmberExplorePauseMenu
 	if pause == null:

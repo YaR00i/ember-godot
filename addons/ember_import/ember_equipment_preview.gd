@@ -5,7 +5,7 @@ const Items = preload("res://scripts/ember_item_catalog.gd")
 const Equipment = preload("res://scripts/ember_equipment.gd")
 const Party = preload("res://scripts/ember_party_state.gd")
 const Units = preload("res://scripts/prototypes/ember_combat_unit_catalog.gd")
-const STATS := [["maxHp", "Максимум HP"], ["maxMp", "Максимум MP"], ["str", "Сила"], ["def", "Защита"], ["mag", "Магия"], ["res", "Сопротивление"], ["speed", "Скорость"], ["atk", "Атака оружия"]]
+const STATS := [["maxHp", "Максимум HP"], ["maxMp", "Максимум MP"], ["str", "Сила"], ["def", "Защита"], ["mag", "Магия"], ["res", "Сопротивление"], ["speed", "Скорость"], ["atk", "Атака оружия"], ["moveRange", "Перемещение (клетки)"], ["jumpHeight", "Прыжок (высота)"], ["pushResistance", "Стойкость к толчкам"], ["statusResistances.wet", "Мокрый: сократить на ходы"]]
 var _context: Dictionary
 var _items: Dictionary
 var _document: Dictionary
@@ -74,7 +74,12 @@ func setup(context: Dictionary) -> void:
 	table.name = "EquipmentPreviewStats"
 	table.columns = 4
 	table.add_theme_constant_override("h_separation", 16)
-	for title in ["Показатель", "До", "После", "Разница"]: table.add_child(_label(title))
+	for title in ["Показатель", "До", "После", "Разница"]:
+		var heading := _label(title)
+		if title != "Показатель":
+			heading.size_flags_horizontal = Control.SIZE_SHRINK_END
+			heading.autowrap_mode = TextServer.AUTOWRAP_OFF
+		table.add_child(heading)
 	for stat in STATS:
 		var label := _label(str(stat[1]))
 		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -83,6 +88,8 @@ func setup(context: Dictionary) -> void:
 		for column in 3:
 			var cell := _label("—")
 			cell.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			cell.size_flags_horizontal = Control.SIZE_SHRINK_END
+			cell.autowrap_mode = TextServer.AUTOWRAP_OFF
 			table.add_child(cell)
 			cells.append(cell)
 		_numbers[stat[0]] = cells
@@ -198,13 +205,16 @@ func _refresh() -> void:
 		if slot.is_empty(): _summary.text = "У предмета нет действующего слота экипировки."
 	for stat in STATS:
 		var key := str(stat[0])
-		var delta := int(after.get(key, 0)) - int(before.get(key, 0))
+		var delta := _stat(after, key) - _stat(before, key)
 		_comparison.changes[key] = delta
 		var cells: Array = _numbers[key]
-		cells[0].text = str(before.get(key, 0))
-		cells[1].text = str(after.get(key, 0)) if compatible else "—"
+		cells[0].text = str(_stat(before, key))
+		cells[1].text = str(_stat(after, key)) if compatible else "—"
 		cells[2].text = ("+" if delta > 0 else "") + str(delta) if compatible else "—"
 		cells[2].modulate = Color("79d99a") if delta > 0 else Color("ef9589") if delta < 0 else Color("bfc5cc")
+
+func _stat(stats: Dictionary, key: String) -> int:
+	return int(stats.get("statusResistances", {}).get("wet", 0)) if key == "statusResistances.wet" else int(stats.get(key, 0))
 
 func _label(text: String) -> Label:
 	var label := Label.new()

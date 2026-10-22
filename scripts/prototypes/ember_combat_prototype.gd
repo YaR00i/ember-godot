@@ -363,9 +363,9 @@ static func _unit_target_ids(
 			continue
 		if target_team == "ally" and not same_team:
 			continue
-		if not _authored_effects_allow_unit_target(action, target):
+		if not _authored_effects_allow_unit_target(action, target, state):
 			continue
-		if check_conditions and not ActionConditions.unit_reason(target, conditions, "target").is_empty(): continue
+		if check_conditions and not ActionConditions.pair_reason(actor, target, conditions).is_empty(): continue
 		if (
 			effect_id == "lift_throw"
 			and int(target.get("weightClass", 1)) > int(action.get("maxLiftWeight", 0))
@@ -449,11 +449,13 @@ static func action_condition_reason(state: Dictionary, action_id: String, target
 	if not ActionConditions.has_conditions(rules): return ""
 	var actor_reason := ActionConditions.unit_reason(unit_definition(state, current_unit_id(state)), rules, "actor")
 	if not actor_reason.is_empty(): return actor_reason
-	if not target_id.is_empty(): return ActionConditions.unit_reason(unit_definition(state, target_id), rules, "target")
+	var actor := unit_definition(state, current_unit_id(state))
+	if str(action.get("target", "")) == "cell": return ActionConditions.pair_reason(actor, {}, rules)
+	if not target_id.is_empty(): return ActionConditions.pair_reason(actor, unit_definition(state, target_id), rules)
 	var candidates := _unit_target_ids(state, action_id, false, false)
 	for candidate in candidates:
-		if ActionConditions.unit_reason(unit_definition(state, candidate), rules, "target").is_empty(): return ""
-	if not candidates.is_empty(): return "Нет подходящей цели. " + ActionConditions.unit_reason(unit_definition(state, candidates[0]), rules, "target")
+		if ActionConditions.pair_reason(actor, unit_definition(state, candidate), rules).is_empty(): return ""
+	if not candidates.is_empty(): return "Нет подходящей цели. " + ActionConditions.pair_reason(actor, unit_definition(state, candidates[0]), rules)
 	return ""
 
 
@@ -602,6 +604,7 @@ static func preview(
 		"stateHash": hash(state),
 		"statusRulesHash": StatusRules.content_hash(),
 		"actionConditionsHash": hash(action.get("applicationConditions", {})),
+		"effectConditionsHash": EffectRules.conditions_hash(action),
 		"actorId": actor_id,
 		"actionId": action_id,
 		"targetId": resolved_target_id,
@@ -863,6 +866,49 @@ static func preview(
 	return result
 
 
+static func _apply_unit_effects(unit: Dictionary, resolved: Dictionary) -> void:
+	# The same action projection feeds commit and the internal turn-end preview.
+	# The caller owns the mutable unit copy; healing/revival semantics stay intact.
+	var id := str(unit.get("id", ""))
+	if resolved.get("damage", {}).has(id):
+		unit.hp = maxi(0, int(unit.get("hp", 0)) - int(resolved.damage[id]))
+	if resolved.get("removeStatuses", {}).has(id) or resolved.get("setStatuses", {}).has(id):
+		var statuses: Dictionary = unit.get("statuses", {}).duplicate()
+		for status in resolved.get("removeStatuses", {}).get(id, []): statuses.erase(str(status))
+		for status in resolved.get("setStatuses", {}).get(id, {}): statuses[str(status)] = (resolved.setStatuses[id][status] as Array).duplicate() if resolved.setStatuses[id][status] is Array else int(resolved.setStatuses[id][status])
+		unit.statuses = statuses
+	if resolved.get("restoreHp", {}).has(id): unit.hp = clampi(int(resolved.restoreHp[id]), 0, int(unit.get("maxHp", 1)))
+	if resolved.get("restoreMp", {}).has(id): unit.mp = clampi(int(resolved.restoreMp[id]), 0, int(unit.get("maxMp", 0)))
+
+
+static func turn_end_preview(state: Dictionary, resolved: Dictionary) -> Dictionary:
+	# Internal exact projection; do not expose it through the player intent UI,
+	# which deliberately hides the action's hit/crit/damage before commit.
+	if not resolved.get("ok", false): return {}
+	var actor := unit_definition(state, str(resolved.get("actorId", "")))
+	if actor.is_empty(): return {}
+	var ids: Array = actor.get("statuses", {}).keys()
+	for id in resolved.get("setStatuses", {}).get(str(actor.id), {}):
+		if id not in ids: ids.append(id)
+	var periodic := false
+	for id in ids:
+		if StatusRules.duration_after_preview(state, resolved, str(actor.id), str(id)) > 0 and int(StatusRules.definition(str(id)).get("turnEndHpChange", 0)) != 0:
+			periodic = true
+			break
+	if not periodic: return {}
+	var projected := actor.duplicate(true)
+	_apply_unit_effects(projected, resolved)
+	return StatusRules.turn_end(projected)
+
+
+static func _turn_end_copy(actor: Dictionary, ending: Dictionary) -> String:
+	if ending.is_empty() or int(ending.get("beforeHp", 0)) <= 0: return ""
+	var parts := PackedStringArray()
+	if not ending.healingNames.is_empty(): parts.append("%s: +%d HP" % [", ".join(ending.healingNames), ending.healing])
+	if not ending.damageNames.is_empty(): parts.append("%s: −%d HP" % [", ".join(ending.damageNames), ending.damage])
+	return "Конец хода · %s · %s · HP %d → %d → %d (лечение, затем урон)." % [actor.get("name", "?"), "; ".join(parts), ending.beforeHp, ending.healedHp, ending.hp] if not parts.is_empty() else ""
+
+
 static func commit(state: Dictionary, resolved: Dictionary) -> Dictionary:
 	if not StateSchema.first_error(state).is_empty():
 		return state.duplicate(true)
@@ -878,6 +924,7 @@ static func commit(state: Dictionary, resolved: Dictionary) -> Dictionary:
 		return state.duplicate(true)
 	var condition_action := command_definition(state, str(resolved.get("actionId", "")))
 	if resolved.has("actionConditionsHash") and int(resolved.actionConditionsHash) != hash(condition_action.get("applicationConditions", {})): return state.duplicate(true)
+	if resolved.has("effectConditionsHash") and int(resolved.effectConditionsHash) != EffectRules.conditions_hash(condition_action): return state.duplicate(true)
 	if not action_condition_reason(state, str(resolved.get("actionId", "")), str(resolved.get("targetId", ""))).is_empty(): return state.duplicate(true)
 	var partner_id := str(resolved.get("partnerId", ""))
 	if not partner_id.is_empty():
@@ -901,53 +948,8 @@ static func commit(state: Dictionary, resolved: Dictionary) -> Dictionary:
 			return state.duplicate(true)
 	var result := state.duplicate(true)
 	var units: Dictionary = result.get("units", {})
-	for raw_id in resolved.get("damage", {}):
-		var unit_id := str(raw_id)
-		if not units.has(unit_id):
-			continue
-		var unit: Dictionary = units[unit_id]
-		unit["hp"] = maxi(0, int(unit.get("hp", 0)) - int((resolved.get("damage", {}) as Dictionary)[unit_id]))
-		units[unit_id] = unit
-	for raw_id in resolved.get("removeStatuses", {}):
-		var unit_id := str(raw_id)
-		if not units.has(unit_id):
-			continue
-		var unit: Dictionary = units[unit_id]
-		var statuses: Dictionary = unit.get("statuses", {}).duplicate(true)
-		for raw_status in (resolved.get("removeStatuses", {}) as Dictionary)[unit_id]:
-			statuses.erase(str(raw_status))
-		unit["statuses"] = statuses
-		units[unit_id] = unit
-	for raw_id in resolved.get("setStatuses", {}):
-		var unit_id := str(raw_id)
-		if not units.has(unit_id):
-			continue
-		var unit: Dictionary = units[unit_id]
-		var statuses: Dictionary = unit.get("statuses", {}).duplicate(true)
-		for raw_status in (resolved.get("setStatuses", {}) as Dictionary)[unit_id]:
-			statuses[str(raw_status)] = int(((resolved.get("setStatuses", {}) as Dictionary)[unit_id] as Dictionary)[raw_status])
-		unit["statuses"] = statuses
-		units[unit_id] = unit
-	for raw_id in resolved.get("restoreHp", {}):
-		var unit_id := str(raw_id)
-		if units.has(unit_id):
-			var unit: Dictionary = units[unit_id]
-			unit["hp"] = clampi(
-				int((resolved.get("restoreHp", {}) as Dictionary)[raw_id]),
-				0,
-				int(unit.get("maxHp", 1)),
-			)
-			units[unit_id] = unit
-	for raw_id in resolved.get("restoreMp", {}):
-		var unit_id := str(raw_id)
-		if units.has(unit_id):
-			var unit: Dictionary = units[unit_id]
-			unit["mp"] = clampi(
-				int((resolved.get("restoreMp", {}) as Dictionary)[raw_id]),
-				0,
-				int(unit.get("maxMp", 0)),
-			)
-			units[unit_id] = unit
+	for unit in units.values():
+		_apply_unit_effects(unit, resolved)
 	for raw_id in resolved.get("moves", {}):
 		var unit_id := str(raw_id)
 		if units.has(unit_id):
@@ -986,6 +988,7 @@ static func commit(state: Dictionary, resolved: Dictionary) -> Dictionary:
 			inventory.erase(cost_item_id)
 		result["inventory"] = inventory
 	var actor_id := str(resolved.get("actorId", ""))
+	var ending_copy := ""
 	if units.has(actor_id):
 		var actor: Dictionary = units[actor_id]
 		var action := command_definition(state, str(resolved.get("actionId", "")))
@@ -993,7 +996,10 @@ static func commit(state: Dictionary, resolved: Dictionary) -> Dictionary:
 		actor["nextAt"] = float(actor.get("nextAt", 0.0)) + _delay_for(
 			action, maxi(1, int(actor.get("speed", 10)))
 		)
-		actor["statuses"] = _decay_statuses(actor.get("statuses", {}))
+		var ending := StatusRules.turn_end(actor)
+		ending_copy = _turn_end_copy(actor, ending)
+		actor["hp"] = ending.hp
+		actor["statuses"] = ending.statuses
 		units[actor_id] = actor
 	if not partner_id.is_empty() and units.has(partner_id):
 		var partner: Dictionary = units[partner_id]
@@ -1026,7 +1032,9 @@ static func commit(state: Dictionary, resolved: Dictionary) -> Dictionary:
 	result["units"] = units
 	result["turn"] = int(result.get("turn", 1)) + 1
 	var log: Array = result.get("log", []).duplicate()
-	log.append(str(resolved.get("summary", "Действие выполнено.")))
+	var summary := str(resolved.get("summary", "Действие выполнено."))
+	if not ending_copy.is_empty() and not summary.contains(ending_copy): summary += "\n" + ending_copy
+	log.append(summary)
 	result["log"] = log
 	return result
 
@@ -1396,8 +1404,14 @@ static func describe_intent(
 	if action.is_empty():
 		return "Выберите действие."
 	var actor := unit_definition(state, current_unit_id(state))
-	var target := unit_definition(state, target_id)
+	var intent_state := state if pair_context_state.is_empty() else pair_context_state
+	var subject_id := current_unit_id(state) if str(action.get("target", "")) == "self" else target_id
+	if str(action.get("target", "")) == "cell" and target_cell != INVALID_CELL:
+		subject_id = _grid_occupant(intent_state, target_cell)
+	var target := unit_definition(intent_state, subject_id)
 	var parts: Array[String] = [str(action.get("name", action_id))]
+	var effect_copy := EffectRules.conditional_intent(action, target, not subject_id.is_empty() or target_cell != INVALID_CELL)
+	if not effect_copy.is_empty(): parts.append(effect_copy)
 	parts.append("%s · %s · цель: %s · дальность: %d" % [
 		str(action.get("menuGroupLabel", "Действие")),
 		_element_label(str(action.get("element", "physical"))),
@@ -1432,13 +1446,15 @@ static func describe_intent(
 	parts.append("Эффект: %s" % str(action.get("hint", "—")))
 	parts.append("Условия: %s" % str(action.get("requirements", "—")))
 	var conditions_copy := ActionConditions.summary(action.get("applicationConditions", {}))
-	if not conditions_copy.is_empty(): parts.append("Проверяемые условия (все):\n" + conditions_copy)
+	if not conditions_copy.is_empty(): parts.append("Проверяемые условия:\n" + conditions_copy)
 	if not target.is_empty():
 		parts.append("Выбранная цель: %s" % str(target.get("name", target_id)))
 	elif target_cell != INVALID_CELL:
 		parts.append("Выбранная клетка: %s" % _cell_label(target_cell))
 	if destination != INVALID_CELL and actor.has("cell") and destination != actor.get("cell"):
 		parts.append("Перемещение перед действием: %s" % _cell_label(destination))
+	var ending_hint := StatusRules.turn_end_hint(actor)
+	if not ending_hint.is_empty(): parts.append(ending_hint)
 	return "\n".join(parts)
 
 
@@ -1563,6 +1579,8 @@ static func describe_preview(state: Dictionary, resolved: Dictionary) -> String:
 		parts.append("Поле: %s" % "; ".join(changed_cells))
 	for note in resolved.get("notes", []):
 		parts.append(str(note))
+	var ending_copy := _turn_end_copy(actor, turn_end_preview(state, resolved))
+	if not ending_copy.is_empty(): parts.append(ending_copy)
 	return "\n".join(parts)
 
 
@@ -1823,8 +1841,8 @@ static func _apply_authored_effects(
 	EffectRules.apply_authored_effects(state, resolved, actor, target, action, target_cell)
 
 
-static func _authored_effects_allow_unit_target(action: Dictionary, target: Dictionary) -> bool:
-	return EffectRules.authored_effects_allow_unit_target(action, target)
+static func _authored_effects_allow_unit_target(action: Dictionary, target: Dictionary, state: Dictionary) -> bool:
+	return EffectRules.authored_effects_allow_unit_target(action, target, state)
 
 
 static func _is_grid_focus_cell(state: Dictionary, cell: Vector2i) -> bool:
@@ -1910,10 +1928,6 @@ static func _apply_guard_preview(state: Dictionary, resolved: Dictionary) -> voi
 	resolved["damage"] = damage
 
 
-static func _decay_statuses(raw: Variant) -> Dictionary:
-	return StatusRules.decay(raw)
-
-
 ## Geometric intent only: never read resolved damage, hit, crit or cell deltas.
 static func target_unavailable_reason(state: Dictionary, action_id: String, cell: Vector2i, target_id: String) -> String:
 	var actor_id := current_unit_id(state)
@@ -1964,9 +1978,10 @@ static func action_footprint(state: Dictionary, action_id: String, center: Vecto
 					continue
 				if _shares_conduction_area(state, target, unit) and _is_wet(state, unit) and unit.has("cell") and unit["cell"] not in result:
 					result.append(unit["cell"])
+	var footprint_target: Dictionary = (state.get("units", {}) as Dictionary).get(_grid_occupant(state, center), {})
 	for raw_effect in action.get("effects", []):
 		var effect := raw_effect as Dictionary
-		if str(effect.get("operation", "")) != "spread":
+		if str(effect.get("operation", "")) != "spread" or not EffectRules.target_conditions_met(effect, footprint_target):
 			continue
 		var grid: Dictionary = state.get("grid", {})
 		for y in int(grid.get("height", 0)):

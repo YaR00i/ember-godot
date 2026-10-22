@@ -15,7 +15,7 @@ func check(value: bool, message: String) -> void:
 		push_error(message)
 
 func _run() -> void:
-	var savanna: Resource = Generator.creation_presets(Generator.LARGE_TREE)[0].recipe
+	var savanna: Resource = Generator.creation_presets(Generator.LARGE_TREE,true)[0].recipe
 	check(savanna.parameters.generation_version == 14, "new savanna preset selects varied umbrella")
 	savanna.parameters.generation_version = 9
 	check(Generator.editing_fields(savanna).any(func(field): return field.key == "foliage_along"), "new savanna exposes shared interior foliage editing")

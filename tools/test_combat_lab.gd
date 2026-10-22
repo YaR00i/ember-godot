@@ -18,8 +18,7 @@ func _run_and_quit() -> void:
 	var requested_fullscreen := bool(lab.get_node("CombatHUDLayer/CombatHUD").request_fullscreen)
 	lab.get_node("CombatHUDLayer/CombatHUD").request_fullscreen = false
 	root.add_child(lab)
-	await process_frame
-	await process_frame
+	for frame in 6: await process_frame
 	await physics_frame
 	var world := lab.get_node("Arena") as Node3D
 	var hud := lab.find_child("CombatHUD", true, false) as Control
@@ -52,15 +51,21 @@ func _run_and_quit() -> void:
 	if embedded != null:
 		errors.append("main Combat Lab still embeds its world in a SubViewportContainer")
 	if timeline == null or timeline.get_child_count() != 8:
-		errors.append("Combat Lab did not render the visible eight-entry timeline")
+		errors.append("Combat Lab did not retain the eight-entry timeline")
+	var header_panel := lab.find_child("CombatHeaderPanel", true, false) as Control
+	var bounds := hud.get_viewport_rect()
 	if (
-		timeline_panel == null or console_panel == null or command_panel == null or field_panel == null
-		or console_panel.position.x > 24.0 or console_panel.position.y < 650.0
-		or timeline_panel.position.x > 24.0 or timeline_panel.position.y > 110.0
-		or timeline_panel.size.x > 240.0 or timeline_panel.size.y < 450.0
+		timeline_panel == null or console_panel == null or command_panel == null or field_panel == null or header_panel == null
+		or console_panel.position.x > 24.0 or console_panel.position.y < bounds.size.y * 0.5
+		or timeline_panel.position.x > 24.0 or timeline_panel.size.x > 240.0
+		or timeline_panel.get_global_rect().position.y < header_panel.get_global_rect().end.y
+		or timeline_panel.get_global_rect().end.y > console_panel.get_global_rect().position.y
 		or field_panel.size.x < 1500.0 or field_panel.size.y < 850.0
 	):
-		errors.append("combat HUD is not split into fullscreen field, left turn column, bottom-left console and compact command card")
+		errors.append("combat HUD panels overlap or lost fullscreen field/left timeline/bottom console placement")
+	for panel in [timeline_panel, console_panel, command_panel, ability_info, header_panel]:
+		if panel != null and not bounds.grow(2).encloses(panel.get_global_rect()): errors.append("combat HUD control is outside viewport: " + str(panel.name))
+	if lab.find_child("CombatTimelineScroll", true, false) == null: errors.append("timeline cannot scroll to later entries")
 	if lab.find_child("HSplitContainer", true, false) != null:
 		errors.append("legacy two-column laboratory overlay still owns the battle layout")
 	if mode_picker == null or str(mode_picker.get_item_metadata(mode_picker.selected)) != "grid":

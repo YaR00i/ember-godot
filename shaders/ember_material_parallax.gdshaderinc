@@ -25,6 +25,9 @@ vec3 material_depth_intersection(vec3 origin, vec3 n, vec3 view_direction, float
 float material_depth_shadow_at(vec3 hit, vec3 n, float amplitude) {
 	if (!material_depth_shadows) return 1.0;
 	vec3 sun = normalize(material_depth_sun_direction);
+#ifdef EMBER_TERRAIN_SECONDARY_DEPTH
+	if(material_depth_lod<0.0)sun=normalize(material_depth_secondary_sun_direction);
+#endif
 	float cosine = dot(sun, n);
 	if (cosine<=0.06) return 1.0;
 	float start = material_depth_height_at(hit, n);

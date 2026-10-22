@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="EmberCombatStatusResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_status_resource.gd" id="1_status"]
+
+[resource]
+script = ExtResource("1_status")
+status_id = "regeneration"
+display_name = "Регенерация"
+description = "Восстанавливает здоровье в конце собственного хода, перед периодическим уроном. Не воскрешает павших."
+kind = 0
+default_duration = 3
+turn_end_hp_change = 5
+glyph = "+"
+ui_color = Color(0.32, 0.9, 0.65, 1)

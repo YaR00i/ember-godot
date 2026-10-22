@@ -1,0 +1,31 @@
+extends SceneTree
+const Recipe=preload("res://scripts/prototypes/ember_grass_look_recipe.gd")
+const Fixture=preload("res://scripts/prototypes/ember_painted_light_fixture.gd")
+var errors: Array[String]=[]
+func check(ok: bool,label: String) -> void:
+	if not ok:errors.append(label);printerr("FAIL ",label)
+func _initialize() -> void:
+	var pattern=load("res://content/terrain_materials/painted_light_grass.tres")
+	var image: Image=pattern.albedo_texture.get_image();var before:=image.get_data()
+	var original:=Fixture.grass_tuft_mesh();var arrays:=original.surface_get_arrays(0)
+	var meshes:=Recipe.meshes(original,Fixture.grass_tuft_outline())
+	var colours:=Recipe.colours(image)
+	check(meshes[0]==original and colours[0]==image,"ordinary grass is the exact input")
+	check(before==image.get_data() and arrays==original.surface_get_arrays(0),"author pigment and clump unchanged")
+	var again:=Recipe.meshes(original,Fixture.grass_tuft_outline())
+	for look in 3:
+		check(meshes[look].surface_get_arrays(0)==again[look].surface_get_arrays(0),"deterministic clump geometry")
+		check(colours[look].has_mipmaps() and colours[look].get_size()==image.get_size(),"filtered derived pigment")
+		check(is_equal_approx(meshes[look].get_aabb().end.y,original.get_aabb().end.y),"clump tips keep original height")
+		for p: Vector3 in meshes[look].get_faces():check(p.is_finite() and p.y>=0,"finite rooted geometry")
+		var data:=meshes[look].surface_get_arrays(0)
+		for c: Color in data[Mesh.ARRAY_COLOR]:check(c==Color(1,0,0,3.0/255.0),"existing palette slot")
+	var coarse:=Recipe.Bake.grass_mesh(original,2,Fixture.grass_tuft_outline(),{"pixel_m":0.0625,"coverage":true})
+	check(coarse.get_aabb().end.y<meshes[2].get_aabb().end.y,"coarse grid no longer loses the thin top tip")
+	check(meshes[2].get_aabb().size.x<=original.get_aabb().size.x+0.001,"voxel footprint does not grow")
+	var rectangle:=PackedVector2Array([Vector2(-0.1,0),Vector2(-0.1,0.14),Vector2(0.1,0.14),Vector2(0.1,0)])
+	var unbounded:=Recipe.Bake.grass_mesh(original,2,rectangle,{"pixel_m":0.03125,"coverage":true})
+	var bounded:=Recipe.Bake.grass_mesh(original,2,rectangle,{"pixel_m":0.03125,"coverage":true,"preserve_height":true})
+	check(unbounded.get_aabb().end.y>0.14 and is_equal_approx(bounded.get_aabb().end.y,0.14),"optional height cap handles filled last rows")
+	print("GRASS_LOCAL_HEIGHTS old=",coarse.get_aabb().end.y," new=",meshes[2].get_aabb().end.y)
+	print("GRASS_LOOK_RECIPE ","PASS" if errors.is_empty() else errors);quit(0 if errors.is_empty() else 1)

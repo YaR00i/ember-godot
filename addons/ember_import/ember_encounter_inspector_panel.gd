@@ -173,7 +173,8 @@ func _rebuild_roster(
 			if unit != null
 			else "⚠ Не найден · %s" % unit_id
 		)
-		open.tooltip_text = "Открыть единый Resource бойца."
+		if team_id == "enemy" and unit_ids.count(unit_id) > 1: open.text = "%d · %s" % [index + 1, open.text]
+		open.tooltip_text = "Открыть общий шаблон бойца. Изменения относятся ко всем его экземплярам."
 		open.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		open.clip_text = true
 		open.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -201,7 +202,7 @@ func _rebuild_roster(
 	picker.name = "EncounterUnitPicker_%s" % team_id
 	picker.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	for unit in UnitCatalog.resources(team_id):
-		if unit.unit_id in unit_ids:
+		if team_id == "hero" and unit.unit_id in unit_ids:
 			continue
 		picker.add_item("%s · %s" % [unit.display_name, unit.unit_id])
 		picker.set_item_metadata(picker.item_count - 1, unit.unit_id)
@@ -227,7 +228,7 @@ func _add_unit(team_id: String, picker: OptionButton) -> void:
 		return
 	var unit_id := str(picker.get_item_metadata(picker.selected))
 	var next := _roster(team_id)
-	if not unit_id.is_empty() and unit_id not in next:
+	if not unit_id.is_empty() and (team_id == "enemy" or unit_id not in next):
 		next.append(unit_id)
 		_commit_roster(team_id, next, "Добавить бойца во встречу")
 

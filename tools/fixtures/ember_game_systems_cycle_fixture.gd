@@ -2,6 +2,7 @@ extends RefCounted
 ## Shared identities/evidence for one disposable author -> play -> fresh Load gate.
 const STORE = preload("res://addons/ember_import/ember_game_systems_store.gd")
 const WEAPON := "cycle_weapon"
+const SHOES := "cycle_shoes"
 const POTION := "cycle_potion"
 const STATUS := "cycle_mark"
 const EFFECT := "cycle_apply_mark"
@@ -16,7 +17,7 @@ const ARENA := "res://scenes/combat/arenas/cycle_arena.tscn"
 const DIRECTORY := "user://ember-tests/game-systems-cycle"
 const MANIFEST := "res://.game-systems-cycle.json"
 const EVIDENCE := DIRECTORY + "/result.json"
-const RECORDS := [["start", "default"], ["equipment", WEAPON], ["item", POTION], ["status", STATUS], ["effect", EFFECT], ["action", ACTION], ["ai", AI], ["loot", LOOT], ["unit", ENEMY], ["field", FIELD], ["encounter", ENCOUNTER], ["unit", "mira"]]
+const RECORDS := [["start", "default"], ["equipment", WEAPON], ["equipment", SHOES], ["item", POTION], ["status", STATUS], ["effect", EFFECT], ["action", ACTION], ["ai", AI], ["loot", LOOT], ["unit", ENEMY], ["field", FIELD], ["encounter", ENCOUNTER], ["unit", "mira"]]
 
 static func guarded() -> bool:
 	var actual := ProjectSettings.globalize_path("res://").replace("\\", "/").rstrip("/")

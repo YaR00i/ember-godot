@@ -51,10 +51,14 @@ static func validation_errors(state: Dictionary) -> Array[String]:
 				var authored := StatusCatalog.resource(status_id)
 				if authored == null:
 					errors.append("Боец %s: неизвестный статус %s." % [unit_id, status_id])
-				elif int((unit.get("statuses", {}) as Dictionary)[raw_status_id]) <= 0:
-					errors.append("Боец %s: статус %s требует положительную длительность." % [
-						unit_id, status_id,
-					])
+				else:
+					var value: Variant = unit.statuses[raw_status_id]
+					var valid: bool = typeof(value) == TYPE_INT and value > 0
+					if value is Array:
+						valid = authored.max_stacks > 1 and not value.is_empty() and value.size() <= authored.max_stacks
+						for timer in value:
+							if typeof(timer) != TYPE_INT or timer <= 0: valid = false
+					if not valid: errors.append("Боец %s: статус %s требует положительный срок или допустимые сроки независимых доз." % [unit_id, status_id])
 				if authored != null and not checked_statuses.has(status_id):
 					checked_statuses[status_id] = true
 					for error in authored.call("validation_errors"): errors.append("Статус %s: %s" % [status_id, error])
@@ -79,6 +83,8 @@ static func result_validation_errors(resolved: Dictionary) -> Array[String]:
 		errors.append("Результат preview: statusRulesHash должен быть целым числом.")
 	if resolved.has("actionConditionsHash") and typeof(resolved.actionConditionsHash) != TYPE_INT:
 		errors.append("Результат preview: actionConditionsHash должен быть целым числом.")
+	if resolved.has("effectConditionsHash") and typeof(resolved.effectConditionsHash) != TYPE_INT:
+		errors.append("Результат preview: effectConditionsHash должен быть целым числом.")
 	return errors
 
 

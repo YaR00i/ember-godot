@@ -20,7 +20,7 @@ func _run() -> void:
 		old.merge({"generation_version": 6, "tree_type": 3, "height": [64, 128, 256][index]}, true)
 		var built := Provider.build(old, 371, Color.WHITE, {}, "Old maple")
 		check(not built.has("error") and hash(built.geometry.voxels) == [3008355434, 2969065940, 970442213][index], "saved v6 maple remains byte-identical")
-	var maple: Resource = Generator.creation_presets(Generator.LARGE_TREE)[3].recipe.duplicate(true)
+	var maple: Resource = Generator.creation_presets(Generator.LARGE_TREE,true)[3].recipe.duplicate(true)
 	check(maple.parameters.generation_version == 12, "new maple preset selects varied revision")
 	maple.parameters.generation_version = 7 # Preserve historical v7 crown gates.
 	check(Provider.normalize({"tree_type": 3, "generation_version": 3}).generation_version == 3, "saved maple stays v3")

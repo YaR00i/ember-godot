@@ -54,6 +54,8 @@ const Conditions = preload("res://scripts/prototypes/ember_combat_action_conditi
 @export var value_conditions: Array[Dictionary] = []
 ## Owned equipment rows: subject, slot (empty means any for item), mode, item_id.
 @export var equipment_conditions: Array[Dictionary] = []
+## Flat groups joined by AND; each group combines existing atomic predicates by all/any.
+@export var condition_groups: Array[Dictionary] = []
 
 @export_group("Библиотека эффектов")
 ## Ordered reusable steps. Existing actions retain their stable resolver preset;
@@ -269,7 +271,7 @@ func behavior_summary() -> String:
 	lines.append("Общих шагов: %d. Выполняются по порядку после базового действия; настройки шагов принадлежат библиотеке эффектов." % effect_steps.size())
 	lines.append("Текст условий — подсказка игроку. Доступность проверяют цель, дальность, MP и правила выбранного действия.")
 	var conditions_text := Conditions.summary(application_conditions())
-	lines.append("Проверяемые условия: все выбранные правила одновременно.\n" + conditions_text if not conditions_text.is_empty() else "Дополнительных условий применения нет.")
+	lines.append("Проверяемые условия: обязательные правила и все группы.\n" + conditions_text if not conditions_text.is_empty() else "Дополнительных условий применения нет.")
 	return "\n".join(lines)
 
 

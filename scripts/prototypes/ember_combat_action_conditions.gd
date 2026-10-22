@@ -6,7 +6,10 @@ const Equipment = preload("res://scripts/ember_equipment.gd")
 const STATUS_FIELDS := ["actor_required_status_ids", "actor_forbidden_status_ids", "target_required_status_ids", "target_forbidden_status_ids"]
 const VALUE_FIELD := "value_conditions"
 const EQUIPMENT_FIELD := "equipment_conditions"
-const FIELDS := STATUS_FIELDS + [VALUE_FIELD, EQUIPMENT_FIELD]
+const LEAF_FIELDS := STATUS_FIELDS + [VALUE_FIELD, EQUIPMENT_FIELD]
+const GROUP_FIELD := "condition_groups"
+const FIELDS := LEAF_FIELDS + [GROUP_FIELD]
+const GROUP_MODES := {"all": "Все условия (И)", "any": "Хотя бы одно (ИЛИ)"}
 const EQUIPMENT_MODES := {"item": "Надет предмет", "occupied": "Слот занят", "empty": "Слот пуст"}
 const MAX_POINTS := 1000000
 const SUBJECT_LABELS := {"actor": "Исполнитель", "target": "Цель"}
@@ -16,6 +19,71 @@ const UNIT_LABELS := {"points": "очков", "percent": "% максимума"}
 const LABELS := {"actor_required_status_ids": "Исполнитель должен иметь", "actor_forbidden_status_ids": "Исполнитель не должен иметь", "target_required_status_ids": "Цель должна иметь", "target_forbidden_status_ids": "Цель не должна иметь"}
 
 static func validation_errors(raw: Variant, target_mode: String, check_item_settings := true) -> Array[String]:
+	var errors := _flat_validation(raw, target_mode, check_item_settings)
+	if not raw is Dictionary: return errors
+	var groups: Variant = raw.get(GROUP_FIELD, [])
+	if not groups is Array:
+		errors.append("Группы условий должны быть списком.")
+		return errors
+	for index in groups.size():
+		for error in group_validation(groups[index], target_mode, check_item_settings):
+			errors.append("Группа %d: %s" % [index + 1, error])
+	return errors
+
+static func group_validation(raw: Variant, target_mode: String, check_item_settings := true) -> Array[String]:
+	if not raw is Dictionary: return ["нужна запись группы."]
+	if not raw.get("mode") is String or not GROUP_MODES.has(raw.mode): return ["выберите И или ИЛИ."]
+	for key in raw:
+		if key != "mode" and key not in LEAF_FIELDS: return ["неизвестное поле группы; вложенные группы не поддерживаются."]
+	# Validate lists/atoms before expansion. Alternatives may contradict each other;
+	# an AND group's joint contradictions still use the existing flat validator.
+	var errors: Array[String] = []
+	for key in LEAF_FIELDS:
+		var rows: Variant = raw.get(key, [])
+		if typeof(rows) not in ([TYPE_ARRAY, TYPE_PACKED_STRING_ARRAY] if key in STATUS_FIELDS else [TYPE_ARRAY]):
+			errors.append("%s: нужен список условий." % key)
+			continue
+		var seen: Array = []
+		for row in rows:
+			if row in seen: errors.append("Условие повторяется: " + key)
+			seen.append(row)
+			errors.append_array(_flat_validation({key: [row]}, target_mode, check_item_settings))
+	if not errors.is_empty(): return errors
+	if atoms(raw).is_empty(): return ["добавьте хотя бы одно условие или удалите пустую группу."]
+	return _flat_validation(raw, target_mode, check_item_settings) if raw.mode == "all" else errors
+
+static func atoms(rules: Dictionary) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for key in LEAF_FIELDS:
+		for row in rules.get(key, []): result.append({key: [row]})
+	return result
+
+static func condition_sets(rules: Dictionary) -> Array[Dictionary]:
+	var result: Array[Dictionary] = [rules]
+	var groups: Variant = rules.get(GROUP_FIELD, [])
+	if groups is Array:
+		for group in groups:
+			if group is Dictionary: result.append(group)
+	return result
+
+static func pair_reason(actor: Dictionary, target: Dictionary, rules: Dictionary) -> String:
+	var reason := unit_reason(actor, rules, "actor")
+	if reason.is_empty(): reason = unit_reason(target, rules, "target")
+	if not reason.is_empty(): return reason
+	for index in rules.get(GROUP_FIELD, []).size():
+		var group: Dictionary = rules[GROUP_FIELD][index]
+		var failures := PackedStringArray()
+		var passed := false
+		for atom in atoms(group):
+			var failure := unit_reason(actor, atom, "actor")
+			if failure.is_empty(): failure = unit_reason(target, atom, "target")
+			if failure.is_empty(): passed = true
+			else: failures.append(failure)
+		if group.mode == "any" and passed: continue
+		if not failures.is_empty(): return "Группа %d — %s:\n%s" % [index + 1, GROUP_MODES[group.mode], "\n".join(failures)]
+	return ""
+
+static func _flat_validation(raw: Variant, target_mode: String, check_item_settings := true) -> Array[String]:
 	var errors: Array[String] = []
 	if not raw is Dictionary: return ["Условия применения должны быть словарём."]
 	var known := PackedStringArray()
@@ -223,12 +291,38 @@ static func unit_reason(unit: Dictionary, rules: Dictionary, subject: String) ->
 
 static func summary(rules: Dictionary) -> String:
 	var lines := PackedStringArray()
+	var required := _flat_summary(rules)
+	if not required.is_empty(): lines.append("Обязательные условия (И):\n" + required)
+	var groups: Variant = rules.get(GROUP_FIELD, [])
+	if groups is Array:
+		for index in groups.size():
+			var group: Variant = groups[index]
+			if not group is Dictionary:
+				lines.append("Некорректная группа %d." % [index + 1])
+				continue
+			lines.append("Группа %d — %s:" % [index + 1, GROUP_MODES.get(group.get("mode", ""), "неизвестный режим")])
+			for key in LEAF_FIELDS:
+				var rows: Variant = group.get(key, [])
+				if typeof(rows) not in [TYPE_ARRAY, TYPE_PACKED_STRING_ARRAY]: continue
+				for row in rows: lines.append("• " + _flat_summary({key: [row]}))
+	return "\n".join(lines)
+
+static func _flat_summary(rules: Dictionary) -> String:
+	var lines := PackedStringArray()
 	for key in STATUS_FIELDS:
+		var values: Variant = rules.get(key, [])
+		if typeof(values) not in [TYPE_ARRAY, TYPE_PACKED_STRING_ARRAY]:
+			lines.append("Некорректный список статусов: " + key)
+			continue
 		var names := PackedStringArray()
-		for id in rules.get(key, []): names.append(StatusRules.display_name(id))
+		for id in values: names.append(StatusRules.display_name(str(id)))
 		if not names.is_empty(): lines.append("%s: %s." % [LABELS[key], ", ".join(names)])
-	for row in rules.get(VALUE_FIELD, []):
-		lines.append(value_summary(row) + "." if value_errors(row).is_empty() else "Некорректное условие HP/MP: " + str(row))
-	for row in rules.get(EQUIPMENT_FIELD, []):
-		lines.append(equipment_summary(row) + "." if equipment_shape_errors(row).is_empty() else "Некорректное условие экипировки: " + str(row))
+	var values: Variant = rules.get(VALUE_FIELD, [])
+	if values is Array:
+		for row in values: lines.append(value_summary(row) + "." if value_errors(row).is_empty() else "Некорректное условие HP/MP: " + str(row))
+	else: lines.append("Некорректный список условий HP/MP.")
+	var gear: Variant = rules.get(EQUIPMENT_FIELD, [])
+	if gear is Array:
+		for row in gear: lines.append(equipment_summary(row) + "." if equipment_shape_errors(row).is_empty() else "Некорректное условие экипировки: " + str(row))
+	else: lines.append("Некорректный список условий экипировки.")
 	return "\n".join(lines)

@@ -8,7 +8,7 @@ signal pattern_created(id: String, role: String)
 signal edit_closed
 signal variant_opened(id: String, role: String)
 signal light_profile_previewed(pattern: Resource, id: String)
-const EDIT_FIELDS := ["role_id", "base_color", "light_color", "shadow_color", "pixels", "side_pixels", "gloss", "sheen", "pixel_relief", "micro_relief", "micro_size_m", "micro_roughness", "relief_pixels", "side_relief_pixels", "roughness_pixels", "side_roughness_pixels", "pattern_size_m", "roughness_variation", "albedo_texture", "grass_light_enabled", "grass_light_low", "grass_light_tint_strength", "grass_light_cool", "grass_light_warm", "grass_light_shadow_color", "grass_light_shadow_fill", "style_rim_custom", "style_rim_enabled", "style_rim_strength"]
+const EDIT_FIELDS := ["role_id", "base_color", "light_color", "shadow_color", "pixels", "side_pixels", "gloss", "sheen", "pixel_relief", "micro_relief", "micro_size_m", "micro_roughness", "relief_pixels", "side_relief_pixels", "roughness_pixels", "side_roughness_pixels", "pattern_size_m", "roughness_variation", "albedo_texture", "albedo_relief_enabled", "albedo_periodic", "grass_light_enabled", "grass_light_low", "grass_light_tint_strength", "grass_light_cool", "grass_light_warm", "grass_light_shadow_color", "grass_light_shadow_fill", "style_rim_custom", "style_rim_enabled", "style_rim_strength", "style_rim_width_mm", "depth_mm", "depth_softness", "depth_sharpness", "form_pull_mm"]
 
 const Materials = preload("res://scripts/ember_voxel_surface_materials.gd")
 const Pattern = preload("res://scripts/ember_compact_terrain_pattern.gd")
@@ -53,9 +53,15 @@ var _file_dialog: FileDialog
 var _file_import := false
 var _texture_dialog: FileDialog
 var _texture_label: Label
+var _texture_options: Dictionary={}
 var _style_rim_switch: CheckBox
 var _style_rim_slider: HSlider
 var _style_rim_label: Label
+var _style_rim_width_slider: HSlider
+var _style_rim_width_label: Label
+var _depth_sliders := {}
+var _depth_labels := {}
+var _depth_dragging := false
 var _grass_light_switch: CheckBox
 var _grass_light_rows: VBoxContainer
 var _grass_light_pickers: Dictionary={}
@@ -93,6 +99,9 @@ func _ready() -> void:
 	_texture_dialog=FileDialog.new();_texture_dialog.access=FileDialog.ACCESS_RESOURCES
 	_texture_dialog.file_mode=FileDialog.FILE_MODE_OPEN_FILE;_texture_dialog.add_filter("*.png","Текстура PNG")
 	_texture_dialog.file_selected.connect(_load_texture);add_child(_texture_dialog)
+	for option in [["albedo_periodic","Бесшовная текстура PNG"],["albedo_relief_enabled","Световой рельеф из цвета PNG"]]:
+		var toggle:=CheckBox.new();toggle.text=option[1];toggle.clip_text=true;toggle.tooltip_text=option[1]
+		toggle.toggled.connect(_change_texture_option.bind(option[0]));column.add_child(toggle);_texture_options[option[0]]=toggle
 	for tone_index in 3:
 		var label := Label.new(); label.text = ["Основной", "Светлый", "Тёмный"][tone_index]; column.add_child(label)
 		var picker := ColorPickerButton.new(); picker.custom_minimum_size.y = 28
@@ -180,6 +189,14 @@ func _change_texture(value: Texture2D) -> void:
 
 func _set_texture(value: Texture2D) -> void:
 	_draft.albedo_texture=value;_refresh_grid()
+
+func _change_texture_option(value: bool,key: String) -> void:
+	if _loading or _draft==null or _draft.get(key)==value:return
+	_history.create_action("Настройка PNG материала")
+	_history.add_do_method(_set_texture_option.bind(key,value));_history.add_undo_method(_set_texture_option.bind(key,_draft.get(key)));_history.commit_action()
+
+func _set_texture_option(key: String,value: bool) -> void:
+	_draft.set(key,value);_refresh_grid()
 
 func _input(event: InputEvent) -> void:
 	if _draft == null or not event is InputEventKey or not event.pressed or event.echo: return
@@ -284,6 +301,9 @@ func _refresh_grid() -> void:
 	if _draft!=null and is_instance_valid(_texture_label):
 		_texture_label.text="PNG: "+_draft.albedo_texture.resource_path.get_file()+" · рисунок ниже сохранён как запасной" if _draft.albedo_texture!=null else "Текстура PNG не выбрана · используется рисунок 16×16"
 	if _draft == null: return
+	for key in _texture_options:
+		_texture_options[key].set_pressed_no_signal(_draft.get(key))
+		_texture_options[key].disabled=_draft.albedo_texture==null
 	_refresh_grass_light_controls()
 	_refresh_style_rim_controls()
 	_grid.set_tones(_draft.surface_pixels(_channel,_editing_side), _channel_colors())
@@ -434,7 +454,7 @@ func _restore_grass_light_preview() -> void:
 	if _draft==null or _baseline.is_empty():return
 	var original: Pattern=_draft.duplicate(true)
 	for field in EDIT_FIELDS:
-		if field.begins_with("grass_light_") or field.begins_with("style_rim_"):original.set(field,_baseline[field])
+		if field.begins_with("grass_light_") or field.begins_with("style_rim_") or field.begins_with("depth_") or field=="form_pull_mm":original.set(field,_baseline[field])
 	light_profile_previewed.emit(original,_id)
 
 
@@ -548,21 +568,70 @@ func _create_style_rim_controls(column: VBoxContainer) -> void:
 	_style_rim_slider.size_flags_horizontal=Control.SIZE_EXPAND_FILL;row.add_child(_style_rim_slider)
 	_style_rim_label=Label.new();_style_rim_label.custom_minimum_size.x=40;row.add_child(_style_rim_label)
 	_style_rim_slider.value_changed.connect(func(value: float):_change_style_rim({"style_rim_strength":value}))
+	var width_caption:=Label.new();width_caption.text="Ширина рамки на камнях (0 — без ограничения)";column.add_child(width_caption)
+	var width_row:=HBoxContainer.new();column.add_child(width_row)
+	_style_rim_width_slider=HSlider.new();_style_rim_width_slider.min_value=0;_style_rim_width_slider.max_value=30;_style_rim_width_slider.step=0.5
+	_style_rim_width_slider.size_flags_horizontal=Control.SIZE_EXPAND_FILL;width_row.add_child(_style_rim_width_slider)
+	_style_rim_width_label=Label.new();_style_rim_width_label.custom_minimum_size.x=56;width_row.add_child(_style_rim_width_label)
+	_style_rim_width_slider.value_changed.connect(func(value: float):_change_style_rim({"style_rim_width_mm":value}))
+	_create_depth_controls(column)
+
+func _create_depth_controls(column: VBoxContainer) -> void:
+	# Detailed look: depth derived from the painted colour (EmberMaterialHeight).
+	var caption:=Label.new();caption.text="Подробный облик: глубина из рисунка";column.add_child(caption)
+	for entry in [["depth_mm","Глубина, мм (0 — нет)",0.0,30.0,0.5],["depth_softness","Плавность рельефа, px",0.5,6.0,0.1],["depth_sharpness","Резкость изломов",0.0,1.0,0.01],["form_pull_mm","Подтяжка граней к вокселям, мм (0 — плоские)",0.0,60.0,1.0]]:
+		var title:=Label.new();title.text=entry[1];column.add_child(title)
+		var row:=HBoxContainer.new();column.add_child(row)
+		var slider:=HSlider.new();slider.min_value=entry[2];slider.max_value=entry[3];slider.step=entry[4]
+		slider.size_flags_horizontal=Control.SIZE_EXPAND_FILL;row.add_child(slider)
+		var label:=Label.new();label.custom_minimum_size.x=56;row.add_child(label)
+		_depth_sliders[entry[0]]=slider;_depth_labels[entry[0]]=label
+		var field:String=entry[0]
+		slider.value_changed.connect(func(value: float):_change_depth({field:value}))
+		# Re-deriving the height map or the faces is heavier: softness, sharpness and the face pull apply on release, depth is live.
+		slider.drag_started.connect(func():_depth_dragging=true)
+		slider.drag_ended.connect(func(_changed: bool):
+			_depth_dragging=false
+			if _draft!=null:light_profile_previewed.emit(_draft,_id))
+
+func _refresh_depth_controls() -> void:
+	if _draft==null or _depth_sliders.is_empty():return
+	for field in _depth_sliders:
+		_depth_sliders[field].set_value_no_signal(_draft.get(field))
+		_depth_labels[field].text="%.1f"%_draft.get(field) if field!="depth_sharpness" else "%.2f"%_draft.get(field)
+
+func _change_depth(values: Dictionary) -> void:
+	if _loading or _draft==null:return
+	var before:={"depth_mm":_draft.depth_mm,"depth_softness":_draft.depth_softness,"depth_sharpness":_draft.depth_sharpness,"form_pull_mm":_draft.form_pull_mm}
+	var after:=before.duplicate();after.merge(values,true)
+	if after==before:return
+	_history.create_action("Подтяжка граней подробного облика" if values.has("form_pull_mm") else "Глубина подробного облика",UndoRedo.MERGE_ENDS)
+	_history.add_do_method(_set_depth.bind(after,values.has("depth_mm")));_history.add_undo_method(_set_depth.bind(before,true));_history.commit_action()
+
+func _set_depth(values: Dictionary,live: bool) -> void:
+	for field in values:_draft.set(field,values[field])
+	_refresh_depth_controls()
+	# Dragging softness/sharpness must not re-derive the height map on every pixel of the slider.
+	if live or not _depth_dragging:light_profile_previewed.emit(_draft,_id)
 
 func _refresh_style_rim_controls() -> void:
 	if _style_rim_switch==null or _draft==null:return
 	_style_rim_switch.set_pressed_no_signal(_draft.style_rim_enabled if _draft.style_rim_custom else _draft.role_id=="stone")
 	_style_rim_slider.set_value_no_signal(_draft.style_rim_strength)
 	_style_rim_label.text="%.2f"%_draft.style_rim_strength
+	_style_rim_width_slider.set_value_no_signal(_draft.style_rim_width_mm)
+	_style_rim_width_label.text="%.1f мм"%_draft.style_rim_width_mm
+	_refresh_depth_controls()
 
 func _change_style_rim(values: Dictionary) -> void:
 	if _loading or _draft==null:return
-	var before:={"style_rim_custom":_draft.style_rim_custom,"style_rim_enabled":_draft.style_rim_enabled,"style_rim_strength":_draft.style_rim_strength}
+	var before:={"style_rim_custom":_draft.style_rim_custom,"style_rim_enabled":_draft.style_rim_enabled,"style_rim_strength":_draft.style_rim_strength,"style_rim_width_mm":_draft.style_rim_width_mm}
 	var after:=before.duplicate()
 	if not _draft.style_rim_custom:after.style_rim_enabled=_draft.role_id=="stone"
 	after.style_rim_custom=true;after.merge(values,true)
 	if after==before:return
-	_history.create_action("Сила кромки материала" if values.has("style_rim_strength") else "Включение кромки материала",UndoRedo.MERGE_ENDS if values.has("style_rim_strength") else UndoRedo.MERGE_DISABLE)
+	var ranged:=values.has("style_rim_strength") or values.has("style_rim_width_mm")
+	_history.create_action("Ширина рамки кромки" if values.has("style_rim_width_mm") else "Сила кромки материала" if values.has("style_rim_strength") else "Включение кромки материала",UndoRedo.MERGE_ENDS if ranged else UndoRedo.MERGE_DISABLE)
 	_history.add_do_method(_set_style_rim.bind(after));_history.add_undo_method(_set_style_rim.bind(before));_history.commit_action()
 
 func _set_style_rim(values: Dictionary) -> void:

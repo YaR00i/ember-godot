@@ -44,6 +44,12 @@ const BLOCK_MODE_LABELS := ["Не менять", "Убрать преграду"
 @export_range(0, 12, 1) var status_duration := 0
 @export var remove_status_ids := PackedStringArray()
 
+@export_group("Условия эффекта · до применения приёма")
+## All required statuses must be present and all forbidden statuses absent on
+## the original target. Earlier steps and the base preset do not change this test.
+@export var target_required_status_ids := PackedStringArray()
+@export var target_forbidden_status_ids := PackedStringArray()
+
 @export_group("Толчок")
 @export_range(0, 8, 1) var force := 0
 
@@ -102,6 +108,8 @@ func to_definition() -> Dictionary:
 		"statusId": status_id.strip_edges(),
 		"statusDuration": status_duration,
 		"removeStatusIds": Array(remove_status_ids),
+		"targetRequiredStatusIds": Array(target_required_status_ids),
+		"targetForbiddenStatusIds": Array(target_forbidden_status_ids),
 		"force": force,
 		"elevationDelta": elevation_delta,
 		"blockMode": block_mode_id(),
@@ -129,6 +137,14 @@ func validation_errors() -> Array[String]:
 		errors.append("Укажите понятное название эффекта.")
 	if description.strip_edges().is_empty():
 		errors.append("Опишите результат эффекта для библиотеки.")
+	_validate_status_list(target_required_status_ids, "Обязательный статус цели", errors)
+	_validate_status_list(target_forbidden_status_ids, "Запрещённый статус цели", errors)
+	for values in [target_required_status_ids, target_forbidden_status_ids]:
+		for id in values:
+			if id != id.strip_edges(): errors.append("Условие эффекта: ID статуса не должен содержать пробелы по краям.")
+	for id in target_required_status_ids:
+		if id.strip_edges() in target_forbidden_status_ids:
+			errors.append("Условие эффекта: статус %s одновременно требуется и запрещён." % id)
 	match operation:
 		Operation.APPLY_STATUS:
 			if not _valid_id(status_id):
@@ -170,6 +186,8 @@ func validation_errors() -> Array[String]:
 			if restore_hp_amount <= 0:
 				errors.append("Лечение должно восстанавливать больше нуля HP.")
 		Operation.MOVE_ACTOR:
+			if not target_required_status_ids.is_empty() or not target_forbidden_status_ids.is_empty():
+				errors.append("Перемещение выбирает свободную клетку: условия статусов цели неприменимы. Очистите условия.")
 			if move_max_height_delta <= 0:
 				errors.append("Особому перемещению нужен допустимый перепад высоты больше нуля.")
 		Operation.ACTIVATE_FOCUS:
@@ -181,6 +199,7 @@ func content_signature() -> String:
 	return "|".join([
 		effect_id, display_name, description, operation_id(), status_id,
 		str(status_duration), ",".join(remove_status_ids), str(force),
+		",".join(target_required_status_ids), ",".join(target_forbidden_status_ids),
 		str(elevation_delta), block_mode_id(), ",".join(add_cell_tags),
 		",".join(remove_cell_tags), str(spread_radius),
 		",".join(spread_status_ids), ",".join(spread_cell_tags),
@@ -191,6 +210,16 @@ func content_signature() -> String:
 
 
 func behavior_summary() -> String:
+	var conditions := PackedStringArray()
+	if not target_required_status_ids.is_empty(): conditions.append("есть все: " + ", ".join(target_required_status_ids))
+	if not target_forbidden_status_ids.is_empty(): conditions.append("нет ни одного: " + ", ".join(target_forbidden_status_ids))
+	var prefix := ""
+	if not conditions.is_empty():
+		prefix = "Только если у цели " + "; ".join(conditions) + ". Проверка до применения приёма; пустая клетка не подходит. Иначе пропускается только этот эффект.\n"
+	return prefix + _operation_summary()
+
+
+func _operation_summary() -> String:
 	match operation:
 		Operation.APPLY_STATUS:
 			return "Наложить %s. Длительность: %s. Повтор и модификаторы задаются карточкой статуса; устойчивость цели сокращает длительность." % [status_id if not status_id.is_empty() else "выбранный статус", "из карточки статуса" if status_duration == 0 else "%d хода бойца" % status_duration]

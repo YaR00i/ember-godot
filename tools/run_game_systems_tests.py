@@ -29,8 +29,43 @@ def prepare(destination):
     for name in ('test_game_systems_workspace.gd', 'test_game_systems_operations.gd', 'test_status_authoring.gd', 'test_combat_action_authoring.gd', 'test_combat_encounter_authoring.gd', 'test_game_systems_lab.gd', 'test_game_systems_lab_setup.gd', 'test_game_systems_lab_presets.gd', 'test_game_systems_library_check.gd', 'test_game_systems_usage.gd', 'editor_test_game_systems.gd', 'editor_test_game_systems_cycle.gd', 'test_game_systems_cycle.gd', 'test_combat_lab.gd', 'test_combat_arena_scenes.gd', 'test_combat_prebattle_deployment.gd', 'test_combat_vertical_view.gd', 'test_combat_vertical_animation.gd', *REGRESSIONS):
         source = ROOT / 'tools' / name
         if source.exists(): shutil.copyfile(source, destination / 'tools' / name)
-    for name in ('test_combat_encounter_transition.gd', 'test_combat_defeat_retry.gd', 'editor_test_game_systems_stability.gd', 'test_editor_filesystem.gd', 'test_combat_action_conditions.gd', 'test_combat_equipment_conditions.gd', 'test_game_start_authoring.gd'):
+    for name in ('test_combat_encounter_transition.gd', 'test_combat_defeat_retry.gd', 'editor_test_game_systems_stability.gd', 'test_editor_filesystem.gd', 'test_combat_action_conditions.gd', 'test_combat_equipment_conditions.gd', 'test_game_start_authoring.gd', 'test_combat_periodic_statuses.gd', 'test_footwear_authoring.gd', 'test_combat_condition_groups.gd', 'test_combat_status_stacks.gd', 'test_combat_enemy_instances.gd', 'test_combat_effect_conditions.gd', 'editor_test_game_systems_layout.gd'):
         shutil.copyfile(ROOT / 'tools' / name, destination / 'tools' / name)
+
+
+def preserve_native_crash(project, args, env, result):
+    """Retain the failing sandbox before TemporaryDirectory erases its state."""
+    if result.returncode & 0xffffffff not in (0xc0000005, 0xc0000374, 0xc0000409):
+        return None
+    project = Path(project).resolve()
+    if (env.get('EMBER_GAME_SYSTEMS_TEST_ROOT') != project.as_posix() or
+            not project.name.startswith('ember-game-systems-') or (project / '.git').exists()):
+        return None
+    evidence = Path(tempfile.mkdtemp(prefix='ember-native-crash-'))
+    target = evidence / project.name
+    shutil.copytree(project, target)
+    (evidence / 'process.log').write_text(result.stdout + result.stderr, encoding='utf-8')
+    replay_env = {'EMBER_GAME_SYSTEMS_TEST_ROOT': target.as_posix()}
+    for key in ('EMBER_GAME_SYSTEMS_EDITOR_FOCUS', 'EMBER_STABILITY_CYCLES', 'EMBER_UI_LAYOUT'):
+        if key in env:
+            replay_env[key] = env[key]
+    if env.get('APPDATA'):
+        try:
+            relative = Path(env['APPDATA']).resolve().relative_to(project)
+        except ValueError:
+            pass  # A normal user profile is not part of a sandbox capture.
+        else:
+            replay_env['APPDATA'] = str(target / relative)
+    if 'EMBER_UI_EVIDENCE' in env:
+        captures = evidence / 'captures'
+        captures.mkdir()
+        replay_env['EMBER_UI_EVIDENCE'] = captures.as_posix()
+    (evidence / 'replay.json').write_text(json.dumps({
+        'exit_code': '0x%08x' % (result.returncode & 0xffffffff),
+        'command': [str(ENGINE), '--path', str(target), *args],
+        'environment_overrides': replay_env,
+    }, ensure_ascii=False, indent=2), encoding='utf-8')
+    return evidence
 
 
 def execute(project, args, env, timeout=180, expected_save_failures=False):
@@ -50,6 +85,12 @@ def execute(project, args, env, timeout=180, expected_save_failures=False):
                       any(not line.startswith('ERROR: ember save: cannot publish') for line in errors) or
                       'SCRIPT ERROR' in output)
     if result.returncode or error_gate or failed:
+        try:
+            evidence = preserve_native_crash(project, args, env, result)
+            if evidence:
+                print('NATIVE CRASH EVIDENCE: ' + str(evidence), flush=True)
+        except OSError as error:
+            print('NATIVE CRASH EVIDENCE FAILED: ' + str(error), flush=True)
         raise RuntimeError('game systems gate failed (Godot exit code %s)' % result.returncode)
     return output
 
@@ -123,16 +164,26 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--editor', action='store_true')
+    mode.add_argument('--ui-layout', action='store_true')
     mode.add_argument('--stability', action='store_true')
     mode.add_argument('--operations', action='store_true')
     mode.add_argument('--regressions', action='store_true')
     mode.add_argument('--statuses', action='store_true')
+    mode.add_argument('--periodic', action='store_true')
+    mode.add_argument('--stacks', action='store_true')
+    mode.add_argument('--stacks-editor', action='store_true')
+    mode.add_argument('--footwear', action='store_true')
+    mode.add_argument('--periodic-editor', action='store_true')
     mode.add_argument('--actions', action='store_true')
     mode.add_argument('--conditions', action='store_true')
+    mode.add_argument('--effect-conditions', action='store_true')
+    mode.add_argument('--effect-intent', action='store_true')
+    mode.add_argument('--condition-groups', action='store_true')
     mode.add_argument('--gear-conditions', action='store_true')
     mode.add_argument('--start', action='store_true')
     mode.add_argument('--start-editor', action='store_true')
     mode.add_argument('--encounters', action='store_true')
+    mode.add_argument('--enemy-instances', action='store_true')
     mode.add_argument('--lab', action='store_true')
     mode.add_argument('--arena', action='store_true')
     mode.add_argument('--lab-setup', action='store_true')
@@ -148,7 +199,31 @@ def main():
         frozen = {folder: hashes(project / folder) for folder in ('content', 'scenes', 'materials')}
         env = os.environ.copy()
         env['EMBER_GAME_SYSTEMS_TEST_ROOT'] = project.as_posix()
-        if args.cycle:
+        if args.ui_layout:
+            evidence = Path(os.environ.get('EMBER_UI_EVIDENCE', str(Path(tempfile.gettempdir()) / 'ember-ui-layout-evidence'))).resolve()
+            evidence.mkdir(parents=True, exist_ok=True)
+            appdata = project / '.qa-appdata'
+            env['APPDATA'] = str(appdata)
+            env['EMBER_UI_EVIDENCE'] = evidence.as_posix()
+            settings = appdata / 'Godot/editor_settings-4.7.tres'
+            settings.parent.mkdir(parents=True, exist_ok=True)
+            settings.write_text('[gd_resource type="EditorSettings" format=3]\n\n[resource]\ninterface/editor/appearance/display_scale = 3\ninterface/editor/appearance/custom_display_scale = 1.25\n', encoding='utf-8')
+            for name in ('ember_import', 'ember_surface_canvas'):
+                shutil.copyfile(ROOT / 'addons' / name / 'plugin.cfg', project / 'addons' / name / 'plugin.cfg')
+            execute(project, ['--headless', '--editor', '--import'], env)
+            gate = project / 'addons/game_systems_layout_gate'
+            gate.mkdir()
+            shutil.copyfile(ROOT / 'tools/editor_test_game_systems_layout.gd', gate / 'plugin.gd')
+            (gate / 'plugin.cfg').write_text('[plugin]\nname="Systems UI layout gate"\ndescription="Disposable 125 percent UI"\nauthor="Ember"\nversion="1"\nscript="plugin.gd"\n', encoding='utf-8')
+            config = project / 'project.godot'
+            text = config.read_text(encoding='utf-8').replace('gl_compatibility', 'forward_plus')
+            text += '\n[display]\nwindow/size/viewport_width=1600\nwindow/size/viewport_height=900\n'
+            config.write_text(text + '\n[editor_plugins]\nenabled=PackedStringArray("res://addons/ember_import/plugin.cfg", "res://addons/game_systems_layout_gate/plugin.cfg")\n', encoding='utf-8')
+            output = execute(project, ['--editor', '--windowed', '--resolution', '1280x800', '--max-fps', '30'], env, timeout=240)
+            config.write_text(text, encoding='utf-8')
+            env['EMBER_UI_LAYOUT'] = '1'
+            output += execute(project, ['--windowed', '--resolution', '1280x800', '--max-fps', '30', '--script', 'res://tools/test_combat_effect_conditions.gd', '--', '--effect-intent-play'], env)
+        elif args.cycle:
             output = full_cycle(project, env)
             print(output)
         elif args.presets:
@@ -162,6 +237,15 @@ def main():
             execute(project, command + ['--preset-reopen'], env)
             manifest = json.loads((project / '.lab-presets-gate.json').read_text(encoding='utf-8'))
             output = execute(project, ['--windowed', '--resolution', '1600x900', '--max-fps', '30', '--script', 'res://tools/test_game_systems_lab_presets.gd', '--', '--preset-play', '--ember-library-encounter=res://content/combat/encounters/colored_crossing_demo.tres', '--ember-library-setup=' + manifest['request']], env)
+        elif args.effect_intent:
+            config = project / 'project.godot'
+            text = config.read_text(encoding='utf-8').replace('gl_compatibility', 'forward_plus')
+            text += '\n[display]\nwindow/size/viewport_width=1600\nwindow/size/viewport_height=900\n'
+            config.write_text(text, encoding='utf-8')
+            execute(project, ['--headless', '--editor', '--import'], env)
+            output = execute(project, ['--windowed', '--resolution', '1600x900', '--max-fps', '30', '--script', 'res://tools/test_combat_effect_conditions.gd', '--', '--effect-intent-play'], env)
+            related = execute(project, ['--windowed', '--resolution', '1600x900', '--max-fps', '30', '--script', 'res://tools/test_combat_lab.gd'], env)
+            if 'PASS combat lab' not in related: raise RuntimeError('related combat HUD gate did not complete')
         elif args.regressions:
             for test in REGRESSIONS:
                 output = execute(project, ['--headless', '--script', 'res://tools/' + test], env,
@@ -235,9 +319,11 @@ script = ExtResource("2_script")
                 if request.exists(): raise RuntimeError('runtime did not consume transient setup request')
             finally:
                 request.unlink(missing_ok=True)
-        elif args.editor or args.presets_editor or args.stability or args.start_editor:
+        elif args.editor or args.presets_editor or args.stability or args.start_editor or args.periodic_editor or args.stacks_editor:
             if args.presets_editor: env['EMBER_GAME_SYSTEMS_EDITOR_FOCUS'] = 'presets'
             if args.start_editor: env['EMBER_GAME_SYSTEMS_EDITOR_FOCUS'] = 'start'
+            if args.periodic_editor: env['EMBER_GAME_SYSTEMS_EDITOR_FOCUS'] = 'periodic'
+            if args.stacks_editor: env['EMBER_GAME_SYSTEMS_EDITOR_FOCUS'] = 'stacks'
             if args.stability:
                 env['EMBER_STABILITY_CYCLES'] = '12'
                 execute(project, ['--headless', '--script', 'res://tools/test_editor_filesystem.gd'], env)
@@ -252,10 +338,29 @@ script = ExtResource("2_script")
             text = config.read_text(encoding='utf-8').replace('gl_compatibility', 'forward_plus')
             text += '\n[editor_plugins]\nenabled=PackedStringArray("res://addons/ember_import/plugin.cfg", "res://addons/game_systems_gate/plugin.cfg")\n'
             config.write_text(text, encoding='utf-8')
-            output = execute(project, ['--editor', '--windowed', '--resolution', '1600x900', '--max-fps', '30'], env, timeout=240)
+            try:
+                output = execute(project, ['--editor', '--windowed', '--resolution', '1600x900', '--max-fps', '30'], env, timeout=240)
+                if args.periodic_editor or args.stacks_editor:
+                    config.write_text(text.split('[editor_plugins]')[0], encoding='utf-8')
+                    output = execute(project, ['--windowed', '--resolution', '1600x900', '--max-fps', '30', '--script', 'res://tools/test_combat_status_stacks.gd' if args.stacks_editor else 'res://tools/test_combat_periodic_statuses.gd', '--', '--stacks-play' if args.stacks_editor else '--periodic-play'], env)
+            finally:
+                if args.periodic_editor or args.stacks_editor:
+                    (project / 'content/combat/statuses/periodic_fixture_poison.tres').unlink(missing_ok=True)
         else:
-            if args.start:
+            if args.effect_conditions:
+                output = execute(project, ['--headless', '--script', 'res://tools/test_combat_effect_conditions.gd'], env)
+            elif args.enemy_instances:
+                output = execute(project, ['--headless', '--script', 'res://tools/test_combat_enemy_instances.gd'], env)
+            elif args.stacks:
+                output = execute(project, ['--headless', '--script', 'res://tools/test_combat_status_stacks.gd'], env)
+            elif args.footwear:
+                output = execute(project, ['--headless', '--script', 'res://tools/test_footwear_authoring.gd'], env)
+            elif args.periodic:
+                output = execute(project, ['--headless', '--script', 'res://tools/test_combat_periodic_statuses.gd'], env)
+            elif args.start:
                 output = execute(project, ['--headless', '--script', 'res://tools/test_game_start_authoring.gd'], env)
+            elif args.condition_groups:
+                output = execute(project, ['--headless', '--script', 'res://tools/test_combat_condition_groups.gd'], env)
             elif args.gear_conditions:
                 output = execute(project, ['--headless', '--script', 'res://tools/test_combat_equipment_conditions.gd'], env)
             elif args.conditions:

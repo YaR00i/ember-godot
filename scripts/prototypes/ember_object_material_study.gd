@@ -156,7 +156,7 @@ func apply_settings() -> void:
 					optical.set_shader_parameter("optics_cloud_deep",crystal_cloud_deep if role == "crystal" else ice_cloud_deep)
 
 			var material := node.get_active_material(surface) as ShaderMaterial
-			if material == null or material.shader == null or not material.shader.code.contains("ember_voxel_surface_light"): continue
+			if material == null or material.shader == null or not (material.shader.code.contains("ember_voxel_surface_light") or material.shader.code.contains("ember_voxel_toon_body.gdshaderinc")): continue
 			material.set_shader_parameter("surface_response_enabled", surface_response)
 			material.set_shader_parameter("surface_gray_preview", gray_preview)
 			material.set_shader_parameter("surface_roughness_scale", roughness_scale)

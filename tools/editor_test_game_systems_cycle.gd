@@ -111,6 +111,30 @@ func _run() -> void:
 	_check(_session.draft.definition.kind == "weapon_jrpg" and int(_session.draft.definition.atk) == 7 and int(_session.draft.definition.hpBonus) == 6, "weapon values lost at reopen")
 	await _capture("weapon")
 	_close()
+	_new("equipment", Fixture.SHOES, "Сапоги проверки")
+	_pick("ItemKind", "shoes")
+	_number("ItemMoveBonus", 1)
+	_number("ItemJumpBonus", 1)
+	_number("ItemPushResistanceBonus", 2)
+	_number("ItemWetResistanceBonus", 1)
+	await _frames(5)
+	var scroll := _hub.get("_detail").get_parent() as ScrollContainer
+	var number := _form.find_child("ItemMoveBonus", true, false) as SpinBox
+	scroll.scroll_vertical += roundi(number.global_position.y - scroll.global_position.y - 90)
+	await _capture("shoes-fields")
+	_form.find_child("GameSystemsItemDraft", true, false).call("_show_preview", true)
+	var fitting := _form.find_child("ItemEquipmentPreview", true, false)
+	var changes: Dictionary = fitting.get("_comparison").changes
+	_check(changes.get("moveRange") == 1 and changes.get("jumpHeight") == 1 and changes.get("pushResistance") == 2 and changes.get("statusResistances.wet") == 1, "footwear fitting differs from draft")
+	await _frames(5)
+	var table := fitting.find_child("EquipmentPreviewStats", true, false) as Control
+	scroll.scroll_vertical += roundi(table.global_position.y + table.size.y - scroll.global_position.y - scroll.size.y + 50)
+	await _capture("shoes-fitting")
+	if not _save_reopen("equipment", Fixture.SHOES):
+		await _finish()
+		return
+	_check(_session.draft.definition.moveBonus == 1 and _session.draft.definition.wetResistanceBonus == 1, "footwear properties lost at Save/reopen")
+	_close()
 	_new("item", Fixture.POTION, "Настой проверки", load("res://content/items/herb.tres"))
 	_number("ItemHpRestore", 4)
 	_number("ItemStackMax", 9)
@@ -124,6 +148,7 @@ func _run() -> void:
 	_session = _hub.get("_session")
 	_form = _hub.get("_draft_editor")
 	_pick("StartGear_mira_weapon", Fixture.WEAPON)
+	_pick("StartGear_mira_shoes", Fixture.SHOES)
 	_number("StartBagCount_coin", 27)
 	_pick("StartBagAddItem", Fixture.POTION)
 	(_form.find_child("StartBagAdd", true, false) as Button).pressed.emit()
@@ -137,16 +162,33 @@ func _run() -> void:
 	_new("status", Fixture.STATUS, "Метка проверки")
 	_number("DraftField_default_duration", 3)
 	_number("DraftField_incoming_damage_percent", 125)
+	_number("DraftField_turn_end_hp_change", -1)
+	_number("DraftField_max_stacks", 2)
 	if not _save_reopen("status", Fixture.STATUS):
 		await _finish()
 		return
 	_close()
 	_new("effect", Fixture.EFFECT, "Наложить метку проверки")
 	_pick("DraftField_status_id", Fixture.STATUS)
+	var conditional := _form.find_child("DraftField_target_forbidden_status_ids", true, false).find_child("DraftStatusChoice_burning", true, false) as CheckBox
+	conditional.button_pressed = true
+	_form.call("_undo_draft")
+	_check(_session.draft.target_forbidden_status_ids.is_empty(), "effect condition Undo failed")
+	_form.call("_redo_draft")
+	_check(_session.draft.target_forbidden_status_ids == PackedStringArray(["burning"]), "effect condition Redo failed")
+	var condition_field := _form.find_child("DraftField_target_required_status_ids", true, false) as Control
+	var condition_scroll := _hub.get("_detail").get_parent() as ScrollContainer
+	await _frames(5)
+	condition_scroll.scroll_vertical += roundi(condition_field.global_position.y - condition_scroll.global_position.y - 150)
+	await _capture("effect-conditions")
+	var forbidden_field := _form.find_child("DraftField_target_forbidden_status_ids", true, false) as Control
+	condition_scroll.scroll_vertical += roundi(forbidden_field.global_position.y - condition_scroll.global_position.y - 150)
+	await _capture("effect-conditions-forbidden")
+	_check(_form.get_combined_minimum_size().x <= _form.size.x + 1, "effect conditions form width overflow")
 	if not _save_reopen("effect", Fixture.EFFECT):
 		await _finish()
 		return
-	_check(_session.draft.status_id == Fixture.STATUS, "effect/status reference lost")
+	_check(_session.draft.status_id == Fixture.STATUS and _session.draft.target_forbidden_status_ids == PackedStringArray(["burning"]), "effect/status predicate reference lost")
 	_close()
 	_new("action", Fixture.ACTION, "Удар с меткой", Catalog.Actions.resource("strike"))
 	_number("DraftField_power", 8)
@@ -164,6 +206,32 @@ func _run() -> void:
 	(_form.find_child("DraftAddValueCondition", true, false) as Button).pressed.emit()
 	_pick("DraftEquipmentItem", Fixture.WEAPON)
 	(_form.find_child("DraftAddEquipmentCondition", true, false) as Button).pressed.emit()
+	(_form.find_child("DraftAddConditionGroup", true, false) as Button).pressed.emit()
+	var group_subject := _form.find_child("DraftConditionSubject", true, false) as OptionButton
+	group_subject.select(1)
+	group_subject.item_selected.emit(1)
+	_pick("DraftConditionStatus", "wet")
+	(_form.find_child("DraftAddCondition", true, false) as Button).pressed.emit()
+	group_subject = _form.find_child("DraftConditionSubject", true, false)
+	group_subject.select(1)
+	group_subject.item_selected.emit(1)
+	var group_presence := _form.find_child("DraftConditionPresence", true, false) as OptionButton
+	group_presence.select(1)
+	group_presence.item_selected.emit(1)
+	_pick("DraftConditionStatus", "frozen")
+	(_form.find_child("DraftAddCondition", true, false) as Button).pressed.emit()
+	_pick("DraftConditionGroupMode", "all")
+	_form.call("_undo_draft")
+	_check(_session.draft.condition_groups[0].mode == "any", "native group mode Undo failed")
+	_form.call("_redo_draft")
+	_check(_session.draft.condition_groups[0].mode == "all", "native group mode Redo failed")
+	_pick("DraftConditionGroupMode", "any")
+	await _frames(4)
+	var group_control := _form.find_child("DraftStatusConditions", true, false) as Control
+	var group_scroll := _hub.get("_detail").get_parent() as ScrollContainer
+	group_scroll.scroll_vertical += roundi(group_control.global_position.y - group_scroll.global_position.y - 30)
+	_check(group_control.size.x <= group_scroll.size.x + 2 and _hub.get_combined_minimum_size().x <= _hub.size.x + 1, "native group controls overflow form width")
+	await _capture("condition-groups")
 	if not _save_reopen("action", Fixture.ACTION):
 		await _finish()
 		return
@@ -171,6 +239,7 @@ func _run() -> void:
 	_check(_session.draft.actor_forbidden_status_ids == PackedStringArray(["frozen"]), "saved action predicate lost at reopen")
 	_check(_session.draft.value_conditions.size() == 1 and _session.draft.value_conditions[0].value == 1, "saved numeric predicate lost at reopen")
 	_check(_session.draft.equipment_conditions.size() == 1 and _session.draft.equipment_conditions[0].item_id == Fixture.WEAPON, "saved gear predicate lost at reopen")
+	_check(_session.draft.condition_groups.size() == 1 and _session.draft.condition_groups[0].mode == "any" and _session.draft.condition_groups[0].target_required_status_ids == PackedStringArray(["wet"]), "native saved OR group lost at reopen")
 	await _capture("action")
 	_number("DraftField_mp_cost", 99)
 	_close()
@@ -191,7 +260,7 @@ func _run() -> void:
 	_check(_session.draft.entries[0].item_id == Fixture.POTION and _session.draft.entries[0].minimum_count == 2, "loot row lost at reopen")
 	_close()
 	_new("unit", Fixture.ENEMY, "Страж проверки", Catalog.Units.resource("wisp"))
-	_number("DraftField_max_hp", 60)
+	_number("DraftField_max_hp", 40)
 	_session.set_value("action_ids", PackedStringArray(["defend"]))
 	_hub.call("_mount_draft")
 	_form = _hub.get("_draft_editor")
@@ -225,10 +294,23 @@ func _run() -> void:
 	_pick("DraftField_battlefield", Fixture.FIELD, "field_id")
 	_pick("DraftField_arena_scene", Fixture.ARENA, "resource_path")
 	_number("DraftField_victory_xp", 35)
+	for index in 2:
+		_pick("DraftRoster_enemy_unit_idsChoice", Fixture.ENEMY)
+		(_form.find_child("DraftAddRoster_enemy_unit_ids", true, false) as Button).pressed.emit()
+	_form.call("_undo_draft")
+	_check(_session.draft.enemy_unit_ids.size() == 2, "duplicate enemy Undo failed")
+	_form.call("_redo_draft")
+	_check(_session.draft.enemy_unit_ids.size() == 3, "duplicate enemy Redo failed")
+	await _frames(4)
+	var roster_control := _form.find_child("DraftField_enemy_unit_ids", true, false) as Control
+	var roster_scroll := _hub.get("_detail").get_parent() as ScrollContainer
+	roster_scroll.scroll_vertical += roundi(roster_control.global_position.y - roster_scroll.global_position.y - 40)
+	_check(_hub.get_combined_minimum_size().x <= _hub.size.x + 1, "enemy roster exceeds workspace width")
+	await _capture("enemy-instances")
 	if not _save_reopen("encounter", Fixture.ENCOUNTER):
 		await _finish()
 		return
-	_check(_session.draft.battlefield.field_id == Fixture.FIELD and _session.draft.enemy_unit_ids == PackedStringArray([Fixture.ENEMY]) and _session.draft.victory_xp == 35, "encounter composition lost at reopen")
+	_check(_session.draft.battlefield.field_id == Fixture.FIELD and _session.draft.enemy_unit_ids == PackedStringArray([Fixture.ENEMY, Fixture.ENEMY, Fixture.ENEMY]) and _session.draft.victory_xp == 35, "encounter composition lost at reopen")
 	_check(_session.draft.arena_scene.resource_path == Fixture.ARENA, "selected arena lost at Save/reopen")
 	await _capture("encounter")
 	_close()

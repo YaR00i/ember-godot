@@ -1,19 +1,27 @@
 [gd_resource type="Resource" script_class="EmberCompactTerrainPattern" format=4]
 
-[ext_resource type="Texture2D" path="res://content/terrain_materials/textures/cartoon_rock.png" id="1_mvjnh"]
+[ext_resource type="Texture2D" path="res://content/terrain_materials/textures/rock-painted-calm-v2-runtime.png" id="1_mvjnh"]
 [ext_resource type="Script" path="res://scripts/ember_compact_terrain_pattern.gd" id="2_yxbn6"]
 
 [resource]
 script = ExtResource("2_yxbn6")
 role_id = "stone"
-base_color = Color(0.43, 0.43, 0.39, 1)
+base_color = Color(0.5647059, 0.5764706, 0.5607843, 1)
 light_color = Color(0.46440002, 0.46440002, 0.4212, 1)
 shadow_color = Color(0.39560002, 0.39560002, 0.3588, 1)
 pixels = PackedByteArray("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==")
 albedo_texture = ExtResource("1_mvjnh")
+albedo_relief_enabled = false
+albedo_periodic = true
 side_pixels = PackedByteArray()
 relief_pixels = PackedByteArray()
 side_relief_pixels = PackedByteArray()
 roughness_pixels = PackedByteArray()
 side_roughness_pixels = PackedByteArray()
-pattern_size_m = 2.2
+pattern_size_m = 2.4
+style_rim_custom = true
+style_rim_enabled = true
+style_rim_strength = 0.5
+style_rim_width_mm = 10.0
+depth_mm = 20.0
+form_pull_mm = 30.0

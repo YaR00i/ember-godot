@@ -27,7 +27,7 @@ func _run() -> int:
 			printerr(" - ", error)
 		return 1
 	print("PASS combat status Resource")
-	print("  five canonical status .tres definitions own name, kind and visuals")
+	print("  canonical status .tres definitions own name, kind and visuals")
 	print("  effect validation rejects unknown status IDs")
 	print("  resolver facade rejects malformed runtime snapshots without mutation")
 	print("  native combat library exposes status cards and relations")
@@ -36,9 +36,9 @@ func _run() -> int:
 
 func _test_catalog(errors: Array[String]) -> void:
 	StatusCatalog.refresh()
-	var expected := PackedStringArray(["burning", "frozen", "guard", "overheated", "wet"])
+	var expected := PackedStringArray(["burning", "frozen", "guard", "overheated", "poison", "regeneration", "wet"])
 	if StatusCatalog.ids() != expected:
-		errors.append("status catalog does not expose the five canonical fixtures")
+		errors.append("status catalog does not expose the canonical fixtures")
 	for status in StatusCatalog.resources():
 		var validation: Array = status.call("validation_errors")
 		if not validation.is_empty():

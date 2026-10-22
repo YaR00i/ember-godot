@@ -322,7 +322,7 @@ func update_variation(model_id: String, context: Dictionary) -> bool:
 		error = "Исходная вариация больше недоступна."
 		return false
 	var expected := Generator.build(old_recipe, Color.WHITE, {}, old_source.display_name, model_id)
-	if expected.has("error") or expected.geometry.to_definition().get("model") != old_source.to_definition().get("model"):
+	if expected.has("error") or not _same_generated_source(expected.geometry,old_source):
 		error = "В исходнике есть ручные изменения или рецепт не совпадает. Сохраните новую вариацию; исходник не перезаписан."
 		return false
 	var scene: Node = context.root
@@ -375,6 +375,13 @@ func update_variation(model_id: String, context: Dictionary) -> bool:
 	undo.add_do_reference(self)
 	undo.commit_action(false)
 	return true
+
+
+static func _same_generated_source(a: EmberVoxelModelResource,b: EmberVoxelModelResource) -> bool:
+	var first: Dictionary=a.to_definition().model;var second: Dictionary=b.to_definition().model
+	var first_tree: Dictionary=first.get("treeSurface",{});var second_tree: Dictionary=second.get("treeSurface",{})
+	first.erase("treeSurface");second.erase("treeSurface")
+	return first==second and bool(load("res://scripts/ember_tree_surface.gd").same_values(first_tree,second_tree))
 
 
 func _apply_variation_update(edit: RefCounted, states: Array, asset: Dictionary,

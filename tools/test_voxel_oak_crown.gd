@@ -15,7 +15,7 @@ func check(value: bool, message: String) -> void:
 		push_error(message)
 
 func _run() -> void:
-	var presets := Generator.creation_presets(Generator.LARGE_TREE)
+	var presets := Generator.creation_presets(Generator.LARGE_TREE,true)
 	var oak: Resource = presets[1].recipe.duplicate(true)
 	check(oak.parameters.generation_version == 17, "new oak preset opts into lateral mature revision")
 	oak.parameters.generation_version = 8 # Preserve historical v8 geometry gates.

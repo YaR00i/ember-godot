@@ -306,6 +306,7 @@ func prepare_geometry_refresh(targets: Array) -> Dictionary:
 					var expected_mesh: ArrayMesh = defaults.nodes[path][field]
 					for surface in original_mesh.get_surface_count():
 						if original_mesh.surface_get_material(surface) != expected_mesh.surface_get_material(surface):
+							if _refresh_compatibility and path=="Mesh" and load("res://scripts/ember_tree_surface.gd").refresh_material_matches(original_mesh.surface_get_material(surface),expected_mesh.surface_get_material(surface),_baseline.to_definition().model,surface):continue
 							template.free()
 							return _result_error("Материал поверхности mesh изменён вручную. Модель пропущена.")
 					if _refresh_compatibility:
@@ -368,6 +369,7 @@ func _apply(states: Array[Dictionary], asset: Dictionary) -> void:
 					node.set_meta(key, values[key])
 				else:
 					node.set(key, values[key])
+		prop.refresh_solid_material()
 		prop.notify_property_list_changed()
 	if Engine.is_editor_hint():
 		if not states.is_empty(): EditorInterface.mark_scene_as_unsaved()

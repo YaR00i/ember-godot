@@ -274,6 +274,7 @@ func _refresh_equipment() -> void:
 		"  [выбрано]" if _mode == MODE_EQUIPMENT else "",
 		"\n".join(lines),
 	]
+	_equipment.text += "\n\nВ бою: MOVE %d · JUMP %d\nСтойкость к толчку %d · Мокрый: −%d хода" % [int(_view.get("moveRange", 0)), int(_view.get("jumpHeight", 0)), int(_view.get("pushResistance", 0)), int(_view.get("statusResistances", {}).get("wet", 0))]
 
 
 func _refresh_bag(rows: Array) -> void:
@@ -313,6 +314,11 @@ func _refresh_detail(rows: Array) -> void:
 		var row: Dictionary = rows[_bag_index]
 		_accessory_target.visible = str(row.get("kind", "")) == "accessory"
 		var stats: Array[String] = []
+		if row.get("kind", "") == "shoes":
+			var shoe: Dictionary = _item_definitions.get(str(row.get("itemId", "")), {})
+			for spec in [["moveBonus", "MOVE"], ["jumpBonus", "JUMP"], ["pushResistanceBonus", "Стойкость к толчку"], ["wetResistanceBonus", "Защита от Мокрого (ходы)"]]:
+				var value := int(shoe.get(spec[0], 0))
+				if value != 0: stats.append("%s %+d" % [spec[1], value])
 		if int(row.get("atk", 0)) != 0:
 			stats.append("atk %d" % int(row.get("atk", 0)))
 		if int(row.get("def", 0)) != 0:

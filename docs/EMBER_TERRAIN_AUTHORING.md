@@ -980,6 +980,926 @@ fade_near_m=6/fade_far_m=14 (export у depth study); будущий editor contr
 использовать их, не второй fade. Значения и бюджет в текущей пробе не менялись.
 Targeted исходной глубины и painted LAB regressions — прежние owners сохранены.
 
+### Пять пород в основном редакторе — перенос15–16 октября2026
+
+Проба двух обликов одного дуба16 октября описана ниже в этом разделе.
+Основной authoring-перенос Sol сохраняет свои owners и открытые gates.
+
+После уточнения пользователя согласован полный перенос пяти пород
+в основной редактор. В основной библиотеке лежат пять готовых Sources
+`vox_painted_savanna/oak/birch/maple/spruce` и их Recipe в прежнем editor-каталоге.
+Названия «… · рисованная основа»; существующие карты и ручные модели не заменены.
+Обычный генератор «Деревья» тоже выбирает принятые21/22/23/24/25 и их оформление.
+Дуб21/B/кора Б oak-v3-painted (перенос17 октября ниже) —885 cards/45%; берёза22 —388/60%; вытянутый клён23 —730/60%;
+саванна24 —382/60%; плотная ель25 —1328/60%,12 ярусов/13 сайтов верхушки.
+Форма/PNG/размещение пучков/макронормали сохранены, широко́й клён доступен как вариант.
+
+Приёмка автора16 октября: дуб, берёза, клён и ель приняты. Саванна остаётся
+пробой для доработки листвы и ветвления; её существующая редактируемая основа сохранена.
+Цвет коры дуба уточнён17 октября: принятая Б `bark_species_v1/oak-v3-painted.png`
+теперь назначена в editor/runtime; листва `leaf_cluster_atlas_v8_separate_leaves.png`
+и настройки B сохранены. Смена рисунка не меняет Source/форму/свет, глубина в LAB.
+
+Три облика: основной перенос реализует гладкие ветви и листовые плоскости. Исходные
+wood voxels и прежние voxel-деревья сохранены. Новый воксельный эквивалент дуба и
+пространственная граница проверяются в отдельной пробе ниже; основной world-look
+switch новых деревьев ещё не подключён. Одна пикселизация PNG не заменяет форму.
+Low poly пока не реализуется; после приёмки дуба — отдельный контракт.
+Общее правило фактуры — Product Plan → «Общая фактура материалов для трёх миров».
+
+Путь правки: Объекты → готовая основа → Редактировать → прежняя мастерская →
+«Генератор». Поля каркаса/ветвления и «Листва и свет» доступны в создании и правке:
+общая плотность, множитель выбранной основной ветви, глубина тона, приём теней,
+кромка вкл/выкл и индивидуальная сила коры/листвы. Нет второго редактора/системы пресетов.
+Изменение поля меняет черновик; тяжёлая сборка только по явному предпросмотру.
+Сохранение вариации/обновление экземпляров используют прежние действия и историю.
+Смена породы остаётся на принятом новом варианте; старые Recipe не обновляются молча.
+
+Данные и построение: Source schema7 добавляет опциональный `tree_surface` с опорами,
+версией, настройками, привязкой и отпечатком заполненности/покраски. Это опубликованная
+поверхность того же Source, не gameplay-ссылка на editor Recipe. Runtime не вызывает
+генератор: поддержка → прежняя геометрическая математика → bark/leaf surfaces.
+Recipe/Generator/GenerationPanel/RecipePanel остаются владельцами авторских параметров;
+Prefab/Store/Catalog/SceneAuthoring — публикации/библиотеки/экземпляров. См. Technical Handoff.
+Старая математика fixtures перенесена в общие `ember_tree_*` leaf-модули; LAB-входы —
+тонкие совместимые оболочки. Общий toon body один: небольшие shader entries задают
+только прежние defines, а prefab ссылается на общий shader asset, не копию его текста.
+`materials/ember_painted_tree_foliage.res` хранит принятые параметры/текстуры B.
+Световой край по-прежнему принадлежит существующему `material.object_surface.style_rim`.
+
+Привязка поддерживает центрированный ствол и положительную voxel-сетку collider.
+Листья не добавляются в collision; исходные wood voxels/маска остаются прежними.
+Palette/индексная покраска ствола переводится на гладкую поверхность. Ручная лепка,
+меняющая заполненность Source, показывает отредактированные воксели вместо старой
+декорации; обратное совпадение заполненности снова позволяет использовать опоры.
+Местные проценты привязаны к версии геометрии: смена seed/ветвей не переносит их
+на чужую ветвь. Нулевая плотность убирает всю листву; приём теней40% остаётся общим
+для внутренних/внешних теней. Избирательное подавление только своих теней не заявлено.
+
+Проверки: `test_tree_editor_transfer`, native editor gate, `test_painted_tree_runtime`
+и `capture_tree_editor_transfer`; результаты/открытые gates — в evidence ниже.
+Полный цикл включает библиотеку/создание, контрольные Source SHA, preview/commit,
+local/global Undo/Redo, save/reopen, обновление экземпляров, map roundtrip, discard,
+validation/0%, покраску и физическое попадание в видимый ствол. Runtime отдельно
+читает Sources/prefabs без LAB/Recipe. Native матрица —3 пресета×side/back×tree/game
+и настоящая внешняя тень; пол/трава/POM прежние. Шейдерная математика toon body при
+выносе не менялась. Исторические тесты старых1–17 используют explicit legacy presets.
+
+Визуальная граница: source/geometry/shader/PNG данные сверяются строго; у дуба после
+смены material instances измерено≤5 RGB8, среднее≤0.15 RGB8 по кадру. Это отдельно
+от строгого preview→published→reopen, где ожидается тот же вид. Другие породы имеют
+отдельный ограниченный numeric gate. Не объявлять LAB→main pixel-exact у дуба.
+Native editor-сценарий прошёл; при выходе smoke остались scan-aborted и2 ObjectDB
+instances warnings, без заявления об их исправлении. Личная проверка основного редактора/своей карты/F6/motion остаётся OPEN. Производительность
+на слабом ПК/массовом лесе не проверена; текстовые производные prefab пока крупные
+(в первой проверке примерно32–42МБ на вид). Ветер/LOD/forest/пикселизация вне среза.
+Evidence: `C:/Users/novos/Documents/Codex/2026-10-15/ember-tree-editor-transfer/`.
+Прежние художественные пробы ниже сохраняют свои исторические границы.
+
+### Три облика одного дуба — форма6.25см принята, геометрические листья OPEN
+
+Отзыв автора16 октября: мелкий voxel-облик6.25см нравится и выбран;12.5см остаётся
+контролем. Основной мир гладкий, превращения прежде всего локальные аномалии.
+По замечанию автора выполнена адресная правка световой кромки voxel-листвы.
+Native on/off подтвердил: общий shader/style_rim был подключён, но при расчёте
+по нормалям кубиков заметный вклад rim занимал лишь2076/2105 пикселей (side/back,
+вечер; delta>5RGB8). CUSTOM2 теперь несёт нормаль исходного пучка; общий rim
+использует её только для voxel-листвы. Диффузное освещение по-прежнему использует
+65% нормали грани/35% пучка, сила18%, PNG/цвет/формы/тени неизменны. После правки
+вклад занимает43595/17163 пикселя; это измерение конкретных кадров, не критерий
+художественной приёмки. `voxel_leaf_rim_form_weight=0` воспроизводит прежний свет,
+default1 — исправленную подачу. Выключение shadow cast проверялось лишь как
+диагностика и не применяется в сцене. Прежние PASS на сохранность не закрывали
+вид кромки; новую подачу ещё должен оценить автор.
+
+Согласованный low-poly срез реализован в том же `ember_tree_look_bake.build_faceted`.
+Древесина: прежние ветви/радиусы/сечения вдоль ветви,6 сторон вместо12 и плоские
+нормали. Общая Geometry.wood_mesh получила optional sectors=12: прежний путь неизменен.
+Крона: те же399 пучков/885 участков; каждый участок — тонкая форма с ромбическим
+контуром и двумя сгибами,8 треугольников, прежний alpha-атлас B. Это геометрическая
+перестройка, не один flat-shading flag; кора C без pixel-filter.13764 треугольника
+против58868 гладкого дуба. Автору нравится гранёный ствол; попросил добавить немного
+геометричности отдельным листьям, не менять ствол. Полная приёмка low-poly ещё открыта.
+Сохранённые пучки не означают одинаковое экранное
+покрытие: ромбический контур меняет края листовых участков. Общая декорация выводится
+из структуры Source без промежуточной вокселизации. Упрощение гладкой сетки остаётся
+запасным путём для объектов без опор, с защитой силуэта/материальных границ.
+
+Текущая проба формы листьев: `ember_leaf_shape_mask` автоматически выделяет96
+раздельных alpha-компонентов атласа B (512px), определяет оси и готовит фильтруемую
+RGB-карту расстояний до ромба/треугольника/вытянутого прямоугольника. Подозрительно
+слитные и тонкие формы пропускаются. Это производная, исходный PNG не меняется.
+`ember_tree_faceted_leaves` подключает тот же toon body; меняет только alpha,
+RGB/пигмент/общий свет/rim/приём теней прежние. В LAB доступны фигура и сила0–100%,
+кандидат по умолчанию — ромб70%. Ноль возвращает исходный кадр побитно; смена
+фигуры/силы меняет uniform без remesh. Ствол/399 пучков/885 участков/13764 triangles
+не менялись. Сила уменьшает площадь листа, поэтому экранная плотность не сохраняется.
+Это подрезка контура по фигуре, не точное преобразование каждого листа в правильный
+полигон с сохранением площади: часть исходных изгибов остаётся. Для последнего нужен
+перенос цвета на новый контур. Сплошные кора/камень требуют иной разметки элементов;
+универсальный преобразователь произвольных текстур не реализован.
+Маска синхронно строится один раз на PNG-путь и кэшируется на время процесса LAB;
+изменение PNG на том же пути требует перезапуска. Export/cache invalidation/настройки
+Source и editor Undo/save ещё не интегрированы. Это проба только дуба.
+`test_oak_three_looks`: deterministic mask/source PNG unchanged/mips/derived roundtrip
+PASS. `capture_oak_leaf_shapes`:18 camera/light combinations,6 вариантов обработки,
+72 точных before/return/smooth/voxel сравнений,12 camera frames; no remesh и прежние
+Source/collider/ground/grass PASS. Native Forward+, день/вечер/ночь × side/back ×
+whole/crown/game; неподвижные guards не закрывают ручную оценку мерцания.
+HTML/PNG/logs: `C:/Users/novos/Documents/Codex/2026-10-16/ember-oak-leaf-shapes/`.
+Художественная оценка формы и силы — OPEN; прежний отчёт трёх обликов сохранён.
+
+**Правило фактуры для изометрической камеры — решение автора17 октября.**
+Материалы должны быть мультяшными, с крупными чёткими рисованными формами,
+которые читаются с настоящей игровой камеры. Приоритет — крупные цветовые массы
+и уверенные границы; мелкое зерно, россыпь, частые вкрапления и размытые полосы
+не должны становиться основным рисунком. Сначала оценка на игровой дистанции,
+затем крупный план. Это уточняет прежнее направление «мелкое зерно грунта».
+Подробный master остаётся общим источником, явная квадратная структура — его
+воксельная производная. Принятые другие материалы без отдельного среза не менять.
+
+**Общее сравнение существующих материалов — LAB17 октября, art OPEN.**
+`tools/capture_environment_material_review.gd` использует прежние Soil/Grass/Road/
+Rock recipes и capture helpers. Дуб переключается через `set_material_style`:
+гладкий, прежний гранёный с маской ромб70% (ещё кандидат), voxel6.25см. Новых
+рисунков/алгоритмов геометрии нет; гладкая геометрия пола фиксирована, физика,
+Source/ручная покраска/расположение9493 пучков/дерево/его PNG сохранены. Грунт v4
+без новой глубины; камень Б POM4см/32, трава Б и дорога Б прежние.
+Forward+108 stills:6 cameras×3 presets×side/back×3 looks;180 реальных motion frames,
+36 точных возвратов,12 точных smooth v4 controls. POM on/off/return трёх обликов камня,
+rock Source save/reopen, no oak remesh, сохранность пола/коллизий/PNG PASS.
+4 tests: soil/grass look recipes, natural rock, oak three looks PASS. HTML selectors/
+links PASS; browser render не подтверждён, native PNG просмотрены. Общая приёмка,
+дорога/гранёные листья/личное движение/weak-PC остаются OPEN. Предварительное
+наблюдение: дорога днём заметно светлее окружения и теряет рисунок; адресную правку
+ещё согласовать. Общий production-конвертер, полный voxel-рельеф и аномалия не
+добавлены. Evidence: `C:/Users/novos/Documents/Codex/2026-10-17/ember-environment-material-review/`.
+
+**Оптическая глубина принятого грунта v4 — LAB17 октября, оценка автора отложена.**
+Автор согласовал пробу регулируемой глубины после принятия рисунка. Цветной
+PNGv4/масштаб/свет не менялись. `ember_soil_depth_recipe` создаёт отдельный height:
+мелкие мазки подавляются через64px, яркость крупных форм нормируется по8/92
+percentiles в0.28–0.72. Это контролируемая LAB-эвристика по принятому изображению,
+не готовая универсальная автоматическая высота для всех материалов. Обычный и
+гранёный используют один height; voxel — прежний pixel8, как у цвета.
+
+`SurfaceMaterials.compact_terrain_secondary_depth_shader` включает optional input
+того же terrain shader; `bind_compact_terrain_secondary_depth` задаёт отдельные
+height/coverage/slots/amplitude/sun. Координаты origin/steps/fade общие с прежним
+POM. Профиль грунт4/трава3 выбирается по прежним Smooth.material_weights fine16.
+В этой пробе валидировано, что его маска смешивает только3/4. Старый primary
+профиль камня и его параметры/текстуры/солнце сохраняются. На фрагмент выполняется
+один прежний ray search, не второй renderer/pass. При перекрытии secondary имеет
+приоритет; это ограниченный второй вход, не общий конвертер всех материалов.
+Выбор профиля упакован в знак существующего LOD из-за Forward+ varying limit;
+размеры footprint обоих материалов вычисляются до выбора, чтобы граница разных
+масштабов не давала ложный mip. Первоначальный GPU compile fail сохранён в логах,
+после упаковки native PASS. Default shader без опции сохраняет прежний маршрут.
+
+`capture_soil_depth` сравнивает0/0.008/0.016м (перепад карты до3.5/7мм),32 шага.
+Отчёт показывает реальные кадры при трёх уровнях; uniform материала регулируется
+плавно. Native162 кадра3 камеры×3 пресета×side/back×3 подачи×3 силы,270 motion
+frames;54 flat-контроля и90 motion-контролей совпадают с прежним v4 точно.
+Zero compiled path совпадает с исходником в3 обликах; возврат силы/облика точный.
+5 focused/regression tests PASS: height/immutable pigment/coverage corners,
+binding/validation/zero/Material Save-Reopen, прежние Source/paint/water/physics/
+picking/walking/serialization/texture mapping/surface layers. Форма/коллизии/
+навигация и принятое окружение прежние. Слабый ПК и личное движение OPEN.
+Автор17 октября отложил оценку; ни0.008м, ни0.016м не приняты. Возврат — игровая
+камера, три пресета/side-back и движение. Для следующего общего сравнения сохраняется
+принятый цвет v4 без новой глубины. Основной editor UI/перенос производных не сделаны.
+Evidence: `C:/Users/novos/Documents/Codex/2026-10-17/ember-soil-depth/`.
+
+**Рисованный грунт v4 — LAB17 октября, принят рабочей основой.**
+Автор: «вот хорошая». Рисунок, масштаб, близкие оттенки и общий свет сохраняем.
+После отклонения камуфляжной v3 автор согласовал пробу по дневной дороге Genshin.
+Референсы: `ember-genshin-ground-references/` — реальные кадры дороги/открытой земли;
+сторонняя работа Amanda Melville помечена отдельно. Два кадра переданы imagegen
+как визуальные ориентиры. Новый PNG `content/terrain_materials/textures/soil-painted-genshin-v4.png`
+содержит связную землю с близкими оттенками, широкими протёртостями и отдельными
+прерывистыми углублениями. Этот рисунок принят как основа следующей пробы глубины.
+
+`ember_soil_look_recipe.colour_image(size,revision)` воспроизводит procedural0,
+мелкий PNG1, камуфляжный PNG2 и текущий PNG3. Прежние файлы сохранены. Рабочий
+цвет256×256/0.6м; гранёная производная сохраняет границы без уменьшения разрешения,
+контраст65%; voxel8 — клетка7.5см. Старый calm12/35% доступен через colours(master,true).
+`capture_soil_derived_looks` сравнивает А=v3 и Б=v4 через существующий PNG bank/slot4
+и COLOUR_PROBE в том же terrain shader. Shader, исходные optical/roughness/finish/
+detail/surface/depth/light/rim/atlas данные и физическая поверхность сохранены.
+Новый цвет не становится новой высотой, прежний smooth soil optical height0.
+Следующий небольшой контракт — глубина по принципу брусчатки на принятом рисунке;
+он ещё не начат. Геометрия и физическая поверхность должны остаться прежними.
+
+3 focused tests и native Forward+ PASS:54 пары3 камеры×3 пресета×side/back×3 подачи,
+180 motion frames.54 кадра А и90 motion-контролей побитово совпадают с кандидатом v3.
+Source, геометрия, принятые камень/трава/дерево, дорога-кандидат и свет прежние.
+Игровая камера — первый ракурс приёмки; близкий вид/повторы/движение оцениваются
+дополнительно; полные motion/weak-PC gates остаются открытыми. Грунт soil_grain перенесён в editor/runtime отдельным цветовым срезом ниже;
+общий конвертер/полный трёхвидовой мир/аномалия вне среза.
+Evidence/промпт/полный исходник/референсы:
+`C:/Users/novos/Documents/Codex/2026-10-17/ember-soil-genshin-v4/`.
+
+**Грунт v4 в существующем editor/runtime — 2026-10-17.**
+Согласован перенос только принятого цвета; новая глубина остаётся в LAB.
+`soil_grain.tres` назначает `soil-painted-genshin-v4-runtime.png`: это точная256px
+копия принятого `ember-soil-genshin-v4/soil-top-0.png`, полученная существующей
+SoilRecipe.colour_image(256,3). Подробный1254px master сохранён неизменённым;
+размер рисунка0.6м, base/light/shadow/16×16 fallback и все прежние optical/roughness/
+finish/detail/rim/light поля сохраняются. Новый PNG проходит обычный Godot import.
+
+EmberCompactTerrainPattern получил optional bool albedo_periodic=false и
+albedo_relief_enabled=true (legacy defaults). Для грунта назначены true/false:
+принятый бесшовный цвет не становится новой высотой. SurfaceMaterials записывает
+тот же RGBAF png_lookup; signed role B<0 выключает luminance height/bump этого PNG,
+abs(B) сохраняет семантику роли/проекцию. Periodic A по-прежнему derived metadata,
+теперь формируется также из сохранённого поля, без LAB-only параметра вызова.
+Основной renderer один; POM и отдельные authored height/roughness не заменены.
+
+Прежний редактор PNG содержит две настройки с Undo/Redo, dirty/discard/save/reopen;
+они входят в прежние EDIT_FIELDS. Старые карты с ID soil_grain получают v4 при
+обычной загрузке; set_shared_material_pattern обновляет банк без remesh, новых
+назначений palette/Source и фоновой перезаписи авторских карт нет. Уже открытую
+сцену можно переоткрыть или сохранить материал через существующий редактор.
+Шесть focused tests PASS: soil editor transfer, Surface layers, compact patterns,
+texture mapping, material depth, soil look recipe. Проверены реальные PNG option
+signals/history, manual fallback paint Undo, save/reopen/discard, defaults/validation,
+exact accepted256px artwork, все прежние height/roughness/finish/light lookup bytes,
+не-грунтовые PNG lookup rows. Native Forward+:54 пары3 камеры×3 presets×side/back×
+3 подачи;54 B vs colour-only LAB matches pixel-exact,54 exact returns,108 motion frames.
+Обычный projection.set_shared_material_pattern обновил saved soil assignment без
+замены terrain mesh; Source/paint/height/collision/grass buffer/tree Source guards PASS.
+Прежний каменный POM on/off/return проверен отдельно. Native material editor capture.
+В новом процессе saved-terrain/saved-soil reopen и6 игровых кадров pixel-exact.
+Новые soil secondary POM inputs не подключены; гладкий — production, производные — LAB.
+
+Замороженный прежний terrain shader проверен в6 игровых случаях: только rounding
+на≤3 pixels/max2RGB8, mean≤0.00000301RGB8/frame; это не pixel-exact parity.
+Первый strict gate/diff сохранены, затем использован отдельный ограниченный gate
+≤32 pixels/max2RGB8. B vs LAB и same-shader returns остаются строгими exact gates.
+Личные F6/input/motion/weak-PC gates OPEN; browser render не подтверждён.
+Known UI gate: test_compact_material_dock ожидает302px; frozen/current minimum326px
+из-за прежних grass-light/style-rim switches. Новые PNG switches не увеличили
+минимум, ширина не исправлялась этим срезом. Evidence — width.log.
+Evidence/provenance: `C:/Users/novos/Documents/Codex/2026-10-17/ember-soil-editor-transfer/`.
+
+**Принятая основа травы — основной cartoon_grass17 октября.**
+Автор принял показанный перенос рабочей основой («ок, нормально, давай далее»).
+Личная проверка в основной игровой сцене/движении остаётся открытой.
+Точная256px копия embedded RGBA8 из неизменного painted_light_grass.tres экспортирована
+в grass-painted-base-runtime.png, без перерисовки/resize. Основной cartoon_grass
+получил base637f50/span2м и существующий grass_light профиль: enabled/low0.64/tint1,
+cool(0.96,1,1.04), warm(1.075,1,0.94), shadow(0.62,0.90,1.02), fill0.07.
+albedo_periodic=true/relief=false соответствуют периодической цветовой пробе без
+новой высоты; прочие authored pixels/side/relief/roughness/finish/rim сохранены.
+Новых controls/schema/шейдера нет: владельцы прежние Pattern/MaterialDialog/
+SurfaceMaterials/Projection. Сохранённые ID cartoon_grass обновляются обычной
+загрузкой; уже открытую сцену переоткрыть. Atlas refresh и light preview не remesh.
+
+Пучки в сравнении — существующий LAB: их mesh/количество/позиции/материал/тени
+не менялись. Новый runtime foliage-authoring и геометрические производные этим
+цветовым переносом не внедрены. Две производных цвета calm16/85% и pixel32(6.25см
+при span2м) проверены в LAB на прежней геометрии, не общий world switch.
+Последний1254px исходник в выбранном наборе заменён256px: существующий банк естественно
+собирается256×256 вместо1254×1254. Другие artwork/parameters точные, но их GPU
+resampling/mips могут отличаться; полная pixel-parity прочих слоёв не заявляется.
+
+10 targeted tests PASS: grass editor transfer/light workflow/surface layers/
+compact patterns/texture mapping/depth study/grass look recipe/stone-road-soil
+editor transfers. Native54 пары/54 exact LAB-colour replay/54 returns/108 motion.
+Source/paint/geometry/physics/scatter/tree guards PASS. Реальные native light
+controls меняют GPU lookup на месте; Undo/Discard exact, Redo работает, mesh прежний.
+Участок только с травой реагирует на реальные shadows во всех3 presets; возврат
+exact. Существующий POM4см/32 отдельно проверен on/off/return, новая глубина не включена.
+В новом процессе6 игровых кадров exact;6 кадров прежнего POM-стенда также exact
+относительно сохранённого переноса дороги. Старый отчёт не перезаписывался.
+Шейдер source byte-identical; guard использует прежний compiled resource.
+Личная приёмка/F6/input/weak-PC и старый UI width302/326px gate OPEN; commit/push нет.
+Evidence/provenance: `C:/Users/novos/Documents/Codex/2026-10-17/ember-grass-editor-transfer/`.
+
+**Производные принятой травы — LAB16 октября, Б принят рабочей основой.**
+Автор: «Сойдёт, давай далее»; дальнейшая полировка травы отложена.
+`ember_grass_look_recipe` получает прежние цвет/плоский пучок и выводит три подачи.
+Гладкий endpoint возвращает те же Image/ArrayMesh. Гранёный использует прежний
+calm16/85% и `EmberMaterialLookBake.grass_mesh` с7 вершинами вместо9. Voxel сохраняет
+прежнюю пикселизацию рисунка32 (6.25см при масштабе2м), но шаг контура уменьшен
+с6.25см до3.125см локально. Четыре coverage-пробы сохраняют тонкие детали;
+опциональный `preserve_height` ограничивает заполненный последний ряд исходной
+высотой. На текущем пучке старый крупный вариант терял кончик:12.5см вместо14см.
+Новый имеет14см при ширине25см (источник25.3см); это не увеличение scatter/плотности.
+Прежние defaults `grass_mesh` не изменены. Пучок остаётся двумя пересечёнными
+плоскостями; растровый контур не является объёмной voxel-решёткой.
+
+`capture_grass_derived_looks` наследует прежнюю матрицу и добавляет дальний ракурс.
+Дорога Б закреплена в обеих половинах как неутверждённый контроль; камень Б прежний.
+Геометрия земли/дерева/Source и физика сохраняются.9493 transforms/seed/count прежние;
+меняются prototype mesh и PNG-слот травы3 отдельно для земли и прежнего материала
+пучков. Общий shader/light/приём теней и остальные слоты/слои texture bank прежние.
+Диагностический slot helper дороги получил опциональные slot/pattern/id/span;
+defaults дороги сохранены, форматирование остаётся у Materials. Это LAB-привязка,
+не второй material owner/editor. Случайные масштабы исходных пучков не исправляются:
+реальный горизонтальный шаг1.06–3.69см, вертикальный4.11–6.96см; сетка локальная.
+
+`test_grass_look_recipe`, `test_material_shape_recipes`, `test_sand_road_recipe`
+PASS: identity/immutable inputs/determinism, высота/ширина/finite geometry/palette,
+отдельный заполненный верхний ряд. Native54 пары×А/Б:3 камеры×3 пресета×side/back×3
+подачи;180 кадров движения. Все18 гладких пар pixel-exact,6 игровых кадров точно
+совпали с предыдущей дорогой Б. Остальные36 пар демонстрируют производные. Старые
+карты дороги/камня и Source/геометрические stats точные; возврат и scatter guards PASS.
+Треугольники на пучок: гладкий44→44, гранёный28→20, voxel16→56. Бюджет леса/слабого
+ПК этим не доказан. Производные травы Б приняты; отдельный просмотр дороги,
+геометрические производные в основном editor/runtime, свой игровой проход и весь
+трёхвидовой мир остаются открыты. Цвет/свет покрытия перенесены отдельным срезом
+выше. Аномалия вне среза.
+Evidence: `C:/Users/novos/Documents/Codex/2026-10-16/ember-grass-derived-looks/`.
+
+**Рисованная дорога — Б принята рабочей основой17 октября.**
+Автор согласовал приглушение светлого тона/более читаемый крупный рисунок. Прежняя
+дорога Б16-го остаётся А; новый Б берёт неизменную принятую основу грунта v4 через
+`ember_sand_road_recipe.painted_image`. Отдельный базовый тон b9a47c (прежний d7c08c)
+назначается частной копии Pattern тем же Materials owner: shader нормирует PNG
+относительно его среднего, поэтому затемнение только картинки не решало бы задачу.
+Масштаб1.5м, faceted calm65% без resampling, voxel16/9.375см. Старые colour_image/
+variants и принятый soil master сохранены. Основной cartoon_sand теперь использует
+принятую Б, см. перенос ниже.
+
+`capture_road_painted_refinement` использует existing road_material и общее
+`capture_environment_material_review`: один optional hook выбирает4 камеры вместо6,
+default старой пробы прежний. Меняются только новый PNG-слой и lookup/tint слота2;
+другие слои/ячейки/finish/roughness/depth/coverage/grass-light/rim прежние. Native
+проверяет нулевой исходный pixel_relief дороги: новые мазки не создают высоту.
+Нового shader/schema/рельефа нет; Source/форма/коллизии/paint/grass/oak прежние.
+3 tests (sand road painted/soil recipe/material texture mapping) и Forward+ PASS:
+72 пары4 cameras×3 presets×side/back×3 looks,360 native motion frames,
+48 точных возвратов А/Б. Все54 повторённых контроля А совпадают с общим сравнением.
+POM камня on/off/return, rock Source save/reopen и no oak remesh PASS.
+Автор17 октября принял Б («В принципе пойдет… Выглядит уже всё так довольно
+цельненько»). Набор нравится как рабочее направление; финальная приёмка трёх
+обликов/личное движение/weak-PC остаются OPEN. Камень и кору дорабатывать отдельно:
+сдержанная рисованная фактура в духе Genshin, меньше мелких деталей. Форму/свет/
+принятые материалы сохранить, углубления — позднее. Последующие пробы камня/коры
+описаны в своих разделах; новая глубина не выбрана. Принятие дороги сохранено
+в manual-acceptance.json. Отчёт/контроли:
+`C:/Users/novos/Documents/Codex/2026-10-17/ember-road-painted-refinement/`.
+
+**Дорога Б — перенос в существующий editor/runtime17 октября.**
+`cartoon_sand.tres` назначает ту же принятую256px `soil-painted-genshin-v4-runtime.png`,
+что soil_grain; собственные base_color b9a47c и pattern_size_m1.5 сохранены как
+настройки материала. albedo_periodic=true/albedo_relief_enabled=false: новый цвет
+не становится новой высотой. Прежние fallback-рисунок, roughness/relief/finish/
+shadow/rim и общий свет сохранены. Нового PNG/шейдера/схемы/редактора нет.
+Сохранённые карты с ID cartoon_sand получают Б при обычной загрузке; уже открытую
+сцену переоткрыть. Обычный projection atlas refresh не меняет mesh/Source/paint/
+ширину/контур/коллизии. Редактор сохраняет tint/PNG controls и обычный history cycle.
+
+Исправлен общий сборщик PNG: resize/generate_mipmaps выполняются на duplicate
+изображения, а не на get_image() общего texture/cache. До исправления назначение
+одного PNG дороге и грунту меняло средний тон грунта в зависимости от порядка
+сборки. Test проверяет точные прочие lookup rows/means/tints и размер source256px.
+Legacy periodic fixture в texture_mapping задаёт false явно, независимо от
+новой authored настройки sand. Семь targeted tests PASS: road editor transfer,
+sand road painted, surface layers, compact patterns, texture mapping, depth study,
+soil editor transfer; Undo/Redo/discard/save/reopen и общий источник проверены.
+
+Forward+:54 пары3 cameras×3 presets×side/back×3 looks,54 точных LAB matches,
+54 точных возврата/108 motion frames; Source/physics/scatter/tree/POM on/off/return
+guards PASS. В новом процессе6 игровых кадров сохранённой дороги pixel-exact.
+Исторический близкий контроль грунта сравнивается отдельно с тем же sparse
+compiler-rounding bound≤32 pixels/max2RGB8; обычный cold reopen требует полного
+совпадения. Frozen shader controls дороги≤3 pixels/max2RGB8, не exact.
+Грунт:4 исторических кадра exact; в2 вечерних один пиксель травы(1,46)
+отличается на1RGB8, отдельная область грунта совпадает точно во всех6.
+Главный editor/runtime — smooth; две производных пока LAB. Новая глубина не
+подключена; личная игровая приёмка/weak-PC OPEN. Старый UI width gate302/326px
+сохраняется (см. перенос грунта). Изменения не закоммичены.
+Evidence: `C:/Users/novos/Documents/Codex/2026-10-17/ember-road-editor-transfer/`.
+
+**Песчаная дорога — три подачи общего цвета, LAB16 октября.**
+Согласованный срез продолжает принятый камень Б; меняет только пигмент дороги.
+`ember_sand_road_recipe` строит воспроизводимый периодический master1.5м: мягкие
+пятна и слабое зерно. Использует существующую чистую pigment math камня, не его
+цвет/height. `EmberMaterialLookBake.calm_variant` даёт12×12/30% для гранёного вида;
+`TerrainLook.pixel_image` даёт16×16 для voxel (квадрат9.375см). Оба производны,
+master не переписывается. Нового рельефа/roughness/геометрии дороги не добавлено.
+Production owner — прежний `EmberCompactTerrainPattern`/Pattern/Surface Canvas;
+первоначальная проба остаётся контролем; в `cartoon_sand.tres` теперь принятая
+рисованная Б17-го, описанная выше.
+
+`capture_sand_road_looks` наследует прежнюю матрицу камня. В LAB Materials owner
+форматирует/нормализует валидный частный песок; в копию terrain-материала добавляется
+его PNG-слой и меняются только lookup-ячейки слота2. Все прежние слои bank и остальные
+ячейки lookup побитово сохранены; depth/coverage/finish/grass-light/rim прежние.
+Это диагностическая привязка слота fixture, не новый production-конвертер материала.
+При смене подачи рок-материалы остаются принятыми Б; ground/grass/tree/collider прежние.
+
+Проверены `test_sand_road_recipe` и `test_material_shape_recipes`, native Forward+:
+детерминизм, периодичность/слабое зерно, alpha/mips, сохранение master, точные
+квадраты производной;36 пар А/Б (игровая/ближняя дороги×3 пресета×side/back×3 подачи),
+180 кадров одинакового прохода камеры, Source/save-reopen, POM камня on/off/return,
+точный возврат после смены материала.18 игровых контролей полностью совпали
+с предыдущим камнем Б; его Source/геометрия и три карты цвета/height прежние.
+Art/motion acceptance дороги OPEN. Три подачи материала дороги не доказывают
+готовность трёхвидовой земли; editor-перенос/аномалия/прежние physics gates вне среза.
+Evidence: `C:/Users/novos/Documents/Codex/2026-10-16/ember-sand-road-looks/`.
+
+**Процедурная стилизация материалов — лист/трава/камень, LAB16 октября.**
+Текущий результат — **одна пара материала камня и три производных подачи**.
+Автор принял геометрическую основу как достаточную для продолжения материалов
+с Sol; это не финальная приёмка всей формы B. `capture_rock_material_looks.gd` продолжает Source-first LAB:
+hash voxel-основы и все геометрические stats побитово прежние. `look_material`
+в `capture_rock_three_looks.gd` связывает вариант с материалом; default прежний plain.
+Источник — `ember_natural_rock_recipe.maps`: цвет/height природного камня2.4м,
+не брусчатка. В принятой основе16 октября крупные тональные массы заменяют частую
+цветовую разбивку; границы рисунка ясные с узким мягким переходом, цвет трещин мягче.
+`maps(size,0)` сохраняет контрольный цвет Astra, default revision1 — принятая основа16-го.
+`maps(size,2)` — текущий рисованный кандидат17-го из `rock-painted-calm-v2.png`;
+пигмент широких минеральных пятен создан built-in imagegen, линии прежних борозд
+добавляются тем же recipe с меньшим цветовым контрастом. Размер повтора прежний2.4м.
+Исходная карта height сохранена точно, включая mips. Авторский production owner — прежний
+Pattern/Surface Canvas, не новый редактор; текущая процедурная пара остаётся LAB.
+Обычный материал использует master. Low poly берёт `EmberMaterialLookBake.calm_variant`
+(12×12 фильтрация, контраст35%); height остаётся master. Voxel использует прежний
+`TerrainLook.pixel_image` на общей сетке16×16 для цвета/высоты: квадраты15см,
+геометрический voxel6.25см. Низкое разрешение упрощает и часть мелких трещин;
+не обещать точного сохранения каждой микродетали. Mips остаются включены.
+Приватные материалы камней используют stone-only coverage1: общий terrain mask
+не должен наносить дорогу/траву на отдельный камень. Геометрия грунта/трава/дерево
+и общий shader света не менялись. POM4см/32, вклад глубины on/off и точный return
+проверены во всех трёх видах. Направление солнца для POM синхронизируется при
+смене пресетов; есть день/вечер/ночь и вечерний контровой кадр с игровой камеры.
+`test_material_shape_recipes` (включая calm determinism/contrast/immutable input)
+и `test_natural_rock` PASS. Native Source/save-reopen/return/grass/depth/camera
+guards PASS. В предыдущем срезе Astra725 runtime/material/content files были
+защищены; текущая правка Sol ограничена LAB natural-rock recipe и capture/test/docs.
+Текущая проба — `capture_rock_painted_refinement.gd`, art OPEN. А — рабочая основа
+16-го (`ember-rock-texture-refinement/`), Б — новый рисованный master. Гранёный Б
+использует calm256/65% без resampling; voxel Б — прежний pixel16. Высота/все mips
+и три height-derivatives прежние, равно как Source/фит геометрии/свет/POM4см/32.
+Принятая дорога Б17-го, грунт v4 без новой глубины, трава Б и дуб фиксированы.
+
+Скрытая зависимость дальнего smooth baseline от яркости PNG разорвана только
+в прежнем optional `EMBER_MATERIAL_COLOUR_PROBE` пути: colour_probe_height_slot=1/
+colour_probe_height_png задают старые bank layer/span/periodic metadata для
+slot_optical_height; новый albedo берётся из добавленного слоя. Старые слои bank
+не меняются. При -1 путь прежний; без macro uniforms/branch не компилируются.
+Ни нового renderer, ни другого света/height solver/schema нет; primary POM height
+текстура/карты/параметры и шероховатость прежние. Ближний и дальний рельеф сохранены.
+
+5 tests PASS: rock painted pigment/natural rock/depth study/texture mapping/soil
+recipe. Native Forward+54 пары (игровая/дальше/крупно×3 presets×side/back×3 looks),
+360 реальных motion frames,36 точных возвратов А/Б,9 compiled-zero cases. Все36
+повторённых А совпадают с прежней пробой принятой дороги. POM on/off/return,
+Source save/reopen/geometry/physics/grass/oak guards PASS. PNG/provenance/full prompt
+сохранены: `C:/Users/novos/Documents/Codex/2026-10-17/ember-rock-painted-refinement/`.
+Автору нравятся pigment/мазки, но он попросил связать их с аккуратной глубиной.
+Согласованная проба `capture_rock_paint_relief`17 октября готова, art OPEN:
+А — прежний новый pigment с линиями/old height, Б — raw master без линий и рельефа,
+В — те же точные colour bindings Б с малой высотой. Большая геометрия неизменна;
+мазки непрерывны в метрической проекции и могут пересекать много полигонов.
+
+`NaturalRock.painted_image/painted_structure` берут неизменный PNG. Height guide:
+32px broad warmth(r-b), periodic binomial smoothing, percentiles10/90,3 мягких
+уровня, диапазон0.25–0.75; periodic bilinear output256/mips. Это первая художественная
+эвристика тёплых/холодных минеральных пятен, не яркость→физическая высота. Кэш
+ключуется версией/байтами входа, изменённый PNG его инвалидирует; возвращается копия.
+SPAN2.4м прежний, faceted calm256/65%, voxel16 для обеих карт. Trace range6мм,
+actual span до3мм. Смена силы и облика не перерисовывает master.
+
+Один input material_depth_height управляет POM и fallback normal через прежний
+optional COLOUR_PROBE: colour_probe_shared_height=true, slot1. Общая амплитуда с
+fade/facing передаётся из fragment в slot_optical_height аргументом; новых varying
+нет. Для shared-height на стенках снят прежний top-only normal fade; дистанционный
+fade тот же, что у POM. Старый путь/normal PNG override сохраняется при flag=false.
+Source/collision/nav/paint/ground/road/grass/oak/общий свет прежние. Это optical
+relief, не преобразование silhouettes/Source и не per-polygon atlas.
+
+6 tests/финальный Forward+ PASS:54 cases×3 variants=162 stills,540 camera frames,
+108 реальных sun-rotation frames,54 точных returns и3 zero→flat. Кэш bake_count1;
+Source save/reopen/geometry/physics/other material guards PASS. Повторённые54 А
+сверены с прежней пробой; сборки не pixel-exact: mean≤0.0003RGB8, отдельные pixels
+на камне до30RGB8, exact metrics в verification. Начальные compile failures
+(CAMERA_POSITION_WORLD в helper/global temporary) сохранены; исправлено явным
+аргументом без varying. HTML/native/metrics: `C:/Users/novos/Documents/Codex/2026-10-17/ember-rock-paint-relief/`.
+Автор17 октября оценил пробу положительно («неплохо получилось, мне нравится»),
+но отложил личную оценку. Возврат — выбор Б/В, силы и направления relief при
+движении солнца/камеры. Новый3мм рельеф/эвристика ещё не приняты. Цвет камня
+перенесён отдельным срезом ниже; кора Б дуба уже в основном editor/runtime
+(см. раздел коры). Art/личное движение/weak-PC и универсальная подготовка всех
+материалов OPEN; подробный исходный арт/height и авторские карты не заменены.
+Новая глубина камня пока в пробе выше; прежняя рабочая основа16-го сохранена.
+Единый стиль трёх конечных видов предшествует движущейся сфере аномалии;
+порядок и требования — Product Plan → «Общая фактура материалов для трёх миров».
+Обычный рисунок спокойнее и угловатее, low poly минимален, voxel крупнее. Статические координаты
+мировые; object-local привязка для движения, бесшовный morph и ручные поправки
+не реализованы. Общая production-интеграция и прежние физические gates открыты.
+
+**Принятая форма и рисованный цвет камня — перенос в основной путь17 октября.**
+Ранние stone/grass editor-transfer отчёты показывали только новый цвет на старой
+сглаженной форме. Они сохранены как прежние цветовые проверки и не являются
+общей приёмкой камня. После разрешения автора «давай править» перенесена именно
+принятая группа из rock-source-breaks: canonical Source —
+`content/voxel_models/vox_painted_rock_group.tres`, обычный объект библиотеки.
+Occupied voxels и voxel_part_ids всех шести масс точны относительно принятого
+common-rock-source.res. Опциональный solid_surface в том же Resource содержит
+направления плоскостей по merge parts и occupancy reference; расстояния опор
+вычисляет общий чистый ember_voxel_solid_surface. Prefab/preview/cache bypass/
+signature используют существующий сборщик, основной terrain shader и cartoon_stone.
+В общей сцене это экземпляр обычного library prefab, не копия mesh вне библиотеки.
+Бинарные vertex buffers переносятся без повторной упаковки normals. Материал на
+экземпляре перечитывает основной Pattern; существующий preview_shared_material_light
+маршрутизирует силу кромки в его отдельный GPU lookup без remesh.
+Mesh и collider используют одни треугольники; Map floor queries берут их же с учётом
+трансформации, compact navigation обновляет свои высоты и cache при изменении объекта.
+Режим света наследуется от карты. Ручная правка occupancy снимает опубликованный
+hull и использует точную воксельную геометрию; произвольный smooth-конвертер этим
+не объявляется готовым. Canvas отслеживает/сохраняет/отменяет solid_surface отдельно
+от Source voxel edits, копирует PackedVector3Array без aliasing. Новый UI/renderer/
+набор пресетов не добавлены. Ручная покраска земли и данные прочих объектов сохранены.
+
+Обычная общая сцена — `scenes/compact_environment_material_review.tscn`; земля
+принадлежит `content/world_terrains/material_review_ground.tres`. В Source понижены
+1619 колонок прежних каменных бугров, а не спрятан их collider. Камни, принятый дуб,
+трава9493 пучка, грунт v4 и дорога находятся вместе. Массивы производных mesh/shape/
+grass сохранены сжато в prefabs/voxels/meshes/environment_review_*.res; это не Source.
+Runtime/F6 сцены не запускает LAB shape/foliage recipes. WASD/ПКМ — обычные Player/
+FollowCamera; 1/2/3 и L вызывают существующие световые пресеты/направления.
+
+`test_rock_shape_transfer`: 372 треугольника, максимальное расхождение опорных
+вершин с LAB1.823мм (gate2мм при fine-cell62.5мм), Source identity, отрицательный
+контроль без профиля, editor transaction/Undo/Redo/save/reopen и validation.
+Forward+:12 кадров после reopen +12 точных cold replay; отдельные общий/игровой/
+ближний виды в трёх пресетах и двух направлениях. Physics rays на6 камнях совпадают
+с Map floor до0.1мм; повёрнутый объект и реальная капсула на верхней грани проверены,
+навигация не использует старую округлую высоту. Настоящие тени реагируют и возвращаются
+точно. Actual native editor: общая сцена, Canvas Save/Undo/Redo/Discard и scene Save.
+Evidence — `C:/Users/novos/Documents/Codex/2026-10-17/ember-rock-shape-transfer/`.
+Личная визуальная приёмка/F6, weak-PC, универсальное извлечение формы и общее
+переключение трёх миров остаются OPEN. Старые heightfield-скалы других карт сами
+не превращаются в новый объект. Новую POM-глубину этот перенос не включает.
+
+**Кромка и привязка рисунка камня — 20 октября.** Причины: у cartoon_stone не было
+style_rim_*, а старая кромка камня жила только в LAB-пути painterly_enabled (слот 1);
+рисунок проецировался по мировым осям с выбором оси по нормали грани, поэтому ось
+менялась на 60% длины рёбер (124 м) и «плыла» при сдвиге/повороте. Теперь
+ember_voxel_solid_surface.build пишет CUSTOM0 = форма нормали (сглаженная по вершинам
+части; свет и коллайдер остаются на гранях), CONTRACT v2; material_for включает
+solid_projection_mode=1 (проекция в локальных координатах по нормали формы, 2 выборки,
+solid_facet_bias 0.35 против полос на крутых скосах), solid_form_rim и solid_local_unit_m
+(Prop берёт block_world_size). Старые меши без solid_form_contract выглядят как раньше;
+флаги по умолчанию выключены, остальные поверхности терминала не затронуты. cartoon_stone:
+style_rim_custom/enabled, сила 0.5 и узкая полоса solid_rim_edge (0.17..0.21; общая
+шаблонная 0.10..0.32 у остальных поверхностей прежняя); рядом остаётся общий
+выключатель карты. Проба и отвергнутая развёртка граней (37% непрерывной длины против
+40% сейчас) — ember-rock-form-probe/form-measure.json. Не сделано: глубина/POM камня,
+независимая height-карта в Pattern, другие материалы/объекты, low poly/гладкий builder,
+личная приёмка и weak-PC. Известное: на крутых скосах возможны лёгкие полосы растяжения.
+
+Кромка как рамка по силуэту (20 октября, по замечаниям автора: свет не должен заливать
+текстуру и не должен идти линиями внутрь фигуры): build пишет CUSTOM1..3 = расстояния до
+выпуклых рёбер оболочки и нормали соседних граней (CONTRACT v4; вогнутые/плоские рёбра
+игнорируются). Вершинный шейдер оставляет ребро, только если эта грань смотрит на камеру,
+а соседняя — от камеры; фрагмент ограничивает кромку полосой style_rim_width_mm материала
+(Pattern, 0–50 мм; слайдер «Ширина рамки» в окне паттерна, Undo/Save/Discard; в GPU lookup
+alpha) с нижним пределом solid_rim_min_px=1.5 пикселя. Ширина 0 или нет данных — прежняя
+полоса по нормали формы 0.10..0.32. Кадры ширин 0/4/10/20 мм — ember-rock-form-probe/options/,
+sil-west.png/sil-close.png.
+
+Облики камня (клавиши 4/5, 20 октября): EmberVoxelProp.set_solid_look и
+ember_voxel_solid_surface.build_voxel_look. Воксельный облик — квадрат на каждую
+открытую грань вокселя Source (11094 граней/22188 треугольников, сборка ≈0.15 с, один
+раз и в кэше), тот же материал и слот краски; solid_pixel_cells читает рисунок один раз на
+воксель. Только отображение: collider/floor остаются на выпуклой оболочке (оболочка
+⊇ вокселей, расхождение видно у самой земли). Low poly — прежняя оболочка, возврат
+по кадрам точный. Переключатель — developer harness в review-сцене, не production world switch.
+
+Подробный облик (клавиша 6, 20 октября) = тот же low poly + оптическая глубина из рисунка, не
+сглаживание и не геометрическая мозаика (пробы скругления smooth-*.png и мозаики граней/трещин
+detail-*.png отклонены автором). Высоту выводит чистый leaf ember_material_height: тон рисунка →
+высота (мягкая основа, шаги только на сильнейших краях); Pattern.depth_mm (cartoon_stone 20 мм
+суммарно, 0 = нет), depth_softness (2.5 px), depth_sharpness (0.1 ≈ несколько изломов; 0.8 —
+«мятый»), ползунки в окне паттерна, амплитуда живая, карта пересчитывается на отпускании.
+Вариант C2 принят автором. Шейдер: тот же terrain shader с #define EMBER_SOLID_DEPTH (только
+look 6; low poly и воксели без цены глубины): поиск POM в мировых координатах, высота читается
+в локальных (solid_depth_world_to_local ставит Prop, следит за transform; те же object-local
+веса, что у цвета), без новых varyings (material_depth_light/lod используют fragment-only
+varyings). Измерено на пробе: кадр близкого плана 1.8 → 3.3 мс (RTX 5070, весь экран;
+слабый ПК не измерен). Коллайдер/пол/Source прежние. Открыто: движение камеры/мерцание, низкие
+углы, weak-PC.
+
+«Живые» грани подробного вида (20–22 октября, вариант O1 принят автором): у плоской оболочки грани
+слишком ровные, поэтому в look 6 каждая грань перестраивается точками ~14 см, а её внутренность
+сдвигается по нормали за тем, как Source реально «дышит» за гранью (размытая заполненность,
+шаг внутрь), с пределом Pattern.form_pull_mm (cartoon_stone 30 мм, 0 = плоская грань, 0..60).
+Смещение гаснет к рёбрам оболочки и к линиям, где оболочка другой части режет грань, поэтому
+силуэт, рёбра и collider точны, а тёмных пятен на пересечениях частей нет. Нормаль формы берётся
+из прежней оболочки (оси проекции рисунка и кромка не меняются). Это отображение: пол/collider
+остаются на оболочке (surface_floor_sample читает оболочку, а не облик), Source не меняется.
+Сборка ≈0.4 с на первом включении (111 граней, 4676 треугольников против 372), результат в
+кэше по Source+масштаб+притяжение; ползунок в окне паттерна пересобирает грани на отпускании.
+Это не сглаживание и не мозаика трещин (обе пробы отклонены); лоу-поли остаётся единственной
+формой, а воксельный Source — единственным хозяином. Обратное направление (модель → воксели) —
+возможный отдельный импорт позже; два равноправных хозяина формы не вводятся.
+
+Согласован цветовой перенос raw paint из Б/В `ember-rock-paint-relief`, без новой
+height-эвристики/рельефа до3мм. `cartoon_stone.tres` теперь назначает точную256px
+копию paint-0.png — `rock-painted-calm-v2-runtime.png`, тон90938f/масштаб2.4м.
+Подробный1254px master и старый cartoon_rock.png неизменны. albedo_periodic=true,
+albedo_relief_enabled=false: новые мазки не становятся высотой из яркости.
+При цветовом переносе прежние pixels/side/relief/roughness/finish/light/rim,
+Source/геометрия/физика и ручная покраска были сохранены; перенос формы описан выше. Существующие MaterialDialog/Pattern/SurfaceMaterials
+владеют авторингом/сохранением/банком; новых UI controls/schema/renderer нет.
+Новые и сохранённые назначения cartoon_stone обновляются при обычной загрузке;
+уже открытую сцену переоткрыть, обычный atlas refresh не пересобирает mesh.
+
+Обычный cartoon_stone и раньше имел pixel_relief0 и не подключал POM. Этот срез
+сохраняет такое поведение. POM4см/32 проверен отдельно в прежнем стенде: его
+height/coverage/амплитуда прежние, on/off/return PASS. MaterialDepthStudy явно
+закрепляет legacy PNG flags при назначении собственного старого stone_color.png,
+чтобы не унаследовать новый colour-only flag основного материала. Это сохранение
+пробы, не автоматическое включение POM на основных картах и не новый height bake.
+
+Восемь focused tests PASS: stone editor transfer, surface layers, compact patterns,
+texture mapping, depth study, rock paint relief, road/soil editor transfers.
+Проверены exact raw artwork, валидность, tint/PNG controls/manual paint Undo/Redo,
+Discard/Save/Reopen, отдельные высота/матовость и прочие lookup inputs.
+Capture переиспользует soil transfer harness с hooks: основной current — реальный
+projection material, А — прежний Resource, Б — новый, LAB replay цвета через
+тот же неизменный renderer; производные65%/pixel16(15см) только LAB. Геометрия
+земли в этой матрице постоянна. Native54 пары/54 exact replay/54 exact returns,
+108 motion frames; guards Source/paint/physics/grass/tree и отдельный POM PASS.
+В новом процессе6 игровых кадров камня exact; ещё6 кадров прежнего стенда
+с POM совпали точно с сохранённым переносом дороги (контроли скопированы отдельно,
+прошлый отчёт не перезаписывался).
+Shader source byte-identical; source-guard повторно использует compiled resource.
+Первая независимая перекомпиляция дала2 edge pixels/max9RGB8; исходный failed
+лог сохранён, это не объявляется точным сравнением старого shader binary.
+Личная игровая приёмка/weak-PC/выбор новой глубины и общий world switch OPEN;
+старый UI width302/326px gate прежний. Изменения не закоммичены.
+Evidence: `C:/Users/novos/Documents/Codex/2026-10-17/ember-stone-editor-transfer/`.
+
+Геометрическая основа — **два крупных боковых скоса в общей воксельной форме**.
+Выемки внутри прежних плоскостей отклонены. Проверка профилей исходных слоёв
+дала слишком ровный камень: генератор задаёт несколько больших плоскостей,
+ступеньки преимущественно кодируют их наклон; сложного рисунка изломов B мало.
+Автор явно разрешил добавить изломы в общую voxel-форму и пересобрать все три вида.
+`capture_rock_surface_detail.gd::source_volume` меняет частный LAB Resource:
+два наклонных полупространства удаляют8.9/7.7% клеток двух больших масс.
+Другие четыре voxel-массы неизменны; старый сохранённый fixture не перезаписан.
+Габариты occupancy меняются максимум на одну fine16 ячейку(6.25см); это не
+предел глубины среза и не пиксельное сохранение прежнего силуэта. Положение и
+характер основного наклона сохранены, прежняя native-проверка допуска2° PASS.
+`fitted_look` получает направления новых срезов из того же LAB-рецепта, но
+расстояния всех опорных плоскостей заново измеряет по углам занятых вокселей.
+Готовая аналитическая сетка не вокселизуется. Это рецепт с известными направлениями,
+не общий алгоритм извлечения произвольных граней из occupancy.
+`capture_rock_three_looks.gd::faceted_look` — новый узкий hook, default прежний;
+его override сохраняет крупные скосы и в гранёном виде. Обычный/гранёный большие
+камни имеют20/16 плоскостей,68/52 треугольника. Все треугольники грани копланарны
+и используют одну нормаль. VoxMesher без изменений показывает новую occupancy.
+`test_rock_surface_detail`: deterministic Source, только разрешённые изменения
+двух масс, совпадение с independently regenerated native Resource, замкнутость
+обоих mesh по парным ориентированным рёбрам, общие наклоны и габариты PASS.
+Native save/reopen/return-frame/Source/grass/depth/camera guards PASS;
+727 runtime/material/content hashes прежние. HTML A/B + полные кадры проверены.
+Сравнение: `C:/Users/novos/Documents/Codex/2026-10-16/ember-rock-source-breaks/`.
+Форма принята как рабочая база для материалов: вместо карманов читаются
+диагональные скосы. Полное соответствие B не заявлено. Физика и аномалии
+не интегрированы; материалы проверены в последующем статическом LAB выше.
+Исследованы подходы: CGAL Polygonal Surface Reconstruction (плоскости и их
+пересечения; необходимы поддержанные исходником особенности) и Dual Contouring
+of Hermite Data (острые особенности через Hermite-пересечения/нормали). Здесь не
+внедрены CGAL/MIP или полный DC; бинарная occupancy сама не содержит Hermite data.
+Источники: https://doc.cgal.org/latest/Polygonal_surface_reconstruction/index.html ;
+https://www.cs.rice.edu/~jwarren/papers/techreport02408.pdf .
+
+Основа сравнения — **три облика одного камня без текстуры, из общей occupancy**.
+Автору понравился наклон боковых граней; теперь сравниваются обычный детальный,
+гранёный и воксельный виды. `tools/capture_rock_three_looks.gd` продолжает
+`capture_rock_solid.gd`, не меняя production-генераторы, Surface Canvas или материалы.
+Из исходных fine16-колонок шести известных масс fixture создаётся один частный
+`EmberVoxelModelResource` с merge_parts/voxel_part_ids. Source сохранён в отчёте
+как `common-rock-source.res`; это контрольный LAB-ресурс, не новый production owner.
+Все три результата строятся из его занятых ячеек; готовая гладкая сетка не
+вокселизуется обратно. Воксельный меш использует существующий `VoxMesher`.
+Обычный детальный вид использует18 опорных плоскостей, включая дополнительные
+верхние диагональные срезы; гранёный —14 основных. Направления боковин вычисляются
+по наружным границам занятых колонок на20–70% высоты; они одинаковы для двух
+неступенчатых видов. Наклон больших масс близок к принятой пробе, отклонение<2°.
+Плоские нормали и острые рёбра сохранены; различие обычного/гранёного намеренно
+небольшое, автоматическое округление не применяется. Воксели имеют размер6.25см.
+Все варианты используют один plain stone material существующего shared shader:
+без рисунка/POM для оценки формы. Трава, дневной свет, Source и глубина Сола прежние.
+Native Forward+/validation/save-reopen с сохранением merge ownership/immutable
+Source/одинаковая камера/точный возврат кадра/grass/depth/SHA-256 guards PASS.
+HTML показывает три одинаковых фрагмента игрового кадра рядом; по клику полный кадр.
+`C:/Users/novos/Documents/Codex/2026-10-16/ember-rock-three-looks/` — PNG, Source, logs.
+Ограничения: сегментация fixture задана заранее; выпуклые плоскости не сохраняют
+произвольные вогнутости. Расстояние между соответствующими углами AABB voxel/faceted
+до26.7см; это НЕ измерение максимального отклонения поверхностей и не PASS точности.
+Колонки и вершина общие, но крупные грани лишь приближают ступенчатую форму.
+Collider/floor/navigation отдельных тел НЕ интегрированы. Не переносить оболочку
+поверх прежней физики в gameplay. Art/точность/переход остаются OPEN.
+Следующая граница — оценка локальных изломов обычного вида; материалы и общую интеграцию не начинать.
+
+Предыдущая проверка — **существующие правила скругления формы**.
+Автор отверг natural-rock: форма слишком округлая относительно исходного B.
+`capture_rock_form_rules.gd` сравнивает базу с `SurfaceRules.round_code(1,1)`
+и `protect_code(0.75)` на каменных колонках частной копии текущего Source.
+`Smooth.field/build` и `apply_study_smooth_tile` меняют mesh/collision/floor вместе;
+это не отдельная видимая оболочка над прежним полом. Правила и высоты авторской
+карты на диске не меняются, трава/материалы/остальные облики сохранены.
+День/вечер, боковой свет, камень целиком/игровая камера; исходный B рядом в HTML:
+`C:/Users/novos/Documents/Codex/2026-10-16/ember-rock-form-controls/`.
+Малый радиус возвращает более чёткие кромки; защита75% проявляет ступеньки fine16.
+Широкие сколы и разделение масс из B не появляются от одного ослабления фильтра.
+Этот контроль показал необходимость правки Source, согласованной и выполненной выше.
+Нельзя считать малую ошибку аппроксимации доказательством
+правильной художественной основы. Общий smooth мир допускает скальные грани.
+Правила формы не потеряны: owner и редактор описаны выше в «Ручные правила…».
+В цепочке diorama `_prepare_rock_field` лишь ждёт тайлы и не применяет отдельную
+однопроходную stone-подготовку painted LAB; это не отключает Source.surface_rules.
+Проверки PASS: `test_terrain_surface_rules`, Forward+12 кадров/4 точных возврата,
+камера/Source/grass/POM-source guards, mesh/collision расходятся не более3.13мкм
+из-за округления `ArrayMesh.get_faces`; floor использует то же поле. HTML8 пар/B/zoom
+проверены. Правила применены к1619 колонкам; изменение поля до25см/39см соответственно,
+поэтому одновременно обновлена физика. Это LAB-проба, не опубликованные настройки карты.
+
+Предыдущая проба камня — **`compact_natural_rock_study`**. Автор отверг потерю формы
+на равномерных50см гранях и блеклый рисунок кладки. `painted_light_stone` действительно
+выведен из брусчатки Сола со12% исходных различий цвета; ресурсы сохранены отдельно.
+`ember_natural_rock_recipe` теперь строит периодическую пару colour/height256²:
+крупные тональные пятна и отдельные открытые ломаные трещины; span2.4м. POM solver,
+4см/32steps и общий light/rim неизменны, height принадлежит новому природному рисунку.
+Faceted colour обрабатывается прежним recipe, voxel colour/height — совместная32²
+сетка. Эта пара пока runtime-derived LAB, не новый каталог/Source schema/editor.
+
+`TerrainLook.adaptive_heights`: Delaunay-опоры на границе тайла и сетке8, затем
+добавление точки наибольшей ошибки каждой плоскости до допуска0.6 fine16 ячейки.
+В этой карте максимум0.037375м. `rock_faceted` меняет только каменные вершины прежней
+гранёной оболочки; переходная кайма смешивается с прежней землёй, поэтому численный
+допуск относится к аппроксимации поля/полностью каменной области. Fine mesh и каналы
+покраски сохранены; нормали берутся из адаптивных опорных плоскостей, чтобы пересечение
+двух сеток не рисовало мелкие световые осколки. Это не сокращённый low-poly mesh.
+Травяные MultiMesh buffers/mesh/material для каждого облика сохранены, не пересажены.
+Гладкая/voxel геометрия, Source и физика прежние. В однотонном контроле камня отключены
+рисунок и POM, общий свет/rim оставлены; возврат кадра точный.
+
+`test_natural_rock` PASS: error budget/every vertex/tile anchors/normals/determinism,
+immutable field, paired art/sparse fractures/mips. `capture_natural_rock` Forward+
+PASS:12 camera/light cases ×2 presentations ×3 looks;24 exact form returns,
+3 POM on/off/return пары, grass mesh/buffer/material и physical/Source guards.
+HTML/PNG: `C:/Users/novos/Documents/Codex/2026-10-16/ember-natural-rock/`.
+Art/динамическая камера/контакт/production cache/LOD остаются OPEN.
+
+Предыдущая цельная проба — **`compact_coherent_looks_study`**: прежний material-only
+стенд ниже сохранён для сравнения, но пользователь попросил согласовать и геометрию.
+Скала/земля/дорога переключаются вместе с дубом: гладкая исходная оболочка;
+воксельная через существующий `EmberTerrainPilotMesh`; гранёная через производную
+`ember_terrain_look_bake`, плоскости на сетке8 fine16 ячеек (50см). Fine vertices
+сохранены для material slots/весов, поэтому это гранёная форма, ещё не сокращённая
+low-poly сетка. Seam/diagonal continuity проверена. Triangles земли:75264/75264/10214.
+Физический smooth field/collider не перестраивается. На крутой скале отклонение
+граней достигает0.56м — контакт и локальная граница аномалии требуют отдельного
+решения перед игровым переключателем; текущая проба только визуальная.
+
+Воксельная трава растрирует исходный контур с покрытием: шаг6.25см до масштабирования
+пучка вместо1.5625см, плоские полоски. Гранёная трава — прежние9 точек или грубее7.
+Количество9493, x/z, basis и seed общие; только y опор запечён для видимой оболочки.
+У voxel-камня цвет и height автоматически выбираются в центрах одной32×32 сетки
+исходного tile, затем увеличиваются ближайшим соседом; mipmaps сохранены. Это
+клеточная производная, исходная height неизменна. POM solver/4см/32steps и общий
+свет/rim прежние. Нельзя называть производную height побитно исходной.
+Прежняя дверь-проба скрыта во всех3 кадрах; персонаж не преобразуется.
+
+`test_terrain_look_bake` и прежний `test_material_shape_recipes` PASS.
+`capture_coherent_looks` Forward+ PASS: day/evening/night × game/rock/tree,
+одинаковые камеры; coarse grass, точный smooth return; вечерний backlight POM
+on/off/return;16 кадров движения; Source/collider/original height/scatter guards.
+Художественная приёмка/мерцание/игровой контакт/production cache и LOD — OPEN.
+Текущие HTML/PNG: `C:/Users/novos/Documents/Codex/2026-10-16/ember-coherent-world-looks/`.
+
+Предшествующая проба только материалов:
+Автор согласовал общую основу с разными способами обработки, сохраняя свет и глубину.
+`ember_material_look_bake` — чистая производная математика изображений/силуэтов;
+Pattern/Surface Canvas/Source остаются владельцами. Рецепт задаёт cell/min_cell,
+чувствительность к разнице цвета, силу и вариант диагоналей. Гранёный рисунок:
+адаптивные прямоугольные области делятся на треугольники, каждый получает средний
+цвет исходных непрозрачных пикселей. Воксельный рисунок: клеточные области. Это ещё
+не смысловая сегментация любых пятен/объектов. Распознавание слитных форм и правки
+производных после повторной генерации не реализованы.
+
+У листвы новый цвет совмещён с прежним alpha-рецептом/оболочками дуба. У травы
+`PaintedFixture.grass_tuft_outline` выделяет прежний контур без изменения гладкого
+mesh; гранёная производная упрощает его до9 точек, воксельная растрирует и объединяет
+строки в плоские полоски. `ember_material_shape_study` через opt-in
+`EMBER_MATERIAL_SHAPE_STUDY` меняет координаты мазков в общем painterly light;
+у земли и пучков одна привязка. Уравнения света/rim/реальных теней прежние.
+Камень сохраняет исходную height-texture побитно: цветовая обработка ослабевает
+у перепадов высоты, periodic-края сохраняются. POM4см/32 и физический пол неизменны
+при смене подачи. Цвет почти однотонного камня отличается слабо — это ограничение
+нынешней пробы, не законченный low-poly вид скалы или перестройка её углублений.
+
+Сцена `compact_material_shapes_study` использует существующую гладкую землю,
+одинаковую во всех3 подачах. Это другая основа стенда относительно voxel-ground
+oak LAB: обычный floor-filter оставляет9493 пучка вместо6187; внутри новой тройки
+расклад/transform buffers одинаковы. Дуб использует прежние3 оболочки, персонажи
+не преобразуются. Структура карты/Source не редактируется. Варианты запекаются
+однократно, переключение меняет привязки готовых данных; runtime-анализа цвета нет.
+Измерено~274мс для трёх гранёных цветовых изображений и~150мс для клеточных;
+это не время полного дерева/старого alpha-bake и не GPU/FPS/forest benchmark.
+Параметры рецепта пока кодовые LAB, UI переключает3 вида/камеры/свет; production
+authoring/schema/Undo/save/export, общий world switch, LOD и сфера не добавлены.
+
+PASS: `test_material_shape_recipes` (детерминированность, alpha, защита канавок,
+исходных изображений/height и periodic-краёв, силуэты/масштаб травы);
+связанный `test_painted_light_study` (geometry/floor/POM/Source/morph/Player/save-reopen).
+Native `capture_material_shapes`:24 camera/light cases ×3 подачи,48 exact
+neutral/return сравнений, отдельные POM on/off/return во всех3 подачах,16 motion frames;
+одна физика, height bytes, Source, placement и отсутствие rebake PASS.10 защищённых
+Source/PNG/material/POM owners SHA exact. Ручная оценка единого стиля, мерцания,
+F6/input и производительности OPEN. Evidence:
+`C:/Users/novos/Documents/Codex/2026-10-16/ember-material-shapes/index.html`.
+
+Маршрут после дуба: отдельная проба камня и дороги с тем же художественным
+профилем; после принятия всех трёх — developer world/object switch и автоматизация
+окружения/земли. Персонажи исключены. Это будущая интеграция, не расширение текущей
+дубовой LAB на авторские карты; её рамки принадлежат Product Plan.
+
+Согласованный результат: один принятый дуб, гладкая и выбранная альтернативная половины,
+перемещаемая граница, конечные виды рядом. Сцена `compact_oak_looks_study.tscn`
+использует опубликованный `vox_painted_oak.tres` через обычный Prefab; второй
+и третий MeshInstance — только производное оформление того же объекта. Кнопки света,
+крупности листвы6.25/12.5см, камеры и границы — временные настройки LAB, F1 скрывает
+панель. Выбор альтернативы voxel/faceted и общая кромка on/off работают в той же
+панели. Это не новые поля Source и не production editor/Undo.
+
+Правила основы для продолжения Sol:
+- Единственный источник — прежний Source schema7: wood voxels/paint + tree_surface.
+  `ember_tree_surface.leaf_layout` выделяет прежний детерминированный расклад пучков;
+  `ember_tree_surface_geometry` добавляет описание каждой листовой опоры к прежним
+  roots, не меняя принятые vertex/UV buffers или RNG. Общие399 пучков/885 участков.
+- `ember_tree_look_bake` строит отдельную производную сетку. Древесина берётся из
+  Source, крона — из тех же опор и альфа-рисунка листового PNG. Объёмные ячейки
+  отбираются по покрытию рисунком, объединяются, внутренние грани удаляются.
+  Это не вокселизация всей готовой гладкой сетки и не независимый генератор кроны.
+  Более крупные ячейки утолщают листья и закрывают мелкие просветы — открытый art gate.
+- Кора C и листва B прежние. Локальная сетка не зависит от камеры; веточная привязка
+  коры сохраняет масштаб рисунка, voxel-only `painted_bark_pixel_m=1/16` квантует
+  выборку с непрерывными производными для фильтрации. Листовая ячейка берёт цвет PNG
+  и исходный pigment, общий toon/grass response, тени40% и прежний style_rim.
+  Свет граней и rim используют разные нормали, но прежнюю общую математику;
+  полный Texel Space Quantization отдельно не портирован.
+- `ember_object_look_clip` задаёт общую локальную плоскость; две оболочки получают
+  противоположные условия видимости, включая shadow pass. На50% плоскость проходит
+  через ось ствола. Смена границы/камеры не запускает bake. Это wipe двух геометрий,
+  не vertex morph: несовпадение поверхностей может давать ступени и открытые срезы.
+  Замкнутый стык и пространственная сфера аномалии ещё не решены.
+- Одна прежняя древесная collision, без листвы. Переключение не меняет пол, движение,
+  POM земли, Source и ручную покраску. Прежняя лепка заполненности по-прежнему может
+  инвалидировать tree_surface: свободное двустороннее редактирование форм не создано.
+
+Следующие этапы после художественной приёмки дуба: камень и дорога; затем
+подключить bake и его версию/инвалидацию к существующим Prefab/Store/WorldLook,
+проверить export/cache/обновление экземпляров;
+поправки обликов привязывать к локальным областям/частям Source, не к номерам вершин.
+Общий материал и пиксельная производная остаются в существующей системе материалов.
+В перспективе сфера должна управлять общей маской всех обликов в мировом пространстве,
+при той же физике; движение границы не должно выпекать модель каждый кадр.
+
+Сейчас bake ленивый, синхронный и только в LAB; читает исходный PNG. Это не готовый
+экспортный pipeline и не решение массового леса/LOD/ветра. Low poly других объектов/земли, другие породы,
+отдельные ручные overrides и новые редакторские поля вне контракта. Саванну не меняли.
+Измерение на стенде:6.25см —58421 ячейка/338328 треугольников вместе с древесиной,
+12.5см —12229/82532; примерно3.4/1.3с первой сборки. Это CPU-время bake одного дерева,
+не FPS леса. До массового использования нужны бюджет, упрощение/LOD и подготовка
+производных заранее; выбранная мелкая геометрия сама по себе не оптимизирована.
+Прежняя двухвидовая проба/evidence: `tools/test_oak_looks.gd`, `tools/capture_oak_looks.gd`,
+`C:/Users/novos/Documents/Codex/2026-10-16/ember-oak-looks/` (HTML, PNG, logs).
+PASS: targeted deterministic/paint/local-density/zero/save-reopen; связанные
+`test_tree_editor_transfer`, `test_material_depth_study`, `test_painted_light_study`.
+Native Forward+:24 ракурса/освещения, оба размера, возврат;24 исходных кадра со старыми
+шейдерами и24 возврата совпали побитно. Для фиксированных сравнений спутница скрыта
+(её поза менялась между запусками), Кай оставлен масштабным ориентиром.
+12 кадров движения камеры и11 движения границы; bake_count остаётся2,
+Source/wood collider identity+faces/трава/пол сохранены.10 защищённых файлов,
+включая PNG/B/Source/POM, совпали по SHA-256. HTML проверен в headless Edge:
+48 комбинаций выбора и23 кадра движения загружаются. Итог — `verification.json`.
+Неподвижный возврат не доказывает отсутствие мерцания в игре. Внешний вид,
+характер стыка, личный F6/input/движение и слабый ПК остаются OPEN.
+
+Текущая трёхвидовая проба: `test_oak_three_looks`, `capture_oak_three_looks`,
+отдельный `capture_oak_rim_probe`. Targeted PASS: deterministic/local/zero/pigment/
+Source/derived roundtrip, отсутствие pixel-filter на faceted bark, меньше полигонов,
+58421 voxel cell/338328 triangles сохранены, CUSTOM2 имеется у всей voxel-листвы.
+Native PASS:24 камеры/освещения, smooth exact против прежнего capture и return,
+voxel с прежней кромкой exact (форма/основное освещение сохранены),3 конечных вида,
+два split, rim on/off,12 camera и11 boundary frames; collider/Source/grass/floor
+guards, no rebake on movement. Физика одна и та же; новых production editor полей нет.
+Текущие HTML/PNG/logs: `C:/Users/novos/Documents/Codex/2026-10-16/ember-oak-three-looks/`.
+Связанные `test_oak_looks`/`test_style_rim_workflow` PASS,10 защищённых файлов SHA exact;
+HTML/все24 camera/light combinations/оба split/23 motion frames проверены в headless
+Edge. `verification.json` сохраняет24+24+24 точных сравнений и вклад кромки on/off.
+Меньше полигонов не означает измеренный выигрыш GPU: alpha overdraw/лес не измерены.
+
 ### Гладкое дерево и нарисованная кора — LAB, художественный выбор OPEN
 
 Обратная связь автора: направление новой коры ближе к цели, но рисунок слишком
@@ -1837,6 +2757,121 @@ C:/Users/novos/Documents/Codex/2026-10-15/ember-bark-species/index.html и verif
 Авторский выбор C подтверждён; личный F6/input/движение/стыки на развилках/weak-PC OPEN.
 Height/POM коры, проекция, рябь теней, геометрия, плотность, LOD и ветер не менялись.
 
+#### Уточнение рисунка коры дуба — LAB, 2026-10-17
+
+Автор согласовал цветовую пробу одного дуба после камня. А — прежняя принятая C
+(`oak-v2-calm.png`), Б — sibling `oak-v3-painted.png`, built-in imagegen edit с
+крупными мазками, более мягкими редкими бороздами и без систематического светлого
+канта вдоль них. Исходник copied unchanged в `bark_species_v1`; prompt/provenance/SHA
+сохранены рядом с отчётом. Автор17 октября принял Б рабочей цветовой основой:
+«не такая броская, как старая»; дальше нужны аккуратные углубления по явным бороздам.
+Акварельный ориентир записан в Product Plan. Принятие цвета — `manual-acceptance.json`;
+последующий перенос Б в editor/runtime описан ниже, малая глубина остаётся в LAB.
+
+`capture_oak_bark_painted` наследует существующую environment/painted-rock пробу
+и меняет только `painted_bark_albedo` на трёх прежних wood instances. Один PNG
+используется во всех обликах: прежняя branch projection3м, без пиксельной сетки
+в smooth/faceted, существующая local sample grid6.25см в voxel. Новый shader,
+UV/owner/schema, height/POM коры и редакторский выбор не добавлены. Source,
+полные wood/leaf arrays и покраска, форма/плотность, все leaf B parameters,
+приём теней и общий свет/rim сохранены; смена коры не запускает remesh.
+
+3 targeted tests (oak looks, three looks, smooth bark projection) и финальный
+Forward+ PASS:54 пары на игровой/целое дерево/кора камерах×3 пресета×side/back×
+3 облика;360 кадров движения.108 local A/B exact returns,36 cross-look returns.
+Source дуба save/reopen сверяет authoring model/schema, исключая иной путь QA-копии;
+первый ошибочный check полного definition/path сохранён в initial log и исправлен.
+Source камня/physics/floor/grass/other material guards PASS. В окружении фиксированы
+дорога Б, грунт v4 без новой глубины, трава Б и камень А из paint-relief пробы;
+выбор flat/3мм у камня по-прежнему отложен. Сама каменная проба не менялась.
+
+Дополнительно старый `test_voxel_bark_pattern` падает на отсутствующем
+`GenerationPanel.controls.bark_pattern` (строка94): тест/генераторный UI совпадают
+с baseline до среза. Это открытый test/UI gate, не исправленный заменой PNG.
+Native PNG/HTML paths и selectors проверены; цвет Б принят рабочим направлением.
+Browser render/личное игровое движение/стыки и weak-PC OPEN. Согласованная проба
+малой глубины принятых борозд готова ниже; форма/листва/общий свет сохранены.
+Evidence:
+`C:/Users/novos/Documents/Codex/2026-10-17/ember-oak-bark-painted/`.
+
+#### Малые углубления принятой коры — LAB, 2026-10-17
+
+`capture_oak_bark_relief` сравнивает один принятый oak-v3-painted без перерисовки:
+А flat, Б до1.5мм, В до3мм. `ember_painted_bark_relief_recipe` даёт R8 mask256/mips
+по разности тёмной впадины и обоих светлых флангов после подавления мелких мазков.
+Четыре выбранных UV-коридора относятся к этому рисунку; широкие монотонные градиенты
+не дают выемок.6064/65536 pixels>0.1 (~9%). Кэш по bytes/version, копия на возврате;
+по1 bake в каждом native run, независимые карты трёх проходов побайтно совпадают.
+
+В существующем painted bark include выделены общие continuous/discrete support UV
+и blend weight. Цвет и mask используют прежние frames, period3м, narrow wrap и
+voxel-only6.25см sampling. Optional `EMBER_OBJECT_PAINTED_BARK_RELIEF_STUDY` только
+в private LAB Shader: флаг/маска/амплитуда; Source/schema/material defaults не менялись.
+Новый include вызывает прежний `ember_material_parallax` solver16 steps. Trace
+0/3/6мм и height0.5−0.5mask дают только inward0/1.5/3мм; малый normal из той же
+height получает те же facing/distance fades8–18м. Continuous UV LOD фиксируется до
+ray-loop, без derivatives в расходящихся ray iterations. Zero/disabled bypass старый.
+Кромка при активном relief использует исходную макронормаль; LIGHT_VERTEX и реальные
+receive/cast тени прежние, дополнительного self-shadow не добавлено. Silhouette,
+коллизии/пол/navigation и Source неизменны. Это оптическая, не физическая глубина.
+
+4 tests (selected valleys/cache, smooth bark projection, oak three looks, material
+depth regression) и три Forward+ прохода PASS. Основной:3 камеры×3 presets×side/back×
+3 облика; дополнительный:развилка×та же lighting/look matrix. Третий — технический
+вид той же развилки без кроны/её теней: прежние object-look clip inputs временно
+скрывают leaf surfaces; все параметры восстановлены до preservation guards.
+Камера/свет/кора прежние; этот вид нужен для проверки закрытых листвой стыков,
+художественная оценка идёт по обычным кадрам. Всего216 обычных+54 technical stills,
+540 game/90 close/72 sun motion frames,270 local exact returns/90 cross-look returns.
+15 frozen-zero +15 disabled-zero cases pixel-exact. Первый zero gate поймал до7RGB8
+изменения на249 pixels от пути rim (mean0.000182RGB8); conditional старого normal
+при zero/off исправил отличие. Initial log и разностная картинка сохранены.
+Source save/reopen, полные wood/leaf arrays/paint, прежние material instances,
+все leaf B/wood parameters кроме явно новых LAB inputs, density/свет/physics guards PASS.
+
+Автор17 октября пока не увидел особой разницы и попросил сохранить пробу/продолжить.
+Depth choice отложен, сила не выбрана; personal game motion/стыки и weak-PC OPEN.
+Возврат — близко и в движении света, включая развилки/три облика. Colour Б
+принят ранее, текущие strength не приняты. Б отдельно перенесена в main-editor
+без relief (см. ниже); другие породы и глубина камня/грунта этим срезом не закрыты.
+Старый UI gate `test_voxel_bark_pattern` остаётся OPEN без изменений его owners.
+Evidence: `C:/Users/novos/Documents/Codex/2026-10-17/ember-oak-bark-relief/`.
+`manual-review.json` фиксирует «preserve/defer», `preserved-code/` и
+`preservation-manifest.json` содержат копию текущей реализации/PNG с SHA-256.
+Native PNG/HTML links/selector checks сохранены; browser render не подтверждён.
+
+#### Перенос принятой коры Б в editor/runtime — 2026-10-17
+
+Согласован цветовой перенос только существующего painted oak. `Species.BARK_ART[1]`
+назначает неизменённый `oak-v3-painted.png`, SHA-256
+`b48554fe6ac23f50f942754e5e51b3168adbb5655914e73651dfb86df0c443ea`.
+`TreeSurface.render_contract(model)` добавляет только дубу `:oak-bark-v3-painted`;
+существующие Prefab/Store signature и Surface mesh cache используют эту версию.
+Другие породы сохраняют прежние render contracts, все пять Sources byte-exact.
+Новая Source schema, материал-редактор, shader contour или пресеты не добавлены.
+
+Существующая SceneRefresh/ObjectSession пересобирает сохранённый дуб C→Б и его
+размещённые экземпляры с Undo/Redo. Reloaded shader materials сравниваются по
+параметрам/тексту шейдера/texture bytes, а не только Resource identity; разрешена
+только известная замена C→Б. Остальные inputs должны совпасть (прежний epsilon
+Source roundtrip для чисел); ручные tint/leaf-shadow/material overrides защищены.
+Обычная Prefab-загрузка отвергает старую signature и обновляет derived cache.
+Для уже открытой сцены требуется существующая явная пересборка; в фоне авторские
+карты/Source/Recipe не переписываются. Palette/index paint и sculpt fallback прежние.
+
+4 targeted tests (`test_oak_bark_transfer`, `test_tree_editor_transfer`,
+`test_oak_three_looks`, `test_smooth_bark_material_study`) и2 связанных regressions
+(scene-refresh/save-snapshots) PASS. Проверены stale prefab, полные geometry/paint
+arrays, Source bytes, collider, new preview/runtime, публикация/Undo/Redo/discard,
+save/reopen сцены и защита ручных материалов. Forward+:54 пары C/Б на3 камерах×
+3 presets×side/back×3 облика;54 exact returns и19 pixel-exact preview/runtime/reopen
+сравнений, плюс реальные cast-shadow кадры. Shader depth inputs не подключались.
+Свежий `test_painted_tree_runtime --bases` PASS: Б и её mips сверены явно,
+LAB relief не включён; пять Source-only rebuild/wood collision/map reopen PASS.
+Smooth — основной editor/runtime; faceted/voxel — существующие LAB-производные,
+общий игровой world switch не внедрён. Личная F6/input/motion/weak-PC приёмка OPEN.
+Evidence: `C:/Users/novos/Documents/Codex/2026-10-17/ember-oak-bark-editor-transfer/`.
+
 Пользователь согласовал сравнение пяти пород и первую берёзу; результат ниже.
 Запрос на свои форму/листву/кору ели, саванны и клёна остаётся очередью отдельных
 срезов после оценки берёзы. Автоматического переноса дубовой кроны на другие породы нет.
@@ -2254,7 +3289,7 @@ index.html/native.json/verification.json/controls/,before/,slice.diff.
 PNG inspected, HTML links/JS checked; browser render unverified. Пользователь
 принял последний вид как рабочую основу («Сойдёт, да, неплохо»). Свои F6/motion
 и дальнейшая полировка остаются OPEN. Все пять пород имеют свою кору и листву;
-следующий обсуждаемый срез — перенос оформления из LAB в основной authoring/save.
+оформление перенесено в основной authoring/save — см. «Пять пород в основном редакторе».
 Ветер/LOD/forest/пикселизация/production appearance save вне среза. Без commit/push.
 
 Первичные источники, проверенные 2026-10-14:

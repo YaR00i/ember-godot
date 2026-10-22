@@ -28,7 +28,7 @@ func positions(built: Dictionary, physical := false) -> Dictionary:
 	return result
 
 func _run() -> void:
-	var oak: Resource = Generator.creation_presets(Generator.LARGE_TREE)[1].recipe.duplicate(true)
+	var oak: Resource = Generator.creation_presets(Generator.LARGE_TREE,true)[1].recipe.duplicate(true)
 	check(oak.parameters.foliage_style == 0, "existing oak preset does not silently change style")
 	oak.parameters.generation_version = 8 # Existing trial foliage and custom-v1 upgrade gates.
 	var directory := "user://foliage_pattern_%d" % Time.get_ticks_usec()
@@ -195,7 +195,7 @@ func _run() -> void:
 	panel.close_session()
 	panel.queue_free()
 	for index in [0, 2, 3, 4]:
-		var other: Resource = Generator.creation_presets(Generator.LARGE_TREE)[index].recipe.duplicate(true)
+		var other: Resource = Generator.creation_presets(Generator.LARGE_TREE,true)[index].recipe.duplicate(true)
 		other.parameters.height = 64
 		var before := Generator.build(other, Color.WHITE, {}, "Other")
 		other.parameters.foliage_style = 1

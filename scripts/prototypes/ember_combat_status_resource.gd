@@ -1,7 +1,7 @@
 @tool
 class_name EmberCombatStatusResource
 extends Resource
-## Canonical status definition. Instances keep ID/remaining turns only;
+## Canonical status definition. Instances keep ID/turns or independent dose timers;
 ## supported behavior is executed by the existing StatusRules/resolver.
 
 enum Kind { BUFF, DEBUFF }
@@ -22,12 +22,17 @@ const KIND_LABELS := ["Усиление", "Ослабление"]
 @export_range(1, 12, 1) var default_duration := 2
 @export_enum("Обновить длительность", "Оставить большую", "Добавить ходы", "Не менять активный статус") var reapply: int = Reapply.REFRESH
 @export_range(1, 99, 1) var max_duration := 12
+## Independent doses multiply only turn-end HP; at cap replace earliest expiry.
+@export_range(1, 12, 1) var max_stacks := 1
 
 @export_group("Действие в бою")
 @export_range(-999, 999, 1) var power_bonus := 0
 @export_range(0, 400, 1) var outgoing_damage_percent := 100
 @export_range(0, 400, 1) var incoming_damage_percent := 100
 @export var remove_on_damage := false
+
+@export_group("Конец собственного хода")
+@export_range(-999, 999, 1) var turn_end_hp_change := 0
 
 @export_group("Вид")
 @export var glyph := "●"
@@ -56,10 +61,12 @@ func to_definition() -> Dictionary:
 		"defaultDuration": default_duration,
 		"reapply": REAPPLY_IDS[clampi(reapply, 0, REAPPLY_IDS.size() - 1)],
 		"maxDuration": max_duration,
+		"maxStacks": max_stacks,
 		"powerBonus": power_bonus,
 		"outgoingDamagePercent": outgoing_damage_percent,
 		"incomingDamagePercent": incoming_damage_percent,
 		"removeOnDamage": remove_on_damage,
+		"turnEndHpChange": turn_end_hp_change,
 	}
 
 
@@ -77,8 +84,11 @@ func validation_errors() -> Array[String]:
 	if default_duration < 1 or default_duration > 12: errors.append("Длительность по умолчанию: от 1 до 12 ходов бойца.")
 	if reapply < 0 or reapply >= REAPPLY_IDS.size(): errors.append("Выберите поддерживаемое правило повторного наложения.")
 	if max_duration < 1 or max_duration > 99: errors.append("Предел накопления: от 1 до 99 ходов.")
-	if reapply == Reapply.EXTEND and max_duration < default_duration: errors.append("Предел накопления не должен быть меньше длительности по умолчанию.")
+	if max_stacks == 1 and reapply == Reapply.EXTEND and max_duration < default_duration: errors.append("Предел накопления не должен быть меньше длительности по умолчанию.")
+	if max_stacks < 1 or max_stacks > 12: errors.append("Предел доз: от 1 до 12.")
+	if max_stacks > 1 and turn_end_hp_change == 0: errors.append("Несколько доз доступны статусам с периодическим изменением HP.")
 	if power_bonus < -999 or power_bonus > 999: errors.append("Прибавка к силе приёма: от -999 до 999.")
+	if turn_end_hp_change < -999 or turn_end_hp_change > 999: errors.append("HP в конце своего хода: от -999 до 999; плюс — лечение, минус — урон.")
 	for percent in [outgoing_damage_percent, incoming_damage_percent]:
 		if percent < 0 or percent > 400: errors.append("Множитель урона: от 0 до 400 процентов.")
 	return errors
@@ -90,16 +100,21 @@ func content_signature() -> String:
 		ui_color.to_html(true), icon.resource_path if icon != null else "",
 		str(default_duration), str(reapply), str(max_duration), str(power_bonus),
 		str(outgoing_damage_percent), str(incoming_damage_percent), str(remove_on_damage),
+		str(turn_end_hp_change), str(max_stacks),
 	])
 
 
 func behavior_summary() -> String:
 	var lines: Array[String] = ["По умолчанию %d хода бойца; счётчик уменьшается в конце его действия, включая наложение на себя." % default_duration,
 		"Повтор: %s%s. Один экземпляр статуса, без отдельных стаков." % [REAPPLY_LABELS[clampi(reapply, 0, REAPPLY_LABELS.size() - 1)], " (предел %d)" % max_duration if reapply == Reapply.EXTEND else ""]]
+	if max_stacks > 1:
+		lines[1] = "До %d независимых доз; у каждой свой срок. На пределе обновляется ближайшая к истечению доза. Складывается только HP за ход; остальные свойства действуют один раз." % max_stacks
 	if power_bonus != 0: lines.append("Сила наносящего урон приёма: %+d." % power_bonus)
 	if outgoing_damage_percent != 100: lines.append("Исходящий прямой урон: %d%%." % outgoing_damage_percent)
 	if incoming_damage_percent != 100: lines.append("Входящий урон: %d%%." % incoming_damage_percent)
 	if remove_on_damage: lines.append("Снимается после получения ненулевого урона.")
+	if turn_end_hp_change != 0:
+		lines.append("В конце собственного хода: %+d HP, включая последний ход. Сначала всё лечение (до максимума HP), затем весь периодический урон. Павших не воскрешает; урон может добить и не зависит от защиты/множителей урона." % turn_end_hp_change)
 	if status_id in ["wet", "frozen", "burning", "guard", "overheated"]:
 		lines.append("Особая стихийная реакция этого ID сохраняется в боевых правилах. Новый ID использует только явно настроенное поведение.")
 	return "\n".join(lines)

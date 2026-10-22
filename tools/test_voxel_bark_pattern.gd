@@ -74,7 +74,7 @@ func _run() -> void:
 				if Bark._scattered_stroke(float(y), around, 2.5, seed, settings): dark += 1
 			check(dark < 85, "short cross strokes never form a dark ring, including density 100")
 	for preset_index in [0, 1, 2, 3]:
-		var recipe: Resource = Generator.creation_presets(Generator.LARGE_TREE)[preset_index].recipe.duplicate(true)
+		var recipe: Resource = Generator.creation_presets(Generator.LARGE_TREE,true)[preset_index].recipe.duplicate(true)
 		recipe.parameters.height = 64
 		recipe.parameters.bark_pattern = false
 		var plain := Generator.build(recipe, Color.WHITE, {}, "Plain")
@@ -106,7 +106,7 @@ func _run() -> void:
 	panel.free()
 	var directory := "user://bark_ui_%d" % Time.get_ticks_usec()
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(directory))
-	var frozen: Resource = Generator.freeze_structure(Generator.creation_presets(Generator.LARGE_TREE)[1].recipe).recipe
+	var frozen: Resource = Generator.freeze_structure(Generator.creation_presets(Generator.LARGE_TREE,true)[1].recipe).recipe
 	for version in [1, 2]:
 		var saved_recipe := frozen.duplicate(true)
 		saved_recipe.parameters.bark_pattern_version = version

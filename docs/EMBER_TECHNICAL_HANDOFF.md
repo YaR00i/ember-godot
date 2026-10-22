@@ -68,7 +68,7 @@ Ember — проект 3D-игры с исследованием мира, ди�
 
 - `.tscn` — карты/арены; `.tres` — voxel, dialogue, action, quest, item, shop,
   combat и material Resources; compact-карты также используют бинарный `.res`.
-- Voxel schema — 6; compact terrain читает плотную schema 1 и адресную schema 2,
+- Voxel schema — 7 (optional published tree surface; legacy empty); compact terrain читает плотную schema 1 и адресную schema 2,
   16 колонок на блок. Schema 2 хранит созданные участки 24×24 м внутри того же
   Resource, без плотных корневых каналов. Потоковая загрузка ещё не реализована.
 - Runtime save v2 — JSON в `user://ember-save-v2`, три ручных слота и autosave.
@@ -128,6 +128,370 @@ export boundary, retired references и physical G4/G5 требуют отдел�
 ## Карта owners
 
 ### Voxel data, Canvas и Surface
+
+- Oak look pilot16 Oct: `ember_tree_look_bake` derives wood/canopy from the published
+  Source and `ember_tree_surface.leaf_layout`; geometry roots carry patch descriptors
+  without changing accepted card buffers. `compact_oak_looks_study` is the only caller
+  selecting the extra visual shell. Shared `ember_object_look_clip` is disabled by
+  default; opposite local planes affect colour/shadow passes. Existing toon/rim/leaf
+  parameters retained; voxel leaf wrapper removes alpha clipping from solid cubes,
+  bark pixel sampling defaults to0. Voxel leaf CUSTOM2 carries source-group normals
+  for the shared rim; diffuse CUSTOM1 remains faceted. `build_faceted` uses6-sided
+  branch tubes + folded alpha leaf patches from the same supports, unpixelated art.
+  `ember_leaf_shape_mask` derives three contour fields from separate alpha leaves;
+  `ember_tree_faceted_leaves` uses the same toon body with faceted-only shape/amount
+  uniforms. Original RGB/PNG remain owners; mask is process-cached LAB data, not
+  a Source field. This clips contours, not area-preserving shape replacement.
+  One existing wood collider. No schema/editor/
+  production WorldLook integration, export bake or universal morph. Detailed rules,
+  limitations and acceptance — Terrain Authoring → «Три облика одного дуба».
+
+- Accepted rock group production transfer17 Oct: canonical voxel Source
+  content/voxel_models/vox_painted_rock_group.tres retains all six occupancy/part IDs.
+  Optional Resource.solid_surface publishes plane directions + occupancy reference;
+  ember_voxel_solid_surface fits supports, existing Prefab owns mesh AND collider.
+  Manual sculpt invalidates the published hull and uses exact voxel meshing.
+  Model duplicate deep-copies PackedVector3Array; Canvas dirty/save/discard tracks
+  the new field. Existing model/tree/terrain paths opt out by default.
+  Prop/Map floor queries share transformed triangles; compact navigation samples
+  them and invalidates on transform/mesh changes. Map light mode also binds props.
+  Deferred rim binding now uses WeakRef: transient Canvas nodes may disappear
+  before the deferred call; no invalid typed Node is queued.
+  Ordinary saved scene compact_environment_material_review.tscn references a saved
+  ground Source with1619 old rock columns lowered, plus actual rock/oak props and
+  accepted grass buffer. Reopen does not execute LAB geometry/foliage recipes.
+  This supersedes the LAB-only physics limitation FOR THIS GROUP/compact scene;
+  it is not a generic terrain rock converter or a global world switch. Surface
+  vertices differ from the accepted triangulated LAB hull by≤1.823mm (gate2mm).
+  Evidence/tests/manual gates: Terrain Authoring → accepted rock form/colour.
+  20 Oct: solid_surface.build also writes CUSTOM0 form normals (CONTRACT v2, welded,
+  angle-weighted); material_for opts into object-local projection + form rim via
+  solid_projection_mode/solid_form_rim/solid_facet_bias/solid_local_unit_m
+  (apply_form_look; Prop syncs unit from block_world_size). The terrain shader keeps
+  these uniforms off by default. cartoon_stone owns rim 0.5 (style_rim_*), band solid_rim_edge 0.17..0.21
+  (ember_stylized_rim_shaped; shared ember_stylized_rim keeps 0.10..0.32).
+  CUSTOM1..3 = distances to convex hull edges + neighbour normals (attach_edge_frame; CONTRACT v4);
+  the vertex shader keeps only silhouette edges; Pattern.style_rim_width_mm (GPU lookup alpha,
+  dialog slider) frames the rim, min 1.5 px; width 0 = old facing band. Rim form normal travels to light()
+  via texture_projection_normal (varying budget is 32).
+  Detailed look (look 2): solid_surface.material_for(mesh, true) uses solid_depth_shader()
+  (#define EMBER_SOLID_DEPTH + material depth include variants) and binds a height map from
+  scripts/ember_material_height.gd (Pattern.depth_*); Prop syncs solid_depth_world_to_local and
+  the sun direction; test_rock_detailed_look / test_depth_control.
+  Living faces (look 2 geometry, 22 Oct): solid_surface.hull_faces is the one face enumeration for
+  build() and living_mesh(model, unit_m, pulls) (cached; LivingFaces inner class: blurred occupancy field,
+  Delaunay per face, pull fades at hull edges and at creases with other parts' hulls, form normal read back
+  from the hull fan). Pattern.form_pull_mm per palette slot (living_pulls); Prop._living_for/_sync_living
+  swap the mesh, the editor releases the slider to rebuild. surface_floor_sample now reads the hull mesh,
+  not the displayed look. test_rock_living_faces / test_depth_control.
+  Prop.set_solid_look + solid_surface.build_voxel_look: dev look switch (voxel/low poly),
+  display only; test_rock_look_switch. Facet
+  normals still own diffuse light and collider; test_rock_form_transfer.
+
+- Material recipe pilot16 Oct: `ember_material_look_bake` derives image regions and
+  flat grass silhouettes; `ember_material_shapes_study` binds cached variants to
+  existing SurfaceMaterials/Pattern/toon/POM. `ember_material_shape_study` opt-in
+  changes grass brush coordinates only, with the existing light equations.
+  Height bytes remain unchanged; colour filtering protects relief and tile edges.
+  No new persisted schema/editor. The LAB fixes smooth terrain geometry across
+  all3 comparisons; oak shells reuse LookBake. Rules/gates in Terrain Authoring.
+
+- Coherent look LAB16 Oct: `ember_coherent_looks_study` extends the material-only
+  fixture; `ember_terrain_look_bake` projects smooth vertices onto 8-cell planar
+  triangles, retaining material channels, and pixel-bakes paired colour/height.
+  Voxel ground uses existing `EmberTerrainPilotMesh.build_tile`; smooth physics
+  stays owned by projection. Grass x/z/seed/density are retained with prebaked
+  visual y anchors. No production switch/physics policy; max facet deviation
+  0.56m and unreduced material triangles are explicit gates, not accepted gameplay.
+
+- Natural rock follow-up: `ember_natural_rock_study` keeps coherent grass and the
+  smooth/voxel shells; `TerrainLook.adaptive_heights/rock_faceted` replaces rock
+  facets using bounded field approximation (3.74cm measured). Fine paint topology
+  remains; normals follow adaptive supporting planes. `ember_natural_rock_recipe`
+  owns the new derived colour/height pair; original paving/POM/light owners stay.
+  Plain/material comparison is LAB-only; art/contact/LOD not accepted. The author
+  rejected the ordinary rounded foundation, so bounded approximation is not an art pass.
+  `tools/capture_rock_form_rules.gd` now probes only the ordinary plain rock through
+  existing Source.surface_rules / Smooth.field/build / apply_study_smooth_tile.
+  Radius1 and protection75% use private documents; mesh/collision/floor move together.
+  No source-file/material/grass changes. Smaller rounding cannot create absent chips.
+  The author rejected `capture_rock_planes` (Source cuts + blended normals):
+  still rounded terrain growths with ground paint on their sides.
+  Current `tools/capture_rock_three_looks.gd` extends `capture_rock_solid.gd`:
+  fixture columns -> one private EmberVoxelModelResource (six merge_parts) ->
+  detailed18 supporting planes, faceted14 planes, native VoxMesher at6.25cm.
+  All variants read the same occupancy. Side inclinations fit source column extents;
+  primary slopes match between detailed/faceted; sharp normals, same stone shader.
+  Resource validation/save-reopen/ownership/immutable Source/native return-frame/
+  grass/depth/Sol hashes PASS. Evidence and saved Source: `ember-rock-three-looks/`.
+  Known fixture segmentation only, convex fits approximate source concavities.
+  Corresponding AABB-corner discrepancy up to26.7cm; surface error NOT established.
+  Collider/floor/navigation absent: not a production converter or gameplay shell.
+  `capture_rock_surface_detail.gd` now cuts two major masses in the private common
+  voxel Source, explicitly authorized by the author; all three looks regenerate.
+  Ordinary/faceted share recipe guide directions and remeasure plane distances
+  from occupied voxel corners. This is recipe-guided convex fitting, NOT general
+  feature extraction. `capture_rock_three_looks::faceted_look` adds a narrow hook;
+  default remains unchanged. No production schema/renderer/generator edits.
+  `test_rock_surface_detail` checks deterministic edits, permitted part changes,
+  native-source parity, closed oriented edges and bounds; native guards PASS.
+  Source extents change≤6.25cm; principal lean within prior2° gate. Full silhouette
+  equality is not claimed. Evidence `ember-rock-source-breaks/`; author accepted
+  this form as a sufficient working baseline for material work, not final B art.
+  Physics/surface correspondence/anomaly transitions remain OPEN.
+  Material follow-up: `capture_rock_material_looks` uses a `look_material` hook on
+  the same geometry; `ember_natural_rock_recipe` owns the LAB colour/height master.
+  `ember_material_look_bake::calm_variant` derives low-detail pigment; existing
+  `TerrainLook.pixel_image` samples paired voxel maps. Stone-only coverage avoids
+  projecting terrain paint onto object sides. Common POM/light shader unchanged.
+  Evidence `ember-rock-material-looks/`; master height/Source/geometry exact;
+  3 presets/back sun, POM on/off/return and focused tests PASS. Material art OPEN:
+  continue with Sol, preserve geometry/depth/light/foliage. Validate detailed,
+  faceted and voxel looks sequentially, then scene-wide coherence; moving sphere
+  transitions follow endpoint style acceptance (Product Plan owns sequencing).
+  Sol follow-up: `capture_rock_texture_refinement` retains revision0 pigment and
+  compares revision1 broad drawn masses/softer fracture pigment on unchanged meshes.
+  Master and all derived height images equal the prior trial; POM4cm/32 unchanged.
+  36 A/B pairs and180 camera-sweep frames; context remains a fixed control scene.
+  Evidence `ember-rock-texture-refinement/`; author accepted B as a working pigment
+  baseline on16 October ("пока подойдет"). Full environment/production gates remain OPEN.
+  Static world projection only; object-local anchoring/morph/edit overrides pending.
+
+- Current stone paint/relief pilot17 October: NaturalRock.painted_structure builds
+  a cached periodic32 warm/cool mineral guide from immutable raw artwork; r-b,
+  binomial smoothing/percentile10-90/three soft levels/.25-.75, not recovered shape.
+  Same2.4m span; voxel16 paired colour/height.6mm trace gives at most3mm actual span.
+  Existing COLOUR_PROBE shared_height reads the POM height for baseline normals;
+  fragment passes its exact fade/facing amplitude as function argument, no varying.
+  Shared branch handles walls; old flag=false behaviour/PNG override retained.
+  `capture_rock_paint_relief`: A previous lines/depth, B raw flat, C same B pigment
+  plus shallow relief.6 tests/final Forward+ PASS:162 stills/540 camera/108 moving
+  sun frames,54 exact returns/3 zero-flat cases,1 guide bake.54 prior controls have
+  tiny cross-build raster differences (mean<=.0003RGB8, isolated max30); not exact.
+  Source/physics/paint/other materials retained; initial failed GPU logs preserved.
+  Evidence `ember-rock-paint-relief/`; user likes trial17 October, personal review
+  deferred. Art/height guide/flat-vs-3mm choice/weak-PC OPEN.
+  New shallow height remains LAB; raw colour transfer is described below.
+  No new silhouette or universal material converter.
+
+- Current stone pigment candidate17 October: NaturalRock.maps(size,2) loads
+  `rock-painted-calm-v2.png` (built-in imagegen; provenance/prompt/SHA beside report)
+  and overlays the same sparse fracture paths with quieter pigment. Default1
+  and every height/mip remain unchanged. Faceted calm256/65%, voxel16/15cm.
+  `capture_rock_painted_refinement` extends consolidated/accepted-road capture,
+  fixes road B/soil v4/grass/oak and changes stone PNG only. Existing optional
+  COLOUR_PROBE path adds colour_probe_height_slot/png: slot_optical_height reads
+  the preserved old bank layer for far fine relief while albedo reads new layer.
+  No new shader contour/height solver/schema; same POM/light/roughness/geometry.
+  5 tests/Forward+ PASS:54 pairs/360 motion/36 exact returns,36 prior A controls,
+  9 disabled-branch exact comparisons; POM and Source save/reopen guards PASS.
+  Evidence `ember-rock-painted-refinement/`; art/manual movement/weak-PC OPEN.
+  Raw colour transfer is complete below; overlaid fracture variant remains a LAB
+  candidate. Shallow-depth pilot above stays separate.
+
+- Stone raw painted colour production transfer17 October: cartoon_stone.tres now
+  uses exact256px rock-painted-calm-v2-runtime.png copied from paint-relief B/C
+  paint-0.png, tint90938f/span2.4m, periodic=true/relief=false. No fracture overlay,
+  new height guide or shader change. Existing Pattern/MaterialDialog/SurfaceMaterials
+  own persistence/history/atlas refresh; Source/shape/paint/physics retained.
+  Ordinary material keeps zero depth. Legacy MaterialDepthStudy explicitly pins old
+  PNG sampling flags when assigning its own old stone_color.png so the new main
+  colour-only default cannot alter that historical POM4cm/32 study. No production
+  POM activation is implied. Existing height/coverage and shader sources unchanged.
+  Soil transfer harness adds overridable material/before/reference/shader/depth hooks;
+  road/soil defaults retained. Stone current uses actual projection material, A rebuilds
+  old Resource, LAB replay appends recipe colour through existing Materials; no
+  probe shader required for zero-depth normal material. Derived65%/pixel16 remain LAB.
+  Eight tests PASS;54 pairs/54 exact colour replay/54 returns/108 motion; cold six
+  game frames exact. Existing POM on/off/return separately checked. Shader source
+  guard plus6 exact historical POM-stand frames against preserved road transfer.
+  Source is byte-identical, controls reuse compiled resource; initial independent compilation
+  differed2 edge pixels/max9RGB8, not claimed exact. Personal live/weak-PC OPEN.
+  Evidence ember-stone-editor-transfer/; Terrain Authoring owns conclusions.
+
+- Consolidated material review: `tools/capture_environment_material_review.gd`
+  reuses soil/grass/road/rock recipe/capture owners and scene `set_material_style`
+  for the existing oak variants. Floor geometry/physics remain fixed; no new art,
+  no production switch. Soil v4 colour only (depth review deferred by author),
+  rock B4cm/32, grass B, road B candidate, existing faceted leaf candidate.
+  Forward+108 stills/180 motion frames/36 exact returns,12 exact v4 controls,
+  POM toggles, Source save/reopen and no oak remesh PASS;4 focused tests PASS.
+  Evidence `ember-environment-material-review/`17 October; art/road/leaves/motion
+  manual/weak-PC OPEN. Sequencing and current return point stay in NOW.
+
+- Road refinement following consolidated review: existing SandRoad recipe adds
+  painted_image/painted_variants using the immutable accepted soil v4 master.
+  Same1.5m repeat, calm65% without resampling, voxel16; private Pattern base tint
+  b9a47c instead of d7c08c. Original procedural functions remain replayable.
+  `capture_road_painted_refinement` extends the consolidated capture; camera hook
+  narrows to4 views. Same road_material owner changes only slot2 pigment/tint;
+  finish/depth/light/other layers retained, existing road pixel_relief verified0.
+  3 tests/Forward+ PASS:72 pairs/360 motion/48 exact returns,54 original controls
+  exactly match prior review. Evidence `ember-road-painted-refinement/`17 October.
+  Author accepted painted road B as working baseline17 October; acceptance JSON
+  beside report. Overall coherence direction liked; rock/bark pigment polish and
+  later depth refinement requested. Final style/manual movement/weak-PC OPEN;
+  Subsequent main-editor colour transfer is complete as described below; no new shader.
+
+- Road B production transfer: existing cartoon_sand.tres shares the accepted256px
+  soil v4 runtime PNG, base tint b9a47c/repeat1.5m, albedo_periodic=true and
+  albedo_relief_enabled=false. No new bitmap/schema/shader. Existing MaterialDialog,
+  Pattern and SurfaceMaterials own history/serialization and normal projection
+  atlas refresh; saved assignments retain IDs/paint without remesh. SurfaceMaterials
+  duplicates get_image() before bank resize/mip generation so shared texture/cache
+  images and other material means cannot be mutated by bank order. Texture mapping
+  test isolates legacy periodic=false explicitly instead of assuming sand's default.
+  Seven tests PASS, including road and soil editor round trips/other lookup guards.
+  capture_road_editor_transfer reuses configurable soil harness:54 pairs/54 exact LAB,
+  54 exact returns/108 motion frames, six exact fresh-process road frames. Historical
+  isolated-soil comparison uses the existing sparse compiler-rounding bound; ordinary
+  cold Save/Reopen remains strict. Frozen shader controls≤3 pixels/max2RGB8.
+  Soil historical:4 frames exact,2 evening frames differ by one grass-edge pixel
+  at(1,46)/1RGB8; isolated soil region exact in all6.
+  New depth remains LAB; production is smooth, other look checks remain LAB.
+  Evidence ember-road-editor-transfer/17 October; personal live/weak-PC gates OPEN.
+
+- Soil optical-depth LAB: `ember_soil_depth_recipe` preserves accepted v4 colour,
+  derives broad height via64px/percentile8-92/bounds0.28-0.72, paired pixel8 voxel
+  height. SurfaceMaterials adds optional secondary binding to the existing POM
+  shader: shared origin/steps/fade; separate height/coverage/slots/amount/sun.
+  One selected profile per fragment (secondary priority), primary retained.
+  Profile bit is packed into existing LOD sign to stay within varying limit;
+  no second ray solver/renderer/schema. Soil4/grass3 coverage uses exact corner
+  weights. `capture_soil_depth`:0/8/16mm tracing ranges,162 stills/270 motion.
+  5 tests/native PASS,54 flat and90 motion controls exact against v4; zero in3
+  looks and strength return exact. Actual height span about3.5/7mm. Depth art
+  OPEN; colour accepted. LAB report `ember-soil-depth/`17 October. Source/physics/
+  paint/light and primary depth retained; editor/weak-PC/full-world gates OPEN.
+
+- Soil reference-guided LAB v4: author approved a trial based on Genshin's day
+  road after rejecting fine v2 and camouflage v3. New imagegen asset
+  `content/terrain_materials/textures/soil-painted-genshin-v4.png`; large coherent
+  painted earth forms for the isometric camera. Recipe keeps revisions0/1/2,
+  default3=new PNG; full-size calm65%/pixel8 retained. Capture A=v3/B=v4.
+  Existing bank/slot4/colour-only shader; no shader/height/roughness/geometry/
+  source/light changes, new depth deferred.3 focused/native PASS,54 pairs and
+  180 motion frames;54 A stills and90 motion controls exactly match prior v3.
+  V4 accepted as the working pigment baseline17 October ("вот хорошая"). Preserve
+  artwork/scale/light; next depth contract not started. Motion/weak-PC/full-world
+  gates OPEN. Evidence/prompt/references `ember-soil-genshin-v4/`.
+  Colour transfer now uses soil_grain with exact accepted256px runtime derivative.
+  Pattern optional albedo_periodic(false)/albedo_relief_enabled(true) preserve old
+  defaults; soil opts into periodic colour without luminance height. SurfaceMaterials
+  encodes the relief opt-out as signed png_lookup role B, existing shader uses abs(B)
+  for projection and excludes negative roles from inferred height/bump. No new sampler,
+  renderer or POM solver. Existing PNG dialog EDIT_FIELDS/history/save/discard own flags.
+  Source palette/IDs/geometry/physics and old authored height/roughness/finish unchanged;
+  normal projection atlas refresh does not remesh. Six tests/two Forward+ runs PASS:
+  54 pairs/54 exact LAB matches/54 exact returns/108 motion frames, six fresh-process
+  game frames exact. Native editor shown; original stone POM on/off/return retained.
+  Six frozen old-shader controls have≤3 changed pixels/max2RGB8 rounding, explicitly
+  bounded separately from exact B/LAB/returns. Personal live/weak-PC acceptance OPEN.
+  Known dock width gate is baseline326 vs302, frozen/current equal; no widening.
+  Evidence `ember-soil-editor-transfer/`; Terrain Authoring owns conclusions.
+
+
+- Accepted grass ground material transfer17 October: cartoon_grass.tres uses exact
+  exported256px embedded painted_light_grass artwork, tint637f50/span2m and its
+  existing grass_light profile. Periodic colour/no inferred relief; remaining
+  authored channels unchanged. Pattern/MaterialDialog/SurfaceMaterials/Projection
+  retain ownership, no schema/shader/UI addition. Saved assignments update on load.
+  Existing LAB clumps remain unchanged; no new runtime foliage authoring/converter.
+  Last1254px source in this set is replaced256px, so derived bank shrinks1254→256;
+  other source art/parameters exact, their resampling/mips not claimed pixel-exact.
+  Capture reuses stone/soil harness plus editor hook, actual production material and
+  existing recipe replay. Native54 pairs/54 exact replay/54 returns/108 motion;
+  preview edits small lookup in place, Undo/Discard exact/no remesh; grass-only
+  region responds to real shadows in all3 presets with exact returns.10 tests PASS.
+  Six cold game frames exact; six historical POM-stand frames exact versus copied
+  road-transfer reference, previous report preserved.
+  Legacy POM on/off/return retained, shader source unchanged. Art/live/weak-PC OPEN.
+  Evidence ember-grass-editor-transfer/; Terrain Authoring owns conclusions.
+
+- Derived grass LAB: `ember_grass_look_recipe` keeps accepted Image/ArrayMesh0;
+  calm16/85% +7-corner flat clumps and pixel32 +3.125cm local contour derive1/2.
+  `EmberMaterialLookBake.grass_mesh` adds optional preserve_height; legacy defaults
+  unchanged. Real fixture coarse tip was12.5cm; new14cm matches the original.
+  `capture_grass_derived_looks` reuses the A/B pipeline with fixed road B, accepted
+  rock B and unchanged9493 scatter transforms. Road slot helper options reuse the
+  existing Materials formatter for grass slot3; depth/light/other slots guarded.
+  54 pairs/180 sweep frames,3 tests/Forward+ PASS.18 ordinary pairs exact;6 prior
+  game frames exact. Prototype triangles44/20/56 (old44/28/16). Author accepted
+  grass B as a working baseline16 October. Road acceptance, weak-PC/forest and
+  production integration OPEN. Evidence `ember-grass-derived-looks/`.
+  Terrain Authoring owns conclusions; no new runtime Source or physical field.
+
+- Sand road pigment LAB: `ember_sand_road_recipe` owns a periodic1.5m master;
+  existing calm12/30% and pixel16 helpers derive its other presentations.
+  `capture_sand_road_looks` reuses the existing rock A/B matrix. Materials formats
+  the private pattern; only fixture sand slot2 and its new bank layer change.
+  Existing bank layers/non-road slots/depth/light/finish are guarded unchanged.
+  Source/contour/physics/grass/tree and accepted rock B remain controls;18 game
+  control frames match the prior trial exactly.36 A/B pairs/180 sweep frames,
+  recipe and shared bake tests PASS. Art OPEN; no production editor transfer.
+  Evidence `ember-sand-road-looks/`; Terrain Authoring owns current conclusions.
+
+
+- Painted tree authoring: `ember_voxel_generator`/LargeTreeProvider/BranchLayout +
+  Recipe/GenerationPanel/RecipePanel remain the same owners. Five `vox_painted_*`
+  Sources and existing editor Recipes expose accepted species directly in Objects.
+  Optional Source schema7 `tree_surface` publishes bounded supports/settings and
+  occupancy/paint reference; Recipe stays editor-only. `ember_tree_surface.gd`
+  reconstructs bark/cards from Source without running the generator at runtime.
+  Shared math: `ember_tree_surface_geometry`, `ember_tree_rounded_geometry`,
+  `ember_tree_bark_surface`, `ember_tree_species`; old prototype inputs only extend
+  these modules. No second renderer/editor/preset owner. Prefab/Store signatures
+  include the shared tree render contract; live mesh copies preserve raw buffers
+  to avoid re-quantizing normals/custom channels. `_surfaces` serialization property
+  is covered against pinned Godot4.7. Source palette/index paint maps to wood;
+  occupancy edits fall back to authored voxels. Wood collider and trunk frame agree.
+  Common toon implementation lives in `ember_voxel_toon_body.gdshaderinc`; small
+  base/bark/foliage/card entries select defines and remain external shader resources.
+  Existing WorldLook rim master recognizes those entries. Current controls/gates/
+  render delta and performance limits — Terrain Authoring → «Пять пород в основном редакторе».
+
+  Oak colour-only LAB trial17 October: `capture_oak_bark_painted` compares accepted
+  oak-v2-calm C against separate imagegen oak-v3-painted; changes only bark albedo
+  on the same three wood materials. Existing branch projection3m/voxel6.25cm,
+  Source/paint/all mesh arrays/leaf B/light/rim parameters unchanged.3 targeted
+  tests and Forward+ PASS:54 pairs/360 camera frames/108 local exact returns/
+  36 cross-look returns; Source data save/reopen exact (QA path excluded).
+  Existing test_voxel_bark_pattern fails at missing GenerationPanel.controls.bark_pattern;
+  test/UI owners unchanged from baseline, gate OPEN. User accepted B as working
+  colour baseline17 October; shallow recesses are the separate LAB trial below.
+  B colour is now the main-editor/runtime binding; depth strength remains deferred.
+  Evidence/decision `ember-oak-bark-painted/manual-acceptance.json`.
+
+  Production colour transfer17 October: Species.BARK_ART[1] uses unchanged oak-v3-painted.
+  TreeSurface.render_contract adds oak-only material version to existing Prefab/Store
+  signatures and Surface mesh cache. Other species contracts/Source bytes unchanged.
+  ObjectSession/SceneRefresh accepts value-equivalent reloaded oak ShaderMaterials
+  and only the known C→B artwork change; shader/other parameters/texture bytes,
+  render priority/next pass/local flag retain the manual-edit guard (numeric Source
+  roundtrip epsilon only). Existing refresh updates placed trees with Undo/Redo;
+  ordinary Prefab load invalidates stale copies. No background author-map/Source writes.
+  Four targeted tests/two related regressions PASS; Forward+54 pairs/54 exact returns,
+  19 exact preview/runtime/reopen cases and real shadow captures. Smooth production;
+  fresh runtime --bases explicitly verifies B/mips without relief, five Source-only
+  reconstructions/collision/map reopen PASS; no Recipe evaluation.
+  three-look derivatives stay LAB. Personal live/input/weak-PC acceptance OPEN.
+  Owners/gates/evidence — Terrain Authoring → «Перенос принятой коры Б в editor/runtime».
+
+  Bark relief LAB: `ember_painted_bark_relief_recipe` selects sparse valleys in
+  four artwork-specific UV corridors, R8/mips256, content/version cache1 bake/run.
+  Shared bark include owns continuous/discrete support UV and blending for pigment/
+  height. Private BARK_RELIEF_STUDY binding/include reuses existing parallax solver16;
+  trace0/3/6mm with height0.5−0.5mask -> inward max0/1.5/3mm. Original-coordinate LOD
+  fixed before ray iterations, shared normal/fade; macro-normal rim and LIGHT_VERTEX/
+  real shadows retained. No Source schema or main-editor material defaults changed.
+  `capture_oak_bark_relief` + junction/technical supplements:4 tests/three Forward+ runs PASS,
+  216 ordinary+54 technical stills/540 game/90 close/72 sun frames;270 local+90 cross-look
+  exact returns,15 frozen-zero+15 disabled-zero exact controls. Technical view temporarily
+  clips foliage with existing object-look inputs; all restored. Initial rim-zero discrepancy fixed;
+  Source/paint/full mesh arrays/leaf B/material/light/physics guards PASS. Art strength/
+  live motion/weak-PC/depth production transfer OPEN. User17 October sees little difference;
+  preserve/defer, no strength picked. Evidence/decision `ember-oak-bark-relief/manual-review.json`;
+  preserved-code + preservation-manifest keep the implementation/PNG snapshot without commit.
 
 - `scripts/ember_voxel_model_resource.gd` — canonical palette, voxels, groups,
   water/fill и voxel schema.
@@ -657,8 +1021,8 @@ export boundary, retired references и physical G4/G5 требуют отдел�
   в `.tscn`, не в terrain Resource. Проба/ручные gates — тематический документ
   земли; runtime-панель пробы меняет те же owners без собственной сериализации.
   Объекты: optional `EmberVoxelModelResource.material.object_surface` v1 хранит
-  default/overrides palette ролей stone/bark/foliage/crystal/ice/glass/legacy; schema 6
-  сохранена. `ember_voxel_material_profiles.gd` — чистый владелец enum/preset/
+  default/overrides palette ролей stone/bark/foliage/crystal/ice/glass/legacy; поля schema6
+  сохранены в schema7. `ember_voxel_material_profiles.gd` — чистый владелец enum/preset/
   validation/remap, без RGB inference. VoxMesher переносит Vector4(role,roughness,
   F0,grain) в ARRAY_CUSTOM0/RGBA_FLOAT; padded regions, SurfaceMesher и session
   ProjectionCache сохраняют поток/формат. Cache key учитывает параметры, signature
@@ -905,7 +1269,8 @@ export boundary, retired references и physical G4/G5 требуют отдел�
   instead11; first bough/BranchLayout exact. cap12 only25/shape1; max hierarchy
   fits existing768-segment budget. Old9-tier Source007ce55b… preserved.
   Evidence ember-spruce-density/ (before: ember-spruce-bough/); final crown frames
-  accepted as working base. Personal F6/motion and production appearance transfer OPEN.
+  accepted as working base. Personal F6/motion OPEN; production appearance transfer
+  implemented in the current painted-tree owner entry above.
   Evidence — ember-tree-rim-light/; contract/gates — Terrain Authoring.
   Earlier grass-light report game frames duplicated tree view; rim capture now
   restores gameplay transform/FOV explicitly and asserts distinct cameras.
@@ -1049,7 +1414,7 @@ export boundary, retired references и physical G4/G5 требуют отдел�
   thickness/cloud/colors и finish (legacy или ice_clean/ice_natural/crystal_clean/
   crystal_rough), surface roughness/detail, cloud blur/opacity, absorption,
   crack strength/scale/width и bubble strength/scale. Profiles — единый owner
-  defaults/presets/validation; explicit fields перекрывают профиль; schema6 прежняя.
+  defaults/presets/validation; explicit fields перекрывают профиль; поля schema6 сохранены в schema7.
   HTML strings factory превращает в source_color. Rock provider назначает природные
   профили новым crystal/ice; прежние sources не переписываются, same-family regen
   сохраняет авторские параметры. Prefab.refractive_material хранит resolved source
@@ -1380,6 +1745,33 @@ Save v2:
   предмета снимает несовпадающий фильтр. Dirty filter guard сохранён. В draft
   список скрыт, «К библиотеке» возвращает список/фильтры. Отсутствующая связь не открывает
   другую запись; пустой поиск очищает actionable selection.
+- Узкое окно/125% общей библиотеки: Workspace._fit_library_layout читает
+  доступный parent/main-screen размер, заменяет боковую навигацию compact picker
+  с прежним select_module/dirty guard; check button reparented, не дублирован.
+  SplitContainer может складывать library/detail по вертикали; header и draft
+  toolbar — HFlowContainer, publication/session прежние. Create без auto wrap
+  Window (прежний popup вырос до500×2229); delete/dirty dialog wrap text при
+  bounded Window (прежний long-name delete был шире1280). Runtime Lab._fit_hud_layout
+  на resize/min-size/refresh уменьшает боковые панели, давая ширину ability info,
+  подгоняет header/min-size консоли/footer без потери console input и Reset/Menu.
+  Timeline — прежние восемь entries в ScrollContainer. Headers имеют tooltips,
+  outcome остаётся в прежнем Result owner. Никакой gameplay/save/schema логики
+  этот layout не меняет. Native --ui-layout: actual EditorInterface scale1.25 в
+  отдельном APPDATA, окно1280×800→1600×900, формы/диалоги/сложные условия/Save/
+  reopen/Undo/Redo/dirty Cancel; game content_scale_factor1.25 с шестью conditional
+  steps, hover/scroll/Cancel/MP/turn PASS. Исходные author data frozen; настройки
+  пользователя не меняются. Captures/evidence — Migration Plan; свои input,
+  другие DPI/размеры и игровое ощущение OPEN.
+  Исходный QA exit0xC0000005 сохранён в Temp/ember-ui-layout-editor-exit-failure.log.
+  Повторная диагностика cold/warm/fast exit/scan/preview и 24 publication cycles
+  под Windows debugger не воспроизвела исходный AV; причина остаётся OPEN.
+  `run_game_systems_tests.execute` сохраняет при native AV/heap corruption/fast-fail
+  собственный sandbox вместе с cache, журналом и replay.json в Temp/ember-native-crash-*.
+  Пользовательский APPDATA и посторонний environment не копируются; отдельный
+  sandbox APPDATA сохраняется с переназначением пути. Fatal verdict остаётся FAIL.
+  `test_game_systems_crash_capture.py` проверяет сохранность состояния и author
+  guards; synthetic exit не считается воспроизведением Godot bug. Исключённый
+  probe/точные ограничения и evidence — Migration Plan → повторная диагностика.
 - `ember_game_systems_session.gd` — один detached draft, local field Undo/Redo,
   validation, file SHA/live source conflict и stable ID guard. Publication/Delete
   snapshots фиксируются в EditorUndoRedoManager GLOBAL_HISTORY: контекст именно
@@ -1405,7 +1797,17 @@ Save v2:
   параметры; lift/force/duo fields скрыты лишь когда не нужны и имеют neutral
   значения. Сохранённые несовместимые значения доступны для correction, validation
   прежняя. `requirements_text` — информационная строка, не script/condition owner.
-  Effect steps — ordered shared Resource refs с descriptions и duplicate guard;
+  Effect steps — ordered shared Resource refs с descriptions и duplicate guard.
+  `_effect_picker` в том же DraftEditor добавляет LineEdit search + OptionButton
+  + read-only behavior preview до Add. Один snapshot Catalog.entries на форму;
+  ввод фильтрует имя/ID/description/behavior summary без чтения файлов и публикации.
+  Selection metadata остаётся исходным Resource, preview tooltip — точный path.
+  Used IDs отключены, no matches/all used дают объяснение и disabled Add.
+  `_effect_query/_effect_selected_path` живут только у формы; filter/selection
+  не пишутся в Resource и не создают Undo, filter сохраняется при rebuild.
+  Add/Remove/reorder/Undo/Redo/Save по-прежнему принадлежат прежней session.
+  Native focused effect-picker + --actions/--effect-conditions PASS; UI просмотрен,
+  user input/narrow/125% OPEN; evidence — Migration Plan.
   Unit action_ids — ordered named picker, missing IDs доступны для удаления.
   Old queued form игнорирует session.changed чужого draft; publisher/Undo owners
   прежние. Общие формы сохраняют authored loadouts; отдельное расширение Action
@@ -1415,12 +1817,73 @@ Save v2:
   Каталожные pickers сохраняют текущие external/inline refs и missing IDs;
   continuation picker использует прежние native action-script IDs.
   Один ordered ID list ведёт action assignment и rosters; сторона фильтруется
-  только в предложениях, сохранённое не удаляется молча. Повтор Unit ID запрещён
-  существующей validation; points/order принадлежат Encounter/Battlefield.
+  только в предложениях, сохранённое не удаляется молча. Повторы героев/action
+  assignment запрещены; enemy_unit_ids допускает повтор одного шаблона.
+  Points/order принадлежат Encounter/Battlefield.
   Loot rows: item picker + chance/min/max SpinBox, copy-on-edit внутренней строки;
   numeric history объединяется по row/key, не затрагивая shared table source.
   Encounter validation допускает только два существующих outcome enums.
   Unit/AI/result/save owners и распределение XP/loot не менялись.
+- Условия отдельных эффектов: `EmberCombatEffectResource` хранит два optional
+  PackedStringArray `target_required_status_ids/target_forbidden_status_ids`,
+  empty defaults; definition проецирует `targetRequiredStatusIds/targetForbiddenStatusIds`.
+  Validation блокирует missing/duplicate/contradictory IDs и пробелы, а также
+  MOVE_ACTOR с target predicates (его destination обязан быть пустым).
+  Signature/clone/Save используют прежний Resource/session/store. Common form —
+  именованные status checklists, включая исправление сохранённого missing ID;
+  операция не уничтожает условия. Catalog relations/incoming и saved checker
+  учитывают новые refs. Единственный `EffectRules.target_condition_reason` читает
+  исходный target snapshot; target_conditions_met использует тот же predicate
+  с дешёвым failure sentinel без lookup имён. apply_authored_effects не проверяет
+  resolved patches. `conditional_intent` форматирует только conditional rows:
+  success либо первая missing/forbidden/empty-subject причина с StatusRules name.
+  Никаких вызовов preview или чтения rolls/damage/outcome в этом пути нет.
+  `Combat.describe_intent` ставит блок перед общими деталями, выбирает SELF actor
+  и CELL occupant из selection snapshot; unset target приглашает выбрать цель.
+  Lab._on_grid_cell_hovered обновляет видимый ability info тем же intent, сохраняя
+  прежнюю public field projection; обновление не коммитит бой. Срабатывание
+  оговорено попаданием/устойчивостью. Targeted 64 seeds с hit/miss дают одинаковый
+  текст и не мутируют state; native A/B/empty hover/Cancel + прежний HUD gate и
+  15 combat/save regressions PASS. Native preview просмотрен при 1600×900;
+  свой ввод/длинные цепочки/narrow/125% OPEN. Evidence — Migration Plan.
+  SELF/CELL semantics и границы — GDD → этап 3.5. Inactive steps пропускаются с
+  объяснением в notes, не меняют свой reaction/footprint и не блокируют цель
+  неактивным heal. Pure chain без активного шага/базового эффекта исключает цель;
+  существующий fire focus bonus остаётся источником базового урона. Условия
+  не меняют порядок самих операций цепочки или старые presets/status roles.
+  Eligible/valid targets → Grid/ИИ/HUD и preview/commit используют те же правила;
+  `effectConditionsHash` и StateSchema защищают commit от stale/malformed условий.
+  Save schema прежняя, authored content не перенастроен. Targeted --effect-conditions,
+  related conditions/groups/operations/usage/check/15 regressions и native --cycle
+  PASS; форма и боевой экран просмотрены. Свои сочетания/input/narrow/125%/баланс
+  OPEN. Evidence — Migration Plan.
+- Повторные враги: `EmberEncounterResource.enemy_instances()` — единственная
+  проекция ordered enemy_unit_ids в локальные runtime IDs. Первый сохраняет
+  template ID; последующие получают __instance_N с обходом всех authored IDs
+  участников и уже выданных aliases. Это runtime identity, не новые Unit Resources
+  и не второй roster owner. initial_state делает deep copy каждого definition,
+  задаёт id/cell, у aliased врага optional templateId. Только при повторе name
+  получает префикс №ordinal, видимый в узкой очереди/targeting/3D. Unique encounters
+  сохраняют прежние IDs/definition fields. PackedStringArray serializer, signature
+  и Save schema прежние; missing/wrong-team/field capacity validation сохранена.
+  Герои по-прежнему уникальны. Common builder и прежний Encounter Inspector
+  разрешают повтор врага, row Remove/Up/Down и Undo используют прежний history.
+  «Где используется» подтверждает общий шаблон одним file consumer.
+  Result.build перечисляет instance IDs; loot_preview получает общий Resource
+  через snapshot.templateId fallback runtime ID. Roll key содержит instance ID/
+  slot, поэтому каждый враг даёт свой deterministic loot и defeated/tag counters.
+  XP остаётся наградой встречи каждому герою; Transition/Explore once-only owner
+  не меняется. Изменения характеристик шаблона учитываются в новых initial states,
+  не перезаписывая HP/MP/статусы активных участников. Общие Action/AI/Loot читаются
+  прежними каталогами; замораживание всех definitions на время боя не добавлено.
+  Существующие fixed partner IDs парных действий остаются фиксированными ID,
+  не превращаются в автоматический выбор любого экземпляра. Индивидуальные
+  overrides экземпляра не добавлены. Targeted --enemy-instances и прежние
+  encounters/lab-setup/operations/usage/check/15 regressions PASS. Native --cycle:
+  author three rows/Undo/Redo/Save/reopen, обычный map battle/AI/Retry/Load/re-entry,
+  victory3/loot6/XP35 once/Save/fresh Load; snapshots и исходные author data frozen.
+  Common native roster/width, номера/цели/Result просмотрены; manual свои встречи/
+  порядок/расстановка/input/narrow/125% OPEN. Evidence — Migration Plan.
 - `tools/run_game_systems_tests.py --cycle` — сквозной author/play/fresh-load gate.
   `editor_test_game_systems_cycle.gd` использует настоящий plugin, Create dialog,
   typed forms/pickers и Save button; Save/reopen/Discard/field Undo проверены.
@@ -1549,7 +2012,7 @@ Save v2:
   `ember_game_systems_check_panel.gd` — native report/search/detail/repeat, saved
   scope и stale reminder. Exact path → прежний Inspector route или FileSystemDock;
   ID alias не используется, dirty draft блокирует переход. Workspace не reloads
-  live catalogs при проверке. Current saved library: 72 records / 0 issues;
+  live catalogs при проверке. Current saved library: 74 records / 0 issues;
   malformed fixtures и native navigation QA проверены, user/narrow/125% OPEN.
 - `EmberGameStartResource` / `content/game_start/default.tres` — одна recipe
   для новой игры: `hero_levels`, `hero_equipment`, `inventory`. ID default;
@@ -1641,23 +2104,97 @@ Save v2:
   сохранён. --conditions/--gear-conditions/full --editor/15 --regressions и --cycle
   с saved status/numeric/gear predicates в трёх процессах PASS.
   Native form/width/screenshot проверены; manual свои условия/input/narrow/125%
-  OPEN. OR не реализован; стартовые комплекты описаны выше, свойства обуви позже.
+  OPEN. `condition_groups: Array[Dictionary]`, default[] — плоские AND/OR группы
+  в прежнем Action Resource. Каждая group содержит mode all/any и optional те же
+  шесть leaf fields; группы и legacy mandatory rules соединены AND. Вложенные
+  группы/неизвестные ключи/пустые группы блокируют Save. Каждая OR альтернатива
+  валидируется отдельно; противоречия разных альтернатив не считаются AND-конфликтом.
+  В ALL группе действуют прежние проверки joint bounds/slots/SELF. Полная
+  разрешимость комбинации разных групп статически не вычисляется.
+  Conditions.pair_reason проверяет actor+основную target совместно, поэтому
+  false actor branch не отбрасывает true target branch. Combat сохраняет ранний
+  gate только для mandatory actor rules; pair gate общий для target enumeration,
+  preview/commit, Grid approach, AI и HUD. CELL допускает actor-only группы,
+  SELF использует одного бойца для обеих сторон. Pre-cost/pre-effect, optional
+  guard hash и независимая перепроверка commit сохранены; save/snapshot schema
+  не меняется. application_conditions/to_definition/signature включают deep copy
+  групп. Catalog/usage/checker учитывают status/item refs в группах.
+  DraftEditor выбирает mandatory root или группу, меняет all/any, добавляет и
+  удаляет её с прежним history owner; выбор группы остаётся editor-only.
+  Все три существующих builders редактируют выбранную группу copy-on-edit.
+  Некорректная сохранённая группа остаётся в draft/feedback и удаляется явно;
+  display copy фильтрует неотрисовываемые строки без исправления файла.
+  `--condition-groups`, прежние conditions/gear, operations/usage/check и
+  15 regressions PASS. Native cycle: mode Undo/Redo, Save/reopen/Discard,
+  новый runtime с обеими OR ветками/отказом → ordinary result → fresh Load PASS;
+  снимок/width guard проверены. Свои группы/input/narrow/125% OPEN.
+  Стартовые комплекты описаны выше, свойства обуви — в блоке Equipment/Party ниже.
   Первый полный --editor не получил ready/log от Lab child; последовательный
   повтор без изменения launcher PASS, причина первого запуска не установлена.
   Evidence — Migration Plan; это не гарантия всех launch/native/GPU сценариев.
   Авторский контент не переписан.
 - `EmberCombatStatusResource` владеет default_duration/reapply/max_duration,
-  power_bonus/outgoing_damage_percent/incoming_damage_percent/remove_on_damage.
+  power_bonus/outgoing_damage_percent/incoming_damage_percent/remove_on_damage
+  и `turn_end_hp_change: int -999..999`, default 0 (`turnEndHpChange` в projection).
   Neutral defaults сохраняют baseline. `StatusRules` исполняет общий повтор,
   множители и снятие; DamageRules и единственный CombatPrototype вызывают их.
-  Runtime snapshot остаётся ID → remaining turns, decay в конце своего действия.
+  Runtime statuses хранит ID → int turns; opt-in независимые дозы используют ID → Array[int] timers в том же owner, decay в конце своего действия.
   Apply effect duration 0 использует default до сокращения устойчивостью.
   Authored apply/remove соблюдает порядок шагов; старое потребление guard
   сохраняет baseline. Commit отклоняет новый preview при смене statusRulesHash;
   StateSchema/apply validation блокируют некорректную native definition.
   Power относится к damaging action, outgoing — scaled direct damage; incoming
   применяется к итоговому damage перед guard. Особые реакции пяти ID прежние;
-  periodic damage, independent stacks и новые elemental semantics не реализованы.
+  новые elemental semantics и накопление непериодических модификаторов не реализованы.
+  `max_stacks:int` [1,12], default1 / projection maxStacks / signature / validation
+  принадлежат тому же StatusResource; >1 требует ненулевой turn_end_hp_change.
+  При maxStacks1 прежние refresh/keep_longest/extend/ignore и scalar snapshots
+  сохранены. При >1 StatusRules.set_status копирует timers, добавляет дозу либо
+  заменяет минимальный timer входящим (при равенстве первый). Pending apply в одной
+  цепочке учитывается; resistance сокращает новую дозу до добавления. Scalar
+  legacy counter при включённом opt-in читается как одна доза. StateSchema
+  проверяет nonempty arrays, cap, positive integer timers; схема обычного save
+  не меняется, статусы остаются battle-local. durations/remaining/count/timer_text
+  — единые leaf helpers; проверка наличия не аллоцирует список для scalar.
+  Turn-end HP умножается на count; power/outgoing/incoming действуют один раз.
+  remove/removeOnDamage очищают весь ID, decay удаляет истёкшие дозы независимо.
+  Наличие для conditions/element reactions и spread source duration используют
+  remaining=max timers; spread накладывает одну дозу с этим сроком, не копирует
+  весь массив. _apply_unit_effects копирует array в preview/commit без aliasing.
+  HUD status text/icons/3D badges показывают count/timers; журнал — суммарные HP.
+  Console add-status идёт через тот же set_status. DraftEditor скрывает single
+  reapply/maxDuration при >1; limit/HP/Undo/Redo/Discard/Save/reopen/UID прежние.
+  Canonical poison/regeneration defaults не переписаны. --stacks/--periodic,
+  related conditions/operations/check и 15 regressions PASS. Native author→fresh
+  Forward+ HP25→30→18 (две дозы −6), timers1/3→2 и journal/badges PASS; ordinary
+  cycle с authored stackable статусом — Migration Plan. Manual свои дозы/баланс/
+  input/narrow/125% OPEN. Один native editor exit0xC0000005 после формы сохранён
+  в Temp/ember-stacks-editor-exit-failure.log; следующий полный native gate exit0,
+  причина crash не доказана.
+  `StatusRules.turn_end()` — pure leaf: после эффектов собственного действия
+  сначала сумма положительных HP до maxHp, затем сумма отрицательных до 0,
+  затем removeOnDamage при реальном periodic уроне и прежний decay. Это выбранный
+  автором порядок, не net sum; сортировка IDs влияет только на имена в журнале.
+  Уже павший не лечится. Последний remaining turn срабатывает; снятый статус
+  исключён, новый self-status действует сразу. Чужой ход/дуэтный помощник не
+  получают отдельный tick. Fixed periodic HP не масштабируется defense/guard/
+  crit/outgoing/incoming modifiers; negative tick может добить.
+  CombatPrototype._apply_unit_effects — общий action projection для commit и
+  точного internal turn_end_preview, без копии всего combat state на preview.
+  Neutral statuses не создают дополнительную actor copy. HP/statuses применяет
+  прежний commit, затем прежние timeline/held release/outcome. Rule signature
+  включает HP field, stale guard сохранён; runtime/save schema не расширены.
+  Exact internal preview/log объясняет actual healing→damage; публичный intent
+  использует только текущие известные правила без скрытых hit/crit/HP deltas.
+  HUD journal follows bottom, чтобы многострочный turn-end результат был виден.
+  Новые native poison/regeneration templates: −5/+5 HP, три хода, без назначения
+  старым действиям/бойцам. Это редактируемые значения, не принятый баланс.
+  Common draft/validation/summary/Undo/Save/reopen используют Resource metadata.
+  Targeted periodic + прежние statuses/15 regressions/conditions/clean checker
+  PASS; focused native editor и fresh Forward+ battle также PASS. Единственный
+  native 0xC0000005 при выходе после успешных form/publication gates не повторился
+  в следующем запуске; причина неизвестна, не объявлять общей stability fix.
+  Свои приёмы/статусы, input/narrow/125% и баланс OPEN. Evidence — Migration Plan.
 - `ember_item_editor.gd` — формы семи типов с русскими labels, native icon picker,
   экипировочными max HP/MP/allowedHeroIds и использованием HP/MP/revive/range/delay.
   Неактивные значения и extension metadata сохраняются. Текущие типы включают
@@ -1681,8 +2218,21 @@ Save v2:
   Старые browser/Inspector/form/Lab routes доступны отдельно; combat Create/Copy
   ведут в common draft, Save старого combat browser использует общий publisher.
 - `plugin.gd` добавляет Tool menu «Ember: Игровые системы»; reload/unload сохранён.
-  Новый layout принадлежит прежним Equipment/Party/
-  Explore owners. MOVE/JUMP/knockback/wet modifiers обуви ещё не реализованы.
+  Новый layout принадлежит прежним Equipment/Party/Explore owners.
+- Обувь: optional item-definition keys `moveBonus` [-12,12], `jumpBonus` [-8,8],
+  `pushResistanceBonus`/`wetResistanceBonus` [0,12], default0. ItemStore требует
+  конечные целые числа; ItemEditor показывает поля только shoes, скрытые данные
+  сохраняет. Equipment.footwear_bonuses читает только shoes в слоте shoes;
+  Party.derived_stats добавляет бонусы к Unit base, MOVE/JUMP снизу0, Wet — к
+  base statusResistances.wet. project_combat_member переносит существующие
+  combat fields; другие statusResistances не теряет. Preview/Inventory используют
+  тот же derived результат. Снимки боя остаются прежними; save хранит ID вещи,
+  Load пересчитывает значения без новой миграции. Grid MOVE/JUMP, порог push и
+  StatusRules duration-minus-resistance остаются единственными runtime rules.
+  Защита сокращает новое Wet application, не старые статусы и не свойства клетки;
+  overworld movement не меняется. `--footwear` и extended native `--cycle` PASS:
+  Undo/Redo/Discard/Save/reopen/UID, unsaved fitting, bag equip/unequip, обычный
+  бой/result/Retry/fresh Load. Manual свои обувь/бой/баланс/narrow/125% OPEN.
 - Native CRUD/identity/ref/UID/conflict, item type/hidden values/filter guards,
   signed bonuses/hero restrictions через PartyState и расходник через прежний
   preview/commit + items/PCK/Graph regressions и real

@@ -77,10 +77,16 @@ static func relations(module: String, record: Dictionary) -> Array[Dictionary]:
 	elif module == "action" and resource != null:
 		for effect in resource.get("effect_steps"):
 			if effect != null: _link(result, "effect", str(effect.get("effect_id")), "Эффект")
-		for key in preload("res://scripts/prototypes/ember_combat_action_conditions.gd").STATUS_FIELDS:
-			for id in resource.get(key): _link(result, "status", str(id), "Условие статуса")
-		for row in resource.get("equipment_conditions"):
-			if row.get("mode", "") == "item": _link(result, "item", str(row.get("item_id", "")), "Условие экипировки")
+		var conditions = preload("res://scripts/prototypes/ember_combat_action_conditions.gd")
+		for rules in conditions.condition_sets(resource.call("application_conditions")):
+			for key in conditions.STATUS_FIELDS:
+				var ids: Variant = rules.get(key, [])
+				if typeof(ids) in [TYPE_ARRAY, TYPE_PACKED_STRING_ARRAY]:
+					for id in ids: _link(result, "status", str(id), "Условие статуса")
+			var rows: Variant = rules.get("equipment_conditions", [])
+			if rows is Array:
+				for row in rows:
+					if row is Dictionary and row.get("mode", "") == "item": _link(result, "item", str(row.get("item_id", "")), "Условие экипировки")
 	elif module == "unit" and resource != null:
 		for id in resource.get("action_ids"): _link(result, "action", id, "Приём")
 		_link(result, "ai", str(resource.get("ai_profile_id")), "ИИ")
@@ -88,7 +94,7 @@ static func relations(module: String, record: Dictionary) -> Array[Dictionary]:
 		if table != null: _link(result, "loot", str(table.get("table_id")), "Лут")
 	elif module == "effect" and resource != null:
 		_link(result, "status", str(resource.get("status_id")), "Статус")
-		for key in ["remove_status_ids", "spread_status_ids"]:
+		for key in ["remove_status_ids", "spread_status_ids", "target_required_status_ids", "target_forbidden_status_ids"]:
 			for id in resource.get(key): _link(result, "status", id, "Статус")
 	elif module == "encounter" and resource != null:
 		for key in ["party_unit_ids", "enemy_unit_ids"]:

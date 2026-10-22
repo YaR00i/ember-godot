@@ -168,7 +168,8 @@ static func _install_editor_asset(
 					result = ERR_FILE_CORRUPT
 					break
 		if result == OK:
-			signature = (EmberVoxelPrefab.BUILD_CONTRACT + ":" + str(replay.source.hash) + ":json-only").sha256_text()
+			var restored_source: Resource=ResourceLoader.load(serialized[0],"",ResourceLoader.CACHE_MODE_IGNORE_DEEP)
+			signature = (EmberVoxelPrefab.source_render_contract(restored_source.to_definition().model) + ":" + str(replay.source.hash) + ":json-only").sha256_text()
 	else:
 		result = ResourceSaver.save(source, serialized[0])
 		if result == OK:
@@ -178,7 +179,7 @@ static func _install_editor_asset(
 			# Never retain a previous staging path as scene inheritance.
 			node.scene_file_path = ""
 			packed = PackedScene.new()
-			signature = (EmberVoxelPrefab.BUILD_CONTRACT + ":" + FileAccess.get_sha256(serialized[0]) + ":json-only").sha256_text()
+			signature = (EmberVoxelPrefab.source_render_contract(source.to_definition().model) + ":" + FileAccess.get_sha256(serialized[0]) + ":json-only").sha256_text()
 			node.set_meta(EmberVoxelPrefab.SOURCE_SIGNATURE_META, signature)
 			result = packed.pack(node)
 			node.free()

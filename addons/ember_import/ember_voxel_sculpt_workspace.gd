@@ -95,6 +95,7 @@ var _actions: EmberVoxelSculptActions
 var _resource: EmberVoxelModelResource
 var _resource_path := ""
 var _saved_material := {}
+var _saved_solid_surface := {}
 var _saved_voxels := PackedByteArray()
 var _saved_palette := PackedColorArray()
 var _saved_transparency := PackedByteArray()
@@ -639,6 +640,7 @@ func _open_surface_unchecked(
 		_set_status("Surface Canvas Resource не загрузился", true)
 		return
 	_saved_material = _resource.material.duplicate(true)
+	_saved_solid_surface = EmberVoxelModelResource.copy_authoring_value(_resource.solid_surface)
 	_saved_voxels = _resource.voxels.duplicate()
 	_saved_palette = _resource.palette.duplicate()
 	_saved_transparency = _resource.transparency.duplicate()
@@ -735,6 +737,7 @@ func has_unsaved_changes() -> bool:
 		_resource != null
 		and (
 			_resource.material != _saved_material
+			or _resource.solid_surface != _saved_solid_surface
 			or _resource.voxels != _saved_voxels
 			or _resource.size_blocks != _saved_size_blocks
 			or _resource.height_voxels != _saved_height_voxels
@@ -825,6 +828,7 @@ func discard_changes() -> void:
 	if _resource == null:
 		return
 	_resource.material = _saved_material.duplicate(true)
+	_resource.solid_surface = EmberVoxelModelResource.copy_authoring_value(_saved_solid_surface)
 	_resource.voxels = _saved_voxels.duplicate()
 	_resource.size_blocks = _saved_size_blocks
 	_resource.height_voxels = _saved_height_voxels
@@ -5985,6 +5989,7 @@ func _save() -> bool:
 			return false
 		_resource_path = str(result.get("path", ""))
 		_saved_material = _resource.material.duplicate(true)
+		_saved_solid_surface = EmberVoxelModelResource.copy_authoring_value(_resource.solid_surface)
 		_saved_voxels = _resource.voxels.duplicate()
 		_saved_palette = _resource.palette.duplicate()
 		_saved_transparency = _resource.transparency.duplicate()
@@ -6036,6 +6041,7 @@ func _save() -> bool:
 	if is_instance_valid(_resource_path_label):
 		_resource_path_label.text = save_path
 	_saved_material = _resource.material.duplicate(true)
+	_saved_solid_surface = EmberVoxelModelResource.copy_authoring_value(_resource.solid_surface)
 	_saved_voxels = _resource.voxels.duplicate()
 	_saved_palette = _resource.palette.duplicate()
 	_saved_transparency = _resource.transparency.duplicate()

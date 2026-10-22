@@ -29,6 +29,9 @@ const CAMERA_MENU_STEP_ROTATION := 2
 const CAMERA_MENU_LOCK_HORIZONTAL := 3
 const CAMERA_MENU_LOCK_VERTICAL := 4
 
+var _header_panel: PanelContainer
+var _header_title_box: VBoxContainer
+
 var _state: Dictionary
 var _encounter_mode := "grid"
 var _authored_encounter: EmberEncounterResource
@@ -291,6 +294,7 @@ func _build_ui() -> void:
 	add_child(_field_panel)
 
 	var header_panel := PanelContainer.new()
+	_header_panel = header_panel
 	header_panel.name = "CombatHeaderPanel"
 	header_panel.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	header_panel.offset_left = 14
@@ -337,6 +341,7 @@ func _build_ui() -> void:
 	_footer = Label.new()
 	_footer.modulate = COLOR_MUTED
 	_footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_footer.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_footer.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	_footer.offset_left = 665
 	_footer.offset_top = -42
@@ -348,6 +353,41 @@ func _build_ui() -> void:
 	_build_result_overlay()
 	_build_pause_overlay()
 	_build_fade_overlay()
+	resized.connect(_fit_hud_layout.call_deferred)
+	for control in [_header_panel, _console_panel, _footer]:
+		control.minimum_size_changed.connect(_fit_hud_layout.call_deferred)
+	_fit_hud_layout.call_deferred()
+
+
+func _fit_hud_layout() -> void:
+	if _header_panel == null or not is_inside_tree(): return
+	var screen := get_viewport_rect().size
+	var compact := screen.x < 1440.0
+	_header_title_box.custom_minimum_size.x = 180.0 if compact else 360.0
+	_mode_picker.custom_minimum_size.x = 180.0 if compact else 270.0
+	_view_picker.custom_minimum_size.x = 110.0 if compact else 150.0
+	_outcome_label.visible = not compact
+	_header_panel.offset_bottom = 12.0 + maxf(72.0, _header_panel.get_combined_minimum_size().y)
+	_title_label.tooltip_text = _title_label.text
+	_subtitle_label.tooltip_text = _subtitle_label.text
+	var command_width := 300.0 if compact else 434.0
+	_command_panel.offset_left = -command_width - 16.0
+	_console_panel.offset_right = 336.0 if compact else 650.0
+	var console_height := maxf(202.0, _console_panel.get_combined_minimum_size().y)
+	_console_panel.offset_top = -18.0 - console_height
+	_ability_info_panel.offset_left = 352.0 if compact else 665.0
+	_ability_info_panel.offset_right = -command_width - 36.0
+	_footer.offset_left = _ability_info_panel.offset_left
+	_footer.offset_right = _ability_info_panel.offset_right
+	_footer.offset_top = -maxf(42.0, _footer.get_combined_minimum_size().y + 8.0)
+	_footer.offset_bottom = -6.0
+	_ability_info_panel.offset_bottom = minf(-52.0, _footer.offset_top - 6.0)
+	_ability_info_panel.offset_top = _ability_info_panel.offset_bottom - 166.0
+	_timeline_panel.offset_right = 196.0 if compact else 236.0
+	_timeline_panel.offset_top = _header_panel.offset_bottom + 12.0
+	_timeline_panel.offset_bottom = minf(574.0, screen.y + _console_panel.offset_top - 14.0) if compact else maxf(574.0, _timeline_panel.offset_top + 300.0)
+	_enemy_info_panel.offset_top = _header_panel.offset_bottom + 12.0
+	_field_heading.tooltip_text = _field_heading.text
 
 
 func _build_deployment_panel() -> void:
@@ -457,9 +497,10 @@ func _build_deployment_ready_panel() -> void:
 
 
 func _build_header() -> Control:
-	var header := HBoxContainer.new()
+	var header := HFlowContainer.new()
 	header.add_theme_constant_override("separation", 14)
 	var title_box := VBoxContainer.new()
+	_header_title_box = title_box
 	title_box.custom_minimum_size.x = 360.0
 	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(title_box)
@@ -564,7 +605,13 @@ func _build_timeline() -> Control:
 	_timeline_row.name = "CombatTimeline"
 	_timeline_row.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_timeline_row.add_theme_constant_override("separation", 5)
-	content.add_child(_timeline_row)
+	var scroll := ScrollContainer.new()
+	scroll.name = "CombatTimelineScroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_timeline_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.add_child(scroll)
+	scroll.add_child(_timeline_row)
 	return panel
 
 
@@ -597,6 +644,8 @@ func _build_console_panel() -> PanelContainer:
 	content.add_theme_constant_override("separation", 5)
 	margin.add_child(content)
 	_field_heading = Label.new()
+	_field_heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_field_heading.max_lines_visible = 2
 	_field_heading.modulate = COLOR_ACCENT
 	_field_heading.add_theme_font_size_override("font_size", 15)
 	content.add_child(_field_heading)
@@ -612,6 +661,7 @@ func _build_console_panel() -> PanelContainer:
 	_log_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_log_label.custom_minimum_size = Vector2(0, 80)
 	_log_label.scroll_active = true
+	_log_label.scroll_following = true
 	_log_label.add_theme_font_size_override("normal_font_size", 14)
 	content.add_child(_log_label)
 	_console_input = LineEdit.new()
@@ -1307,6 +1357,7 @@ func _refresh() -> void:
 	_ability_info_panel.visible = not _deployment_active and _ability_info_panel.visible
 	_enemy_info_panel.visible = not _deployment_active and _enemy_info_panel.visible
 	_footer.visible = not _deployment_active
+	_fit_hud_layout.call_deferred()
 
 
 func _invalidate_plan_cache() -> void:
@@ -1738,6 +1789,7 @@ func _on_grid_cell_hovered(cell: Vector2i) -> void:
 	if not bool(_action_plan.get("ok", false)):
 		_target_hint.text += "\n" + str(_action_plan.get("reason", ""))
 	_refresh_predicted_timeline()
+	_refresh_ability_info()
 	_update_hover_projection(_public_field_preview(_selected_action))
 
 
@@ -1877,12 +1929,13 @@ func _push_resistance_copy(value: int) -> String:
 func _status_icon_text(unit: Dictionary) -> String:
 	var entries: Array[String] = []
 	for raw_status in unit.get("statuses", {}):
-		var duration := int((unit.get("statuses", {}) as Dictionary).get(raw_status, 0))
+		var raw: Variant = unit.get("statuses", {}).get(raw_status, 0)
+		var duration := Combat.StatusRules.remaining(raw)
 		if duration <= 0:
 			continue
 		var definition := Combat.status_definition(str(raw_status))
-		entries.append("%s %s %d" % [
-			str(definition.get("icon", "●")), str(definition.get("name", raw_status)), duration,
+		entries.append("%s %s %s" % [
+			str(definition.get("icon", "●")), str(definition.get("name", raw_status)), Combat.StatusRules.timer_text(raw),
 		])
 	return " · ".join(entries)
 
@@ -2767,7 +2820,6 @@ func _refresh_log() -> void:
 	if not _console_messages.is_empty():
 		console_text = "\n[color=#65cfe1]КОМАНДЫ[/color]\n%s" % "\n".join(_console_messages)
 	_log_label.text = "[color=#91a0b8]ЖУРНАЛ БОЯ[/color]\n%s%s" % ["\n".join(lines), console_text]
-	_log_label.scroll_to_line(maxi(0, lines.size() + _console_messages.size()))
 
 
 func _select_action(action_id: String) -> void:
@@ -3474,9 +3526,10 @@ func _console_add_status(selector: String, status_id: String, duration: int) -> 
 	var units := _state.get("units", {}) as Dictionary
 	for unit_id in ids:
 		var unit := units[unit_id] as Dictionary
-		var statuses := unit.get("statuses", {}).duplicate(true) as Dictionary
-		statuses[status_id] = maxi(1, duration)
-		unit["statuses"] = statuses
+		var resolved := {"ok": true}
+		Combat.StatusRules.set_status(resolved, str(unit_id), status_id, duration, unit.get("statuses", {}))
+		if not resolved.get("ok", false): continue
+		Combat._apply_unit_effects(unit, resolved)
 		units[unit_id] = unit
 	_state["units"] = units
 	return ids.size()
@@ -3786,9 +3839,10 @@ func _unhandled_input(event: InputEvent) -> void:
 func _status_text(unit: Dictionary) -> String:
 	var names: Array[String] = []
 	for raw_id in unit.get("statuses", {}):
-		var duration := int((unit.get("statuses", {}) as Dictionary)[raw_id])
+		var raw: Variant = unit.get("statuses", {})[raw_id]
+		var duration := Combat.StatusRules.remaining(raw)
 		if duration > 0:
-			names.append("%s %d" % [Combat.status_name(str(raw_id)), duration])
+			names.append("%s %s" % [Combat.status_name(str(raw_id)), Combat.StatusRules.timer_text(raw)])
 	return ", ".join(names)
 
 

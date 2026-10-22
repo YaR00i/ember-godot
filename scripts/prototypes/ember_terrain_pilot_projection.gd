@@ -58,6 +58,18 @@ var _sea_swash: RefCounted
 var _waterfall: RefCounted
 var _wave_obstacles: RefCounted
 var _navigation_grid := {}
+var object_floor_sampler: Callable
+var _object_navigation_revision := 0
+
+func set_object_navigation_revision(value: int) -> void:
+	if value!=_object_navigation_revision:
+		_object_navigation_revision=value;_navigation_grid.clear()
+
+func _physical_height(point: Vector2, terrain_height: float) -> float:
+	if object_floor_sampler.is_valid():
+		var sample: Dictionary=object_floor_sampler.call(to_global(Vector3(point.x,terrain_height,point.y)))
+		if sample.get("solid",false):return maxf(terrain_height,to_local(sample.position).y)
+	return terrain_height
 var _column_revision := 0
 var _editor_hidden_edge_keys := {}
 var _editor_hover_overlay: Material
@@ -337,10 +349,16 @@ func _smooth_height(point: Vector2) -> float:
 func set_shared_material_pattern(pattern: TerrainPattern) -> bool:
 	if pattern == null or not pattern.validation_errors().is_empty(): return false
 	_refresh_material_atlas()
+	if is_inside_tree():
+		for prop in get_tree().get_nodes_in_group(&"ember_solid_surface"):
+			if get_parent().is_ancestor_of(prop):prop.refresh_solid_material()
 	return true
 
 func preview_shared_material_light(pattern: TerrainPattern, id: String) -> void:
 	if document==null or pattern==null:return
+	if is_inside_tree():
+		for prop in get_tree().get_nodes_in_group(&"ember_solid_surface"):
+			if get_parent().is_ancestor_of(prop):prop.preview_solid_material_light(pattern,id)
 	for slot in document.palette_surface_roles.size():
 		if document.material_id_for_palette(slot)!=id:continue
 		Materials.update_grass_light_profile(_ground_material as ShaderMaterial,slot,pattern)
@@ -1085,7 +1103,7 @@ func navigation_path(global_start: Vector3, global_goal: Vector3, max_step_voxel
 	for block in blocks:
 		var height := block_heights[block.x + block.y * width]
 		var p := Vector2((block.x+0.5)*TerrainResource.CELLS_PER_BLOCK,(block.y+0.5)*TerrainResource.CELLS_PER_BLOCK)
-		var y: float = _smooth_height(p) if ground_style == 1 else document.origin_y+height
+		var y: float = _physical_height(p,_smooth_height(p) if ground_style == 1 else document.origin_y+height)
 		result.append(to_global(Vector3(p.x,y+1,p.y)))
 	return result
 
@@ -1112,7 +1130,7 @@ func _build_navigation_grid() -> Dictionary:
 						var height := document.column_value("heights", document.column_index(bx * TerrainResource.CELLS_PER_BLOCK + ox, bz * TerrainResource.CELLS_PER_BLOCK + oz))
 						if height > 0:
 							var point := Vector2(bx*TerrainResource.CELLS_PER_BLOCK+ox,bz*TerrainResource.CELLS_PER_BLOCK+oz)
-							samples.append(roundi(_smooth_height(point)-document.origin_y)-1 if ground_style == 1 else height-1)
+							samples.append(roundi(_physical_height(point,_smooth_height(point) if ground_style==1 else document.origin_y+height)-document.origin_y)-1)
 				if samples.size() >= 5:
 					samples.sort()
 					block_heights[bx + bz * width] = samples[samples.size() / 2]

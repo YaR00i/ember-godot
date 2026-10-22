@@ -1,10 +1,14 @@
 [gd_resource type="Resource" script_class="EmberCompactTerrainPattern" format=4]
 
 [ext_resource type="Script" path="res://scripts/ember_compact_terrain_pattern.gd" id="1_nvtey"]
+[ext_resource type="Texture2D" path="res://content/terrain_materials/textures/soil-painted-genshin-v4-runtime.png" id="2_soil_v4"]
 
 [resource]
 script = ExtResource("1_nvtey")
 role_id = "soil"
+albedo_texture = ExtResource("2_soil_v4")
+albedo_relief_enabled = false
+albedo_periodic = true
 base_color = Color(0.5372549, 0.40784314, 0.2784314, 1)
 light_color = Color(0.559,0.426,0.293,1)
 shadow_color = Color(0.516,0.391,0.266,1)

@@ -29,7 +29,7 @@ func _init() -> void:
 func _run() -> void:
 	for folder in ["sources", "prefabs", "recipes"]:
 		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(directory.path_join(folder)))
-	var base: Resource = Generator.creation_presets(Generator.LARGE_TREE)[1].recipe.duplicate(true)
+	var base: Resource = Generator.creation_presets(Generator.LARGE_TREE,true)[1].recipe.duplicate(true)
 	base.parameters.height = 64
 	base.parameters.crown_spread = 48
 	base.seed = 371

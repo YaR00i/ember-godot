@@ -60,6 +60,27 @@ static func bind_compact_terrain_depth(material: ShaderMaterial, height: Texture
 	return true
 
 
+static func compact_terrain_secondary_depth_shader(base: Shader) -> Shader:
+	if base==null or not base.code.contains("#define EMBER_TERRAIN_MATERIAL_DEPTH"):return null
+	var shader:=Shader.new()
+	shader.code="#define EMBER_TERRAIN_SECONDARY_DEPTH\n"+base.code
+	shader.set_meta("ember_compact_terrain_shader",true)
+	shader.set_meta("ember_secondary_depth_shader",true)
+	return shader
+
+
+static func bind_compact_terrain_secondary_depth(material: ShaderMaterial,height: Texture2D,coverage: Texture2D,slots: Vector2i,amplitude_m: float,sun:=Vector3.UP) -> bool:
+	if material==null or material.shader==null or not material.shader.get_meta("ember_secondary_depth_shader",false) or height==null or coverage==null:return false
+	if slots.x<1 or slots.x>255 or slots.y<1 or slots.y>255 or not is_finite(amplitude_m) or amplitude_m<0.0 or amplitude_m>0.08 or not sun.is_finite() or sun.is_zero_approx():return false
+	material.set_shader_parameter("material_depth_secondary_enabled",amplitude_m>0.00001)
+	material.set_shader_parameter("material_depth_secondary_height",height)
+	material.set_shader_parameter("material_depth_secondary_coverage",coverage)
+	material.set_shader_parameter("material_depth_secondary_slots",slots)
+	material.set_shader_parameter("material_depth_secondary_amplitude_m",amplitude_m)
+	material.set_shader_parameter("material_depth_secondary_sun_direction",sun)
+	return true
+
+
 static func set_compact_terrain_roles(material: ShaderMaterial, roles: PackedStringArray, material_ids := PackedStringArray(), palette := PackedColorArray(), private_patterns := {}, periodic_material_ids := PackedStringArray()) -> void:
 	if material == null or material.shader == null or (material.shader.resource_path != TERRAIN_SHADER_PATH and not material.shader.get_meta("ember_compact_terrain_shader", false)):
 		return
@@ -121,7 +142,7 @@ static func set_compact_terrain_roles(material: ShaderMaterial, roles: PackedStr
 		var finish := patterns[id] as TerrainPattern
 		if finish.style_rim_custom:
 			has_rim=true
-			rim_lookup.set_pixel(index,0,Color(1,1 if finish.style_rim_enabled else 0,finish.style_rim_strength,0))
+			rim_lookup.set_pixel(index,0,Color(1,1 if finish.style_rim_enabled else 0,finish.style_rim_strength,finish.style_rim_width_mm*0.001))
 		if finish.grass_light_enabled:
 			has_grass_light=true
 			grass_light.set_pixel(index,0,Color(finish.grass_light_low,finish.grass_light_tint_strength,finish.grass_light_shadow_fill,1))
@@ -133,6 +154,9 @@ static func set_compact_terrain_roles(material: ShaderMaterial, roles: PackedStr
 			if not png_layers.has(texture_key):
 				var png:=finish.albedo_texture.get_image()
 				if png != null:
+					# Bank resizing/mips must never mutate an image returned by a
+					# shared source texture (notably the headless image cache).
+					png=png.duplicate() as Image
 					if png.is_compressed(): png.decompress()
 					png.convert(Image.FORMAT_RGBA8)
 					var mean:=Color(0,0,0,0);var samples:=0
@@ -144,7 +168,10 @@ static func set_compact_terrain_roles(material: ShaderMaterial, roles: PackedStr
 					max_size=Vector2i(maxi(max_size.x,png.get_width()),maxi(max_size.y,png.get_height()))
 			if png_layers.has(texture_key):
 				# Alpha is derived sampling metadata, not a second material owner.
-				png_lookup.set_pixel(index,0,Color(png_layers[texture_key]+1,finish.pattern_size_m,TerrainPattern.ROLE_IDS.find(role)+1,1.0 if id in periodic_material_ids else 0.0))
+				# Signed role retains the existing atlas metadata: negative means
+				# colour-only PNG, never inferred optical height. Legacy roles stay positive.
+				var png_role:=float(TerrainPattern.ROLE_IDS.find(role)+1)
+				png_lookup.set_pixel(index,0,Color(png_layers[texture_key]+1,finish.pattern_size_m,png_role if finish.albedo_relief_enabled else -png_role,1.0 if finish.albedo_periodic or id in periodic_material_ids else 0.0))
 				png_mean.set_pixel(index,0,png_means[texture_key])
 				png_tint.set_pixel(index,0,finish.base_color.srgb_to_linear())
 		lookup.set_pixel(index, 0, Color8(1, 1 if not finish.side_pixels.is_empty() or not finish.relief_pixels.is_empty() or not finish.side_relief_pixels.is_empty() else 0, 1 if finish.role_id == "grass" else 2 if finish.role_id == "soil" else 0))
@@ -266,7 +293,7 @@ static func update_style_rim_profile(material: ShaderMaterial, slot: int, patter
 	var image: Image=material.get_meta("ember_style_rim_image",null)
 	var texture: ImageTexture=material.get_shader_parameter("style_rim_lookup")
 	if image==null or texture==null: return
-	image.set_pixel(slot,0,Color(1 if pattern.style_rim_custom else 0,1 if pattern.style_rim_enabled else 0,pattern.style_rim_strength,0))
+	image.set_pixel(slot,0,Color(1 if pattern.style_rim_custom else 0,1 if pattern.style_rim_enabled else 0,pattern.style_rim_strength,pattern.style_rim_width_mm*0.001))
 	texture.update(image)
 	var enabled:=false
 	for i in 256:

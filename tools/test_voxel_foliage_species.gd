@@ -34,7 +34,7 @@ func _run() -> void:
 	var panel := GenerationPanel.new()
 	root.add_child(panel)
 	panel.open_for({"root": scene, "parent": scene, "undo": undo})
-	var presets := Generator.creation_presets(Generator.LARGE_TREE)
+	var presets := Generator.creation_presets(Generator.LARGE_TREE,true)
 	for kind in 5:
 		var recipe: Resource = presets[kind].recipe.duplicate(true)
 		recipe.parameters.height = 64

@@ -10,6 +10,7 @@ const SLOTS := ["none", "weapon", "armor", "shoes", "accessory"]
 const LEGACY_SLOTS := ["head", "body"]
 const RARITIES := ["common", "uncommon", "rare", "epic"]
 const USE_TARGETS := ["explore", "arena", "both"]
+const Equipment = preload("res://scripts/ember_equipment.gd")
 
 
 static func document(item_id: String) -> Dictionary:
@@ -71,6 +72,10 @@ static func normalized_document(raw: Dictionary) -> Dictionary:
 	result["tags"] = tags
 	for key in ["hpBonus", "mpBonus", "combatDelay"]:
 		if raw.has(key): result[key] = int(raw[key])
+	for key in Equipment.SHOE_BONUS_LIMITS:
+		# Preserve malformed values for validation instead of silently coercing them.
+		if raw.has(key) and typeof(raw[key]) in [TYPE_INT, TYPE_FLOAT] and is_finite(float(raw[key])) and float(raw[key]) == floor(float(raw[key])):
+			result[key] = int(raw[key])
 	if raw.has("allowedHeroIds") and typeof(raw.allowedHeroIds) in [TYPE_ARRAY, TYPE_PACKED_STRING_ARRAY]:
 		var allowed: Array[String] = []
 		for raw_id in raw.allowedHeroIds:
@@ -83,6 +88,12 @@ static func normalized_document(raw: Dictionary) -> Dictionary:
 static func validation_errors(raw: Dictionary) -> Array[String]:
 	var value := normalized_document(raw)
 	var errors: Array[String] = []
+	for key in Equipment.SHOE_BONUS_LIMITS:
+		if not raw.has(key): continue
+		var number: Variant = raw[key]
+		var bounds: Vector2i = Equipment.SHOE_BONUS_LIMITS[key]
+		if typeof(number) not in [TYPE_INT, TYPE_FLOAT] or not is_finite(float(number)) or float(number) != floor(float(number)) or number < bounds.x or number > bounds.y:
+			errors.append("%s: укажите целое число от %d до %d." % [key, bounds.x, bounds.y])
 	if not _valid_id(str(value.get("id", ""))):
 		errors.append("ID: только a-z, 0-9, _ и -, первый символ — буква или цифра.")
 	if str(value.get("nameRu", "")).is_empty():

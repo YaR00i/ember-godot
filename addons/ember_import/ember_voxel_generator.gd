@@ -3,7 +3,13 @@ extends RefCounted
 
 ## Creation UI descriptors share the provider's normalized parameters. Adding an
 ## object provider does not require another panel, preset format or batch owner.
-static func creation_fields(generator_id: String) -> Array[Dictionary]:
+static func creation_fields(generator_id: String,recipe: Resource=null) -> Array[Dictionary]:
+	if generator_id==LARGE_TREE and recipe!=null and bool(recipe.parameters.get("painted_tree",false)):
+		var result: Array[Dictionary]=[{"key":"tree_type","title":"Порода дерева","options":["Саванна","Дуб","Берёза","Клён","Ель"],"identity":true}]
+		for descriptor: Dictionary in editing_fields(recipe):
+			var field:=descriptor.duplicate(true);field["title"]=field.label;field["section"]=field.get("group","Форма")
+			result.append(field)
+		return result
 	if generator_id == BUSH:
 		return [
 			{"key": "bush_type", "title": "Форма куста", "options": ["Округлый пышный", "Низкий раскидистый", "Высокий ветвистый"], "identity": true},
@@ -89,8 +95,15 @@ static func creation_description(recipe: Resource) -> String:
 	return ""
 
 
-static func creation_presets(generator_id: String) -> Array[Dictionary]:
+static func creation_presets(generator_id: String, legacy := false) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
+	if generator_id == LARGE_TREE and not legacy:
+		var species=load("res://scripts/ember_tree_species.gd")
+		for kind in 5:
+			var recipe:=Recipe.new();recipe.generator_id=LARGE_TREE;recipe.seed=7
+			recipe.parameters=species.accepted_parameters(kind);recipe.resource_name="Тип · "+species.TITLES[kind]
+			result.append({"name":recipe.resource_name,"recipe":recipe})
+		return result
 	if generator_id == BUSH:
 		for item in [
 			{"name": "Кусты · Облака листвы · пробный", "type": 0, "height": 24, "radius": 20, "flatten": 15},
@@ -139,7 +152,7 @@ static func creation_presets(generator_id: String) -> Array[Dictionary]:
 		{"name": "База · Стройное дерево", "parameters": {"crown_shape": 1, "crown_spread": 40}},
 		{"name": "База · Осенние ярусы", "parameters": {"crown_shape": 2, "foliage_color": Color("c67432"), "foliage_amount": 85}},
 	]:
-		var recipe := default_recipe(generator_id)
+		var recipe := Recipe.new();recipe.generator_id=generator_id;recipe.parameters=LargeTreeProvider.defaults()
 		recipe.parameters.merge(item.parameters, true)
 		recipe.parameters = normalized_parameters(generator_id, recipe.parameters)
 		recipe.resource_name = item.name
@@ -181,6 +194,8 @@ static func default_recipe(generator_id: String) -> Resource:
 	recipe.parameters = normalized_parameters(
 		generator_id, LargeTreeProvider.defaults() if generator_id == LARGE_TREE else {}
 	)
+	if generator_id==LARGE_TREE:
+		recipe.seed=7;recipe.parameters=load("res://scripts/ember_tree_species.gd").accepted_parameters(1)
 	return recipe
 
 
@@ -208,6 +223,8 @@ static func validation_errors(recipe: Resource) -> Array[String]:
 		errors.append("Неизвестный генератор: %s" % recipe.generator_id)
 	if recipe.seed < 0:
 		errors.append("Seed генератора не может быть отрицательным.")
+	if recipe.generator_id==LARGE_TREE and bool(recipe.parameters.get("painted_tree",false)):
+		errors.append_array(load("res://scripts/ember_tree_surface.gd").settings_errors(recipe.parameters))
 	if recipe.family_id.validate_filename() != recipe.family_id and not recipe.family_id.is_empty():
 		errors.append("Некорректный ID семейства вариаций.")
 	if recipe.variation_name.strip_edges().is_empty() or recipe.variation_name.length() > 80 or recipe.family_title.length() > 160:
@@ -248,11 +265,13 @@ static func build(
 				recipe.parameters, recipe.seed, color, material, title, model_id
 			)
 		LARGE_TREE:
+			var result: Dictionary
 			if not recipe.structure.is_empty():
-				return LargeTreeProvider.build_on_structure(recipe.parameters, recipe.structure, recipe.seed, material, title, model_id)
-			return LargeTreeProvider.build(
-				recipe.parameters, recipe.seed, color, material, title, model_id
-			)
+				result=LargeTreeProvider.build_on_structure(recipe.parameters, recipe.structure, recipe.seed, material, title, model_id)
+			else:result=LargeTreeProvider.build(recipe.parameters, recipe.seed, color, material, title, model_id)
+			if not result.has("error") and bool(recipe.parameters.get("painted_tree",false)):
+				load("res://scripts/ember_tree_surface.gd").publish(result,recipe.parameters,recipe.seed)
+			return result
 	return {"error": "Для рецепта нет генератора."}
 
 
@@ -310,6 +329,19 @@ static func editing_fields(recipe: Resource) -> Array:
 				if field.key=="main_branch_count" and int(recipe.parameters.crown_shape)==1:field.max=12
 				if field.key=="branch_count_variation":field.label="Неравномерность ярусов · %"
 			fields.append(field)
+	if bool(recipe.parameters.get("painted_tree",false)):
+		fields=fields.filter(func(field: Dictionary):return field.key not in ["foliage_volume_form","foliage_amount","foliage_detail","cluster_size","cluster_flatten","canopy_cohesion"])
+		for descriptor in [{"key":"height","label":"Высота · vox","group":"Каркас","min":32,"max":128},{"key":"trunk_width","label":"Толщина ствола · vox","group":"Каркас","min":3,"max":24},{"key":"crown_spread","label":"Ширина кроны · %","group":"Каркас","min":25,"max":85},{"key":"branch_start","label":"Начало ветвей · % высоты","group":"Каркас","min":20,"max":80}]:
+			if not fields.any(func(field):return field.key==descriptor.key):fields.append(descriptor)
+		fields.append_array([
+			{"key":"tree_leaf_density","label":"Количество листвы · %","group":"Листва и свет","min":0,"max":100},
+			{"key":"tree_leaf_local","label":"Листва в выбранной части","group":"Листва и свет","type":"tree_parts"},
+			{"key":"tree_leaf_depth","label":"Глубина тёмных участков · %","group":"Листва и свет","min":0,"max":100},
+			{"key":"tree_leaf_receive","label":"Приём теней · %","group":"Листва и свет","min":0,"max":100},
+			{"key":"tree_rim_enabled","label":"Световая кромка","group":"Листва и свет","type":"bool"},
+			{"key":"tree_wood_rim","label":"Кромка коры · %","group":"Листва и свет","min":0,"max":100},
+			{"key":"tree_leaf_rim","label":"Кромка листвы · %","group":"Листва и свет","min":0,"max":100}])
+		return fields
 	if int(recipe.parameters.get("tree_type", 0)) > 0 or int(recipe.parameters.get("generation_version", 1)) in [9, 14]:
 		fields.insert(3, {"key": "foliage_along", "label": "Листва вдоль ветвей · %", "group": "Листва", "min": 0, "max": 100})
 	if LargeTreeProvider.FoliagePattern.supported(recipe.parameters):

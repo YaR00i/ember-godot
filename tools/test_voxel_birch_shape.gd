@@ -15,7 +15,7 @@ func check(value: bool, message: String) -> void:
 		push_error(message)
 
 func _run() -> void:
-	var birch: Resource = Generator.creation_presets(Generator.LARGE_TREE)[2].recipe.duplicate(true)
+	var birch: Resource = Generator.creation_presets(Generator.LARGE_TREE,true)[2].recipe.duplicate(true)
 	check(birch.parameters.generation_version == 13, "new birch preset selects varied profile")
 	# Historical shape/serialization gate remains explicitly on revision 5.
 	birch.parameters.generation_version = 5

@@ -37,7 +37,13 @@ var _delete_dialog: ConfirmationDialog
 var _delete_record := {}
 var _delete_signature := ""
 var _draft_search := ""
-var _header: HBoxContainer
+var _header: HFlowContainer
+var _navigation: VBoxContainer
+var _compact_bar: HBoxContainer
+var _module_picker: OptionButton
+var _check_button: Button
+var _split: SplitContainer
+var _detail_scroll: ScrollContainer
 var _refresh_button: Button
 var _draft_actions: Control
 
@@ -96,7 +102,7 @@ func setup() -> void:
 	name = "GameSystemsWorkspace"
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
 	add_theme_constant_override("separation", 12)
-	var header := HBoxContainer.new()
+	var header := HFlowContainer.new()
 	_header = header
 	add_child(header)
 	var title := _label("Игровые системы", 25)
@@ -117,11 +123,28 @@ func setup() -> void:
 	refresh_button.text = "Обновить библиотеки"
 	refresh_button.pressed.connect(refresh)
 	header.add_child(refresh_button)
+	_compact_bar = HBoxContainer.new()
+	_compact_bar.name = "GameSystemsCompactNavigation"
+	add_child(_compact_bar)
+	_module_picker = OptionButton.new()
+	_module_picker.name = "GameSystemsModulePicker"
+	_module_picker.fit_to_longest_item = false
+	_module_picker.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_module_picker.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for module in Catalog.MODULES:
+		_module_picker.add_item(str(module[1]))
+		_module_picker.set_item_metadata(_module_picker.item_count - 1, str(module[0]))
+	_module_picker.item_selected.connect(func(index: int) -> void:
+		select_module(str(_module_picker.get_item_metadata(index)), "")
+		_fit_library_layout.call_deferred()
+	)
+	_compact_bar.add_child(_module_picker)
 	var columns := HBoxContainer.new()
 	columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	columns.add_theme_constant_override("separation", 16)
 	add_child(columns)
 	var navigation := VBoxContainer.new()
+	_navigation = navigation
 	navigation.custom_minimum_size.x = 175
 	navigation.add_theme_constant_override("separation", 4)
 	columns.add_child(navigation)
@@ -136,6 +159,7 @@ func setup() -> void:
 		_module_buttons[module[0]] = button
 	navigation.add_child(HSeparator.new())
 	var check := Button.new()
+	_check_button = check
 	check.name = "GameSystemsCheckLibrary"
 	check.text = "Проверка библиотеки"
 	check.pressed.connect(_open_library_check)
@@ -148,7 +172,8 @@ func setup() -> void:
 	body.add_child(_heading)
 	_description = _label("", 14)
 	body.add_child(_description)
-	var split := HSplitContainer.new()
+	var split := SplitContainer.new()
+	_split = split
 	split.name = "GameSystemsSplit"
 	split.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	split.split_offset = 0
@@ -182,6 +207,8 @@ func setup() -> void:
 	_list.item_activated.connect(_open_editor)
 	library.add_child(_list)
 	var scroll := ScrollContainer.new()
+	_detail_scroll = scroll
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.custom_minimum_size.x = 300
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.size_flags_stretch_ratio = 0.58
@@ -195,6 +222,31 @@ func setup() -> void:
 	_build_dialogs()
 	_session.published.connect(_on_published)
 	select_module(_module)
+	resized.connect(_fit_library_layout.call_deferred)
+	if get_parent_control() != null: get_parent_control().resized.connect(_fit_library_layout.call_deferred)
+	_fit_library_layout.call_deferred()
+
+
+func _fit_library_layout() -> void:
+	if _navigation == null or not is_inside_tree(): return
+	var room := size
+	if get_parent_control() != null: room = room.min(get_parent_control().size)
+	if Engine.is_editor_hint(): room = room.min(EditorInterface.get_editor_main_screen().size)
+	var wide_width := _navigation.get_combined_minimum_size().x + _library.custom_minimum_size.x + _detail_scroll.custom_minimum_size.x + 80.0
+	var wide_height := _navigation.get_combined_minimum_size().y + _header.get_combined_minimum_size().y + 24.0
+	var compact := room.x < wide_width or room.y < wide_height
+	_navigation.visible = not compact
+	_compact_bar.visible = compact
+	var parent: Node = _compact_bar if compact else _navigation
+	if _check_button.get_parent() != parent: _check_button.reparent(parent)
+	var vertical := compact and room.x < 680.0
+	if _split.vertical != vertical:
+		_split.vertical = vertical
+		_split.split_offset = 0
+	_library.custom_minimum_size.y = 140.0 if vertical else 0.0
+	_library.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	for index in _module_picker.item_count:
+		if str(_module_picker.get_item_metadata(index)) == _module: _module_picker.select(index)
 
 
 func refresh() -> void:
@@ -218,6 +270,8 @@ func select_module(module: String, preferred := "", category := "", preferred_pa
 		return
 	_session.discard()
 	_module = module
+	for index in _module_picker.item_count:
+		if str(_module_picker.get_item_metadata(index)) == module: _module_picker.select(index)
 	_category_id = category if module == "item" else ""
 	_category.visible = module == "item"
 	_sync_category()
@@ -513,6 +567,9 @@ func _label(text: String, font_size: int) -> Label:
 
 func _build_dialogs() -> void:
 	_discard_dialog = ConfirmationDialog.new()
+	_discard_dialog.wrap_controls = false
+	_discard_dialog.dialog_autowrap = true
+	_discard_dialog.min_size = Vector2i(480, 180)
 	_discard_dialog.name = "GameSystemsDiscardDialog"
 	_discard_dialog.title = "Несохранённый черновик"
 	_discard_dialog.dialog_text = "Переход отбросит изменения этой записи. Можно остаться и сохранить черновик."
@@ -528,6 +585,8 @@ func _build_dialogs() -> void:
 	)
 	add_child(_discard_dialog)
 	_create_dialog = ConfirmationDialog.new()
+	_create_dialog.wrap_controls = false
+	_create_dialog.min_size = Vector2i(480, 220)
 	_create_dialog.name = "GameSystemsCreateDialog"
 	_create_dialog.title = "Новая запись"
 	_create_dialog.ok_button_text = "Открыть черновик"
@@ -544,6 +603,9 @@ func _build_dialogs() -> void:
 	_create_dialog.confirmed.connect(_create_draft)
 	add_child(_create_dialog)
 	_delete_dialog = ConfirmationDialog.new()
+	_delete_dialog.wrap_controls = false
+	_delete_dialog.dialog_autowrap = true
+	_delete_dialog.min_size = Vector2i(570, 300)
 	_delete_dialog.name = "GameSystemsDeleteDialog"
 	_delete_dialog.title = "Удалить запись из библиотеки?"
 	_delete_dialog.ok_button_text = "Удалить с резервной копией"
@@ -737,7 +799,7 @@ func _request_delete(record: Dictionary) -> void:
 	_delete_record = record
 	_delete_signature = Store.signature(str(record.path))
 	_delete_dialog.dialog_text = "Будет удалена запись «%s». Сохранится точная резервная копия; Undo вернёт файл.\n\nПрямых ссылок не найдено. Проверьте динамические ссылки. Старые сохранения не удаляются: оставшийся в них ID станет неизвестным." % record.name
-	_delete_dialog.popup_centered_clamped(Vector2i(570, 260), 0.9)
+	_delete_dialog.popup_centered_clamped(Vector2i(600, 360), 0.9)
 
 func _delete_confirmed() -> void:
 	if not _session.remove(_module, _delete_record, _delete_signature): _note(_session.last_error)

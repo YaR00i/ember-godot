@@ -620,7 +620,7 @@ func _add_status_badges(root: Node3D, unit_id: String, unit: Dictionary) -> void
 	var visible_index := 0
 	var statuses := unit.get("statuses", {}) as Dictionary
 	for raw_id in statuses:
-		var duration := int(statuses[raw_id])
+		var duration := Combat.StatusRules.remaining(statuses[raw_id])
 		if duration <= 0:
 			continue
 		var status_id := str(raw_id)
@@ -628,11 +628,11 @@ func _add_status_badges(root: Node3D, unit_id: String, unit: Dictionary) -> void
 		var kind := str(definition.get("kind", "debuff"))
 		var badge := Label3D.new()
 		badge.name = "CombatStatus_%s_%s" % [unit_id, status_id]
-		badge.text = "%s %s %s · %d" % [
+		badge.text = "%s %s %s · %s" % [
 			"▲" if kind == "buff" else "▼",
 			str(definition.get("icon", "●")),
 			str(definition.get("name", status_id)),
-			duration,
+			Combat.StatusRules.timer_text(statuses[raw_id]),
 		]
 		badge.position.y = 1.03 + float(visible_index) * 0.21
 		badge.font_size = 29

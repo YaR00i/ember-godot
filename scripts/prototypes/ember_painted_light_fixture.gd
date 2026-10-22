@@ -52,6 +52,57 @@ static func source(width := 96, depth := 96) -> EmberTerrainPilotResource:
 			result.top_materials[i] = slot; result.base_materials[i] = slot; result.cap_depths[i] = 2
 	return result
 
+static func chiselled_rock_source(source) -> Dictionary:
+	# Opt-in ordinary-rock LAB. Keep the existing Source and paint ownership;
+	# subtract planes/chips from the two large masses, not a visual-only mesh.
+	var result=source.working_copy()
+	var changed:=0;var max_cut:=0;var peak_before:=0;var peak_after:=0
+	for z in source.depth:
+		for x in source.width:
+			var i: int=source.column_index(x,z)
+			if int(source.column_value("top_materials",i))!=1:continue
+			var p:=Vector2(x+0.5,z+0.5)/16.0
+			var original:=0.0;var carved:=0.0
+			for spec in [
+				[Vector2(1.52,1.60),Vector2(1.05,0.92),2.0,-0.12],
+				[Vector2(1.96,2.80),Vector2(1.03,0.82),1.67,0.16],
+				[Vector2(0.76,2.65),Vector2(0.40,0.55),0.92,-0.38],
+				[Vector2(2.98,2.28),Vector2(0.31,0.59),1.03,-0.27],
+				[Vector2(0.73,3.65),Vector2(0.32,0.30),0.50,-0.23],
+				[Vector2(4.65,1.40),Vector2(0.40,0.35),0.56,-0.23]]:
+				var h:=rock_height(p,spec[0],spec[1],spec[2],spec[3])
+				var front: bool=spec[2]==1.67
+				if front:
+					var old_cut:=absf(p.x-(1.82+0.30*(p.y-2.4)))
+					h=maxf(0.0,h-0.10*(1.0-smoothstep(0.06,0.20,old_cut)))
+				original=maxf(original,h)
+				var cut:=h
+				if spec[2]>=1.67 and h>0.0:
+					var q: Vector2=(p-spec[0]).rotated(spec[3])/spec[1]
+					var height: float=spec[2]
+					# Wide upper bevels leave the crown centre and peak intact.
+					cut=minf(cut,height+0.38-0.72*q.x-0.46*q.y)
+					cut=minf(cut,height+0.48+0.62*q.x-0.62*q.y)
+					# A second diagonal side face, below the broad crown.
+					cut=minf(cut,(1.12-0.88*q.x-0.70*q.y)*4.0)
+					# One open, piecewise-linear fracture. No noise/displacement map.
+					var line:=absf(q.x+(0.22 if front else -0.34)*q.y+(0.10 if front else -0.25))
+					var length_mask:=clampf((q.y+0.12)/0.22,0.0,1.0)
+					var groove:=maxf(0.0,1.0-line/0.17)*length_mask
+					cut-=groove*(0.20+0.28*clampf((q.y-0.35)/0.40,0.0,1.0))
+					# A broad triangular chip at the top/front shoulder.
+					var chip:=maxf(0.0,1.0-absf(q.x+0.48)/0.30-absf(q.y-0.42)/0.34)
+					cut-=chip*0.27
+					cut=maxf(h-0.375,maxf(0.0,cut))
+				carved=maxf(carved,cut)
+			var old: int=source.column_value("heights",i)
+			# Preserve the source footprint and quantization. Paint stays exact.
+			var removal:=clampi(roundi((original-carved)*16.0),0,6)
+			result.heights[i]=old-removal
+			if removal>0:changed+=1
+			max_cut=maxi(max_cut,removal);peak_before=maxi(peak_before,old);peak_after=maxi(peak_after,result.heights[i])
+	return {"source":result,"changed_columns":changed,"max_cut_m":max_cut/16.0,"peak_before_m":peak_before/16.0,"peak_after_m":peak_after/16.0}
+
 static func grass_artwork() -> Image:
 	var image := Image.create(256, 256, false, Image.FORMAT_RGBA8)
 	for y in 256:
@@ -64,6 +115,14 @@ static func grass_artwork() -> Image:
 	image.generate_mipmaps()
 	return image
 
+static func grass_tuft_outline() -> PackedVector2Array:
+	return PackedVector2Array([
+		Vector2(-0.09,0), Vector2(-0.125,0.07), Vector2(-0.074,0.047),
+		Vector2(-0.083,0.115), Vector2(-0.038,0.060), Vector2(-0.025,0.14),
+		Vector2(0.005,0.070), Vector2(0.035,0.124), Vector2(0.037,0.047),
+		Vector2(0.105,0.106), Vector2(0.077,0.031), Vector2(0.128,0.042),
+		Vector2(0.10,0)])
+
 static func grass_tuft_mesh() -> ArrayMesh:
 	# Two crossed flat clump silhouettes: a few broad blades read as one shape.
 	# Cut the outline into opaque geometry instead of adding alpha overdraw.
@@ -73,12 +132,7 @@ static func grass_tuft_mesh() -> ArrayMesh:
 	var colors := PackedColorArray()
 	var uv := PackedVector2Array()
 	var uv2 := PackedVector2Array()
-	var outline := PackedVector2Array([
-		Vector2(-0.09,0), Vector2(-0.125,0.07), Vector2(-0.074,0.047),
-		Vector2(-0.083,0.115), Vector2(-0.038,0.060), Vector2(-0.025,0.14),
-		Vector2(0.005,0.070), Vector2(0.035,0.124), Vector2(0.037,0.047),
-		Vector2(0.105,0.106), Vector2(0.077,0.031), Vector2(0.128,0.042),
-		Vector2(0.10,0)])
+	var outline := grass_tuft_outline()
 	var triangles := Geometry2D.triangulate_polygon(outline)
 	for card in 2:
 		var angle := float(card) * 1.45

@@ -40,14 +40,17 @@ static func source_signature(model_id: String) -> String:
 	var vox_hash := FileAccess.get_sha256(vox_path) if not vox_path.is_empty() else "json-only"
 	var contract := BUILD_CONTRACT
 	if str(paths.get("owner", "")) == "godot":
-		var model := model_of(load_json(model_id))
-		if model.get("material", {}).has("object_surface"):
-			contract += ":" + preload("res://scripts/ember_voxel_material_profiles.gd").RENDER_CONTRACT
-		if preload("res://scripts/ember_voxel_material_profiles.gd").optics_parameters(model.get("material", {})).enabled:
-			contract += ":" + preload("res://scripts/ember_voxel_material_profiles.gd").OPTICS_RENDER_CONTRACT
-		if PackedByteArray(model.get("surfaceFillMaterials", [])).has(EmberVoxelSurfaceMesher.SURFACE_FILL_WATER):
-			contract += ":column-water-v1"
+		contract = source_render_contract(model_of(load_json(model_id)))
 	return (contract + ":" + FileAccess.get_sha256(json_path) + ":" + vox_hash).sha256_text()
+
+static func source_render_contract(model: Dictionary) -> String:
+	var contract:=BUILD_CONTRACT
+	if model.get("material",{}).has("object_surface"):contract+=":"+preload("res://scripts/ember_voxel_material_profiles.gd").RENDER_CONTRACT
+	if preload("res://scripts/ember_voxel_material_profiles.gd").optics_parameters(model.get("material",{})).enabled:contract+=":"+preload("res://scripts/ember_voxel_material_profiles.gd").OPTICS_RENDER_CONTRACT
+	if PackedByteArray(model.get("surfaceFillMaterials",[])).has(EmberVoxelSurfaceMesher.SURFACE_FILL_WATER):contract+=":column-water-v1"
+	if not model.get("treeSurface",{}).is_empty():contract+=":"+str(load("res://scripts/ember_tree_surface.gd").render_contract(model))
+	if not model.get("solidSurface",{}).is_empty():contract+=":"+load("res://scripts/ember_voxel_solid_surface.gd").CONTRACT
+	return contract
 
 
 static func validate_packed(model_id: String, packed: PackedScene) -> Dictionary:
@@ -255,6 +258,7 @@ static func make_preview_instance(model_id: String, tile_size := 16.0) -> EmberV
 	if visual == null:
 		return null
 	_apply_visual_materials(visual, model.get("material", {}))
+	if not model.get("solidSurface",{}).is_empty():load("res://scripts/ember_voxel_solid_surface.gd").apply_materials(visual,model)
 	var size := _ember_size(model_id, prefab, visual)
 	return _make_tree(model_id, model, size, vw, tile_size, visual, null, _collision_mesh(model, vw))
 
@@ -276,11 +280,13 @@ static func prepare_resource(resource: EmberVoxelModelResource, projection_cache
 	var definition := resource.to_definition()
 	var model := model_of(definition)
 	var vw := 1.0 / float(resource.normalized_density())
-	var visual: ArrayMesh = projection_cache.build(model, vw) if projection_cache != null else _build_visual_mesh(resource.model_id, definition, vw, {})
+	var tree_surface=load("res://scripts/ember_tree_surface.gd")
+	var visual: ArrayMesh = projection_cache.build(model, vw) if projection_cache != null and not tree_surface.active(model) and model.get("solidSurface",{}).is_empty() else _build_visual_mesh(resource.model_id, definition, vw, {})
 	if visual == null:
 		return null
 	_append_surface_fill_overlay(model, visual, vw)
 	_apply_visual_materials(visual, model.get("material", {}))
+	if not resource.solid_surface.is_empty():load("res://scripts/ember_voxel_solid_surface.gd").apply_materials(visual,model)
 	var size := resource.grid_size()
 	var body := _body_mesh(resource.model_id, definition, model, vw, size)
 	var instance := _make_tree(
@@ -302,6 +308,7 @@ static func _write_prefab(model_id: String, tile_size: float, stats: Dictionary)
 	if visual == null:
 		return null
 	_apply_visual_materials(visual, model.get("material", {}))
+	if not model.get("solidSurface",{}).is_empty():load("res://scripts/ember_voxel_solid_surface.gd").apply_materials(visual,model)
 	var size := _ember_size(model_id, prefab, visual)
 	visual = _install_mesh_resource(visual, mesh_path(model_id, false))
 	if visual == null:
@@ -356,11 +363,16 @@ static func _install_mesh_resource(built: ArrayMesh, path: String) -> ArrayMesh:
 
 
 static func _copy_mesh_surfaces(target: ArrayMesh, source: ArrayMesh) -> void:
+	if source.has_meta("tree_surface_contract") or source.has_meta("solid_surface_contract"):
+		target.set("_surfaces",source.get("_surfaces"))
+		for key in source.get_meta_list():target.set_meta(key,source.get_meta(key))
+		return
 	target.clear_surfaces()
 	for surface in source.get_surface_count():
 		target.add_surface_from_arrays(
 			source.surface_get_primitive_type(surface),
 			source.surface_get_arrays(surface),
+			[],{},source.surface_get_format(surface),
 		)
 		target.surface_set_material(surface, source.surface_get_material(surface))
 		target.surface_set_name(surface, source.surface_get_name(surface))
@@ -378,6 +390,7 @@ static func refractive_material(material: Dictionary) -> ShaderMaterial:
 
 
 static func _apply_visual_materials(mesh: ArrayMesh, material: Dictionary = {}) -> void:
+	load("res://scripts/ember_tree_surface.gd").apply_materials(mesh,material)
 	var opaque := voxel_material()
 	if material.get("object_surface",{}).get("style_rim",{}) != {}:
 		opaque=opaque.duplicate() as ShaderMaterial
@@ -389,6 +402,7 @@ static func _apply_visual_materials(mesh: ArrayMesh, material: Dictionary = {}) 
 	var surface_materials = load("res://scripts/ember_voxel_surface_materials.gd")
 	for surface in mesh.get_surface_count():
 		var channel := mesh.surface_get_name(surface)
+		if channel in ["tree_bark","tree_leaves","solid_surface"]:continue
 		mesh.surface_set_material(
 			surface,
 			surface_materials.water_material() if channel == "water"
@@ -450,6 +464,9 @@ static func _build_visual_mesh(
 	stats: Dictionary,
 ) -> ArrayMesh:
 	var model := model_of(prefab)
+	if load("res://scripts/ember_voxel_solid_surface.gd").active(model):return load("res://scripts/ember_voxel_solid_surface.gd").build(model)
+	var tree_surface=load("res://scripts/ember_tree_surface.gd")
+	if tree_surface.active(model):return tree_surface.build(model)
 	var from_json := _mesh_from_json(prefab, vw)
 	if from_json != null:
 		_append_surface_fill_overlay(model, from_json, vw)
@@ -490,6 +507,7 @@ static func _collision_mesh(model: Dictionary, vw: float) -> ArrayMesh:
 	var collision := VoxMesher.model_channel(model, "collisionVoxels")
 	var raw: Variant = model.get("collisionVoxels", [])
 	if raw.size() == 0:
+		if not model.get("treeSurface",{}).is_empty():return VoxMesher.build_from_ember_model(model,vw)
 		return null
 	var voxels := VoxMesher.model_channel(model, "voxels")
 	var skip := PackedByteArray()
@@ -516,13 +534,17 @@ static func _make_tree(
 	var root := EmberVoxelProp.new()
 	root.name = model_id
 	root.model_id = model_id
+	if not model.get("solidSurface",{}).is_empty():root.set_meta("ember_solid_source",true)
 	root.voxels_per_block = VoxMesher.voxels_per_block(model)
 	root.block_world_size = tile_size
 	var visual := MeshInstance3D.new()
 	visual.name = "Mesh"
 	visual.mesh = visual_mesh
-	visual.position = inner_pos
-	visual.set_meta("ember_block_position", inner_pos)
+	# Published branch surfaces already use the centred trunk frame. The voxel
+	# collider keeps the positive-grid adapter below; both meet at the same trunk.
+	var visual_origin:=Vector3.ZERO if load("res://scripts/ember_tree_surface.gd").active(model) else inner_pos
+	visual.position = visual_origin
+	visual.set_meta("ember_block_position", visual_origin)
 	var casts := bool(model.get("emissiveCastsLight", false))
 	var suppress := bool(model.get("emissiveSuppressHostShadow", false))
 	visual.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON

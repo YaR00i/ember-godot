@@ -1,0 +1,906 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Магнитик</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Golos+Text:wght@400;500;600&display=swap">
+<style>
+/* Layout: one-screen game card (canvas + control strip), idea notes below. Single dark "workshop at night" look. */
+:root {
+  --bg: #0f1218;
+  --panel: #171c25;
+  --line: #2a3240;
+  --fg: #e7e3da;
+  --muted: #8e96a5;
+  --copper: #d98b4e;
+  --ember: #ff9a3c;
+  --gold: #c9a959;
+  --mint: #5fd6a4;
+  --spike: #ef5a6f;
+  --glass: #8fd3ee;
+  --sticky: #b48cff;
+  --pin: #e0c27a;
+  --display: "Unbounded", "Trebuchet MS", system-ui, sans-serif;
+  --body: "Golos Text", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+}
+html, body { background: var(--bg); color: var(--fg); }
+[hidden] { display: none !important; }
+body { margin: 0; }
+body {
+  font-family: var(--body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.wrap { max-width: 1000px; margin: 0 auto; display: grid; gap: 18px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+h1 { font-family: var(--display); font-weight: 700; font-size: 26px; margin: 0; letter-spacing: .01em; color: var(--fg); }
+h1 span { color: var(--copper); }
+.tag { font-size: 12px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+.levelbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.lv {
+  font: 600 13px var(--body); color: var(--fg); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 6px 12px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center;
+}
+.lv[aria-current="true"] { border-color: var(--copper); color: var(--copper); }
+.lv .done { color: var(--mint); font-size: 11px; }
+.game { position: relative; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); background: #0a0d12; }
+canvas { display: block; width: 100%; height: auto; aspect-ratio: 960 / 600; max-width: 100%; touch-action: none; cursor: crosshair; }
+.hud { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; justify-content: space-between; }
+.info { display: grid; gap: 2px; min-width: 0; }
+.info b { font-family: var(--display); font-weight: 500; font-size: 16px; }
+.info .hint { color: var(--muted); font-size: 14px; }
+.stats { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 14px; white-space: nowrap; }
+.stats strong { color: var(--fg); }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.power { display: flex; align-items: center; gap: 10px; flex: 1 1 260px; min-width: 0; }
+.power label { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.power input { flex: 1; min-width: 0; accent-color: var(--copper); }
+.power output { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 3.2em; text-align: right; color: var(--copper); }
+.btns { display: flex; gap: 8px; flex-wrap: wrap; }
+button.b { font: 600 14px var(--body); border-radius: 9px; padding: 8px 14px; border: 1px solid var(--line); background: #1f2631; color: var(--fg); cursor: pointer; }
+button.b.main { background: var(--copper); border-color: var(--copper); color: #1a1008; }
+button.b:disabled { opacity: .45; cursor: default; }
+button:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
+.msg { min-height: 1.5em; font-size: 14px; color: var(--gold); }
+.win {
+  position: absolute; inset: 0; display: grid; place-items: center; background: rgba(8,10,14,.55);
+}
+.win > div { background: var(--panel); border: 1px solid var(--copper); border-radius: 14px; padding: 20px 24px; text-align: center; display: grid; gap: 10px; max-width: 86%; }
+.win h2 { font-family: var(--display); font-size: 20px; margin: 0; color: var(--ember); }
+.keys { font-size: 12.5px; color: var(--muted); }
+kbd { font: 600 11px var(--body); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; color: var(--fg); }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.note { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; min-width: 0; }
+.note h3 { font-family: var(--display); font-weight: 500; font-size: 15px; margin: 0 0 8px; color: var(--copper); text-wrap: balance; }
+.note ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.note p { margin: 0 0 8px; }
+.legend { display: inline-block; width: 18px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+@media (max-width: 560px) { h1 { font-size: 21px; } .controls { padding: 10px; } }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Магнит<span>ик</span></h1>
+    <div class="tag">прототип мини-игры · идея для Ember</div>
+  </header>
+
+  <div class="levelbar" id="levels"></div>
+
+  <div class="hud">
+    <div class="info"><b id="lvTitle">—</b><span class="hint" id="lvHint"></span></div>
+    <div class="stats" id="stats">Выстрелы <strong id="shots">0</strong> · пар <strong id="par">1</strong></div>
+  </div>
+
+  <div class="game">
+    <canvas id="cv" width="960" height="600" aria-label="Игровое поле: шарик, фигуры, прицел"></canvas>
+    <div class="win" id="win" hidden>
+      <div>
+        <h2 id="winTitle">Фигуры замкнуты</h2>
+        <div id="winText"></div>
+        <div class="btns" style="justify-content:center">
+          <button class="b" id="winAgain">Ещё раз</button>
+          <button class="b main" id="winNext">Дальше</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="power">
+      <label>Полёт:</label>
+      <output id="powerOut">—</output>
+    </div>
+    <div class="btns">
+      <button class="b main" id="fire">Выстрел</button>
+      <button class="b" id="undo">Назад</button>
+      <button class="b" id="solve" title="Показать решение с начала уровня">Показать решение</button>
+      <button class="b" id="rotL" hidden title="Повернуть диск против часовой (Q)">⟲ Диск</button>
+      <button class="b" id="rotR" hidden title="Повернуть диск по часовой (E)">Диск ⟳</button>
+      <button class="b" id="restart">Заново</button>
+    </div>
+  </div>
+  <div class="msg" id="msg" role="status"></div>
+  <div class="keys">Наведи мышью и кликни (на телефоне — веди пальцем и отпусти). Точно: <kbd>←</kbd><kbd>→</kbd> доворот на 0,5° (с <kbd>Shift</kbd> — 0,1°), <kbd>Пробел</kbd> выстрел, <kbd>Z</kbd> назад, <kbd>R</kbd> заново, <kbd>Q</kbd>/<kbd>E</kbd> повернуть диск замка.</div>
+
+  <div class="notes">
+    <div class="note">
+      <h3>Идея</h3>
+      <p>Шарик-магнит прилипает к любой поверхности. Стреляешь по прямой, он врезается в фигуру и катится вдоль её края, пока не кончится сила. Задача — обвести фигуру целиком, чтобы контур замкнулся, и остановиться там, откуда удобно стрелять дальше.</p>
+      <p>Головоломка в выборе: куда попасть, в какую сторону покатится и где встанет.</p>
+    </div>
+    <div class="note">
+      <h3>Правила прототипа</h3>
+      <ul>
+        <li><span class="legend" style="background:var(--gold)"></span>Золотой пунктир — фигуру надо обвести. Обведённое ребро загорается.</li>
+        <li>Катится туда, куда «скользит» удар: попал под углом вверх — поедет вверх.</li>
+        <li><span class="legend" style="background:var(--pin)"></span><b>Катится до штифта.</b> Шарик едет вдоль края, пока не упрётся в штифт (латунный выступ). Нет штифта — объезжает фигуру по кругу и встаёт там, где приземлился.</li>
+        <li>Угол прицела виден внизу. Одинаковый выстрел всегда даёт одинаковый результат; «Показать решение» проиграет решение с начала.</li>
+        <li><span class="legend" style="background:var(--glass)"></span>Стекло не магнитится: шарик отскакивает. Так можно достать до того, что за углом.</li>
+        <li><span class="legend" style="background:var(--spike)"></span>Шипы — шарик лопается, ход отменяется.</li>
+        <li><span class="legend" style="background:var(--gold)"></span>Сундуки: золотой диск замка поворачивается на 90° (бесплатно). Искра на диске едет вместе с ним. У отмычки ограниченные заряды — кончились, замок защёлкнулся.</li>
+        <li><span class="legend" style="background:var(--sticky)"></span>Липучка — шарик останавливается сразу, как только коснулся. Пунктирная липучка включится, когда обведёшь нужную фигуру.</li>
+        <li><span class="legend" style="background:var(--mint)"></span>Финиш: когда всё обведено, зелёная зона загорается и ловит шарик — достаточно проехать по ней или попасть в неё.</li>
+      </ul>
+    </div>
+    <div class="note">
+      <h3>Куда развить (для Ember)</h3>
+      <ul>
+        <li>Обвести = «запечатать руну»: мини-игра для печатей, замков, ритуалов.</li>
+        <li>Полярность: поверхности «+» и «−», шарик меняет знак — одни притягивают, другие отталкивают.</li>
+        <li>Движущиеся и вращающиеся фигуры, ворота, которые открываются после обхода.</li>
+        <li>Отметки на рёбрах, которые надо пройти по порядку (созвездие).</li>
+        <li>Без силы: катится до первого «стопора» — чистая логика без точности.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+const W = 960, H = 600, R = 9, WALL = 24, TAU = Math.PI * 2;
+const C = {
+  ink: '#0f1218', wall: '#07090d', floor1: '#141a24', floor2: '#0d1118',
+  steel: '#59657a', steelHi: '#8e9ab0', copper: '#d98b4e', ember: '#ff9a3c',
+  gold: '#c9a959', mint: '#5fd6a4', spike: '#ef5a6f', glass: '#8fd3ee', sticky: '#b48cff', pin: '#e0c27a', fg: '#e7e3da', muted: '#8e96a5'
+};
+
+// ---------- vectors ----------
+const v = (x, y) => ({ x, y });
+const add = (a, b) => v(a.x + b.x, a.y + b.y);
+const sub = (a, b) => v(a.x - b.x, a.y - b.y);
+const mul = (a, k) => v(a.x * k, a.y * k);
+const dot = (a, b) => a.x * b.x + a.y * b.y;
+const cross = (a, b) => a.x * b.y - a.y * b.x;
+const vlen = a => Math.hypot(a.x, a.y);
+const norm = a => { const l = vlen(a) || 1; return v(a.x / l, a.y / l); };
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const wrapA = a => { while (a <= -Math.PI) a += TAU; while (a > Math.PI) a -= TAU; return a; };
+
+const rect = (x, y, w, h) => [v(x, y), v(x + w, y), v(x + w, y + h), v(x, y + h)];
+const reg = (cx, cy, r, n, rotDeg = -90) => {
+  const out = [], r0 = rotDeg * Math.PI / 180;
+  for (let k = 0; k < n; k++) out.push(v(cx + r * Math.cos(r0 + TAU * k / n), cy + r * Math.sin(r0 + TAU * k / n)));
+  return out;
+};
+
+// ---------- levels ----------
+// rect edges: 0 top, 1 right, 2 bottom, 3 left. Arena edges the same.
+const LEVELS = [
+  {
+    name: 'Штифт', par: 3,
+    solution: [{ r: 0, a: -131.6 }, { r: 0, a: -22.1 }, { r: 0, a: -179.8 }],
+    start: v(150, 600), aim: -40,
+    hint: 'Шарик катится вдоль края, пока не упрётся в латунный штифт. Объедь квадрат целиком — и на зелёное.',
+    shapes: [{ kind: 'target', pts: rect(400, 220, 160, 160), pins: [{ edge: 3, u: 0.5 }] }],
+    pad: { shape: 'arena', edge: 0, f0: 0.4, f1: 0.6 }
+  },
+  {
+    name: 'Два упора', par: 4,
+    solution: [{ r: 0, a: -141.7 }, { r: 0, a: 24 }, { r: 0, a: 59.1 }, { r: 0, a: -157.2 }],
+    start: v(480, 600), aim: -150,
+    hint: 'У каждой фигуры свои штифты. Выбирай, с какой стороны приземлиться и куда покатишься.',
+    shapes: [
+      { kind: 'target', pts: reg(250, 320, 90, 3), pins: [{ edge: 1, u: 0.5 }] },
+      { kind: 'target', pts: reg(710, 300, 85, 6, 0), pins: [{ edge: 3, u: 0.5 }] }
+    ],
+    arenaPins: [{ edge: 0, u: 0.5 }],
+    pad: { shape: 'arena', edge: 1, f0: 0.35, f1: 0.65 }
+  },
+  {
+    name: 'Рикошет', par: 5,
+    solution: [{ r: 0, a: 94.2 }, { r: 0, a: 11.3 }, { r: 0, a: -141.9 }, { r: 0, a: 24.1 }, { r: 0, a: -176.1 }],
+    start: v(960, 300), aim: -160,
+    hint: 'Стена закрывает пятиугольник. Отскочи от стекла и зайди сверху или снизу.',
+    shapes: [
+      { kind: 'target', pts: reg(230, 300, 75, 5), pins: [{ edge: 2, u: 0.5 }] },
+      { kind: 'stone', pts: rect(420, 70, 26, 460) },
+      { kind: 'glass', pts: rect(520, 40, 220, 18) },
+      { kind: 'glass', pts: rect(520, 542, 220, 18) }
+    ],
+    arenaPins: [{ edge: 3, u: 0.25 }, { edge: 3, u: 0.75 }],
+    pad: { shape: 'arena', edge: 3, f0: 0.4, f1: 0.6 }
+  },
+  {
+    name: 'Шипы', par: 4,
+    solution: [{ r: 0, a: -37 }, { r: 0, a: 133.8 }, { r: 0, a: -38.8 }, { r: 0, a: 0.6 }],
+    start: v(140, 600), aim: -40,
+    hint: 'Снизу у квадрата шипы, по бокам от них штифты-стражи. Обведи квадрат двумя половинками.',
+    shapes: [{ kind: 'target', pts: rect(400, 220, 160, 160), spikes: [{ edge: 2, f0: 0.35, f1: 0.65 }], pins: [{ edge: 2, u: 0.26 }, { edge: 2, u: 0.74 }] }],
+    arenaSpikes: [{ edge: 2, f0: 0.4, f1: 0.62 }],
+    arenaPins: [{ edge: 1, u: 0.25 }, { edge: 2, u: 0.15 }, { edge: 2, u: 0.85 }],
+    pad: { shape: 'arena', edge: 1, f0: 0.4, f1: 0.7 }
+  },
+  {
+    name: 'Липучки', par: 7,
+    solution: [{ r: 0, a: -22.9 }, { r: 0, a: -173.1 }, { r: 0, a: -177 }, { r: 0, a: 95.8 }, { r: 0, a: -177 }, { r: 0, a: 33.1 }, { r: 0, a: -173.2 }],
+    start: v(80, 600), aim: -45,
+    hint: 'Фиолетовое останавливает шарик сразу. Пунктирная липучка проснётся, когда обведёшь треугольник.',
+    shapes: [
+      { kind: 'target', pts: reg(200, 300, 80, 3), pins: [{ edge: 2, u: 0.5 }] },
+      { kind: 'target', pts: reg(770, 330, 80, 6, 0), pins: [{ edge: 2, u: 0.5 }] },
+      { kind: 'stone', pts: rect(450, 270, 60, 60) }
+    ],
+    arenaSpikes: [{ edge: 2, f0: 0.18, f1: 0.95 }, { edge: 1, f0: 0.1, f1: 0.9 }],
+    sticky: [
+      { shape: 'arena', edge: 0, f0: 0.28, f1: 0.4 },
+      { shape: 2, edge: 1, f0: 0.15, f1: 0.85, after: 0 }
+    ],
+    pad: { shape: 2, edge: 0, f0: 0.2, f1: 0.8 }
+  },
+  {
+    name: 'Сундук: кодовый диск', par: 2, charges: 3,
+    solution: [{ r: 1, a: -27 }, { r: 0, a: -179.8 }],
+    chest: true, start: v(150, 600), aim: -60,
+    hint: 'Золотой диск поворачивается (кнопки «Диск» или Q/E), бесплатно. Штифт едет вместе с руной. 3 заряда: обвести руну и попасть в сердцевину, один про запас.',
+    shapes: [
+      { kind: 'target', pts: reg(480, 164, 41, 3, 90), pins: [{ edge: 2, u: 0.5 }] },
+      { kind: 'stone', pts: rect(460, 280, 40, 40) }
+    ],
+    rotor: { c: v(480, 300), shapes: [0] },
+    arenaSpikes: [{ edge: 2, f0: 0.3, f1: 0.7 }],
+    arenaPins: [{ edge: 0, u: 0.5 }, { edge: 1, u: 0.5 }, { edge: 3, u: 0.5 }],
+    pad: { shape: 1, edge: 0, f0: 0.1, f1: 0.9 }
+  },
+  {
+    name: 'Сундук: двойной замок', par: 4, charges: 5,
+    solution: [{ r: 0, a: 16.9 }, { r: 0, a: -177 }, { r: 2, a: 13.1 }, { r: 0, a: -83.8 }],
+    chest: true, start: v(0, 300), aim: 0,
+    hint: 'Две руны на одном диске, пол и потолок в шипах. Искра на диске поворачивается вместе с ним. 5 зарядов.',
+    shapes: [
+      { kind: 'target', pts: reg(480, 164, 49, 3, 90), pins: [{ edge: 2, u: 0.5 }] },
+      { kind: 'target', pts: rect(440, 384, 80, 80), pins: [{ edge: 3, u: 0.7 }] },
+      { kind: 'stone', pts: rect(460, 280, 40, 40) }
+    ],
+    rotor: { c: v(480, 300), shapes: [0, 1] },
+    arenaSpikes: [{ edge: 0, f0: 0.03, f1: 0.97 }, { edge: 2, f0: 0.03, f1: 0.97 }],
+    arenaPins: [{ edge: 0, u: 0.5 }, { edge: 1, u: 0.5 }, { edge: 3, u: 0.5 }],
+    pad: { shape: 2, edge: 0, f0: 0.1, f1: 0.9 }
+  }
+];
+
+// ---------- geometry: each shape gets a "rail" the ball centre rides on ----------
+function buildShape(def, inside) {
+  const P = def.pts, n = P.length;
+  let c = v(0, 0); P.forEach(p => c = add(c, mul(p, 1 / n)));
+  const N = [];
+  for (let i = 0; i < n; i++) {
+    const a = P[i], b = P[(i + 1) % n], e = norm(sub(b, a));
+    let nn = v(-e.y, e.x);
+    if (dot(nn, sub(mul(add(a, b), .5), c)) < 0) nn = mul(nn, -1);
+    if (inside) nn = mul(nn, -1);
+    N.push(nn);
+  }
+  const pieces = []; let s = 0;
+  for (let i = 0; i < n; i++) {
+    const a = P[i], b = P[(i + 1) % n];
+    let A, B;
+    if (inside) {
+      A = add(a, mul(add(N[i], N[(i - 1 + n) % n]), R));
+      B = add(b, mul(add(N[i], N[(i + 1) % n]), R));
+    } else { A = add(a, mul(N[i], R)); B = add(b, mul(N[i], R)); }
+    const L = vlen(sub(B, A));
+    pieces.push({ type: 'seg', a: A, b: B, n: N[i], len: L, edge: i, s0: s }); s += L;
+    if (!inside) {
+      const a0 = Math.atan2(N[i].y, N[i].x), a1 = Math.atan2(N[(i + 1) % n].y, N[(i + 1) % n].x);
+      const sweep = wrapA(a1 - a0);
+      pieces.push({ type: 'arc', c: b, a0, sweep, len: Math.abs(sweep) * R, edge: -1, s0: s }); s += Math.abs(sweep) * R;
+    }
+  }
+  const sh = { kind: def.kind, pts: P, c, N, pieces, len: s, spikes: def.spikes || [], pins: def.pins || [], inside: !!inside };
+  if (def.kind === 'target') sh.paint = pieces.filter(p => p.type === 'seg').map(p => new Uint8Array(Math.max(6, Math.round(p.len / 10))));
+  return sh;
+}
+
+function pointAt(sh, s) {
+  s = ((s % sh.len) + sh.len) % sh.len;
+  let p = sh.pieces[sh.pieces.length - 1];
+  for (const q of sh.pieces) if (s < q.s0 + q.len) { p = q; break; }
+  const u = clamp((s - p.s0) / (p.len || 1), 0, 1);
+  if (p.type === 'seg') return { p: add(p.a, mul(sub(p.b, p.a), u)), n: p.n, t: norm(sub(p.b, p.a)), piece: p, u };
+  const ang = p.a0 + p.sweep * u, nn = v(Math.cos(ang), Math.sin(ang));
+  const t = p.sweep >= 0 ? v(-nn.y, nn.x) : v(nn.y, -nn.x);
+  return { p: add(p.c, mul(nn, R)), n: nn, t, piece: p, u };
+}
+const edgePoint = (piece, u) => sub(add(piece.a, mul(sub(piece.b, piece.a), u)), mul(piece.n, R));
+
+function castRay(p, d) {
+  let best = { t: Infinity };
+  for (const sh of shapes) for (const pc of sh.pieces) {
+    if (pc.type === 'seg') {
+      const ab = sub(pc.b, pc.a), den = cross(d, ab);
+      if (Math.abs(den) < 1e-9 || dot(d, pc.n) >= 0) continue;
+      const ap = sub(pc.a, p), t = cross(ap, ab) / den, u = cross(ap, d) / den;
+      if (t > 1e-3 && t < best.t && u >= -1e-6 && u <= 1 + 1e-6) best = { t, sh, piece: pc, u: clamp(u, 0, 1), n: pc.n };
+    } else {
+      const f = sub(p, pc.c), b = dot(f, d), cc = dot(f, f) - R * R, disc = b * b - cc;
+      if (disc < 0) continue;
+      const sq = Math.sqrt(disc);
+      for (const t of [-b - sq, -b + sq]) {
+        if (t <= 1e-3 || t >= best.t) continue;
+        const q = add(p, mul(d, t)), nn = mul(sub(q, pc.c), 1 / R);
+        if (dot(d, nn) >= 0) continue;
+        const du = wrapA(Math.atan2(nn.y, nn.x) - pc.a0) / pc.sweep;
+        if (!(du >= -1e-4 && du <= 1 + 1e-4)) continue;
+        best = { t, sh, piece: pc, u: clamp(du, 0, 1), n: nn }; break;
+      }
+    }
+  }
+  return best.t < Infinity ? best : null;
+}
+
+function polyDist(q, sh) {
+  const P = sh.pts, n = P.length; let mx = -Infinity;
+  for (let i = 0; i < n; i++) mx = Math.max(mx, dot(sub(q, P[i]), sh.N[i]));
+  if (mx <= 0) return mx;
+  let best = Infinity;
+  for (let i = 0; i < n; i++) {
+    const a = P[i], b = P[(i + 1) % n], ab = sub(b, a);
+    const t = clamp(dot(sub(q, a), ab) / dot(ab, ab), 0, 1);
+    best = Math.min(best, vlen(sub(q, add(a, mul(ab, t)))));
+  }
+  return best;
+}
+function isFree(q) {
+  const e = 0.05;
+  if (q.x < WALL + R - e || q.x > W - WALL - R + e || q.y < WALL + R - e || q.y > H - WALL - R + e) return false;
+  for (const sh of shapes) if (!sh.inside && polyDist(q, sh) < R - e) return false;
+  return true;
+}
+
+function spikeAt(sh, piece, u) {
+  if (piece.type !== 'seg') return false;
+  return sh.spikes.some(sp => sp.edge === piece.edge && u >= sp.f0 && u <= sp.f1);
+}
+
+function computeShot(p, d) {
+  const pts = [p];
+  for (let k = 0; k < 14; k++) {
+    const h = castRay(p, d);
+    if (!h) return null;
+    const q = add(p, mul(d, h.t)); pts.push(q);
+    if (h.sh.kind === 'glass') { d = norm(sub(d, mul(h.n, 2 * dot(d, h.n)))); p = q; continue; }
+    const s = h.piece.s0 + h.u * h.piece.len, at = pointAt(h.sh, s);
+    return { pts, sh: h.sh, s, dir: dot(d, at.t) >= 0 ? 1 : -1, spiky: spikeAt(h.sh, h.piece, h.u) };
+  }
+  return null;
+}
+
+function snapToRail(q) {
+  let best = { d: Infinity };
+  for (const sh of shapes) {
+    if (sh.kind === 'glass') continue;
+    for (let s = 0; s < sh.len; s += 1) {
+      const d = vlen(sub(pointAt(sh, s).p, q));
+      if (d < best.d) best = { d, sh, s };
+    }
+  }
+  return best;
+}
+
+// ---------- state ----------
+let li = 0, level, shapes, arena, padShape, zones = [], rotor = null, ball, shots, history, mode, flight, roll, aimAng, preview, particles = [], trail = [], msgTimer = 0;
+let progress = {};
+try { progress = JSON.parse(localStorage.getItem('magnitik.progress') || '{}') || {}; } catch (e) { progress = {}; }
+const saveProgress = () => { try { localStorage.setItem('magnitik.progress', JSON.stringify(progress)); } catch (e) {} };
+
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+const powerOut = $('powerOut');
+
+function loadLevel(i) {
+  li = i; level = LEVELS[i]; demo = null;
+  arena = buildShape({ kind: 'arena', pts: rect(WALL, WALL, W - 2 * WALL, H - 2 * WALL), spikes: level.arenaSpikes, pins: level.arenaPins }, true);
+  shapes = [arena, ...level.shapes.map(d => buildShape(d, false))];
+  padShape = level.pad.shape === 'arena' ? arena : shapes[level.pad.shape + 1];
+  zones = (level.sticky || []).map(z => ({ ...z, sh: z.shape === 'arena' ? arena : shapes[z.shape + 1], trig: z.after === undefined ? null : shapes[z.after + 1] }));
+  rotor = level.rotor ? { c: level.rotor.c, k: 0, anim: null, parts: level.rotor.shapes.map(i => ({ sh: shapes[i + 1], base: level.shapes[i].pts })) } : null;
+  rotor && rotor.parts.forEach(p => { p.r = Math.max(...p.base.map(q => vlen(sub(q, rotor.c)))); });
+  const sn = snapToRail(level.start);
+  ball = { sh: sn.sh, s: sn.s };
+  shots = 0; history = []; mode = 'idle'; flight = roll = null; trail = []; particles = [];
+  aimAng = snapAim(level.aim * Math.PI / 180);
+  $('solve').hidden = !level.solution;
+  $('win').hidden = true;
+  $('lvTitle').textContent = `${i + 1}. ${level.name}`;
+  $('rotL').hidden = $('rotR').hidden = !rotor;
+  $('winTitle').textContent = level.charges ? 'Сундук открыт' : 'Фигуры замкнуты';
+  $('lvHint').textContent = level.hint;
+  say('');
+  renderLevelBar(); updatePreview(); updateHud();
+}
+
+function snapshot() {
+  return { si: shapes.indexOf(ball.sh), s: ball.s, shots, rk: rotor ? rotor.k : 0, paint: shapes.map(sh => sh.paint ? sh.paint.map(a => a.slice()) : null) };
+}
+function restore(sn) {
+  if (rotor) { rotor.k = sn.rk; rotor.anim = null; setRotorAngle(rotor.k * Math.PI / 2); }
+  ball = { sh: shapes[sn.si], s: sn.s }; shots = sn.shots;
+  shapes.forEach((sh, i) => { if (sh.paint) sh.paint = sn.paint[i].map(a => a.slice()); });
+  mode = 'idle'; flight = roll = null; trail = [];
+  updatePreview(); updateHud();
+}
+
+// ---------- lock disk: some shapes turn together around one centre, 90° per click ----------
+function setRotorAngle(ang) {
+  const cs = Math.cos(ang), sn = Math.sin(ang), c = rotor.c;
+  for (const p of rotor.parts) {
+    const pts = p.base.map(q => { const d = sub(q, c); return v(c.x + d.x * cs - d.y * sn, c.y + d.x * sn + d.y * cs); });
+    const nb = buildShape({ kind: p.sh.kind, pts, spikes: p.sh.spikes }, false);
+    Object.assign(p.sh, { pts: nb.pts, c: nb.c, N: nb.N, pieces: nb.pieces, len: nb.len });
+  }
+}
+function rotate(dir) {
+  if (!rotor || mode !== 'idle') return;
+  const from = rotor.k * Math.PI / 2, to = from + dir * Math.PI / 2;
+  let blocked = false;
+  for (let i = 1; i <= 12 && !blocked; i++) {
+    setRotorAngle(from + (to - from) * i / 12);
+    if (!isFree(pointAt(ball.sh, ball.s).p)) blocked = true;
+  }
+  setRotorAngle(from);
+  if (blocked) { say('Диск не повернуть: искра упрётся.'); return; }
+  history.push(snapshot());
+  rotor.anim = { from, to, t: 0, k: (rotor.k + dir + 4) % 4 };
+  mode = 'rotating'; preview = null; updateHud();
+}
+
+const ballPos = () => mode === 'flying' ? flight.pos : pointAt(ball.sh, ball.s).p;
+const aimDir = () => v(Math.cos(aimAng), Math.sin(aimAng));
+
+function updatePreview() {
+  preview = null;
+  if (mode !== 'idle') return;
+  const p = pointAt(ball.sh, ball.s).p, d = aimDir();
+  if (!isFree(add(p, mul(d, 3)))) { preview = { blocked: true, p, d }; powerOut.textContent = 'сюда нельзя'; return; }
+  preview = computeShot(p, d);
+  if (preview) {
+    const bounces = preview.pts.length - 2;
+    powerOut.textContent = `${aimDeg()}° · ` + (bounces ? `отскоков: ${bounces}` : 'прямо');
+  }
+}
+
+function fire() {
+  if (mode !== 'idle' || !preview || preview.blocked) return;
+  if (level.charges && shots >= level.charges) return;
+  history.push(snapshot());
+  shots++;
+  const pts = preview.pts;
+  let total = 0; for (let i = 1; i < pts.length; i++) total += vlen(sub(pts[i], pts[i - 1]));
+  flight = { pts, total, dist: 0, pos: pts[0], shot: preview };
+  mode = 'flying'; preview = null; say(''); updateHud();
+}
+
+function say(t, sticky) { $('msg').textContent = t; msgTimer = sticky ? 0 : (t ? 4 : 0); }
+
+function paintAt(at) {
+  const sh = ball.sh;
+  if (!sh.paint || at.piece.type !== 'seg') return;
+  const cells = sh.paint[at.piece.edge];
+  cells[Math.min(cells.length - 1, Math.floor(at.u * cells.length))] = 1;
+}
+function shapeDone(sh) {
+  if (!sh.paint) return true;
+  const segs = sh.pieces.filter(p => p.type === 'seg');
+  return sh.paint.every((cells, e) => {
+    for (let k = 0; k < cells.length; k++) {
+      if (cells[k]) continue;
+      if (spikeAt(sh, segs[e], (k + .5) / cells.length)) continue;
+      if (nearPin(sh, segs[e].s0 + (k + .5) / cells.length * segs[e].len)) continue;
+      return false;
+    }
+    return true;
+  });
+}
+const zoneActive = z => !z.trig || shapeDone(z.trig);
+function onSticky() {
+  const at = pointAt(ball.sh, ball.s);
+  if (at.piece.type !== 'seg') return false;
+  return zones.some(z => z.sh === ball.sh && zoneActive(z) && at.piece.edge === z.edge && at.u >= z.f0 && at.u <= z.f1);
+}
+const shouldStop = () => (padOpen() && onPad()) || onSticky();
+
+function onPad() {
+  if (ball.sh !== padShape) return false;
+  const at = pointAt(ball.sh, ball.s), pd = level.pad;
+  return at.piece.type === 'seg' && at.piece.edge === pd.edge && at.u >= pd.f0 && at.u <= pd.f1;
+}
+
+function pop(pos) {
+  mode = 'popping';
+  burst(pos, C.spike, 26);
+  setTimeout(() => { restore(history.pop()); say('Лопнул на шипах — ход отменён.'); }, 650);
+}
+
+// The green zone becomes a magnet trap once every target is outlined: rolling over it or landing on it stops the ball.
+const padOpen = () => shapes.every(shapeDone);
+
+// ---------- pins: the ball rolls until it bumps into one ----------
+const PIN_STOP = R + 4;
+function pinS(sh) {
+  const segs = sh.pieces.filter(p => p.type === 'seg');
+  return sh.pins.map(p => segs[p.edge].s0 + p.u * segs[p.edge].len);
+}
+const fwd = (sh, from, to, dir) => (((to - from) * dir) % sh.len + sh.len) % sh.len;
+const pinAhead = (sh, s, dir) => pinS(sh).some(ps => fwd(sh, s, ps, dir) <= PIN_STOP);
+function nearPin(sh, s) {
+  return pinS(sh).some(ps => Math.min(fwd(sh, s, ps, 1), fwd(sh, s, ps, -1)) < PIN_STOP + 2);
+}
+
+function settle() {
+  mode = 'idle'; roll = null;
+  // snap the resting spot to half a pixel so the same shots always replay the same way
+  const L = ball.sh.len; ball.s = Math.round((((ball.s % L) + L) % L) * 2) / 2;
+  const targets = shapes.filter(sh => sh.kind === 'target');
+  const allDone = targets.every(shapeDone);
+  if (allDone && onPad()) {
+    mode = 'won';
+    burst(pointAt(ball.sh, ball.s).p, C.mint, 40);
+    const stars = shots <= level.par ? 3 : shots <= level.par + 2 ? 2 : 1;
+    const prev = progress[li];
+    if (!prev || shots < prev) { progress[li] = shots; saveProgress(); }
+    $('winTitle').textContent = level.charges ? 'Сундук открыт' : 'Фигуры замкнуты';
+    $('winText').textContent = level.charges
+      ? `Зарядов осталось: ${level.charges - shots} из ${level.charges}`
+      : `${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}  ·  выстрелов: ${shots}, пар ${level.par}`;
+    $('winNext').hidden = li >= LEVELS.length - 1;
+    setTimeout(() => { $('win').hidden = false; }, 500);
+    renderLevelBar();
+  } else if (level.charges && shots >= level.charges) {
+    mode = 'broken';
+    burst(pointAt(ball.sh, ball.s).p, C.spike, 30);
+    $('winTitle').textContent = 'Отмычка сломалась';
+    $('winText').textContent = 'Заряды кончились, замок защёлкнулся. Попробуй ещё раз.';
+    $('winNext').hidden = true;
+    setTimeout(() => { $('win').hidden = false; }, 500);
+  } else if (allDone) {
+    say('Все фигуры обведены — зелёная зона включилась. Проедь по ней или попади в неё, она поймает шарик.', true);
+  } else {
+    const left = targets.filter(sh => !shapeDone(sh)).length;
+    say(left === targets.length && shots === 1 ? '' : `Осталось обвести: ${left}`);
+  }
+  updatePreview(); updateHud();
+}
+
+function burst(p, color, n) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * TAU, sp = 60 + Math.random() * 220;
+    particles.push({ x: p.x, y: p.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.5 + Math.random() * 0.5, color });
+  }
+}
+
+// ---------- solution replay: rotate, aim, wait, fire — step by step ----------
+let demo = null;
+function showSolution() {
+  if (!level.solution) return;
+  loadLevel(li);
+  demo = { steps: level.solution.map(x => ({ ...x })), cur: null, t: 0 };
+  say('Показываю решение…', true);
+}
+function runDemo(dt) {
+  if (mode === 'won' || mode === 'broken') { demo = null; return; }
+  if (mode !== 'idle') return;
+  if (!demo.cur) {
+    if (!demo.steps.length) { demo = null; say(''); return; }
+    demo.cur = demo.steps.shift(); demo.t = 0;
+  }
+  const c = demo.cur;
+  if (c.r) { const d = Math.sign(c.r); c.r -= d; rotate(d); return; }
+  if (demo.t === 0) { aimAng = snapAim(c.a * Math.PI / 180); updatePreview(); updateHud(); }
+  demo.t += dt;
+  if (demo.t > 0.8) { demo.cur = null; fire(); }
+}
+
+function step(dt) {
+  if (demo) runDemo(dt);
+  if (mode === 'rotating') {
+    const a = rotor.anim; a.t = Math.min(1, a.t + dt / 0.3);
+    const e = a.t < .5 ? 2 * a.t * a.t : 1 - Math.pow(-2 * a.t + 2, 2) / 2;
+    setRotorAngle(a.from + (a.to - a.from) * e);
+    if (a.t >= 1) { rotor.k = a.k; rotor.anim = null; setRotorAngle(rotor.k * Math.PI / 2); mode = 'idle'; updatePreview(); updateHud(); }
+  } else if (mode === 'flying') {
+    flight.dist = Math.min(flight.total, flight.dist + 1150 * dt);
+    let d = flight.dist, pts = flight.pts, pos = pts[pts.length - 1];
+    for (let i = 1; i < pts.length; i++) {
+      const L = vlen(sub(pts[i], pts[i - 1]));
+      if (d <= L) { pos = add(pts[i - 1], mul(sub(pts[i], pts[i - 1]), d / (L || 1))); break; }
+      d -= L;
+    }
+    flight.pos = pos; trail.push({ x: pos.x, y: pos.y, a: 1 });
+    if (flight.dist >= flight.total) {
+      const sh = flight.shot;
+      ball = { sh: sh.sh, s: sh.s };
+      if (sh.spiky) { pop(pos); return; }
+      paintAt(pointAt(ball.sh, ball.s));
+      if (shouldStop() || pinAhead(ball.sh, ball.s, sh.dir)) { settle(); return; }
+      roll = { dir: sh.dir, start: ball.s, went: 0, budget: 0 };
+      mode = 'rolling';
+    }
+  } else if (mode === 'rolling') {
+    roll.budget += 760 * dt;
+    while (roll.budget >= 3) {
+      if (pinAhead(ball.sh, ball.s, roll.dir)) { settle(); return; }
+      if (roll.went >= ball.sh.len - 3) { ball.s = roll.start; settle(); return; }
+      const ds = Math.min(3, ball.sh.len - roll.went); roll.budget -= 3; roll.went += ds;
+      ball.s += roll.dir * ds;
+      const at = pointAt(ball.sh, ball.s);
+      if (spikeAt(ball.sh, at.piece, at.u)) { pop(at.p); return; }
+      paintAt(at);
+      if (shouldStop()) { settle(); return; }
+    }
+    const p = pointAt(ball.sh, ball.s).p; trail.push({ x: p.x, y: p.y, a: 1 });
+  }
+  trail.forEach(t => t.a -= dt * 2.2); trail = trail.filter(t => t.a > 0);
+  particles.forEach(q => { q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= 0.96; q.vy *= 0.96; q.life -= dt; });
+  particles = particles.filter(q => q.life > 0);
+  if (msgTimer > 0) { msgTimer -= dt; if (msgTimer <= 0) $('msg').textContent = ''; }
+}
+
+// ---------- drawing ----------
+function pathPoly(pts) { ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath(); }
+
+function drawBackground() {
+  ctx.fillStyle = C.wall; ctx.fillRect(0, 0, W, H);
+  const g = ctx.createRadialGradient(W / 2, H * .45, 40, W / 2, H / 2, W * .65);
+  g.addColorStop(0, C.floor1); g.addColorStop(1, C.floor2);
+  ctx.fillStyle = g; ctx.fillRect(WALL, WALL, W - 2 * WALL, H - 2 * WALL);
+  ctx.fillStyle = 'rgba(142,150,165,0.10)';
+  for (let x = WALL + 24; x < W - WALL; x += 24) for (let y = WALL + 24; y < H - WALL; y += 24) ctx.fillRect(x - .75, y - .75, 1.5, 1.5);
+  ctx.strokeStyle = C.steel; ctx.lineWidth = 3; ctx.strokeRect(WALL - 1.5, WALL - 1.5, W - 2 * WALL + 3, H - 2 * WALL + 3);
+}
+
+function drawSpikes(sh) {
+  const segs = sh.pieces.filter(p => p.type === 'seg');
+  ctx.fillStyle = C.spike;
+  for (const sp of sh.spikes) {
+    const pc = segs[sp.edge], L = pc.len * (sp.f1 - sp.f0), n = Math.max(2, Math.round(L / 11));
+    for (let k = 0; k < n; k++) {
+      const u0 = sp.f0 + (sp.f1 - sp.f0) * k / n, u1 = sp.f0 + (sp.f1 - sp.f0) * (k + 1) / n;
+      const a = edgePoint(pc, u0), b = edgePoint(pc, u1), tip = add(edgePoint(pc, (u0 + u1) / 2), mul(pc.n, 9));
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(tip.x, tip.y); ctx.lineTo(b.x, b.y); ctx.closePath(); ctx.fill();
+    }
+  }
+}
+
+function drawZones(t) {
+  for (const z of zones) {
+    const pc = z.sh.pieces.filter(p => p.type === 'seg')[z.edge];
+    const a = add(edgePoint(pc, z.f0), mul(pc.n, 2)), b = add(edgePoint(pc, z.f1), mul(pc.n, 2));
+    const on = zoneActive(z);
+    ctx.save(); ctx.strokeStyle = C.sticky; ctx.lineCap = 'round';
+    ctx.lineWidth = on ? 7 : 4; ctx.globalAlpha = on ? 1 : 0.4;
+    if (on) { ctx.shadowColor = C.sticky; ctx.shadowBlur = 10; } else ctx.setLineDash([3, 7]);
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.restore();
+    if (!on && z.trig) {
+      // thin thread from the dormant zone to the shape that switches it on
+      const m = mul(add(a, b), .5);
+      ctx.save(); ctx.strokeStyle = 'rgba(180,140,255,0.25)'; ctx.setLineDash([2, 8]); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(z.trig.c.x, z.trig.c.y); ctx.stroke(); ctx.restore();
+    }
+  }
+}
+
+function drawRotor() {
+  if (!rotor) return;
+  const c = rotor.c, r = Math.max(...rotor.parts.map(p => p.r)) + 16;
+  const ang = rotor.anim ? rotor.anim.from + (rotor.anim.to - rotor.anim.from) * rotor.anim.t : rotor.k * Math.PI / 2;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(201,169,89,0.18)'; ctx.lineWidth = 10;
+  ctx.beginPath(); ctx.arc(c.x, c.y, r, 0, TAU); ctx.stroke();
+  ctx.strokeStyle = 'rgba(201,169,89,0.5)'; ctx.lineWidth = 2;
+  for (let i = 0; i < 4; i++) {
+    const a = ang + i * Math.PI / 2 - Math.PI / 2, d = v(Math.cos(a), Math.sin(a));
+    ctx.beginPath(); ctx.moveTo(c.x + d.x * (r - 7), c.y + d.y * (r - 7)); ctx.lineTo(c.x + d.x * (r + 7), c.y + d.y * (r + 7)); ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(201,169,89,0.6)'; ctx.beginPath(); ctx.arc(c.x, c.y, 3, 0, TAU); ctx.fill();
+  ctx.restore();
+}
+
+function drawPins(sh) {
+  const segs = sh.pieces.filter(p => p.type === 'seg');
+  for (const p of sh.pins) {
+    const pc = segs[p.edge], q = add(edgePoint(pc, p.u), mul(pc.n, 4));
+    ctx.fillStyle = '#6b5420'; ctx.beginPath(); ctx.arc(q.x, q.y, 6.5, 0, TAU); ctx.fill();
+    ctx.fillStyle = C.pin; ctx.beginPath(); ctx.arc(q.x - 1, q.y - 1, 5, 0, TAU); ctx.fill();
+  }
+}
+
+function drawPad(t) {
+  const pc = padShape.pieces.filter(p => p.type === 'seg')[level.pad.edge];
+  const a = add(edgePoint(pc, level.pad.f0), mul(pc.n, 2)), b = add(edgePoint(pc, level.pad.f1), mul(pc.n, 2));
+  const open = padOpen();
+  ctx.save(); ctx.strokeStyle = C.mint; ctx.lineWidth = open ? 6 : 4; ctx.lineCap = 'round';
+  ctx.globalAlpha = open ? 0.8 + 0.2 * Math.sin(t * 5) : 0.35;
+  if (!open) ctx.setLineDash([6, 6]);
+  ctx.shadowColor = C.mint; ctx.shadowBlur = open ? 18 : 0;
+  ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.restore();
+}
+
+function drawShape(sh, t) {
+  if (sh.inside) return;
+  if (sh.kind === 'glass') {
+    pathPoly(sh.pts); ctx.fillStyle = 'rgba(143,211,238,0.14)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(143,211,238,0.75)'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.save(); pathPoly(sh.pts); ctx.clip();
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 6;
+    const b = sh.pts.reduce((m, p) => ({ x: Math.min(m.x, p.x), y: Math.min(m.y, p.y) }), v(1e9, 1e9));
+    ctx.beginPath(); ctx.moveTo(b.x, b.y + 40); ctx.lineTo(b.x + 40, b.y); ctx.stroke();
+    ctx.restore();
+    return;
+  }
+  if (sh.kind === 'stone') {
+    pathPoly(sh.pts);
+    const g = ctx.createLinearGradient(0, sh.pts[0].y, 0, sh.pts[0].y + 120);
+    g.addColorStop(0, '#3a4352'); g.addColorStop(1, '#262d38');
+    ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = C.steelHi; ctx.lineWidth = 1.5; ctx.stroke();
+    return;
+  }
+  // target
+  const done = shapeDone(sh);
+  pathPoly(sh.pts);
+  ctx.fillStyle = done ? 'rgba(255,154,60,0.16)' : 'rgba(201,169,89,0.06)'; ctx.fill();
+  ctx.save(); ctx.setLineDash([7, 7]); ctx.lineDashOffset = -t * 12; ctx.strokeStyle = 'rgba(201,169,89,0.55)'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+  const segs = sh.pieces.filter(p => p.type === 'seg');
+  ctx.save(); ctx.strokeStyle = C.ember; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.shadowColor = C.ember; ctx.shadowBlur = done ? 16 : 9;
+  segs.forEach((pc, e) => {
+    const cells = sh.paint[e], n = cells.length;
+    let k = 0;
+    while (k < n) {
+      if (!cells[k]) { k++; continue; }
+      let j = k; while (j < n && cells[j]) j++;
+      const a = edgePoint(pc, k / n), b = edgePoint(pc, j / n);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      k = j;
+    }
+  });
+  ctx.restore();
+  ctx.fillStyle = done ? C.ember : 'rgba(201,169,89,0.8)';
+  ctx.font = '600 13px "Golos Text", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if (done) ctx.fillText('✓', sh.c.x, sh.c.y);
+}
+
+function drawBall(p, t) {
+  const g = ctx.createRadialGradient(p.x - 3, p.y - 3, 1, p.x, p.y, R);
+  g.addColorStop(0, '#ffe2c4'); g.addColorStop(0.35, C.copper); g.addColorStop(1, '#6b3a17');
+  ctx.save(); ctx.shadowColor = C.copper; ctx.shadowBlur = mode === 'idle' ? 10 + 4 * Math.sin(t * 3) : 14;
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, TAU); ctx.fill(); ctx.restore();
+}
+
+function drawPreview(t) {
+  if (mode !== 'idle' || !preview) return;
+  ctx.save();
+  if (preview.blocked) {
+    const a = preview.p, b = add(a, mul(preview.d, 34));
+    ctx.strokeStyle = C.spike; ctx.lineWidth = 2; ctx.setLineDash([4, 5]);
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.restore(); return;
+  }
+  ctx.strokeStyle = 'rgba(231,227,218,0.55)'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 7]); ctx.lineDashOffset = -t * 20;
+  ctx.beginPath(); preview.pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke();
+  ctx.setLineDash([]);
+  const at = pointAt(preview.sh, preview.s), q = at.p;
+  ctx.strokeStyle = preview.spiky ? C.spike : 'rgba(231,227,218,0.8)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(q.x, q.y, R, 0, TAU); ctx.stroke();
+  if (!preview.spiky) {
+    const dir = mul(at.t, preview.dir), o = add(q, mul(at.n, 18)), tip = add(o, mul(dir, 14)), back = add(o, mul(dir, -6));
+    const side = v(-dir.y, dir.x);
+    ctx.fillStyle = C.copper;
+    ctx.beginPath(); ctx.moveTo(tip.x, tip.y); ctx.lineTo(back.x + side.x * 6, back.y + side.y * 6); ctx.lineTo(back.x - side.x * 6, back.y - side.y * 6); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function draw(t) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const wantW = Math.round(W * dpr), wantH = Math.round(H * dpr);
+  if (cv.width !== wantW || cv.height !== wantH) { cv.width = wantW; cv.height = wantH; }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawBackground();
+  drawRotor();
+  shapes.forEach(sh => drawShape(sh, t));
+  shapes.forEach(drawSpikes);
+  shapes.forEach(drawPins);
+  drawZones(t);
+  drawPad(t);
+  drawPreview(t);
+  trail.forEach(q => { ctx.fillStyle = `rgba(217,139,78,${q.a * 0.35})`; ctx.beginPath(); ctx.arc(q.x, q.y, R * 0.6, 0, TAU); ctx.fill(); });
+  if (mode !== 'popping') drawBall(ballPos(), t);
+  particles.forEach(q => { ctx.globalAlpha = clamp(q.life * 1.6, 0, 1); ctx.fillStyle = q.color; ctx.fillRect(q.x - 2, q.y - 2, 4, 4); });
+  ctx.globalAlpha = 1;
+}
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  step(dt); draw(now / 1000);
+  requestAnimationFrame(frame);
+}
+
+// ---------- UI ----------
+function updateHud() {
+  if (level.charges) {
+    const left = level.charges - shots;
+    $('stats').innerHTML = `Заряды отмычки <strong>${'●'.repeat(Math.max(0, left))}${'○'.repeat(Math.min(level.charges, shots))}</strong>`;
+  } else $('stats').innerHTML = `Выстрелы <strong>${shots}</strong> · пар <strong>${level.par}</strong>`;
+  $('fire').disabled = mode !== 'idle' || !preview || !!preview.blocked;
+  $('undo').disabled = !history.length || (mode !== 'idle' && mode !== 'won');
+}
+function renderLevelBar() {
+  const bar = $('levels'); bar.innerHTML = '';
+  LEVELS.forEach((L, i) => {
+    const b = document.createElement('button');
+    b.className = 'lv'; b.id = 'lv' + i;
+    b.setAttribute('aria-current', i === li ? 'true' : 'false');
+    b.innerHTML = `${i + 1}. ${L.name}` + (progress[i] ? ` <span class="done">✓ ${progress[i]}</span>` : '');
+    b.onclick = () => loadLevel(i);
+    bar.appendChild(b);
+  });
+}
+
+function toLocal(e) {
+  const r = cv.getBoundingClientRect();
+  return v((e.clientX - r.left) / r.width * W, (e.clientY - r.top) / r.height * H);
+}
+const AIM_STEP = 2 * Math.PI / 180;
+const snapAim = a => Math.round(a / AIM_STEP) * AIM_STEP;
+const aimDeg = () => { let d = Math.round(aimAng * 1800 / Math.PI) / 10; while (d <= -180) d += 360; while (d > 180) d -= 360; return d; };
+function aimAt(q) {
+  if (demo) return;
+  if (mode !== 'idle') return;
+  const d = sub(q, pointAt(ball.sh, ball.s).p);
+  if (vlen(d) < 4) return;
+  aimAng = Math.atan2(d.y, d.x); updatePreview(); updateHud();
+}
+let pressed = false;
+cv.addEventListener('pointermove', e => { if (e.pointerType === 'mouse' || pressed) aimAt(toLocal(e)); });
+cv.addEventListener('pointerdown', e => { pressed = true; cv.setPointerCapture(e.pointerId); aimAt(toLocal(e)); });
+cv.addEventListener('pointerup', e => { if (!pressed) return; pressed = false; if (demo) return; aimAt(toLocal(e)); fire(); });
+cv.addEventListener('pointercancel', () => { pressed = false; });
+$('fire').onclick = () => { if (!demo) fire(); };
+$('solve').onclick = showSolution;
+$('undo').onclick = () => { if (history.length && (mode === 'idle' || mode === 'won')) { $('win').hidden = true; restore(history.pop()); say(''); } };
+$('restart').onclick = () => loadLevel(li);
+$('rotL').onclick = () => { if (!demo) rotate(-1); };
+$('rotR').onclick = () => { if (!demo) rotate(1); };
+$('winAgain').onclick = () => loadLevel(li);
+$('winNext').onclick = () => loadLevel(Math.min(LEVELS.length - 1, li + 1));
+window.addEventListener('keydown', e => {
+  if (e.target && e.target.tagName === 'INPUT') return;
+  if (demo && !'rRкК'.includes(e.key)) return;
+  const fine = (e.shiftKey ? 0.1 : 0.5) * Math.PI / 180;
+  if (e.key === 'ArrowLeft') { aimAng -= fine; updatePreview(); updateHud(); e.preventDefault(); }
+  else if (e.key === 'ArrowRight') { aimAng += fine; updatePreview(); updateHud(); e.preventDefault(); }
+  else if (e.key === ' ' || e.key === 'Enter') { if (e.target.tagName !== 'BUTTON') { fire(); e.preventDefault(); } }
+  else if (e.key === 'z' || e.key === 'Z' || e.key === 'я' || e.key === 'Я') $('undo').click();
+  else if (e.key === 'r' || e.key === 'R' || e.key === 'к' || e.key === 'К') loadLevel(li);
+  else if ('qQйЙ'.includes(e.key)) rotate(-1);
+  else if ('eEуУ'.includes(e.key)) rotate(1);
+});
+
+loadLevel(0);
+requestAnimationFrame(frame);
+})();
+</script>
+
+</html>

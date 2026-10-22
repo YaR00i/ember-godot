@@ -162,10 +162,13 @@ static func _compare_meshes(
 			legacy_arrays[Mesh.ARRAY_COLOR], native_arrays[Mesh.ARRAY_COLOR],
 			"surface %d colors" % surface_index, errors,
 		)
-		_compare_indices(
-			legacy_arrays[Mesh.ARRAY_INDEX], native_arrays[Mesh.ARRAY_INDEX],
-			"surface %d indices" % surface_index, errors,
-		)
+		if legacy_arrays[Mesh.ARRAY_INDEX]==null or native_arrays[Mesh.ARRAY_INDEX]==null:
+			if legacy_arrays[Mesh.ARRAY_INDEX]!=native_arrays[Mesh.ARRAY_INDEX]:errors.append("surface %d index layout changed"%surface_index)
+		else:
+			_compare_indices(legacy_arrays[Mesh.ARRAY_INDEX],native_arrays[Mesh.ARRAY_INDEX],"surface %d indices"%surface_index,errors)
+		if legacy_mesh.surface_get_name(surface_index) in ["tree_bark","tree_leaves"]:
+			for channel in [Mesh.ARRAY_TEX_UV,Mesh.ARRAY_CUSTOM0,Mesh.ARRAY_CUSTOM1]:
+				if legacy_arrays[channel]!=native_arrays[channel]:errors.append("tree surface %d artwork/support channel %d changed"%[surface_index,channel])
 	if errors.is_empty():
 		checks.append("exact visual mesh")
 		checks.append("collision source mesh")
@@ -220,7 +223,7 @@ static func _triangle_count(mesh: ArrayMesh) -> int:
 	var result := 0
 	for surface_index in mesh.get_surface_count():
 		var arrays := mesh.surface_get_arrays(surface_index)
-		result += (arrays[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
+		result += ((arrays[Mesh.ARRAY_INDEX] as PackedInt32Array).size() if arrays[Mesh.ARRAY_INDEX]!=null else (arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()) / 3
 	return result
 
 

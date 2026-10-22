@@ -1,0 +1,87 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_environment_material_review.gd" id="1_juda3"]
+[ext_resource type="Script" path="res://scripts/ember_map_loader.gd" id="2_sjw0q"]
+[ext_resource type="Resource" path="res://content/world_terrains/material_review_ground.tres" id="3_b03gc"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_painted_rock_group.tscn" id="4_gbihd"]
+[ext_resource type="Script" path="res://scripts/ember_voxel_prop.gd" id="5_87rfe"]
+[ext_resource type="ArrayMesh" path="res://prefabs/voxels/meshes/environment_review_oak.res" id="6_cmn0o"]
+[ext_resource type="Shape3D" path="res://prefabs/voxels/meshes/environment_review_oak_collision.res" id="7_ragq2"]
+[ext_resource type="Material" path="res://prefabs/voxels/meshes/environment_review_grass_material.res" id="8_1uc5r"]
+[ext_resource type="MultiMesh" path="res://prefabs/voxels/meshes/environment_review_grass.res" id="9_y2qdi"]
+
+[sub_resource type="Environment" id="Environment"]
+background_mode = 1
+background_color = Color(0.35, 0.47, 0.54, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.72, 0.82, 1, 1)
+ambient_light_energy = 0.55
+tonemap_mode = 2
+ssao_enabled = true
+ssao_radius = 0.65
+ssao_intensity = 0.8
+
+[node name="EnvironmentMaterialReview" type="Node3D" unique_id=108040620]
+script = ExtResource("1_juda3")
+player_start = Vector3(4.25, 0.22750647, 7.45)
+camera_distance = 9.5
+camera_polar = 0.95
+camera_look = 0.6
+camera_fov = 40.0
+
+[node name="Map" type="Node3D" parent="." unique_id=1496443040]
+script = ExtResource("2_sjw0q")
+map_id = "environment_material_review"
+compact_terrain = ExtResource("3_b03gc")
+compact_ground_style = 1
+compact_smooth_material_blend = true
+compact_material_light_mode = 1
+authored_size_blocks = Vector2i(12, 12)
+imported_tile_size = 1.0
+
+[node name="Look" type="Node3D" parent="Map" unique_id=1917072571]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="Map/Look" unique_id=122220218]
+environment = SubResource("Environment")
+
+[node name="Sun" type="DirectionalLight3D" parent="Map/Look" unique_id=2107323464]
+transform = Transform3D(0.42261824, 0.8002223, -0.4254858, 0, 0.4694716, 0.88294756, 0.9063078, -0.37314975, 0.19840726, 0, 0, 0)
+light_color = Color(1, 0.98, 0.94, 1)
+light_energy = 1.15
+light_angular_distance = 1.0
+shadow_enabled = true
+directional_shadow_max_distance = 35.0
+
+[node name="Props" type="Node3D" parent="Map" unique_id=1701786106]
+
+[node name="PaintedRockGroup" type="Node3D" parent="Map/Props" unique_id=1444643936 instance=ExtResource("4_gbihd")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0, 2)
+script = ExtResource("5_87rfe")
+model_id = "vox_painted_rock_group"
+block_world_size = 1.0
+metadata/ember_solid_source = true
+metadata/ember_source_signature = "efb1afb93ce2621a98c3382ecab6b20cde15e72c244e333f1ccc62c8a5943603"
+
+[node name="PaintedOak" type="Node3D" parent="Map/Props" unique_id=724073662]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.29586637, 4.6)
+script = ExtResource("5_87rfe")
+model_id = "vox_painted_oak"
+block_world_size = 1.0
+
+[node name="Mesh" type="MeshInstance3D" parent="Map/Props/PaintedOak" unique_id=737157395]
+mesh = ExtResource("6_cmn0o")
+metadata/ember_block_position = Vector3(0, 0, 0)
+
+[node name="Collision" type="StaticBody3D" parent="Map/Props/PaintedOak" unique_id=1801850314]
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/PaintedOak/Collision" unique_id=1025926296]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.5, 0, -3.5)
+shape = ExtResource("7_ragq2")
+metadata/ember_block_position = Vector3(-3.5, 0, -3.5)
+
+[node name="GrassTufts" type="MultiMeshInstance3D" parent="." unique_id=399750446]
+material_override = ExtResource("8_1uc5r")
+cast_shadow = 0
+instance_shader_parameters/ember_style_rim_master = true
+multimesh = ExtResource("9_y2qdi")

@@ -8,9 +8,12 @@ func run() -> void:
 		var pattern=Materials.load_compact_terrain_variant("cartoon_stone").duplicate(true)
 		pattern.role_id=role;pattern.pattern_size_m=1.35
 		pattern.albedo_texture=load("res://content/terrain_materials/textures/material_depth_study/stone_color.png")
+		# Isolate the explicit periodic-ID argument from authored sand defaults.
+		var sand=Materials.load_compact_terrain_variant("cartoon_sand").duplicate(true)
+		sand.albedo_periodic=false
 		var material=Materials.compact_terrain_material()
 		material.shader=Materials.compact_terrain_depth_shader()
-		Materials.set_compact_terrain_roles(material,PackedStringArray(["","sand",role]),PackedStringArray(["","cartoon_sand","test_pair"]),PackedColorArray(),{"test_pair":pattern},PackedStringArray(["test_pair"]))
+		Materials.set_compact_terrain_roles(material,PackedStringArray(["","sand",role]),PackedStringArray(["","cartoon_sand","test_pair"]),PackedColorArray(),{"test_pair":pattern,"cartoon_sand":sand},PackedStringArray(["test_pair"]))
 		var entry=(material.get_shader_parameter("png_lookup") as Texture2D).get_image().get_pixel(2,0)
 		assert(entry.r>0.5 and is_equal_approx(entry.g,1.35) and entry.a==1.0)
 		assert((material.get_shader_parameter("png_lookup") as Texture2D).get_image().get_pixel(1,0).a==0.0)

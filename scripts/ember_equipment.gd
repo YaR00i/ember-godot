@@ -18,6 +18,22 @@ const SLOT_LABELS := {
 }
 const UNARMED_ATK := 4
 const UNARMED_DEF := 0
+const SHOE_BONUS_LIMITS := {
+	"moveBonus": Vector2i(-12, 12),
+	"jumpBonus": Vector2i(-8, 8),
+	"pushResistanceBonus": Vector2i(0, 12),
+	"wetResistanceBonus": Vector2i(0, 12),
+}
+
+
+static func footwear_bonuses(equipment: Dictionary, items: Dictionary) -> Dictionary:
+	var shoe: Dictionary = items.get(str(equipment.get("shoes", "")), {})
+	var result := {}
+	for key in SHOE_BONUS_LIMITS:
+		var value: Variant = shoe.get(key, 0) if shoe.get("kind", "") == "shoes" else 0
+		var bounds: Vector2i = SHOE_BONUS_LIMITS[key]
+		result[key] = clampi(int(value), bounds.x, bounds.y) if typeof(value) in [TYPE_INT, TYPE_FLOAT] and is_finite(float(value)) else 0
+	return result
 
 
 static func empty() -> Dictionary:

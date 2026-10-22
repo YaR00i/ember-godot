@@ -1,19 +1,28 @@
 [gd_resource type="Resource" script_class="EmberCompactTerrainPattern" format=4]
 
-[ext_resource type="Texture2D" path="res://content/terrain_materials/textures/cartoon_grass.png" id="1_p83j7"]
+[ext_resource type="Texture2D" path="res://content/terrain_materials/textures/grass-painted-base-runtime.png" id="1_p83j7"]
 [ext_resource type="Script" path="res://scripts/ember_compact_terrain_pattern.gd" id="2_fpy6g"]
 
 [resource]
 script = ExtResource("2_fpy6g")
 role_id = "grass"
-base_color = Color(0.3, 0.39, 0.22, 1)
+base_color = Color(0.3882353, 0.49803922, 0.3137255, 1)
+grass_light_enabled = true
+grass_light_low = 0.64
+grass_light_tint_strength = 1.0
+grass_light_cool = Color(0.96, 1, 1.04, 1)
+grass_light_warm = Color(1.075, 1, 0.94, 1)
+grass_light_shadow_color = Color(0.62, 0.90, 1.02, 1)
+grass_light_shadow_fill = 0.07
 light_color = Color(0.32400003, 0.4212, 0.23760001, 1)
 shadow_color = Color(0.27600002, 0.3588, 0.2024, 1)
 pixels = PackedByteArray("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==")
 albedo_texture = ExtResource("1_p83j7")
+albedo_relief_enabled = false
+albedo_periodic = true
 side_pixels = PackedByteArray()
 relief_pixels = PackedByteArray()
 side_relief_pixels = PackedByteArray()
 roughness_pixels = PackedByteArray()
 side_roughness_pixels = PackedByteArray()
-pattern_size_m = 1.5
+pattern_size_m = 2.0

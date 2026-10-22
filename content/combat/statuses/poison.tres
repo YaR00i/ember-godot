@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="EmberCombatStatusResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_status_resource.gd" id="1_status"]
+
+[resource]
+script = ExtResource("1_status")
+status_id = "poison"
+display_name = "Яд"
+description = "Теряет здоровье в конце собственного хода. Сначала срабатывает регенерация, затем яд."
+default_duration = 3
+turn_end_hp_change = -5
+glyph = "☠"
+ui_color = Color(0.65, 0.83, 0.25, 1)

@@ -18,6 +18,14 @@ const FoliagePattern = preload("res://addons/ember_import/ember_voxel_foliage_pa
 const FoliageElements = preload("res://addons/ember_import/ember_voxel_foliage_elements.gd")
 
 
+const SPECIES_DEFAULTS: Array[Dictionary] = [
+	{"tree_type": 0, "generation_version": 14, "crown_shape": 0, "trunk_width": 8, "crown_spread": 80, "branch_thickness": 60, "branch_taper": 80, "branch_curve": 80, "cluster_size": 115, "cluster_flatten": 65, "branch_start": 38, "foliage_along": 85, "root_flare": 25},
+	{"tree_type": 1, "generation_version": 17, "trunk_width": 14, "crown_spread": 78, "branch_thickness": 85, "branch_curve": 70, "branch_taper": 70, "cluster_size": 115, "cluster_flatten": 15, "branch_start": 26, "foliage_along": 75, "root_flare": 80, "bark_pattern": true, "bark_pattern_direction": 1, "bark_pattern_length": 14, "bark_pattern_density": 65, "bark_pattern_color": Color("3f2c23")},
+	{"tree_type": 2, "generation_version": 13, "trunk_width": 6, "crown_spread": 55, "branch_thickness": 35, "branch_taper": 80, "cluster_size": 100, "cluster_flatten": 15, "foliage_along": 45, "root_flare": 35, "bark_color": Color("d6d2bd"), "bark_pattern": true, "bark_pattern_direction": 0, "bark_pattern_length": 5, "bark_pattern_density": 70, "bark_pattern_color": Color("302b29")},
+	{"tree_type": 3, "generation_version": 12, "trunk_width": 8, "crown_spread": 60, "branch_thickness": 65, "branch_taper": 70, "cluster_size": 115, "cluster_flatten": 15, "branch_start": 30, "foliage_along": 85, "root_flare": 45, "foliage_color": Color("659845")},
+	{"tree_type": 4, "generation_version": 15, "trunk_width": 6, "crown_spread": 55, "branch_thickness": 40, "branch_taper": 85, "branch_curve": 60, "branch_start": 20, "cluster_size": 115, "cluster_flatten": 15, "foliage_along": 85, "root_flare": 30, "foliage_color": Color("38654a")},
+]
+
 static func defaults() -> Dictionary:
 	return {
 		"generation_version": 2,
@@ -135,6 +143,13 @@ static func normalize(parameters: Dictionary) -> Dictionary:
 		result["branch_splits"] = clampi(int(parameters.get("branch_splits",3)),1,3)
 		result["branch_levels"] = clampi(int(parameters.get("branch_levels",4)),2,4)
 		result["branch_count_variation"] = clampi(int(parameters.get("branch_count_variation",40)),0,100)
+	if bool(parameters.get("painted_tree",false)) and version in [21,22,23,24,25]:
+		result["painted_tree"]=true
+		for key in ["tree_leaf_density","tree_leaf_depth","tree_leaf_receive","tree_wood_rim","tree_leaf_rim"]:
+			result[key]=clampi(int(parameters.get(key,{"tree_leaf_density":60,"tree_leaf_depth":100,"tree_leaf_receive":40,"tree_wood_rim":45,"tree_leaf_rim":18}[key])),0,100)
+		result["tree_rim_enabled"]=bool(parameters.get("tree_rim_enabled",true))
+		result["tree_leaf_local"]=parameters.get("tree_leaf_local",{}).duplicate(true) if parameters.get("tree_leaf_local",{}) is Dictionary else {}
+		result["tree_leaf_revision"]=str(parameters.get("tree_leaf_revision",""))
 	return result
 
 

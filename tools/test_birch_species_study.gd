@@ -11,7 +11,7 @@ func check(value: bool,message: String) -> void:
 func _initialize() -> void:run.call_deferred()
 func settings(kind: int) -> Dictionary:
 	var p:=Provider.defaults()
-	p.merge(Generator.creation_presets(Generator.LARGE_TREE)[kind].recipe.parameters,true)
+	p.merge(Generator.creation_presets(Generator.LARGE_TREE,true)[kind].recipe.parameters,true)
 	p.height=96;p.foliage_style=3
 	return Provider.normalize(p)
 func signature(built: Dictionary) -> Dictionary:

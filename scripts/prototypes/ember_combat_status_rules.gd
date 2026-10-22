@@ -21,8 +21,41 @@ static func display_name(status_id: String) -> String:
 
 
 static func has(unit: Dictionary, status_id: String) -> bool:
-	return int((unit.get("statuses", {}) as Dictionary).get(status_id, 0)) > 0
+	return remaining((unit.get("statuses", {}) as Dictionary).get(status_id, 0)) > 0
 
+
+static func durations(raw: Variant) -> Array[int]:
+	var result: Array[int] = []
+	if raw is Array:
+		for value in raw:
+			if typeof(value) == TYPE_INT and value > 0: result.append(value)
+	elif typeof(raw) == TYPE_INT and raw > 0: result.append(raw)
+	return result
+
+static func remaining(raw: Variant) -> int:
+	if typeof(raw) == TYPE_INT: return maxi(0, raw)
+	var result := 0
+	if raw is Array:
+		for value in raw:
+			if typeof(value) == TYPE_INT: result = maxi(result, value)
+	return result
+
+static func count(unit: Dictionary, status_id: String) -> int:
+	var raw: Variant = unit.get("statuses", {}).get(status_id, 0)
+	if typeof(raw) == TYPE_INT: return 1 if raw > 0 else 0
+	var result := 0
+	if raw is Array:
+		for value in raw:
+			if typeof(value) == TYPE_INT and value > 0: result += 1
+	return result
+
+static func timer_text(raw: Variant) -> String:
+	var values := durations(raw)
+	if values.is_empty(): return ""
+	if not raw is Array: return str(values[0])
+	var labels := PackedStringArray()
+	for value in values: labels.append(str(value))
+	return "×%d · ходы %s" % [values.size(), "/".join(labels)]
 
 static func set_status(
 	resolved: Dictionary,
@@ -41,16 +74,25 @@ static func set_status(
 	var statuses: Dictionary = all_statuses.get(unit_id, {})
 	var pending := statuses.has(status_id)
 	var removed: Array = (resolved.get("removeStatuses", {}) as Dictionary).get(unit_id, [])
-	var existing := int(statuses.get(status_id, current.get(status_id, 0))) if status_id not in removed else 0
+	var previous: Variant = statuses.get(status_id, current.get(status_id, 0)) if status_id not in removed else 0
+	var existing := remaining(previous)
 	var incoming := duration_for(status_id, duration)
 	var rules := definition(status_id)
-	var next := incoming
-	match str(rules.get("reapply", "refresh")):
-		"refresh": next = maxi(existing, incoming) if pending else incoming
-		"keep_longest": next = maxi(existing, incoming)
-		"extend": next = mini(int(rules.get("maxDuration", 12)), existing + incoming)
-		"ignore": next = existing if existing > 0 else incoming
-	statuses[status_id] = maxi(1, next)
+	if int(rules.get("maxStacks", 1)) > 1:
+		var doses := durations(previous)
+		if doses.size() < int(rules.maxStacks): doses.append(incoming)
+		else:
+			var earliest := doses.find(doses.min())
+			doses[earliest] = incoming
+		statuses[status_id] = doses
+	else:
+		var next := incoming
+		match str(rules.get("reapply", "refresh")):
+			"refresh": next = maxi(existing, incoming) if pending else incoming
+			"keep_longest": next = maxi(existing, incoming)
+			"extend": next = mini(int(rules.get("maxDuration", 12)), existing + incoming)
+			"ignore": next = existing if existing > 0 else incoming
+		statuses[status_id] = maxi(1, next)
 	all_statuses[unit_id] = statuses
 	resolved["setStatuses"] = all_statuses
 	if status_id in removed:
@@ -132,10 +174,54 @@ static func decay(raw: Variant) -> Dictionary:
 	var source: Dictionary = raw if typeof(raw) == TYPE_DICTIONARY else {}
 	var result := {}
 	for raw_id in source:
-		var duration := int(source[raw_id]) - 1
-		if duration > 0:
-			result[str(raw_id)] = duration
+		var timers: Variant = source[raw_id]
+		var values: Array[int] = []
+		for value in durations(timers):
+			if value > 1: values.append(value - 1)
+		if not values.is_empty(): result[str(raw_id)] = values if timers is Array else values[0]
 	return result
+
+
+static func turn_end(unit: Dictionary) -> Dictionary:
+	# A single simultaneous healing phase, then a damage phase. No ID-order
+	# dependence, defense multipliers, critical rolls or resurrection.
+	var before := int(unit.get("hp", 0))
+	var healing := 0
+	var damage := 0
+	var healing_names := PackedStringArray()
+	var damage_names := PackedStringArray()
+	var statuses: Dictionary = unit.get("statuses", {})
+	var ids: Array = statuses.keys()
+	ids.sort()
+	for id in ids:
+		if not has(unit, str(id)): continue
+		var rules := definition(str(id))
+		var doses := count(unit, str(id))
+		var change := int(rules.get("turnEndHpChange", 0)) * doses
+		if change > 0:
+			healing += change
+			healing_names.append(str(rules.get("name", id)) + (" ×%d" % doses if doses > 1 else ""))
+		elif change < 0:
+			damage -= change
+			damage_names.append(str(rules.get("name", id)) + (" ×%d" % doses if doses > 1 else ""))
+	var healed := mini(int(unit.get("maxHp", 1)), before + healing) if before > 0 and healing > 0 else before
+	var after := maxi(0, healed - damage) if before > 0 else before
+	if healed > after:
+		statuses = statuses.duplicate()
+		for id in ids:
+			if has(unit, str(id)) and bool(definition(str(id)).get("removeOnDamage", false)): statuses.erase(id)
+	return {"beforeHp": before, "healedHp": healed, "hp": after, "healing": healed - before, "damage": healed - after,
+		"healingNames": healing_names, "damageNames": damage_names, "statuses": decay(statuses)}
+
+
+static func turn_end_hint(unit: Dictionary) -> String:
+	var parts := PackedStringArray()
+	for id in unit.get("statuses", {}):
+		if not has(unit, str(id)): continue
+		var rules := definition(str(id))
+		var amount := int(rules.get("turnEndHpChange", 0)) * count(unit, str(id))
+		if amount != 0: parts.append("%s: %+d HP" % [rules.get("name", id), amount])
+	return "Конец своего хода — сначала лечение, затем урон: " + "; ".join(parts) + "." if not parts.is_empty() else ""
 
 
 static func duration_after_preview(
@@ -146,9 +232,9 @@ static func duration_after_preview(
 ) -> int:
 	var pending: Dictionary = (resolved.get("setStatuses", {}) as Dictionary).get(unit_id, {})
 	if pending.has(status_id):
-		return int(pending[status_id])
+		return remaining(pending[status_id])
 	if status_id in (resolved.get("removeStatuses", {}) as Dictionary).get(unit_id, []):
 		return 0
 	var units: Dictionary = state.get("units", {})
 	var unit: Dictionary = units.get(unit_id, {})
-	return int((unit.get("statuses", {}) as Dictionary).get(status_id, 0))
+	return remaining((unit.get("statuses", {}) as Dictionary).get(status_id, 0))

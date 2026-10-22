@@ -13,6 +13,9 @@ uniform float painterly_grass_tint_strength = 1.0;
 uniform float painterly_grass_shadow_fill = 0.07;
 uniform vec3 painterly_grass_shadow_color = vec3(0.62, 0.90, 1.02);
 varying float painterly_blade_height;
+#ifdef EMBER_MATERIAL_SHAPE_STUDY
+#include "res://shaders/ember_material_shape_study.gdshaderinc"
+#endif
 uniform float painterly_rim_strength : hint_range(0.0, 2.0) = 0.7;
 uniform float painterly_band_softness : hint_range(0.01, 0.2) = 0.055;
 
@@ -57,6 +60,9 @@ vec3 ember_painted_grass_tint(vec3 normal, vec3 light, vec3 lit_pigment) {
 
 vec3 ember_grass_masses_normal(vec3 world_position) {
 	vec2 p = world_position.xz;
+#ifdef EMBER_MATERIAL_SHAPE_STUDY
+	p=ember_material_shape_point(p);
+#endif
 	float bend = ember_painted_noise(p * 0.65) - 0.5;
 	vec2 uv = vec2(p.x + p.y * 0.32, p.y + bend * 0.45) * vec2(1.6, 3.4);
 	vec2 slope = vec2(ember_painted_noise(uv), ember_painted_noise(uv + vec2(9.2, 3.7))) - 0.5;

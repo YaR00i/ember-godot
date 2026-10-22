@@ -26,6 +26,9 @@ func prepare() -> void:
 	_depth_stone=Materials.load_compact_terrain_variant("cartoon_stone").duplicate(true)
 	_depth_sand=Materials.load_compact_terrain_variant("cartoon_sand").duplicate(true)
 	_depth_stone.albedo_texture=load("res://content/terrain_materials/textures/material_depth_study/stone_color.png")
+	# This frozen depth study supplies its own legacy artwork. Do not inherit
+	# the main painted material's colour-only sampling flags with that old PNG.
+	_depth_stone.albedo_relief_enabled=true;_depth_stone.albedo_periodic=false
 	_depth_stone.pattern_size_m=DepthFixture.SPAN_M;_depth_stone.pixel_relief=0.04
 	_depth_stone.base_color=Color("979184")
 	depth_material=Materials.compact_terrain_material()

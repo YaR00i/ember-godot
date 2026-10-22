@@ -1,6 +1,6 @@
 # Ember — текущая точка
 
-Актуально: 2026-10-15. Ветка: codex/runtime-water-region-activity.
+Актуально: 2026-10-17. Ветка: codex/runtime-water-region-activity.
 Материалы/общая кромка/пять пород/их PNG/сцены/проверки сохранены в 41247dd.
 Прежние трава/POM/правила формы сохранены локально в d9e33a9.
 Прежняя база игровых систем — 6124184; мир/материалы до этих срезов — 0a7e1c5.
@@ -15,119 +15,154 @@ Fetch/push в текущем checkpoint не выполнялись. Полны�
 
 ## Активная цель
 
-**Пять пород — рабочие основы приняты; следующий срез ещё не начат.**
-Дуб21/B/кора C, берёза22, вытянутый клён23 (широкий сохранён), саванна24 и ель25
-имеют свою кору/листву в LAB. Пользователь принял последние кадры ели как основу.
-Рекомендация следующего контракта — перенос оформления в существующий generator/
-editor/save без нового renderer/редактора, сначала один вертикальный пример.
-Общий план трёх обликов продолжается после закрепления authoring/save; камера0а
-отложена автором, форма земли/общая кромка уже реализованы и имеют свои gates ниже.
-Контракт переноса надо исследовать/согласовать; данная запись не разрешает его код.
+**Sol: принятая форма камня перенесена в Source/Prefab; ручная приёмка OPEN.**
+Основной объект — content/voxel_models/vox_painted_rock_group.tres: шесть прежних
+масс и точные принятые occupied voxels/part IDs, opt-in solid_surface в том же Source.
+Prefab строит грани и collider из одних треугольников; Map floor/compact navigation
+учитывают этот объект. Старые бугры под ним удалены из Source общей сцены.
+Общий editor/F6 просмотр — scenes/compact_environment_material_review.tscn;
+дневной/вечерний/ночной свет и боковое/контровое направление проверены.
+Evidence: C:/Users/novos/Documents/Codex/2026-10-17/ember-rock-shape-transfer/.
+20 октября: этот камень получил тонкую кромку-рамку только по внешнему контуру (силуэту) камня;
+ширина — настройка материала в окне паттерна (мм, у cartoon_stone 10; не тоньше ~1.5 px);
+cartoon_stone: custom, сила 0.5, другие потребители тоже и рисунок, привязанный к самому
+камню (объектно-локальная проекция, facet_bias 0.35). Клавиши 4 (воксели) / 5 (low poly)
+в compact_environment_material_review переключают облик камня; 6 (подробный) = тот же low poly +
+глубина из рисунка (C2, 20 мм; ползунки в окне материала) и «живые» грани: каждая грань слегка
+(Pattern.form_pull_mm, cartoon_stone 30 мм, вариант O1) тянется к форме вокселей Source, рёбра/силуэт/
+collider/floor/Source прежние. Source, позиции mesh, collider, floor прежние;
+evidence — ember-rock-form-probe/. Автор 20 октября принял вид кромки/рисунка камня.
+Открыто: вытяжка рисунка на крутых скосах, weak-PC/движение камеры у глубины, личная приёмка
+живых граней и перенос системы на другие объекты. Подробный облик = low poly + глубина из
+рисунка + живые грани из вокселей; мозаика граней (ember-rock-form-probe/detail-*.png) отклонена автором.
+Это перенос принятой группы, не универсальная замена всех terrain-скал других карт.
+Новая оптическая глубина, общий world switch и commit/push не входят в срез.
+Следующая цель (решение автора 22 октября): «материал из слоёв» — сначала проба А/Б/В слоёв
+на этом камне (рёбра граней, своя плоскость на грань, трещины/сколы), затем отдельный срез
+(Product Plan → цель материалов); перед переносом на другие объекты — ревизия направления.
+Подробности, проверки и ограничения — Terrain Authoring → форма и цвет камня.
 
-**Ель25 — уплотнены верх и ярусы, кадры приняты как рабочая основа.**
-По просьбе пользователя12 ярусов вместо9 в прежней высоте; вдоль лидера13 сайтов
-хвои вместо11. Лапа/BranchLayout/PNG/свет B сохранены; прежний9-ярусный кадр — сравнение.
-Те же Provider25/shape1/Recipe/SpeciesStudy owners: cap12 только25/shape1,
-473 ветви/552 сегмента/85 опор; Source4d4733cf…;2166 full/1328 cards при60%.
-Максимум12 tiers/splits3/levels4 укладывается в прежний лимит768 сегментов.
-F6 compact_tree_spruce_bough_study: прежние7 shape controls, global/local/depth/
-receiving/rim/history, лапа3 views и4 reference species. Save appearance transient LAB.
-Проверены меньший max gap, больше верхней хвои, неизменная первая лапа и9-tier
-Source007ce55b…, shape0 dfd9f454…, seeds/extremes/attachments/nested/zero/sample.
-Recipe save/reopen/preview12→7/discard/reset/Undo/Redo/locality/cache/UI PASS;
-день/вечер/ночь×side/back×tree/game и4 related regressions PASS.
-15 protected SHA/ground/paint/grass/physics/POM4см сохранены; reference gate≤8px/max1RGB8.
-Evidence C:/Users/novos/Documents/Codex/2026-10-15/ember-spruce-density/index.html.
-Личный F6/motion и дальнейшая полировка OPEN; выбор последних кадров принят.
-Owner/gates — Terrain Authoring → «Разветвлённая лапа ели25»; предыдущая проба —
-ember-spruce-bough/. Production appearance save/ветер/LOD/forest/пикселизация вне среза.
-Код/PNG сохранены в 41247dd. PNG inspected, HTML links/JS checked; browser render unverified.
+Принятая основа травы перенесена в основной cartoon_grass.
+Автор принял показанный результат как рабочую основу («ок, нормально, давай далее»).
+Личная проверка в основной игре этим не закрыта.
+Точный256px рисунок из painted_light_grass, тон637f50/масштаб2м и прежний профиль
+grass_light: low0.64/tint1/fill0.07/cool-warm-shadow. Новых controls/шейдера нет.
+Новые/сохранённые назначения обновляются при обычной загрузке. Геометрия/Source/
+paint/physics и прежние пучки/их позиции сохранены; это перенос материала покрытия.
+Десять focused tests PASS; Forward+54 пары/54 exact LAB colour replay/54 returns,
+108 motion frames. Native preview меняет GPU lookup без remesh; Undo/Discard exact;
+трава-only shadow region реагирует во всех3 presets, возврат exact.
+Последний1254px исходник в этом наборе заменён256px: производный bank1254→256,
+фильтрация прочих слоёв может отличаться; их исходники и настройки неизменны.
+Evidence: `C:/Users/novos/Documents/Codex/2026-10-17/ember-grass-editor-transfer/`.
+Ближайшее действие — личная проверка травы/камня/дороги/грунта/дуба в игре;
+уже открытую сцену переоткрыть.6 cold game frames exact;6 кадров прежнего
+стенда с POM также exact относительно сохранённой проверки дороги.
+Гладкий — основной путь; производные других обликов пока LAB. Новая глубина,
+общий world switch и сфера аномалии отложены; commit/push не было.
+Старый UI gate302/326px остаётся OPEN; детали у Terrain Authoring.
 
-**Точка возврата — саванна24 с мелкой листвой и покрытием кончиков.**
-Общая/локальная плотность, ветвление и свет редактируются в прежнем LAB;
-production-перенос сохранения листвы остаётся OPEN; текущий вид оставлен основой.
-Shape1/низкая развилка/70 ветвей/20 опор и древесина сохранены exact; shape0 отклонена.
-Свой PNG savanna_v1/leaf-atlas-v3-small-patches: маленькие округлые листочки,
-спокойные поля/прозрачные каналы, built-in imagegen, полный prompt/SHA рядом.
-Новые карточки распределены по объёмам ветвей: группы связаны с реальными побегами,
-а сами плоскости заполняют опоры кроны, включая середину. Не меняют Source/schema.
-Canopy-envelope opt-in только24/shape1; прежние карты/породы/шейдеры/свет B сохранены.
-Текущая проба — 576 full/382 cards при60%, size1.05; на45 конечных побегах по3 малые
-плоскости вдоль последних40% веточки, size×.65. Терминальные пучки имеют приоритет
-в прежнем бюджете global/local thinning;0% по-прежнему убирает всю листву.
-F6 compact_tree_savanna_leaf_study: принятый объём, новая листва,1/6-card sample;
-справа прежние «Ветви»/«Листва и свет» с Undo/Redo, shadow40%,rim45/18%,reset.
-SpeciesStudy.trial_card_options сохраняет envelope при Recipe preview/discard.
-Native3 ракурса+верх,3 presets×side/back×tree/game,60/80 density и1/6 samples PASS;
-принятые3 дерева/саванна blockout frame exact. Source b2c04fd0…, дерево и collision exact.
-Preview/discard и density reset frame exact; controls/locality/cache/stale-history/
-Undo/Redo/UI fit PASS. Save/reopen Recipe+те же LAB options повторяют full cards.
-После правки — canopy/species/foliage21 regressions;7 protected SHA/floor/paint/
-grass/physics/POM4см PASS. Шесть прежних регрессий листовой пробы сохранены.
-Evidence: C:/Users/novos/Documents/Codex/2026-10-15/ember-savanna-tip-cover/index.html;
-проба до покрытия кончиков сохранена в соседнем ember-savanna-leaf-patches/.
-Owner/границы — Terrain Authoring → «Саванна24», мелкая листва. Ближайший gate —
-личная F6/motion-проверка и возможная дальнейшая полировка саванны.
-Форма/дуб/берёза/оба клёна сохранены; источник/генератор/общий shader прежние.
-Foliage/light settings transient LAB; production save transfer/ветер/LOD/forest/
-tree collision/пикселизация вне среза. Без агентов/branch/commit/push.
-PNG просмотрены, HTML links/JS проверены, browser render не проверен.
-Перенос кромки в WorldLook/Pattern/model.material завершён; workflow/9 regressions
-и24 LAB→saved сравнения PASS. Свой editor input/125%/Save→F6/motion/weak-PC OPEN.
-Точка возврата — Terrain Authoring → «Передача общей световой кромки»;
-evidence ember-style-rim-transfer/. Рябь/избирательность внутренних теней прежние.
+Камень уже в cartoon_stone: точный raw paint256px/тон90938f/2.4м, без новой глубины.
+Прежний POM4см/32 сохраняется в его LAB-сценах с отдельной картой; новый3мм отложен.
+Return: `ember-stone-editor-transfer/`; основной материал сохраняет нулевую глубину.
 
-**Точка возврата — локальная плотность и глубина тёмных участков Sol.**
-Пользователь выбрал45% пучков как ориентир, позиции подходят, нужно меньше местами.
-Foliage21Study стартует trial5: общая плотность45%, принимаемые тени40%, depth100%
-(low0.24). Выбор одной из8 частей показывает рамку, F1 скрывает её вместе с UI.
-«Пучки в выбранной части»0–100% — множитель общей плотности, целые branch+t пучки.
-Пример Часть8 справа/owner67/local50%:399→380 пучков,885→843 cards;
-все другие части/positions/UV/colour/custom macro normals прежние.
-BranchingFixture owns crown_leaf_groups + optional local_coverage в derived thinning;
-Foliage21Study owns UI/cache. Release/Enter/focus commit once, no per-drag rebuild;
-повторный набор использует тот же mesh. Новый branch preview очищает local overrides.
-Local/depth/reset Undo/Redo uses existing RecipePanel.history, Recipe.parameters прежние.
-Сброс частей/света возвращает local100% и depth100%, общую45% сохраняет.
-Глубина тёмных участков100/60/25% → existing leaf low0.24/0.544/0.81;
-меняет только градацию формы, не выключает исключительно взаимные тени.
-Shader/common light/texture/cast mode/receiving strength0.4/Sun/AO прежние.
-Внешние и наземные тени сохранены; local thinning естественно меняет тень кроны.
-Native3 presets×side/back×tree/game/near/far/side/back/motion, drag/one build/cache/
-Undo/Redo/reset/F1/zero-Sun/external blocker/ground guards PASS. Fixture local-only/
-nested/whole-puff/repeatability и foliage21/parametric regressions PASS.
-Current baseline/control-return/post-blocker frame exact; post-blocker gate допускает
-max1 RGB8 level/≤128 pixels (в текущем прогоне0). Source/full geometry/wood/Recipe/
-terrain/paint/grass/physics/POM и22 protected files exact; last one-shot thinning60ms,
-не цена полного генератора/леса. Личный F6/selection/sliders/history/edge/motion gate OPEN.
+Дорога Б уже в cartoon_sand: общий PNG грунта v4/тонb9a47c/1.5м, без новой глубины.
+Сборщик PNG работает с копией; общий источник/тон грунта сохраняются.
+Return: `ember-road-editor-transfer/`; Undo/Redo/save/reopen и game matrix проверены.
 
-Для отдельной оценки локальных правок:45% + local50% правой части + depth60% при3 пресетах.
-Точная избирательность внутренних теней остаётся отдельным решением: ATTENUATION
-не сообщает caster. Как у травы cast OFF убирает также тень кроны на земле;
-receive0 игнорирует внешнюю тень. Рябь shadow map не объявлена исправленной.
-Кучность частично fixed2–3 cards/site; отдельного распределения по пятнам пока нет.
-Производственный editor/Recipe/save transfer, view clipping/wind/LOD/атмосфера не начаты.
+Грунт v4 уже перенесён в soil_grain с размером0.6м и теми же PNG controls.
+Undo/Redo/discard/save/reopen и обычный atlas refresh без remesh проверены.
+Return: `ember-soil-editor-transfer/`; подробный master неизменён.
 
-Форма каркаса21, спокойная листва B,45%, кромка и кора C приняты основой. Локальные
-варианты плотности и личный F6/motion остаются OPEN. Historical materials доступны,
-full Source seed7/main8/splits3/levels4/variation40 и1967 cards/23604tris сохранены.
-Existing LargeTreeProvider/BranchLayout/Recipe/GeneratorPanel owners, версии1–21,
-голый21/count/editor/Undo/save gates прежние; старые19 buffers точные.
-POM4см/32steps, трава6187, ручная покраска и единая физическая поверхность сохранены.
-Atlasv8 separate leaves/alpha-safe mips на filtered sampler; default дубовая кора C,
-прежняя v4_soft доступна через отдельный LAB-переключатель. Берёза имеет свой атлас.
-Старая оптикаv7: saturation1.18/transmission0.28/rim0.23, пять стадий/ползунки доступны.
-Плоскость/группа1/6 cards и их независимый sample stage2 сохранены; новые tree controls
-в gameplay Resources не записываются. Основная игровая камера/этап0а прежние,
-в её текущем кадре часть кроны обрезается: это не принятие камеры.
+Кора Б дуба уже перенесена, личная проверка автором отложена. Return:
+`ember-oak-bark-editor-transfer/`; форма/листва B/покраска/свет/физика прежние.
+Сила глубины коры не выбрана: `ember-oak-bark-relief/` сохранена как проба;
+автор почти не увидел разницы. Возврат — близко/развилки/движение света в3 обликах.
+Остальные материалы/породы и общий production world switch текущим срезом не закрываются.
 
-Evidence — C:/Users/novos/Documents/Codex/2026-10-15/ember-tree-leaf-local/;
-предыдущие density/shadow/full-tree trials — ember-tree-leaf-density/,
-ember-tree-shadow-modes/, ember-tree-leaves-40/; ранние samples/диагностика/референсы
-сохранены и перечислены в Terrain Authoring → «Исследование рисованной листвы».
-Owner/контракт — Terrain Authoring → «Построение дерева»; tree-gen/MIT — THIRD_PARTY_NOTICES.
-Полный authoring B/tree collision/forest/weak-PC остаются OPEN; кромка перенесена.
-Без агентов/commit/push; чужие незавершённые файлы сохранены.
+Камень17 октября нравится как проба («неплохо получилось, мне нравится»), личная
+оценка отложена. Возврат: `ember-rock-paint-relief/` — выбрать Б flat/В до3мм,
+проверить ближнюю/игровую камеру и движение солнца/камеры в3 обликах. Ни сила,
+ни эвристика выделения height из крупных warm/cool пятен ещё не приняты.
+6 tests/Forward+ PASS и ограничения сохранены у Terrain Authoring/Technical Handoff.
+В сравнении коры фиксирован контроль А каменной пробы; новая глубина не выбрана.
+Soil depth, weak-PC/личное движение и универсальный production-конвертер OPEN.
+
+Дорога Б17-го принята рабочей основой; цельность набора нравится как рабочее
+направление. Evidence/принятие: `ember-road-painted-refinement/manual-acceptance.json`.
+Общий просмотр сохранён в `ember-environment-material-review/`;
+финальная приёмка трёх обликов/листья low-poly/личное движение/weak-PC OPEN.
+
+Грунт v4 принят рабочим цветом17 октября («вот хорошая»). Его новая оптическая
+глубина отложена автором: ни0.008м, ни0.016м не приняты; в общем сравнении выключена.
+Возврат: `ember-soil-depth/`, игровая камера/три пресета/side-back и движение.
+Карта height LAB0.28–0.72 даёт перепад до3.5/7мм; существующий optional secondary
+POM input/5 tests/162 stills/270 motion PASS. Owners/границы — Terrain Authoring.
+Цветовой перенос soil_grain выполнен; новая глубина,
+трёхвидовой мир и сфера аномалии остаются OPEN. Изменения не закоммичены.
+
+Трава Б принята рабочей основой16 октября («Сойдёт, давай далее»), полировка отложена.
+Её гладкий исходник точный, производные calm16/85%/7 углов и pixel32/контур3.125см
+сохранены;9493 transforms прежние. Evidence `ember-grass-derived-looks/`.
+Цвет/профиль основного покрытия перенесены выше; геометрические производные пока LAB.
+
+Песчаная дорога16 октября сохранена как контроль А новой пробы выше.
+Б17-го принят рабочей основой и перенесён в cartoon_sand, см. текущий срез выше.
+
+Камень Б16 октября («пока подойдет») остаётся принятой цветовой основой.
+Рисованный цвет17-го теперь в cartoon_stone; новая глубина остаётся отдельной пробой.
+Форма Astra/Source, все три пары цвет/height, POM4см/32 и общий свет сохранены.
+Evidence: `ember-rock-texture-refinement/`; это не финальная приёмка B/физики.
+Сфера аномалии — отдельный этап после приёмки стиля, здесь не начата.
+Проба статическая: общая мировая проекция; локальная привязка движущихся объектов,
+переходы, ручные поправки и общий editor/runtime-конвертер остаются OPEN.
+Физика камней/floor/navigation и точность convex fit не закрыты. Owners и детали —
+Terrain Authoring → «Производные грунта», принятые трава/камень и песчаная дорога.
+Изменения не закоммичены.
+
+**Пять пород перенесены в основной authoring/save; дуб, берёза, клён и ель приняты.**
+Саванна не принята: автору не подходят листва и ветвление; текущая основа сохранена
+для правки. У дуба теперь назначена принятая кора Б (`oak-v3-painted.png`),
+отдельные листья v8/B и форма сохранены; перенос описан в Terrain Authoring.
+Это текущая реализация в рабочем дереве, поверх checkpoint 41247dd/2c2f76f; без push.
+В «Объектах» доступны пять `vox_painted_*` с именами «… · рисованная основа».
+Существующие авторские модели/карты не заменены. Генерация → Деревья использует
+дуб21/листву B/кору Б, берёзу22, вытянутый клён23, саванну24 и плотную ель25 по умолчанию.
+Широкий клён и прежние рецепты воспроизводятся; legacy defaults1–17 не переписаны.
+
+Recipe/GeneratorPanel/GenerationPanel — прежние owners параметров и истории.
+Открытие сохранённого дерева → существующая мастерская → «Генератор»:
+высота/ствол/ветвление, общая и местная плотность по основной ветви, глубина тона,
+приём теней40%, включение кромки и отдельные силы45%/18% доступны для правки.
+Source schema7 имеет опциональный `tree_surface`: ограниченные опоры и оформление
+готового дерева. Recipe остаётся editor-only; runtime строит из Source, не из Recipe.
+Те же Prefab/Store/Catalog/SceneAuthoring сохраняют и размещают объект целиком.
+Один общий toon body используется деревьями и остальными объектами; кромка прежняя.
+Прежние LAB используют те же общие leaf-модули через тонкие совместимые входы.
+Покраска ствола сохраняется; изменение заполненности Source показывает авторские
+воксели вместо устаревшей декоративной поверхности. Collider остаётся древесным;
+система координат гладкого ствола/voxel collision согласована.
+
+Проверено PASS: ordinary creation/library/workshop, global/local Undo/Redo,
+preview/save/reopen/map, обновление вариации и её экземпляров, validation/discard,
+нулевая плотность, ручная покраска; отдельный Forward+ runtime из Source без LAB/Recipe.
+День/вечер/ночь × side/back × tree/game, отдельная настоящая падающая тень.
+Geometry/Source/texture guards строгие; LAB→published у дуба имеет измеренное
+отличие до5 RGB8 (среднее≤0.15 RGB8 по кадру). Preview→save/reopen проверяется отдельно
+строже; это не утверждение pixel-exact переноса LAB для дуба.
+11 проверок PASS;45 native сравнений,30 кадров игровой камеры; отдельно5 готовых
+основ из обычного Catalog/Prefab. При выходе editor smoke остались scan/ObjectDB warnings.
+Итоговые логи/кадры/verification — `ember-tree-editor-transfer/` от15-го октября.
+Owners/ограничения — Terrain Authoring → «Пять пород в основном редакторе».
+Личная проверка на своей карте: движение и управление плотностью остаются OPEN.
+Следующую правку саванны согласовать отдельно, сохраняя остальные четыре породы.
+
+Трава6187, POM4см/32, ручная покраска земли, камера и единый физический пол сохранены.
+Камера0а отложена автором. Ветер/LOD/лес/новые породы не начаты.
+Автор напомнил о трёх обликах: новые деревья пока реализованы в гладкой подаче;
+voxel-каркас сохранён. Три облика дуба и камня сравнивались в LAB Astra;
+основной переключатель и общий конвертер окружения ещё не реализованы.
+Старые LAB/evidence сохранены.
 
 ## Точка возврата к читаемости диорамы
 
@@ -148,7 +183,8 @@ docs/art/references/allfiring/environments/README.md. Другие этапы н
 Код/сцены/проверки сохранены в d9e33a9; прямой shaderА, grass_field9621,
 POM4см/32, 3 presets×side/back и camera/sun motion PASS. Свои F6/motion/weak-PC
 gates прежние; owners — Terrain Authoring → «Три подачи материала и света».
-Low-poly геометрия, pixel-art перерисовка, большой world foliage и цикл суток не начаты.
+Пробы low poly/pixel уже есть в LAB Astra выше; общий перенос, большой world foliage
+и цикл суток не завершены этим срезом.
 
 ## Точка возврата к ручным правилам формы
 
@@ -163,32 +199,66 @@ evidence — C:/Users/novos/Documents/Codex/2026-10-14/ember-shape-brush/.
 
 ## Точка возврата к игровым системам
 
-**Общие игровые системы — единый «Старт игры» готов, ручная приёмка OPEN.**
-Раздел библиотеки: четыре вкладки героев, уровень 1–99/пять слотов, общая сумка
-с предметами/монетами. Одна GameStart recipe; stats/progress у Party/ExploreState.
-Применяется только к новой игре: XP0, полные derived HP/MP. Надетые вещи выдаются
-отдельно от сумки. Исходный default прежний: level1/empty gear/20 coin.
-Save/reopen/Undo/Redo/Discard/validation/UID, singleton guards и links готовы.
-Невалидный reset не трогает live progress; invalid boot без пригодного save —
-нейтральная сессия с disabled persistence. Save v2/load/migration не менялись.
-Targeted/native Forward+ и три процесса author/new game/battle/result/fresh Load
-PASS; checker 72 records/0 issues, save/combat/party/interactions regressions PASS.
-Ближайшее действие: свой комплект → Save/reopen → новая игра/старый
-Load/обычный бой, Undo/Discard/input/narrow/125% OPEN. Owners/gates — Handoff/Plan.
-Приёмы: статус/HP/MP/надетый предмет/слот занят или пуст, все условия «И»;
-bag не считается. Action Resource → единый conditions leaf/Combat/Grid/AI/HUD.
-Empty defaults сохраняют поведение; CELL actor-only, SELF merge, exact percent,
-conflicts/stale commit проверены. Свои условия/объяснения/input OPEN.
-Следующие отдельные срезы: periodic/stacks/OR при необходимости, свойства обуви.
-Авторский контент сохранён; commit/push нет. Первый editor Lab child не подтвердил ready;
-последовательный повтор и full cycle PASS, причина отказа/свои launch OPEN.
-Прежний publication 0xC0000005 trigger устранён адресным Filesystem update;
-12 rapid/sequential native cycles PASS, свои повторные Save/Undo/Redo/reopen OPEN.
-Точный C++ frame/dump и общая GPU stability не доказаны; детали — Handoff.
-Выбранная арена/наборы Lab/«Где используется»/формы/примерка готовы. Ordinary battle
-Retry/Load/re-entry/победа/rewards once/возврат/fresh Load PASS. Свои арены/наборы/
-saves/narrow/125%, old Load/Save и backup экипировки OPEN. Library test изолирован.
-Возврат — свой authored encounter из карты и набор; подробности — Handoff/Plan.
+**Исходный native вылет повторно не воспроизведён; причина остаётся OPEN.**
+Повторы cold/warm, формы, быстрый выход, scan/preview и 24 publication cycles
+под Windows debugger завершились без исходного AV. Это не новый crash fix.
+QA runner теперь сохраняет sandbox/cache/log/launch при native fatal exit до
+удаления временного проекта; проверка retention падала до изменения и проходит
+после. Подробности/исключённый ошибочный probe — Migration Plan. Возврат к
+диагностике: новый AV → NATIVE CRASH EVIDENCE → точный сохранённый сценарий.
+
+Узкая библиотека/боевые пояснения при125% исправлены; manual input OPEN.
+Native editor scale1.25 (отдельный APPDATA), 1280×800→1600×900: compact разделы,
+перенос toolbar, Save/Back доступны. Create не растёт до500×2229; длинный Delete
+и dirty диалог переносят текст в ограниченном окне. Все основные формы/поиск/
+Add/Undo/Redo/Save/reopen/dirty Cancel, Usage/Check/Lab dialog bounds PASS.
+В бою scale1.25: пояснение шире, Header Reset/Menu/console input/footer доступны,
+очередь и длинная цепочка прокручиваются. Wet/frozen/empty hover/Cancel/MP/turn
+PASS; скриншоты просмотрены. Owners/evidence — Handoff/Migration Plan;
+C:/Users/novos/Documents/Codex/2026-10-22/ember-ui-125/.
+Первое действие: своё окно/масштаб → приём/эффекты → Save/Undo → бой/наведение/
+прокрутка/Esc. Свои input/другие DPI/размеры/ощущение OPEN, gameplay/save прежние.
+Исторический QA exit сохранён; успешные повторы не устанавливают его причину.
+
+Пояснения эффектов: условия выполнены / пропустится с первой причиной и именем
+статуса; SELF/CELL/empty/staged snapshot. Наведение обновляет карточку, rolls/
+крит/итоговый урон скрыты. Targeted/privacy64 seeds и прежний HUD gate PASS.
+
+Подбор эффектов: поиск имени/ID/описания/условий, preview до Add; no matches/all
+used блокируют Add. Filter переживает Add/Undo/Redo, не пишет Resource/history.
+Native focused picker/--actions/--effect-conditions PASS; своё удобство OPEN.
+
+Условия отдельных эффектов готовы: все обязательные/ни одного запрещённого
+статуса исходной цели до базового действия/шагов цепочки. Неуспех пропускает шаг,
+основной урон сохраняется. Pure all-skipped chain не предлагается игроку/ИИ.
+SELF/CELL/пустая клетка — GDD → этап 3.5; validation/refs/usage/checker/stale guards.
+Targeted/related/15 regressions и native author → обычный бой/AI/Retry/результат/
+Save/cold Load PASS. Свои сочетания/input/баланс OPEN; authored content/старые
+реакции/save schema прежние. Проверить в Lab заморозку мокрой и сухой цели.
+
+Повторные враги из общего шаблона готовы: ordered enemy rows, независимые
+HP/MP/статусы/позиции/очередь, номера перед именами; общий template/AI/loot.
+Стартовые характеристики копируются без перезаписи активных HP/статусов.
+Loot/counters за каждого, XP встречи один раз. Native author3 → обычный бой/
+Retry/Load/re-entry → victory3/loot6/XP35 once/Save/fresh Load PASS.
+Свои состав/расстановка/input/narrow/125% OPEN, owners — Handoff/Migration Plan.
+
+Независимые periodic doses готовы: cap1..12, default1 прежний; на пределе заменить
+ближайший timer, отдельные сроки/HP. Сначала всё лечение до max HP, затем урон;
+последний тик до истечения, снятие всех доз. Прочие modifiers однократны.
+StatusRules/Combat, один statuses int|Array[int]; native HP25→30→18 PASS.
+Свои дозы/баланс/input OPEN, canonical poison/regen остаются одиночными.
+Группы И/ИЛИ без вложенности: mandatory и группы соединены И; пары actor/target
+общие у игрока/ИИ/Grid/HUD. Свои условия/input OPEN. Обувь: MOVE/JUMP/стойкость/
+Мокрый, примерка/Inventory; только shoes, overworld прежний. Свои обувь/баланс OPEN.
+Старт игры: уровни/пять слотов/сумка только new game; default level1/empty/20 coin.
+Старые saves используют свои данные. Свои старты/арены/наборы/старый Load/Save/
+backup экипировки/narrow/125% OPEN, тесты изолированы; Handoff/Plan хранят gates.
+Прежний publication trigger устранён адресным Filesystem update, 12 cycles PASS.
+Прежние native exits и текущая диагностика — в начале этого раздела/Migration
+Plan; повторять старые случаи как новые падения не нужно.
+Дальнейшие расширения — по потребности контента и ручной приёмке.
+Instances, дозы, группы, обувь/periodic HP без commit/push.
 
 ## Точка возврата к cleanup
 

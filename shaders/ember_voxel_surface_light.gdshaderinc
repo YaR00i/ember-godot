@@ -13,6 +13,9 @@ varying flat vec3 surface_axis_y;
 varying flat vec3 surface_axis_z;
 
 void vertex() {
+#ifdef EMBER_OBJECT_VOXEL_LEAVES
+	voxel_leaf_form_normal=normalize(MODELVIEW_NORMAL_MATRIX*CUSTOM2.xyz);
+#endif
 #ifdef EMBER_OBJECT_LEAF_CARDS_STUDY
 	leaf_card_group_normal=normalize(MODELVIEW_NORMAL_MATRIX*CUSTOM1.xyz);
 #endif

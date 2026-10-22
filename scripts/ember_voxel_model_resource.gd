@@ -11,7 +11,7 @@ func notify_geometry_changed(indices: PackedInt32Array) -> void:
 
 static func copy_authoring_value(value: Variant) -> Variant:
 	match typeof(value):
-		TYPE_PACKED_BYTE_ARRAY,TYPE_PACKED_INT32_ARRAY,TYPE_PACKED_COLOR_ARRAY,TYPE_PACKED_STRING_ARRAY:
+		TYPE_PACKED_BYTE_ARRAY,TYPE_PACKED_INT32_ARRAY,TYPE_PACKED_COLOR_ARRAY,TYPE_PACKED_STRING_ARRAY,TYPE_PACKED_VECTOR3_ARRAY:
 			return value.duplicate()
 		TYPE_DICTIONARY:
 			var copied := {}
@@ -32,7 +32,7 @@ func duplicate_model() -> EmberVoxelModelResource:
 ## Godot-owned editable source for one Ember voxel model.
 ## Meshes, collisions, thumbnails and PackedScenes are derived build products.
 
-const SCHEMA_VERSION := 6
+const SCHEMA_VERSION := 7
 const WORLD_SURFACE_DIRECTORY := "res://content/world_surfaces"
 
 @export_category("Identity")
@@ -54,6 +54,16 @@ const WORLD_SURFACE_DIRECTORY := "res://content/world_surfaces"
 @export var transparency := PackedByteArray()
 @export var transmittance := PackedByteArray()
 @export var material: Dictionary = {}
+
+@export_category("Tree surface")
+## Published branch supports plus appearance, in this same canonical Source.
+## Empty for all legacy models. Mesh/collider/prefab remain derived resources.
+@export var tree_surface: Dictionary = {}
+
+@export_category("Solid surface")
+## Optional plane guides per merge part. The occupied voxels remain the Source;
+## mesh and collider are fitted together. Empty preserves all legacy models.
+@export var solid_surface: Dictionary = {}
 
 @export_category("Surface fill layers")
 ## Sparse-by-convention column channels for level fills. Empty arrays mean that
@@ -123,6 +133,10 @@ func grid_size() -> Vector3i:
 func validation_errors() -> Array[String]:
 	var errors: Array[String] = []
 	errors.append_array(preload("res://scripts/ember_voxel_material_profiles.gd").validation_errors(material, palette.size()))
+	if not tree_surface.is_empty():errors.append_array(load("res://scripts/ember_tree_surface.gd").validation_errors(tree_surface))
+	if not solid_surface.is_empty():
+		errors.append_array(load("res://scripts/ember_voxel_solid_surface.gd").validation_errors(solid_surface,merge_parts.size(),palette.size()))
+		if not tree_surface.is_empty() or not collision_voxels.is_empty():errors.append("solid surface cannot override a tree or a separate voxel collider")
 	if model_id.strip_edges().is_empty():
 		errors.append("model_id is empty")
 	if size_blocks.x < 1 or size_blocks.y < 1 or size_blocks.z < 1:
@@ -216,6 +230,8 @@ func to_definition() -> Dictionary:
 		"mergeParts": Array(merge_parts),
 		"voxelPartIds": Array(voxel_part_ids),
 		"material": material.duplicate(true),
+		"treeSurface": tree_surface.duplicate(true),
+		"solidSurface": solid_surface.duplicate(true),
 		"physical": physical,
 		"emissiveCastsLight": emissive_casts_light,
 		"emissiveLightRange": emissive_light_range,

@@ -25,7 +25,7 @@ func _run() -> void:
 	var directory := "user://tree_variation_%d" % Time.get_ticks_usec()
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(directory))
 	for kind in [0, 1, 2, 3, 4]:
-		var recipe: Resource = Generator.creation_presets(Generator.LARGE_TREE)[kind].recipe.duplicate(true)
+		var recipe: Resource = Generator.creation_presets(Generator.LARGE_TREE,true)[kind].recipe.duplicate(true)
 		var old_version: int = [9, 8, 5, 7, 10][kind]
 		check(recipe.parameters.generation_version == Generator.LargeTreeProvider.LATEST_VERSIONS[kind], "latest preset opts into structural variation")
 		for height in [64, 128, 256]:
@@ -109,7 +109,7 @@ func _test_oak_composition() -> void:
 	var profiles := {}
 	var trunks := {}
 	for seed in [17, 371, 391, 104746, 209475, 314204]:
-		var recipe: Resource = Generator.creation_presets(Generator.LARGE_TREE)[1].recipe.duplicate(true)
+		var recipe: Resource = Generator.creation_presets(Generator.LARGE_TREE,true)[1].recipe.duplicate(true)
 		recipe.seed = seed
 		recipe.parameters.merge({"height":96,"trunk_width":8,"crown_spread":80,"branchiness":62,"structure_diversity":100,"foliage_style":1,"foliage_detail":55,"foliage_pattern_strength":25,"foliage_along":85}, true)
 		var old := recipe.duplicate(true)
@@ -153,7 +153,7 @@ func _test_oak_laterals() -> void:
 		check(plans.all(func(shoots): return shoots.size() == 1 + roundi(float(branchiness) / 50.0)), "branchiness controls bounded lateral count")
 	var profiles := {}
 	for seed in [17,371,391,104746,209475,314204]:
-		var recipe: Resource = Generator.creation_presets(Generator.LARGE_TREE)[1].recipe.duplicate(true)
+		var recipe: Resource = Generator.creation_presets(Generator.LARGE_TREE,true)[1].recipe.duplicate(true)
 		recipe.seed = seed
 		recipe.parameters.merge({"height":96,"trunk_width":8,"crown_spread":80,"structure_diversity":100,"foliage_style":1,"foliage_along":85}, true)
 		var before := recipe.duplicate(true)

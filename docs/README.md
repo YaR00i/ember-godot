@@ -30,6 +30,8 @@
 
 ### Облик и звук
 
+- Деревья: EMBER_TERRAIN_AUTHORING.md → «Пять пород в основном редакторе».
+
 - Вода, река, пена, отражение, свет:
   [EMBER_WATER_RENDERING.md](EMBER_WATER_RENDERING.md) → нужный раздел.
 - Общий визуальный ориентир: EMBER_PRODUCT_PLAN.md → «Видение», «Столпы», D5.

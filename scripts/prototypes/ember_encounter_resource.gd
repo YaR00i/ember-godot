@@ -153,13 +153,17 @@ func initial_state(party_snapshot: Dictionary = {}, rng_seed: int = 0, active_id
 		var unit: Dictionary = (source_units[unit_id] as Dictionary).duplicate(true)
 		unit["cell"] = battlefield.party_deployment_cells[index]
 		units[unit_id] = unit
-	for index in enemy_unit_ids.size():
-		var unit_id := str(enemy_unit_ids[index])
-		if not source_units.has(unit_id) or index >= battlefield.enemy_deployment_cells.size():
-			continue
-		var unit: Dictionary = (source_units[unit_id] as Dictionary).duplicate(true)
+	var enemies := enemy_instances()
+	for index in enemies.size():
+		var entry: Dictionary = enemies[index]
+		var template_id: String = entry.templateId
+		if not source_units.has(template_id) or index >= battlefield.enemy_deployment_cells.size(): continue
+		var unit: Dictionary = source_units[template_id].duplicate(true)
+		unit["id"] = entry.id
+		if entry.id != template_id: unit["templateId"] = template_id
+		if enemy_unit_ids.count(template_id) > 1: unit["name"] = "№%d · %s" % [entry.ordinal, str(unit.get("name", template_id))]
 		unit["cell"] = battlefield.enemy_deployment_cells[index]
-		units[unit_id] = unit
+		units[entry.id] = unit
 	state["encounterId"] = encounter_id
 	state["encounterName"] = display_name
 	state["units"] = units
@@ -173,6 +177,29 @@ func initial_state(party_snapshot: Dictionary = {}, rng_seed: int = 0, active_id
 		)
 	return state
 
+
+func enemy_instances() -> Array[Dictionary]:
+	# The saved ordered template list remains the only authoring owner. Runtime IDs
+	# are local to this encounter and reserve every authored participant ID, so an
+	# actual template named like a generated instance can never be overwritten.
+	var reserved := {}
+	for id in party_unit_ids + enemy_unit_ids: reserved[str(id)] = true
+	var counts := {}
+	var result: Array[Dictionary] = []
+	for raw_id in enemy_unit_ids:
+		var template_id := str(raw_id)
+		var ordinal := int(counts.get(template_id, 0)) + 1
+		counts[template_id] = ordinal
+		var id := template_id
+		if ordinal > 1:
+			var suffix := ordinal
+			id = "%s__instance_%d" % [template_id, suffix]
+			while reserved.has(id):
+				suffix += 1
+				id = "%s__instance_%d" % [template_id, suffix]
+		reserved[id] = true
+		result.append({"id": id, "templateId": template_id, "ordinal": ordinal})
+	return result
 
 func action_for_outcome(outcome: String) -> String:
 	return victory_action_script_id if outcome == "victory" else defeat_action_script_id
@@ -217,7 +244,7 @@ func _validate_roster(
 	for raw_id in ids:
 		var unit_id := str(raw_id).strip_edges()
 		if seen.has(unit_id):
-			errors.append("%s: %s указан дважды." % [title, unit_id])
+			if expected_team == "hero": errors.append("%s: %s указан дважды." % [title, unit_id])
 			continue
 		seen[unit_id] = true
 		var unit := UnitCatalog.resource(unit_id)
@@ -231,7 +258,7 @@ func _validate_roster(
 
 
 func behavior_summary() -> String:
-	return "Героев: %d, врагов: %d. Поле: %s.\nПорядок участников задаёт порядок точек расстановки. В игре участвует текущая активная группа из разрешённых героев.\nПобеда — все враги побеждены; поражение — все герои. XP: %d каждому активному герою при победе. Предметы идут из лута врагов и цепочки после боя.\n%s Поле владеет клетками/высотами, сцена арены — оформлением." % [party_unit_ids.size(), enemy_unit_ids.size(), battlefield.display_name if battlefield != null else "не выбрано", victory_xp, "Можно повторять." if repeatable else "Повтор блокируется установленным флагом победы; без указанного флага блокировки нет."]
+	return "Героев: %d, врагов: %d. Поле: %s.\nПорядок участников задаёт порядок точек расстановки. Каждый повтор врага — отдельный участник с общим шаблоном. В игре участвует текущая активная группа из разрешённых героев.\nПобеда — все враги побеждены; поражение — все герои. XP: %d каждому активному герою при победе. Предметы идут из лута врагов и цепочки после боя.\n%s Поле владеет клетками/высотами, сцена арены — оформлением." % [party_unit_ids.size(), enemy_unit_ids.size(), battlefield.display_name if battlefield != null else "не выбрано", victory_xp, "Можно повторять." if repeatable else "Повтор блокируется установленным флагом победы; без указанного флага блокировки нет."]
 
 
 func _validate_action(title: String, action_id: String, errors: Array[String]) -> void:

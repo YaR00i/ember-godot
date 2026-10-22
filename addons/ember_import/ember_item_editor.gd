@@ -46,6 +46,7 @@ var _combat_range: SpinBox
 var _combat_delay: SpinBox
 var _hp_bonus: SpinBox
 var _mp_bonus: SpinBox
+var _shoe_fields := {}
 var _allowed_heroes: LineEdit
 var _type_hint: Label
 var _equipment_fields: VBoxContainer
@@ -124,6 +125,13 @@ func _build() -> void:
 	_move_row(_hp_bonus, _equipment_fields)
 	_mp_bonus = _number_row("ItemMpBonus", "Бонус max MP", float(_base.get("mpBonus", 0)), -9999.0, 9999.0, editable)
 	_move_row(_mp_bonus, _equipment_fields)
+	for spec in [["moveBonus", "ItemMoveBonus", "MOVE: бонус клеток"], ["jumpBonus", "ItemJumpBonus", "JUMP: бонус высоты"], ["pushResistanceBonus", "ItemPushResistanceBonus", "Стойкость к толчку"], ["wetResistanceBonus", "ItemWetResistanceBonus", "Мокрый: −ходы"]]:
+		var bounds: Vector2i = Equipment.SHOE_BONUS_LIMITS[spec[0]]
+		var raw: Variant = _base.get(spec[0], 0)
+		var number := _number_row(spec[1], spec[2], float(raw) if typeof(raw) in [TYPE_INT, TYPE_FLOAT] else 0.0, bounds.x, bounds.y, editable)
+		(number.get_parent().get_child(0) as Control).custom_minimum_size.x = 212.0
+		_shoe_fields[spec[0]] = number
+		_move_row(number, _equipment_fields)
 	_allowed_heroes = _line_row("ItemAllowedHeroes", "Герои", "ID через запятую. Пусто — всем героям. Неизвестные ID сохраняются.")
 	_allowed_heroes.text = ", ".join(_string_array(_base.get("allowedHeroIds", [])))
 	_move_row(_allowed_heroes, _equipment_fields)
@@ -284,6 +292,7 @@ func _refresh_type_fields() -> void:
 	_slot.get_parent().visible = kind == "armor"
 	_atk.get_parent().visible = kind in ["weapon_jrpg", "accessory"]
 	_defense.get_parent().visible = kind in ["armor", "shoes", "accessory"]
+	for number in _shoe_fields.values(): number.get_parent().visible = kind == "shoes"
 	_allowed_heroes.get_parent().visible = kind != "accessory"
 	(find_child("ItemHeroHint", true, false) as Label).visible = kind != "accessory"
 	# Exploration already supports healing fields irrespective of kind. Retain access
@@ -299,6 +308,7 @@ func _refresh_type_fields() -> void:
 		var slot := Equipment.slot_for_item({"kind": kind, "slot": _selected(_slot)})
 		_type_hint.text = "Слот: %s. Бонусы HP/MP меняют максимум; отрицательные значения уменьшают его." % Equipment.SLOT_LABELS.get(slot, "выберите слот брони")
 		if kind == "accessory": _type_hint.text += " Аксессуары доступны всем героям и занимают один из двух слотов."
+		if kind == "shoes": _type_hint.text += " MOVE/JUMP действуют в бою; стойкость блокирует толчки по силе, защита от намокания сокращает длительность Мокрого. Мокрая клетка сохраняет свои свойства."
 	elif kind == "weapon_arena": _type_hint.text = "Старое оружие арены хранится в сумке. Для новой экипировки выберите актуальный тип."
 	_type_hint.text += " Скрытые свойства сохраняются при смене типа."
 	if _preview_button != null:
@@ -492,6 +502,7 @@ func _document() -> Dictionary:
 		"notesRu": _notes.text,
 	}, true)
 	var optional_numbers := {"hpBonus": roundi(_hp_bonus.value), "mpBonus": roundi(_mp_bonus.value), "combatDelay": roundi(_combat_delay.value)}
+	for key in _shoe_fields: optional_numbers[key] = roundi((_shoe_fields[key] as SpinBox).value)
 	for key in optional_numbers:
 		var value: int = optional_numbers[key]
 		if _base.has(key) or value != (100 if key == "combatDelay" else 0): result[key] = value

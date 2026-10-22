@@ -15,7 +15,7 @@ func check(value: bool, message: String) -> void:
 		push_error(message)
 
 func _run() -> void:
-	var spruce: Resource = Generator.creation_presets(Generator.LARGE_TREE)[4].recipe
+	var spruce: Resource = Generator.creation_presets(Generator.LARGE_TREE,true)[4].recipe
 	check(spruce.parameters.tree_type == 4 and spruce.parameters.generation_version == 15, "spruce varied preset and type")
 	spruce.parameters.generation_version = 10
 	var directory := "user://spruce_shape_%d" % Time.get_ticks_usec()

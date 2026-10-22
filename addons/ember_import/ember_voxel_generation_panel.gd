@@ -5,10 +5,12 @@ const Generator = preload("res://addons/ember_import/ember_voxel_generator.gd")
 const Session = preload("res://addons/ember_import/ember_voxel_generation_session.gd")
 const Presets = preload("res://addons/ember_import/ember_voxel_generator_presets.gd")
 const VectorField = preload("res://addons/ember_import/ember_voxel_vector_field.gd")
+const TreePartField=preload("res://addons/ember_import/ember_tree_part_density_field.gd")
 const PROVIDERS := [Generator.LARGE_TREE, Generator.ROCK, Generator.BUSH]
 var _provider: OptionButton
 var _creation_fields: VBoxContainer
 var _fields_provider := ""
+var _fields_contract:=""
 signal assets_changed(model_id: String)
 signal edit_requested(model_id: String)
 signal close_requested
@@ -114,7 +116,7 @@ func _ready() -> void:
 	recipe = Generator.default_recipe(Generator.LARGE_TREE)
 	_creation_fields = VBoxContainer.new()
 	_fields.add_child(_creation_fields)
-	for field in Generator.creation_fields(recipe.generator_id):
+	for field in Generator.creation_fields(recipe.generator_id,recipe):
 		if not field.get("advanced", false): _make_field(_creation_fields, field)
 	var advanced_toggle := CheckButton.new()
 	advanced_toggle.text = "Дополнительные настройки"
@@ -123,7 +125,7 @@ func _ready() -> void:
 	_fields.add_child(_advanced)
 	_advanced.hide()
 	advanced_toggle.toggled.connect(func(value: bool): _advanced.visible = value)
-	for field in Generator.creation_fields(recipe.generator_id):
+	for field in Generator.creation_fields(recipe.generator_id,recipe):
 		if field.get("advanced", false): _make_field(_advanced, field)
 	_fields_provider = recipe.generator_id
 	_seed = _number(_fields, "Начальный seed", 0, 2147483647, 1)
@@ -255,7 +257,11 @@ func _make_field(parent: Node, field: Dictionary, candidate_field := false) -> v
 		label.text = str(field.title)
 		parent.add_child(label)
 	var control: Control
-	if field.has("options"):
+	if str(field.get("type",""))=="tree_parts":
+		var part:=TreePartField.new();parent.add_child(part)
+		part.value_changed.connect(func(value: Dictionary,revision: String):_tree_parts_changed(value,revision,candidate_field))
+		control=part
+	elif field.has("options"):
 		var option := OptionButton.new()
 		for title in field.options: option.add_item(title)
 		parent.add_child(option)
@@ -294,17 +300,31 @@ func _field_changed(key: String, value: Variant, candidate_field: bool) -> void:
 	if candidate_field: _change_candidate_parameter(key, value)
 	else: _change_parameter(key, value)
 
+func _tree_parts_changed(value: Dictionary,revision: String,candidate_field: bool) -> void:
+	if _syncing:return
+	var before: Resource=candidate_recipe if candidate_field else recipe
+	if before==null:return
+	var next:=before.duplicate(true);next.parameters.tree_leaf_local=value;next.parameters.tree_leaf_revision=revision
+	if not candidate_field:_change_recipe(next);return
+	var candidate:=session.find_candidate(active_id)
+	if candidate.is_empty() or candidate.saved or _busy():return
+	history.create_action("Листва в выбранной части")
+	history.add_do_method(_apply_candidate_draft.bind(active_id,next));history.add_undo_method(_apply_candidate_draft.bind(active_id,before));history.commit_action()
+
 
 func _change_parameter(key: String, value: Variant) -> void:
 	if _syncing: return
 	# Explicit type choice uses today's profile; opening saved recipes does not.
 	var upgrade_bush: bool = recipe.generator_id == Generator.BUSH and key == "bush_type" and int(recipe.parameters.get("generation_version", 1)) != (5 if int(value) == 0 else 6)
-	if recipe.parameters.get(key) == value and not upgrade_bush and not (recipe.generator_id == Generator.ROCK and Generator.Rock.Surface.needs_vein_upgrade(recipe.parameters, key, value)) and not (key == "rock_type" and int(recipe.parameters.generation_version) != 2) and not (key == "tree_type" and int(recipe.parameters.generation_version) != int(Generator.LargeTreeProvider.LATEST_VERSIONS[int(value)])) and not (key == "foliage_style" and Generator.LargeTreeProvider.FoliagePattern.needs_style_upgrade(recipe.parameters, int(value))): return
+	if recipe.parameters.get(key) == value and not upgrade_bush and not (recipe.generator_id == Generator.ROCK and Generator.Rock.Surface.needs_vein_upgrade(recipe.parameters, key, value)) and not (key == "rock_type" and int(recipe.parameters.generation_version) != 2) and not (key == "tree_type" and int(recipe.parameters.generation_version) != int([24,21,22,23,25][int(value)])) and not (key == "foliage_style" and Generator.LargeTreeProvider.FoliagePattern.needs_style_upgrade(recipe.parameters, int(value))): return
 	var next := recipe.duplicate(true)
 	next.parameters[key] = value
 	if next.generator_id == Generator.ROCK and key == "mineral_pattern" and int(value) == 2: next.parameters.mineral_vein_style = 1
 	# A new type choice opts into its latest form; loading old recipes does not.
-	if key == "tree_type": next.parameters.generation_version = Generator.LargeTreeProvider.LATEST_VERSIONS[int(value)]
+	if key == "tree_type":
+		next.parameters=load("res://scripts/ember_tree_species.gd").accepted_parameters(int(value))
+		next.parameters.height=recipe.parameters.height
+		next.structure={}
 	if key == "rock_type": next.parameters.generation_version = 2
 	if recipe.generator_id == Generator.BUSH and key == "bush_type": next.parameters.generation_version = 5 if int(value) == 0 else 6
 	if key == "tree_type" and int(next.parameters.foliage_style) == 2 and not Generator.LargeTreeProvider.FoliagePattern.supports_style(next.parameters, 2):
@@ -336,22 +356,25 @@ func _apply_recipe(next: Resource) -> void:
 func _sync_controls() -> void:
 	if recipe == null: return
 	_syncing = true
-	if _fields_provider != recipe.generator_id:
+	var contract: String=recipe.generator_id+":"+str(recipe.parameters.get("painted_tree",false))+":"+str(recipe.parameters.get("generation_version",0))+":"+str(recipe.parameters.get("crown_shape",0))
+	if _fields_provider != recipe.generator_id or _fields_contract!=contract:
 		for container in [_creation_fields, _advanced]:
 			for child in container.get_children():
 				container.remove_child(child)
 				child.queue_free()
 		controls.clear()
-		for descriptor in Generator.creation_fields(recipe.generator_id):
+		for descriptor in Generator.creation_fields(recipe.generator_id,recipe):
 			_make_field(_advanced if descriptor.get("advanced", false) else _creation_fields, descriptor)
 		_fields_provider = recipe.generator_id
+		_fields_contract=contract
 		_reload_presets()
 	_provider.select(PROVIDERS.find(recipe.generator_id))
-	for field in Generator.creation_fields(recipe.generator_id):
+	for field in Generator.creation_fields(recipe.generator_id,recipe):
 		var control: Control = controls[field.key]
 		var value: Variant = recipe.parameters.get(field.key)
 		control.set_block_signals(true)
-		if control is VectorField:
+		if control is TreePartField:control.configure(recipe.parameters,recipe.seed)
+		elif control is VectorField:
 			if recipe.generator_id == Generator.ROCK:
 				control.set_axis_maximum(Generator.Rock.dimension_limits(recipe.parameters))
 				control.tooltip_text = "Максимум сетки — 524 288 ячеек, включая округление X/Z до блока. Высота зависит от плотности."
@@ -367,7 +390,7 @@ func _sync_controls() -> void:
 			_sync_rock_field(control, str(field.key), recipe.parameters)
 		if field.key == "tree_type" and control is OptionButton:
 			for index in field.options.size(): control.set_item_text(index, field.options[index])
-			if int(recipe.parameters.generation_version) != int(Generator.LargeTreeProvider.LATEST_VERSIONS[int(value)]):
+			if int(recipe.parameters.generation_version) != int([24,21,22,23,25][int(value)]):
 				control.set_item_text(int(value), "%s · прежняя форма" % field.options[int(value)])
 		control.set_block_signals(false)
 		if field.has("since_version"):
@@ -856,7 +879,8 @@ func _sync_candidate_controls() -> void:
 		if candidate_recipe == null: continue
 		control.set_block_signals(true)
 		var value: Variant = candidate_recipe.parameters.get(key)
-		if control is VectorField: control.set_vector_value(value)
+		if control is TreePartField:control.configure(candidate_recipe.parameters,candidate_recipe.seed)
+		elif control is VectorField: control.set_vector_value(value)
 		elif control is SpinBox: control.value = value
 		elif control is ColorPickerButton: control.color = value
 		elif control is CheckButton: control.button_pressed = bool(value)
