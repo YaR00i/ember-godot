@@ -125,6 +125,16 @@ export boundary, retired references и physical G4/G5 требуют отдел�
 - Изменение schema закрывается вертикально:
   Resource → validation → editor → runtime/preview → serialization → tests → docs.
 
+## Слои и зависимости (решение автора 22 октября 2026)
+
+Source (воксельные данные, хозяин формы) → генераторы (создают Source) → планировщик
+(где и что поставить) → облики (Source → форма и материал) → материалы и текстуры →
+свет и окружение. Нижний слой не знает верхних. Планировщик знает модель и вид, но не
+способ генерации. Материалы адресуются по материалу палитры, а не по типу объекта.
+Облики имеют один вход (Source → форма и материал); стратегия зависит от типа
+поверхности (твёрдое, ветви/листва, земля). Состояние по направлениям — docs/directions/.
+Известный долг: слой «облики» пока реализован отдельно для камня, дерева и земли.
+
 ## Карта owners
 
 ### Voxel data, Canvas и Surface
@@ -184,6 +194,9 @@ export boundary, retired references и physical G4/G5 требуют отдел�
   from the hull fan). Pattern.form_pull_mm per palette slot (living_pulls); Prop._living_for/_sync_living
   swap the mesh, the editor releases the slider to rebuild. surface_floor_sample now reads the hull mesh,
   not the displayed look. test_rock_living_faces / test_depth_control.
+  World scale (22 Oct): solid look = metres via AUTHORED_BLOCK_M; Prop._sync_solid_unit sets solid_local_unit_m 1.0
+  and set_world_scale(material, block_world_size) rescales only the world-space depth (amplitude, fade); maps draw a
+  block as 16 units. landscape_compact now holds PaintedRockGroup; test_landscape_rock_placement.
   Prop.set_solid_look + solid_surface.build_voxel_look: dev look switch (voxel/low poly),
   display only; test_rock_look_switch. Facet
   normals still own diffuse light and collider; test_rock_form_transfer.

@@ -4,6 +4,8 @@
 [ext_resource type="Script" uid="uid://ctwn2o6mocfe2" path="res://scripts/ember_map_loader.gd" id="2_map"]
 [ext_resource type="Resource" path="res://content/world_terrains/landscape_compact.res" id="3_terrain"]
 [ext_resource type="Script" uid="uid://4lkb6w8l82y0" path="res://scripts/ember_region.gd" id="4_region"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_painted_rock_group.tscn" id="5_rock"]
+[ext_resource type="Script" path="res://scripts/ember_voxel_prop.gd" id="6_prop"]
 
 [sub_resource type="Environment" id="environment"]
 background_mode = 1
@@ -45,6 +47,14 @@ directional_shadow_max_distance = 800.0
 [node name="Terrain" type="Node3D" parent="Map" unique_id=1185499313]
 
 [node name="Props" type="Node3D" parent="Map" unique_id=2083195552]
+
+[node name="PaintedRockGroup" type="Node3D" parent="Map/Props" instance=ExtResource("5_rock")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 112, -3, 200)
+script = ExtResource("6_prop")
+model_id = "vox_painted_rock_group"
+block_world_size = 16.0
+metadata/ember_solid_source = true
+metadata/ember_source_signature = "efb1afb93ce2621a98c3382ecab6b20cde15e72c244e333f1ccc62c8a5943603"
 
 [node name="Regions" type="Node3D" parent="Map" unique_id=1372404067]
 

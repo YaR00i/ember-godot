@@ -168,6 +168,9 @@ static func apply_materials(mesh: ArrayMesh, model: Dictionary) -> void:
 static var _depth_shader: Shader
 static var _white_texture: ImageTexture
 const DEPTH_FADE_M := Vector2(9.0, 22.0)
+## One authored block is one metre in every world; a world may draw a block as 16 units (the playable
+## maps), so everything measured in metres here is a physical size, not a world-unit size.
+const AUTHORED_BLOCK_M := 1.0
 
 
 ## The same terrain renderer with the optional material depth, in its solid-object form (object-local
@@ -197,13 +200,32 @@ static func _bind_pattern(material: ShaderMaterial, slot: int, pattern) -> bool:
 	if _white_texture == null:
 		var white:=Image.create(1,1,false,Image.FORMAT_R8);white.fill(Color.WHITE);_white_texture=ImageTexture.create_from_image(white)
 	material.set_shader_parameter("material_depth_coverage", _white_texture)
-	material.set_shader_parameter("material_depth_amplitude_m", pattern.depth_mm * 0.001)
+	var scale := depth_scale(material)
+	material.set_shader_parameter("material_depth_amplitude_m", pattern.depth_mm * 0.001 * scale)
 	material.set_shader_parameter("material_depth_steps", 32)
-	material.set_shader_parameter("material_depth_fade_near_m", DEPTH_FADE_M.x)
-	material.set_shader_parameter("material_depth_fade_far_m", DEPTH_FADE_M.y)
+	material.set_shader_parameter("material_depth_fade_near_m", DEPTH_FADE_M.x * scale)
+	material.set_shader_parameter("material_depth_fade_far_m", DEPTH_FADE_M.y * scale)
 	material.set_shader_parameter("material_depth_shadows", true)
 	material.set_shader_parameter("material_depth_enabled", true)
 	return true
+
+
+## World units per authored metre as the material currently knows it (1 = a metre-sized world).
+static func depth_scale(material: ShaderMaterial) -> float:
+	return float(material.get_meta("ember_units_per_metre", 1.0))
+
+
+## The depth search runs in world space: amplitude and fade distances follow the world's unit size.
+## Safe to call repeatedly; the colour mapping needs nothing (it converts blocks to metres itself).
+static func set_world_scale(material: ShaderMaterial, units_per_metre: float) -> void:
+	var previous := depth_scale(material)
+	if units_per_metre <= 0.0 or is_equal_approx(previous, units_per_metre): return
+	material.set_meta("ember_units_per_metre", units_per_metre)
+	if not material.get_meta("ember_detailed_depth", false): return
+	var ratio := units_per_metre / previous
+	for parameter in ["material_depth_amplitude_m", "material_depth_fade_near_m", "material_depth_fade_far_m"]:
+		var value = material.get_shader_parameter(parameter)
+		if value != null: material.set_shader_parameter(parameter, float(value) * ratio)
 
 
 ## First material of the mesh that asks for depth, read from its saved Pattern.

@@ -21,3 +21,6 @@ tools/godot/*.exe
 
 # Explicit, disposable prepared terrain export bundle.
 /build/terrain-prepared/
+
+# Obsidian settings if docs/ is opened as a vault.
+.obsidian/

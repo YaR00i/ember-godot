@@ -1562,6 +1562,12 @@ hull + pull, outward winding, no degenerate triangles, cached + deterministic, z
 uses it with same collider and floor, depth stays bound, editor draft pull 60/30/0 swaps mesh/saved/hull, 5→4→6
 reuses the cache, low poly frames return pixel-exact; test_depth_control also covers the pull slider
 (release-only preview, Undo/Redo, Save/Reopen). Manual art acceptance, motion/low angle and weak PC OPEN.
+Rock in the map 22 Oct: test_landscape_rock_placement (native) — landscape_compact reaches play with
+PaintedRockGroup at 16 units per block, collider on the world layer, no floating (0), embedding ≤8 units (5), ≤6% of
+footprint columns covered by ground, no water columns, clear of the player start, map floor query finds the rock,
+solid_local_unit_m = 1, living faces at metre scale (111 faces, ≤3 cm), depth amplitude 0.32 units / fade ×16, collider
+unchanged, Source untouched; frames day/evening, low/detailed/voxel in evidence landscape/. GPU close view: no rock 0.97 ms,
+low poly 0.97, detailed 1.8 ms. Map light (mode 0) look OPEN.
 Rock look switch 20 Oct: test_rock_look_switch (native) — key 4 builds one quad per exposed
 voxel face (11094 vs independent count), corners on the 1/16 grid, outward winding, same
 collider/floor/Source; pattern sticks under yaw/shift in the voxel look; key 5 returns the

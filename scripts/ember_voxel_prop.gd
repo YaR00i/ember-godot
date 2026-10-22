@@ -113,7 +113,7 @@ func _living_for(draft: EmberCompactTerrainPattern,draft_id: String) -> ArrayMes
 	var resource:=load("res://content/voxel_models/%s.tres"%model_id) as EmberVoxelModelResource
 	if resource==null or resource.solid_surface.is_empty():return null
 	var model:=EmberVoxelPrefab.model_of(resource.to_definition())
-	var mesh:ArrayMesh=solid.living_mesh(model,block_world_size,pulls)
+	var mesh:ArrayMesh=solid.living_mesh(model,solid.AUTHORED_BLOCK_M,pulls)
 	if mesh.get_surface_count()==0:return null
 	if not mesh.has_meta("solid_surface_material_ids"):solid.apply_materials(mesh,model)
 	return mesh
@@ -177,8 +177,11 @@ func _sync_solid_unit() -> void:
 	var visual:=get_node_or_null("Mesh") as MeshInstance3D
 	if visual==null:return
 	var material:=visual.get_active_material(0) as ShaderMaterial
-	if material!=null and material.get_meta("ember_derived_solid_material",false) and int(material.get_shader_parameter("solid_projection_mode"))==1:
-		material.set_shader_parameter("solid_local_unit_m",block_world_size)
+	if material!=null and material.get_meta("ember_derived_solid_material",false):
+		var solid=load("res://scripts/ember_voxel_solid_surface.gd")
+		# One authored block is one metre whatever the world draws it as; the depth search runs in world units.
+		if int(material.get_shader_parameter("solid_projection_mode"))==1:material.set_shader_parameter("solid_local_unit_m",solid.AUTHORED_BLOCK_M)
+		solid.set_world_scale(material,block_world_size/solid.AUTHORED_BLOCK_M)
 
 
 func preview_solid_material_light(pattern: EmberCompactTerrainPattern,id: String) -> void:
