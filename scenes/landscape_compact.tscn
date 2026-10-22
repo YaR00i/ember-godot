@@ -9,11 +9,14 @@
 
 [sub_resource type="Environment" id="environment"]
 background_mode = 1
-background_color = Color(0.43, 0.57, 0.6, 1)
-ambient_light_source = 3
-ambient_light_color = Color(0.77, 0.84, 0.8, 1)
-ambient_light_energy = 0.35
+background_color = Color(0.35, 0.47, 0.54, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.72, 0.82, 1, 1)
+ambient_light_energy = 0.55
 tonemap_mode = 2
+ssao_enabled = true
+ssao_radius = 10.4
+ssao_intensity = 0.8
 
 [node name="LandscapeCompact" type="Node3D" unique_id=805765972]
 script = ExtResource("1_root")
@@ -25,6 +28,9 @@ script = ExtResource("2_map")
 map_id = "landscape_compact"
 hydrate_legacy_regions = false
 compact_terrain = ExtResource("3_terrain")
+compact_ground_style = 1
+compact_smooth_material_blend = true
+compact_material_light_mode = 1
 authored_size_blocks = Vector2i(24, 25)
 camera_distance = 200.0
 camera_polar = 0.88
@@ -39,10 +45,11 @@ environment = SubResource("environment")
 
 [node name="Sun" type="DirectionalLight3D" parent="Map/Look" unique_id=786158174]
 transform = Transform3D(0.8480481, 0.44939703, -0.28081444, 0, 0.52991927, 0.8480481, 0.52991927, -0.7191856, 0.44939703, 0, 0, 0)
-light_color = Color(1, 0.96, 0.87, 1)
-light_energy = 0.3
+light_color = Color(1, 0.98, 0.94, 1)
+light_energy = 1.15
+light_angular_distance = 1.0
 shadow_enabled = true
-directional_shadow_max_distance = 800.0
+directional_shadow_max_distance = 560.0
 
 [node name="Terrain" type="Node3D" parent="Map" unique_id=1185499313]
 

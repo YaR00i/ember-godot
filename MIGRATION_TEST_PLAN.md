@@ -1568,6 +1568,12 @@ footprint columns covered by ground, no water columns, clear of the player start
 solid_local_unit_m = 1, living faces at metre scale (111 faces, ≤3 cm), depth amplitude 0.32 units / fade ×16, collider
 unchanged, Source untouched; frames day/evening, low/detailed/voxel in evidence landscape/. GPU close view: no rock 0.97 ms,
 low poly 0.97, detailed 1.8 ms. Map light (mode 0) look OPEN.
+Ground and light of the map 22 Oct: test_landscape_ground_materials (headless) — landscape_compact keeps its size
+(384x400), heights 12..40 and 80620 wet columns exactly; palette roles soil/grass/sand/grass, painted material ids validate;
+no column uses slot 4 (77600 moved to grass); Map uses smooth ground, material blend, light mode 1, day sun 1.15 with 560-unit
+shadows, SSAO radius 10.4. test_compact_world_map, test_native_map_references and test_landscape_rock_placement still PASS
+(rock does not float). Cost: first launch after a terrain change ~15 s, cached ~2 s (was 0.9 s); GPU game view 0.8 -> 2.4 ms.
+Author acceptance of the look OPEN; weak PC not measured.
 Rock look switch 20 Oct: test_rock_look_switch (native) — key 4 builds one quad per exposed
 voxel face (11094 vs independent count), corners on the 1/16 grid, outward winding, same
 collider/floor/Source; pattern sticks under yaw/shift in the voxel look; key 5 returns the
