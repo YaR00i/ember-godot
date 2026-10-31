@@ -119,7 +119,7 @@ func setup(
 	cancel.pressed.connect(cancel_requested.emit)
 	actions.add_child(cancel)
 	var hint := Label.new()
-	hint.text = "Прогресс меняют шаги «Изменить флаг». В Play откройте журнал клавишей Q: он покажет значения текущего save и даст тестовый сброс только этого задания."
+	hint.text = "В цепочке действий выберите «Событие задания»: начать, выполнить цель или завершить. В игре журнал Q покажет выполненные и доступные цели."
 	hint.modulate = Color(0.64, 0.64, 0.68)
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(hint)
@@ -198,7 +198,11 @@ func _add_objective(value: Dictionary) -> void:
 	progress_mode.set_item_metadata(0, "flag")
 	progress_mode.add_item("Боевой счётчик")
 	progress_mode.set_item_metadata(1, "counter")
-	progress_mode.select(1 if str(value.get("progressMode", "flag")) == "counter" else 0)
+	progress_mode.add_item("Купить")
+	progress_mode.set_item_metadata(2, "purchase")
+	progress_mode.add_item("Собрать и передать")
+	progress_mode.set_item_metadata(3, "handover")
+	progress_mode.select(["flag", "counter", "purchase", "handover"].find(str(value.get("progressMode", "flag"))))
 	progress_mode.tooltip_text = "Флаг отмечается событием один раз. Боевой счётчик растёт автоматически после победы."
 	body.add_child(progress_mode)
 	var counter_picker := OptionButton.new()
@@ -232,10 +236,14 @@ func _add_objective(value: Dictionary) -> void:
 	counter_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	counter_hint.add_theme_font_size_override("font_size", 11)
 	body.add_child(counter_hint)
+	var purchase := preload("res://addons/ember_import/ember_quest_purchase_fields.gd").add(body, value, func(_shop: String, _item: String) -> void: pass)
+	var handover := preload("res://addons/ember_import/ember_quest_handover_fields.gd").add(body, value, func(_item: String) -> void: pass)
 	var update_counter_visibility := func() -> void:
 		var counter_mode := str(progress_mode.get_selected_metadata()) == "counter"
 		counter_picker.visible = counter_mode
-		required.visible = counter_mode
+		purchase.visible = str(progress_mode.get_selected_metadata()) == "purchase"
+		handover.visible = str(progress_mode.get_selected_metadata()) == "handover"
+		required.visible = counter_mode or purchase.visible or handover.visible
 		counter_hint.visible = counter_mode
 		flag.tooltip_text = (
 			"Собственный числовой прогресс этой цели. Боевое событие увеличивает его автоматически."
@@ -287,6 +295,9 @@ func _document() -> Dictionary:
 				if progress_mode == "counter"
 				else ""
 			),
+			"handoverItemId": str((panel.find_child("HandoverItem", true, false) as OptionButton).get_selected_metadata()),
+			"purchaseShopId": str((panel.find_child("PurchaseShop", true, false) as OptionButton).get_selected_metadata()),
+			"purchaseItemId": str((panel.find_child("PurchaseItem", true, false) as OptionButton).get_selected_metadata()),
 			"requiredCount": int((panel.find_child("ObjectiveRequiredCount", true, false) as SpinBox).value),
 			"optional": (panel.find_child("ObjectiveOptional", true, false) as CheckBox).button_pressed,
 			"requiresObjectiveIds": _dependency_ids(

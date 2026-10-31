@@ -7,6 +7,10 @@ signal finished(success: bool, elapsed_ms: int, failures: int)
 const SETTLE_MSEC := 500
 const TIMEOUT_MSEC := 120000
 const SurfaceProjection = preload("res://scripts/ember_voxel_surface_projection.gd")
+const DetailPreparation = preload("res://scripts/ember_detail_preparation.gd")
+const DetailMaterials = preload("res://scripts/ember_voxel_surface_materials.gd")
+const DetailFixture = preload("res://scripts/prototypes/ember_painted_light_fixture.gd")
+var _detail_materials_ready := false
 
 var _shelf: Node
 var _filesystem: Object
@@ -72,6 +76,32 @@ func begin(shelf: Node, filesystem: Object) -> void:
 	_started = Time.get_ticks_msec()
 	_quiet_since = _started
 	set_process(true)
+	_prepare_detail_materials.call_deferred()
+
+func _prepare_detail_materials() -> void:
+	# Reflection/driver setup belongs to the existing loading gate, before the
+	# first interactive grass publication, rather than its first visible frame.
+	for flower in [true,false]:
+		if not await DetailPreparation.prepare_shader(flower,self,func():return _complete or not is_inside_tree()):
+			return
+	if DisplayServer.get_name()=="headless":
+		_detail_materials_ready=true
+		return
+	# A shader alone is insufficient for pipeline precompilation: Godot also
+	# needs the actual mesh/instancing format once. Draw the accepted cards in
+	# a tiny private viewport while the existing startup gate is still closed.
+	var viewport:=SubViewport.new();viewport.size=Vector2i(16,16);viewport.own_world_3d=true
+	viewport.render_target_update_mode=SubViewport.UPDATE_ALWAYS;add_child(viewport)
+	var visual:=MultiMeshInstance3D.new();visual.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var scatter:=MultiMesh.new();scatter.transform_format=MultiMesh.TRANSFORM_3D
+	scatter.mesh=DetailFixture.grass_card_mesh();scatter.instance_count=1;scatter.set_instance_transform(0,Transform3D.IDENTITY)
+	visual.multimesh=scatter;visual.material_override=DetailMaterials.compact_flower_material();viewport.add_child(visual)
+	var camera:=Camera3D.new();viewport.add_child(camera);camera.look_at_from_position(Vector3(0,0.2,0.5),Vector3(0,0.08,0));camera.make_current()
+	var sun:=DirectionalLight3D.new();sun.shadow_enabled=true;viewport.add_child(sun)
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	viewport.free()
+	if not _complete:_detail_materials_ready=true
 
 
 func _process(_delta: float) -> void:
@@ -111,6 +141,10 @@ func _process(_delta: float) -> void:
 	if _surface_work_pending():
 		_status.text = "Подготовка поверхности открытых сцен…"
 		return
+	if not _detail_materials_ready:
+		_status.text = "Подготовка материалов травы…"
+		_show_window()
+		return
 	var failures: int = _shelf.preparation_failure_count()
 	if failures > 0:
 		_offer_continue("Не удалось подготовить миниатюры: %d. Остальные объекты готовы; можно продолжить работу." % failures)
@@ -145,6 +179,9 @@ func _fit_message() -> void:
 	# Fit the error action explicitly after text wrapping/layout has updated.
 	if not _waiting_for_choice or _complete:
 		return
+	# Resolve pending autowrap shaping before reading the container minimum.
+	# Otherwise the hidden label can retain its initial zero-width text height.
+	_status.get_line_count()
 	var minimum := _content.get_combined_minimum_size().ceil()
 	size = Vector2i(maxi(520, int(minimum.x)), maxi(260, int(minimum.y)))
 

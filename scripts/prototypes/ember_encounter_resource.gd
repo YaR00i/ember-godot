@@ -143,7 +143,7 @@ func initial_state(party_snapshot: Dictionary = {}, rng_seed: int = 0, active_id
 	var active_seed := rng_seed
 	if active_seed == 0:
 		active_seed = int(Time.get_ticks_usec()) ^ encounter_id.hash()
-	var state := Combat.initial_state(active_seed)
+	var state := Combat.initial_state(active_seed, party_unit_ids + enemy_unit_ids)
 	var source_units: Dictionary = state.get("units", {})
 	var units := {}
 	for index in roster.size():

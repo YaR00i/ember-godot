@@ -75,7 +75,7 @@ func set_material_style(index: int) -> void:
 	_sync_tuft_material()
 	# Grass cards always carry the blended palette vertex layout, even over voxels.
 	(tuft_visual.material_override as ShaderMaterial).set_shader_parameter("smooth_surface_enabled",true)
-	style_label.text=["Гладкий мир","Гранёный мир","Воксельный мир"][material_style]+" · форма + материал + трава\nОдна физическая поверхность · глубина 4 см\nLAB: формы запечены заранее"
+	style_label.text=["Детальный мир","Гранёный мир","Воксельный мир"][material_style]+" · форма + материал + трава\nОдна физическая поверхность · глубина 4 см\nLAB: формы запечены заранее"
 
 func set_coarse_grass(enabled: bool) -> void:
 	use_coarse_grass=enabled

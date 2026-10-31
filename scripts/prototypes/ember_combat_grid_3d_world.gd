@@ -14,6 +14,7 @@ const Terrain = preload("res://scripts/prototypes/ember_combat_terrain.gd")
 const TileLibrary := preload("res://scripts/prototypes/ember_battlefield_tile_library.gd")
 const SurfaceProjection := preload("res://scripts/ember_voxel_surface_projection.gd")
 const WaterContact := preload("res://scripts/ember_water_contact_3d.gd")
+const ArcMotion := preload("res://scripts/ember_arc_motion.gd")
 
 const ITEM_NEUTRAL := TileLibrary.ITEM_NEUTRAL
 const ITEM_WET := TileLibrary.ITEM_WET
@@ -39,6 +40,11 @@ const THROW_DURATION := 0.38
 @export var battlefield: EmberBattlefieldResource
 
 var _state: Dictionary = {}
+## Presentation only: the existing world's physics remains the sole floor.
+var existing_world_surface := false
+var unit_visual_scenes: Dictionary = {}
+var external_actor_ids: Array[String] = []
+var external_label_offsets: Dictionary = {}
 var _lift_presentation: Dictionary = {}
 var _overlay_cells: Dictionary = {}
 var _overlay_materials: Dictionary = {}
@@ -216,7 +222,7 @@ func update_action_preview(preview: Dictionary, target: String, cell: Vector2i, 
 func screen_position_for_cell(cell: Vector2i) -> Vector2:
 	if _camera == null:
 		return Vector2(-1.0, -1.0)
-	return _camera.unproject_position(_world_position(cell, TILE_HEIGHT * 0.7))
+	return _camera.unproject_position(to_global(_world_position(cell, TILE_HEIGHT * 0.7)))
 
 
 func pick_cell_at(screen_position: Vector2) -> Vector2i:
@@ -393,6 +399,12 @@ func _rebuild_projection() -> void:
 			_grid_map.set_cell_item(_map_cell(cell), _item_for(cell))
 			_add_cell_label(cell)
 	_refresh_visual_surface()
+	if existing_world_surface:
+		_grid_map.visible = false
+		_grid_map.collision_layer = 0
+		_grid_map.collision_mask = 0
+		_visual_surface_projection.visible = false
+		_add_world_cell_edges()
 	_add_focus()
 	_add_units(previous_positions if can_animate else {})
 	if Engine.is_editor_hint():
@@ -410,6 +422,24 @@ func _rebuild_projection() -> void:
 		_play_action_animations.call_deferred(animations, generation)
 	elif can_animate:
 		_animate_changed_units(generation)
+
+
+func _add_world_cell_edges() -> void:
+	var lines := ImmediateMesh.new()
+	lines.surface_begin(Mesh.PRIMITIVE_LINES, _material(Color(0.85, 0.94, 1.0, 0.6), false, true))
+	for y in int(_state.grid.height):
+		for x in int(_state.grid.width):
+			var center := _world_position(Vector2i(x,y), 0.075)
+			var r := CELL_SIZE * 0.48
+			var corners := [Vector3(-r,0,-r),Vector3(r,0,-r),Vector3(r,0,r),Vector3(-r,0,r)]
+			for i in 4:
+				lines.surface_add_vertex(center + corners[i])
+				lines.surface_add_vertex(center + corners[(i+1)%4])
+	lines.surface_end()
+	var mesh := MeshInstance3D.new()
+	mesh.name = "WorldCellEdges"
+	mesh.mesh = lines
+	_overlay_root.add_child(mesh)
 
 
 func _visual_surface_identity() -> String:
@@ -511,6 +541,15 @@ func _add_units(previous_positions: Dictionary = {}) -> void:
 		outline.mesh = outline_capsule
 		outline.material_override = _outline_material(team_color)
 		root.add_child(outline)
+		var visual_scene := unit_visual_scenes.get(str(unit.get("templateId", unit_id))) as PackedScene
+		if unit.has("worldItemId") and ResourceLoader.exists(str(unit.get("worldItemScene",""))):visual_scene=load(str(unit.worldItemScene)) as PackedScene
+		if visual_scene != null:
+			body.visible = false
+			outline.visible = false
+			var visual := visual_scene.instantiate() as Node3D
+			visual.position.y = -0.36
+			visual.scale = Vector3.ONE * CELL_SIZE * (float(unit.get("worldItemSize",16.0))/16.0 if unit.has("worldItemId") else 1.0)
+			root.add_child(visual)
 		var water_contact: Node3D = WaterContact.new()
 		water_contact.name = "WaterContact"
 		water_contact.set("radius_blocks", 0.27)
@@ -523,12 +562,18 @@ func _add_units(previous_positions: Dictionary = {}) -> void:
 			int(unit.get("hp", 0)), int(unit.get("maxHp", 0)),
 		]
 		label.position.y = 0.7
+		if unit.has("worldItemId"):label.text=str(unit.name)
 		label.font_size = 34
 		label.outline_size = 7
 		label.pixel_size = 0.0043
 		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		label.modulate = Color("ffe6a6") if planned else Color.WHITE
 		root.add_child(label)
+		if unit_id in external_actor_ids:
+			for child in root.get_children():
+				if child is MeshInstance3D: child.visible = false
+				elif child is Node3D and not child is Label3D and child.name != "WaterContact": child.visible = false
+			label.position.y = float(external_label_offsets.get(unit_id,0.7))
 		_add_status_badges(root, unit_id, unit)
 
 
@@ -721,14 +766,18 @@ func _play_action_animations(animations: Array, generation: int) -> void:
 			var held_root := _unit_roots.get(held_id) as Node3D
 			var held_destination = (resolved.get("moves", {}) as Dictionary).get(held_id)
 			if is_instance_valid(held_root) and held_destination is Vector2i:
+				var impact: Vector2i=resolved.get("objectImpactCell",held_destination)
 				var release_tween := _arc_tween_to(
 					held_root,
-					_world_position(held_destination, UNIT_Y_OFFSET),
+					_world_position(impact, UNIT_Y_OFFSET),
 					0.42 if effect == "held_throw" else 0.28,
 					0.85 if effect == "held_throw" else 0.18,
 				)
 				if release_tween != null:
 					await release_tween.finished
+				if impact!=held_destination:
+					var bounce:=_arc_tween_to(held_root,_world_position(held_destination,UNIT_Y_OFFSET),0.20,0.25)
+					if bounce!=null:await bounce.finished
 		elif effect in ["defend", "held_guard"]:
 			var defend_tween := _pulse_tween(actor_root, 1.16)
 			if defend_tween != null:
@@ -776,7 +825,24 @@ func _play_action_animations(animations: Array, generation: int) -> void:
 				await hit_tween.finished
 		if generation != _animation_generation:
 			return
+		_play_object_breaks(before,resolved)
 	_animate_changed_units(generation)
+
+func _play_object_breaks(before: Dictionary,resolved: Dictionary) -> void:
+	for id in before.get("units",{}):
+		var item: Dictionary=before.units[id]
+		if not item.has("worldItemId") or not item.get("worldItemBreakable",false) or int(item.get("hp",0))<=0:continue
+		if int(resolved.get("damage",{}).get(id,0))<=0:continue
+		var object_root:=_unit_roots.get(id) as Node3D
+		var path:=str(item.get("worldItemBreakEffect",""))
+		if object_root==null or path.is_empty() or not ResourceLoader.exists(path):continue
+		var fragments:=load(path).instantiate() as Node3D
+		get_tree().current_scene.add_child(fragments)
+		var pose:=object_root.global_transform.orthonormalized()
+		pose.origin=object_root.to_global(Vector3(0,-0.36,0))
+		var world_size:=float(item.worldItemSize)/16.0*CELL_SIZE*object_root.global_basis.get_scale().x
+		fragments.play(pose,world_size,Vector3.UP)
+		object_root.visible=false
 
 
 func _path_tween(root: Node3D, raw_path: Variant) -> Tween:
@@ -890,7 +956,7 @@ func _set_arc_position(
 ) -> void:
 	if not is_instance_valid(root):
 		return
-	root.position = start.lerp(destination, weight) + Vector3.UP * sin(PI * weight) * height
+	root.position = ArcMotion.position_at(start,destination,weight,height)
 
 
 func _add_focus() -> void:
@@ -1392,7 +1458,8 @@ func _pick_cell_from_camera(viewport_camera: Camera3D, screen_position: Vector2)
 		return Vector2i(-1, -1)
 	var ray_origin := viewport_camera.project_ray_origin(screen_position)
 	var ray_direction := viewport_camera.project_ray_normal(screen_position)
-	var query := PhysicsRayQueryParameters3D.create(ray_origin, ray_origin + ray_direction * 100.0, 1)
+	var ray_length := 100.0 * maxf(1.0, global_basis.get_scale().length())
+	var query := PhysicsRayQueryParameters3D.create(ray_origin, ray_origin + ray_direction * ray_length, 1)
 	var world := _grid_map.get_world_3d()
 	if world != null:
 		var hit := world.direct_space_state.intersect_ray(query)
@@ -1481,16 +1548,18 @@ func _update_camera_context() -> void:
 		and (field_changed or _camera_overview_requested)
 	):
 		_last_field_size = field_size
-		if field_size.x > Grid.WIDTH or field_size.y > Grid.HEIGHT:
+		if existing_world_surface or field_size.x > Grid.WIDTH or field_size.y > Grid.HEIGHT:
 			var first := _world_position(Vector2i.ZERO, 0.0)
 			var last := _world_position(
 				Vector2i(maxi(0, field_size.x - 1), maxi(0, field_size.y - 1)), 0.0
 			)
-			var center := (first + last) * 0.5
-			var fit_size := maxf(float(field_size.y) * CELL_SIZE * 1.18, float(field_size.x) * CELL_SIZE * 0.82)
+			var center := to_global((first + last) * 0.5)
+			var world_scale := global_basis.get_scale().x
+			var fit_size := maxf(float(field_size.y) * CELL_SIZE * 1.18, float(field_size.x) * CELL_SIZE * 0.82) * world_scale
 			var safe_distance := Vector2(
 				float(field_size.x) * CELL_SIZE, float(field_size.y) * CELL_SIZE
 			).length() + CELL_SIZE * 4.0
+			safe_distance *= world_scale
 			camera_rig.call("set_home_view", center, fit_size, safe_distance)
 		elif camera_rig.has_method("restore_authored_home"):
 			camera_rig.call("restore_authored_home")
@@ -1519,7 +1588,7 @@ func _focus_active_unit(smooth: bool = true) -> bool:
 	var focus_cell := _active_focus_cell()
 	if focus_cell == Vector2i(-1, -1):
 		return false
-	camera_rig.call("focus_on", _world_position(focus_cell, 0.0), smooth)
+	camera_rig.call("focus_on", to_global(_world_position(focus_cell, 0.0)), smooth)
 	return true
 
 
@@ -1571,7 +1640,7 @@ func _update_occlusion(force: bool = false) -> void:
 			if not Grid.is_blocked(_state, cell):
 				continue
 			var center := _world_position(cell, BLOCKED_HEIGHT * 0.5)
-			var fade := _distance_to_segment(center, _camera.global_position, target) < CELL_SIZE * 0.58
+			var fade := _distance_to_segment(center, to_local(_camera.global_position), target) < CELL_SIZE * 0.58
 			_grid_map.set_cell_item(_map_cell(cell), ITEM_BLOCKED_FADED if fade else ITEM_BLOCKED)
 
 

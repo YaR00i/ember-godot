@@ -22,6 +22,10 @@ var _area := Rect2i()
 var _saved_hidden := {}
 var _water_fields: RefCounted
 var _water_fields_ready := false
+var _look:=Vector2i(-99,-99)
+var _preview_keys:Array[Vector2i]=[]
+var _built_tiles:Dictionary={}
+var _announced:=false
 
 
 func show_candidate(target: EmberMapLoader, previous: TerrainResource, candidate: TerrainResource, direction: String, along := -1, address := Vector2i(-1, -1)) -> bool:
@@ -65,10 +69,18 @@ func show_candidate(target: EmberMapLoader, previous: TerrainResource, candidate
 
 
 func _process(_delta: float) -> void:
+	if not is_instance_valid(_projection) or _candidate==null:return
+	var look:=Vector2i(_projection.world_look,_projection.ground_style)
+	if look!=_look:
+		if _preview_keys.is_empty():_preview_keys.assign(_pending)
+		else:_pending.assign(_preview_keys)
+		_look=look;_announced=false
+		_sync_look_materials()
 	if _water_fields != null and not _water_fields_ready:
 		if not _water_fields.prepare(3000,_liquid_material as ShaderMaterial,_ground_material as ShaderMaterial,Vector2(_projection.global_position.x,_projection.global_position.z)): return
 		if not _water_fields.gpu_ready(): return
 		_water_fields.commit(); _water_fields_ready = true
+		_sync_look_materials()
 		for entry: Dictionary in _water_fields.regions.values():
 			entry.water.set_shader_parameter("water_flow_map",_water_fields.flow_texture)
 			entry.water.set_shader_parameter("river_phase_map",_water_fields.phase_texture)
@@ -77,12 +89,16 @@ func _process(_delta: float) -> void:
 	var started := Time.get_ticks_usec()
 	while not _pending.is_empty() and Time.get_ticks_usec() - started < 4000:
 		var key: Vector2i = _pending.pop_front()
-		var generated := MeshBuilder.build_tile(_candidate, key.x * TerrainProjection.TILE_SIZE, key.y * TerrainProjection.TILE_SIZE, TerrainProjection.TILE_SIZE, _projection.water_mesh_step, _projection.water_volume_sides,PackedVector4Array(),{},false,false,_projection.ground_style==1,_projection.smooth_material_blend_enabled)
-		var tile := Node3D.new()
+		var generated := MeshBuilder.build_tile(_candidate, key.x * TerrainProjection.TILE_SIZE, key.y * TerrainProjection.TILE_SIZE, TerrainProjection.TILE_SIZE, _projection.water_mesh_step, _projection.water_volume_sides,PackedVector4Array(),{},false,false,_look.y==1 and _look.x!=2,_projection.smooth_material_blend_enabled)
+		if _built_tiles.has(key):
+			remove_child(_built_tiles[key]);_built_tiles[key].queue_free()
+		var tile := Node3D.new();_built_tiles[key]=tile
 		tile.name = "PreviewTile_%d_%d" % [key.x, key.y]
 		add_child(tile, false, Node.INTERNAL_MODE_BACK)
 		var ground := MeshInstance3D.new()
 		var ground_mesh := generated.terrain as ArrayMesh
+		if _look.x==1 and _look.y==1 and ground_mesh.get_surface_count()>0:
+			ground_mesh=preload("res://scripts/prototypes/ember_terrain_look_bake.gd").faceted(ground_mesh,generated.smooth_field).mesh
 		var fields: Dictionary = _water_fields.regions.get(Vector2i(key.x/6,key.y/6),{}) if _water_fields_ready else {}
 		if ground_mesh.get_surface_count() > 0:
 			ground_mesh.surface_set_material(0, fields.get("ground",_ground_material))
@@ -94,8 +110,8 @@ func _process(_delta: float) -> void:
 			liquid_mesh.surface_set_material(0, fields.get("water",_liquid_material))
 		liquid.mesh = liquid_mesh
 		tile.add_child(liquid, false, Node.INTERNAL_MODE_BACK)
-	if _pending.is_empty():
-		set_process(false)
+	if _pending.is_empty() and not _announced:
+		_announced=true
 		preview_built.emit()
 
 
@@ -169,7 +185,7 @@ func clear_preview() -> void:
 	set_process(false)
 	if _water_fields != null: _water_fields.close(); _water_fields = null
 	_water_fields_ready = false
-	_pending.clear()
+	_pending.clear();_preview_keys.clear();_built_tiles.clear();_look=Vector2i(-99,-99);_announced=false
 	if is_instance_valid(_projection):
 		_projection.position = _saved_projection_position
 		_projection._editor_hidden_edge_keys = _saved_hidden
@@ -185,3 +201,12 @@ func clear_preview() -> void:
 
 func _exit_tree() -> void:
 	clear_preview()
+
+
+func _sync_look_materials()->void:
+	if _ground_material is ShaderMaterial:_projection._bind_depth_material(_ground_material)
+	if _liquid_material is ShaderMaterial:_liquid_material.set_shader_parameter("sea_smooth_shore",_look.y==1 and _look.x==0)
+	if _water_fields==null:return
+	for fields:Dictionary in _water_fields.regions.values():
+		if fields.get("ground") is ShaderMaterial:_projection._bind_depth_material(fields.ground)
+		if fields.get("water") is ShaderMaterial:fields.water.set_shader_parameter("sea_smooth_shore",_look.y==1 and _look.x==0)

@@ -62,6 +62,33 @@ func _parse_begin(object: Object) -> void:
 	add_custom_control(build_panel(object))
 
 
+class PatternSizeProperty extends EditorProperty:
+	var value:=SpinBox.new()
+	func _init()->void:
+		value.min_value=0.125;value.max_value=16.0;value.step=0.025;value.suffix="×"
+		value.tooltip_text="1 — масштаб материала земли. Больше — крупнее рисунок только выбранного объекта; глубина и форма прежние."
+		add_child(value);add_focusable(value.get_line_edit())
+		value.value_changed.connect(func(number:float):emit_changed(get_edited_property(),number))
+	func _update_property()->void:
+		if get_edited_object()==null:return
+		value.set_block_signals(true);value.value=get_edited_object().get(get_edited_property());value.set_block_signals(false)
+	func _set_read_only(readonly:bool)->void:
+		value.editable=not readonly
+
+
+func _parse_property(object:Object,_type:Variant.Type,property:String,_hint:PropertyHint,_hint_text:String,_usage:int,_wide:bool)->bool:
+	if object is EmberVoxelProp and property=="material_pattern_scale":
+		var visual:=object.get_node_or_null("Mesh") as MeshInstance3D
+		if visual==null or visual.mesh==null or not visual.mesh.has_meta("solid_surface_material_ids"):return true
+		var editor:=PatternSizeProperty.new()
+		if visual.material_override!=null and not visual.material_override.get_meta("ember_derived_solid_material",false):
+			editor.read_only=true
+			editor.tooltip_text="У объекта собственный материал. Регулятор относится к общему генерируемому покрытию."
+		add_property_editor(property,editor,false,"Размер рисунка")
+		return true
+	return false
+
+
 func build_panel(object: Object) -> EmberObjectInspectorPanel:
 	var panel := InspectorPanel.new() as EmberObjectInspectorPanel
 	panel.setup(object, EmberObjectInspectorModel.snapshot(object))

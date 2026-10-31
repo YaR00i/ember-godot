@@ -5,10 +5,24 @@ extends Resource
 const Math = preload("res://scripts/prototypes/ember_terrain_generation_math.gd")
 const Influence = preload("res://scripts/prototypes/ember_terrain_plan_math.gd")
 const META := &"_ember_terrain_plan"
-const VERSION := 11
+const VERSION := 12
 const GROVE_MEMBER_META := &"_ember_grove_member"
 const GROVE_GROUP_META := &"_ember_grove_group"
 const MAX_GROVE_MEMBERS := 256
+const MEMBERS_PER_SECTION:=64
+const SECTION_M:=Influence.Sections.CELLS/16
+const MAX_WORLD_M:=Influence.MAX_WORLD_M
+
+static func region_member_limit(bounds:Rect2i)->int:
+	return maxi(1,ceili(float(bounds.size.x*bounds.size.y)/(SECTION_M*SECTION_M)))*MEMBERS_PER_SECTION
+
+func member_limit(extent:=Vector2i.ZERO)->int:
+	# With no map attached (read/save), derive the envelope from existing regions.
+	if extent==Vector2i.ZERO:
+		for region:Dictionary in regions:
+			if region.get("bounds") is Rect2i:extent=extent.max(region.bounds.end)
+	extent=extent.clamp(Vector2i.ZERO,Vector2i.ONE*MAX_WORLD_M)
+	return maxi(MAX_GROVE_MEMBERS,ceili(float(extent.x)/SECTION_M)*ceili(float(extent.y)/SECTION_M)*MEMBERS_PER_SECTION)
 const MAX_REGIONS := 256
 @export var schema_version := 1 # Older scenes omitted the default v1 value.
 @export var regions: Array[Dictionary] = []
@@ -30,6 +44,11 @@ const V3_CHANNELS := ["before_tops","before_bases","before_waters","before_color
 static func read(node: Node) -> Variant:
 	return node.get_meta(META) if is_instance_valid(node) and node.has_meta(META) else null
 
+static func storage_path(scene_path:String,map_path:String)->String:
+	# One existing Plan Resource per scene/Map. A Save As gets its own file,
+	# so editing a temporary map copy cannot overwrite the author's plan.
+	return scene_path.get_basename()+"_"+map_path.replace("/","_").validate_filename()+"_plan.res"
+
 func working_copy() -> Resource:
 	var result := get_script().new() as Resource
 	result.schema_version = schema_version
@@ -42,7 +61,7 @@ func working_copy() -> Resource:
 func data() -> Dictionary: return {"version": schema_version, "regions": regions.duplicate(true), "patches": patches.duplicate(true), "object_layers":object_layers.duplicate(true),"paint_locks":paint_locks.duplicate(true)}
 
 static func from_data(value: Variant) -> Resource:
-	if not value is Dictionary or value.get("version") not in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, VERSION] or not value.get("regions") is Array or not value.get("patches", []) is Array or not value.get("object_layers",{}) is Dictionary or not value.get("paint_locks",{}) is Dictionary: return null
+	if not value is Dictionary or value.get("version") not in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, VERSION] or not value.get("regions") is Array or not value.get("patches", []) is Array or not value.get("object_layers",{}) is Dictionary or not value.get("paint_locks",{}) is Dictionary: return null
 	for region in value.regions:
 		if not region is Dictionary: return null
 	var result := load("res://scripts/ember_terrain_plan_resource.gd").new() as Resource
@@ -62,11 +81,12 @@ static func same(a: Variant, b: Variant) -> bool:
 
 func validation_errors(extent := Vector2i.ZERO) -> Array[String]:
 	var errors: Array[String] = []
-	if schema_version not in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, VERSION]: errors.append("Неподдерживаемая версия плана областей.")
+	if schema_version not in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, VERSION]: errors.append("Неподдерживаемая версия плана областей.")
 	if not paint_locks.is_empty() and schema_version<10:errors.append("Защита ручной покраски требует план версии 10.")
-	if paint_locks.size()>132*132:errors.append("Слишком большой слой защиты покраски.")
+	var paint_axis:=MAX_WORLD_M*16/PAINT_TILE
+	if paint_locks.size()>paint_axis*paint_axis:errors.append("Слишком большой слой защиты покраски.")
 	for key in paint_locks:
-		if not key is Vector2i or key.x<0 or key.y<0 or key.x>=132 or key.y>=132 or not paint_locks[key] is PackedByteArray or paint_locks[key].size()!=PAINT_BYTES:
+		if not key is Vector2i or key.x<0 or key.y<0 or key.x>=paint_axis or key.y>=paint_axis or not paint_locks[key] is PackedByteArray or paint_locks[key].size()!=PAINT_BYTES:
 			errors.append("Некорректная плитка защиты покраски.");continue
 		if extent!=Vector2i.ZERO:
 			var tile:=Rect2i(key*PAINT_TILE,Vector2i.ONE*PAINT_TILE)
@@ -85,20 +105,22 @@ func validation_errors(extent := Vector2i.ZERO) -> Array[String]:
 		if not region.get("name") is String or region.name.strip_edges().is_empty() or region.name.length() > 120:
 			errors.append("Назовите область: от 1 до 120 символов.")
 		var bounds: Variant = region.get("bounds")
-		if not bounds is Rect2i or not bounds.has_area() or bounds.position.x < 0 or bounds.position.y < 0 or bounds.end.x > 528 or bounds.end.y > 528:
+		if not bounds is Rect2i or not bounds.has_area() or bounds.position.x < 0 or bounds.position.y < 0 or bounds.end.x > MAX_WORLD_M or bounds.end.y > MAX_WORLD_M:
 			errors.append("Границы области должны находиться в пределах карты.")
 		elif extent != Vector2i.ZERO and not Rect2i(Vector2i.ZERO, extent).encloses(bounds): errors.append("Область выходит за границу карты.")
 		if not region.get("parameters") is Dictionary: errors.append("Нет параметров рельефа области.")
 		else:
 			var kind: Variant = region.get("kind", "generation")
-			if kind not in ["generation", "plateau", "lake", "river", "mountain", "road", "grove", "placement"]: errors.append("Неизвестный тип области.")
+			if kind not in ["generation", "plateau", "lake", "river", "mountain", "road", "grove", "placement", "coast"]: errors.append("Неизвестный тип области.")
 			if region.get("kind", "generation") == "plateau" and schema_version < 2: errors.append("Плато требует план версии 2.")
+			if kind == "coast" and schema_version < 12: errors.append("Область моря требует план версии 12.")
 			if kind == "lake" and schema_version < 3: errors.append("Озеро требует план версии 3.")
 			if kind == "river" and schema_version < 4: errors.append("Русло требует план версии 4.")
 			if kind == "mountain" and schema_version < 5: errors.append("Гора требует план версии 5.")
 			if kind == "road" and schema_version < 6: errors.append("Дорога требует план версии 6.")
 			if kind == "grove" and schema_version < 7: errors.append("Роща требует план версии 7.")
 			if kind == "placement" and schema_version < 8: errors.append("Общая расстановка требует план версии 8.")
+			if schema_version<11 and region.get("parameters",{}).get("land_shape","island")=="mainland":errors.append("Сплошная суша требует план версии 11.")
 			if schema_version<11:
 				for key in ["terrain_sampling","mountain_shape","shape_seed"]:
 					if region.get("parameters",{}).has(key):errors.append("Точная форма рельефа требует план версии 11.")
@@ -108,7 +130,7 @@ func validation_errors(extent := Vector2i.ZERO) -> Array[String]:
 				for key in Math.ZONE_DEFAULTS:
 					if key!="coverage_profile" and region.parameters.has(key):errors.append("Настройки крупных зон требуют план версии 10.");break
 			if typeof(region.get("enabled", true)) != TYPE_BOOL: errors.append("Некорректное включение области.")
-			var error := Influence.parameter_error(region.parameters,kind) if kind in ["plateau","lake","river","mountain","road","grove","placement"] else Math.parameter_error(region.parameters)
+			var error := Influence.parameter_error(region.parameters,kind) if kind in ["plateau","lake","river","mountain","road","grove","placement","coast"] else Math.parameter_error(region.parameters)
 			if not error.is_empty(): errors.append(error)
 			elif kind=="generation" and bounds is Rect2i:
 				error=Math.surface_bounds_error(bounds,region.parameters)
@@ -119,7 +141,7 @@ func validation_errors(extent := Vector2i.ZERO) -> Array[String]:
 			elif kind == "mountain" and bounds is Rect2i:
 				error = Influence.mountain_bounds_error(bounds,region.parameters)
 				if not error.is_empty(): errors.append(error)
-			if kind in ["river","road"]:
+			if kind in ["river","road","coast"]:
 				error = Influence.path_error(region.get("points_m"),extent)
 				if not error.is_empty(): errors.append(error)
 				elif bounds is Rect2i:
@@ -137,13 +159,14 @@ func validation_errors(extent := Vector2i.ZERO) -> Array[String]:
 				errors.append("Повреждён экземпляр рощи."); continue
 			placement_ids[member.id] = true; slots[member.slot] = true
 			var expected: Dictionary = member.expected
+			if typeof(expected.get("signature_version",1))!=TYPE_INT or expected.get("signature_version",1) not in [1,2]:errors.append("Неизвестная версия исходного следа объекта.")
 			if not expected.get("transform") is Transform3D or not expected.transform.is_finite() or not expected.get("signature") is String or not expected.get("parent") is String or not expected.get("name") is String:
 				errors.append("Повреждён исходный след дерева.")
-	if count > MAX_GROVE_MEMBERS: errors.append("В плане уже больше 256 деревьев рощ; уменьшите области или плотность.")
+	if count > member_limit(extent): errors.append("Превышен бюджет расстановки созданной карты: %d объектов."%member_limit(extent))
 	var seen := {}
 	for patch in patches:
 		var rect: Variant = patch.get("rect")
-		if not rect is Rect2i or not rect.has_area() or rect.size.x > 64 or rect.size.y > 64 or rect.position.x < 0 or rect.position.y < 0 or rect.end.x > 8448 or rect.end.y > 8448:
+		if not rect is Rect2i or not rect.has_area() or rect.size.x > 64 or rect.size.y > 64 or rect.position.x < 0 or rect.position.y < 0 or rect.end.x > MAX_WORLD_M*16 or rect.end.y > MAX_WORLD_M*16:
 			errors.append("Повреждены границы локального слоя."); continue
 		if seen.has(rect.position): errors.append("Локальный слой повторяется.")
 		if rect.position.x % 64 != 0 or rect.position.y % 64 != 0: errors.append("Локальный слой не выровнен по сетке.")
@@ -198,7 +221,7 @@ func translated(offset_m: Vector2i) -> Resource:
 	result.paint_locks=shifted_locks
 	for region: Dictionary in result.regions:
 		region.bounds = Rect2i(region.bounds.position + offset_m, region.bounds.size)
-		if region.get("kind") in ["river","road"]:
+		if region.get("kind") in ["river","road","coast"]:
 			var shifted_points := PackedVector2Array()
 			for point in region.points_m: shifted_points.append(point+Vector2(offset_m))
 			region.points_m = shifted_points

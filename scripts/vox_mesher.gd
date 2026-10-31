@@ -53,15 +53,18 @@ static func apply_skip(filled: PackedByteArray, skip: PackedByteArray) -> void:
 static func model_channel(model: Dictionary, key: String) -> PackedByteArray:
 	var size := ember_grid_size(model)
 	var n := size.x * size.y * size.z
+	var raw: Variant = model.get(key, [])
+	if raw is PackedByteArray:
+		# Packed buffers already contain valid bytes. Keep the native copy-on-write
+		# path instead of copying every voxel through the script interpreter.
+		var packed := raw as PackedByteArray
+		if packed.size() == n: return packed
+		var resized := packed.duplicate()
+		resized.resize(n) # Native resize truncates or zero-fills, like the Array path.
+		return resized
 	var out := PackedByteArray()
 	out.resize(n)
 	out.fill(0)
-	var raw: Variant = model.get(key, [])
-	if raw is PackedByteArray:
-		var packed := raw as PackedByteArray
-		for i in mini(n, packed.size()):
-			out[i] = packed[i]
-		return out
 	if typeof(raw) != TYPE_ARRAY:
 		return out
 	var values := raw as Array

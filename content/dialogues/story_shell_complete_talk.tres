@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="EmberDialogueResource" format=3]
+[ext_resource type="Script" path="res://scripts/ember_dialogue_resource.gd" id="1"]
+[resource]
+script = ExtResource("1")
+dialogue_id = "story_shell_complete_talk"
+document = {
+  "id": "story_shell_complete_talk",
+  "nameRu": "После сдачи ракушек",
+  "startStepId": "line",
+  "steps": [
+    {
+      "id": "line",
+      "type": "dialogue",
+      "nameRu": "Смотритель",
+      "textRu": "Спасибо за ракушки! С этим поручением мы закончили.",
+      "next": "end"
+    },
+    {
+      "id": "end",
+      "type": "end"
+    }
+  ]
+}

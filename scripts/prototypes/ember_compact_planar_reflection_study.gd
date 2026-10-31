@@ -1,14 +1,18 @@
 @tool
 extends Node
-## Disposable comparison of sharp planar scene reflection and sky radiance.
+## Shared water presentation used by authored maps and comparison scenes.
 ## It reads the existing compact terrain projection; it owns no map data.
 
 const Regions = preload("res://scripts/prototypes/ember_compact_water_regions.gd")
-const STUDY_EXTENT_CELLS := 22 * 384 # Same bounded 528 m envelope as terrain sections.
+const Sections = preload("res://scripts/prototypes/ember_terrain_sections.gd")
 
 
 func terrain_extent_error(extent: Vector2i) -> String:
-	return "Карта превышает проверяемую оболочку участков 528 м по оси." if maxi(extent.x, extent.y) > STUDY_EXTENT_CELLS else ""
+	if mini(extent.x, extent.y) < 1: return "Размер карты воды должен быть положительным."
+	# Water already builds bounded section+halo fields. Use the same supported
+	# data envelope as the terrain owner, rather than a stale laboratory limit.
+	var limit := Sections.MAX_AXIS * Sections.CELLS
+	return "Карта превышает поддерживаемую оболочку участков %d м по оси." % (limit / EmberTerrainPilotResource.CELLS_PER_BLOCK) if maxi(extent.x, extent.y) > limit else ""
 
 
 func _study_document(document: EmberTerrainPilotResource) -> EmberTerrainPilotResource:
@@ -17,6 +21,15 @@ func _study_document(document: EmberTerrainPilotResource) -> EmberTerrainPilotRe
 	# The saved/edited terrain remains sectioned; large maps never allocate it.
 	return document
 
+## Comparison scenes retain their controls/camera; ordinary maps use their own editor and hero camera.
+@export var study_controls := true
+@export var shallow_color := Color(0.12, 0.72, 0.78)
+@export var deep_color := Color(0.025, 0.34, 0.66)
+@export_range(0.0, 31.99, 0.01) var water_color_start_m := 0.20
+@export_range(0.01, 32.0, 0.01) var water_color_end_m := 2.35
+@export_range(0.0, 1.0, 0.01) var water_color_softness := 1.0
+@export_range(0.0, 8.0, 0.01) var water_density := 1.0
+@export_range(0.0, 1.0, 0.01) var water_transparency := 1.0
 @export_range(0.0, 1.0, 0.01) var scene_reflection := 0.0
 @export_range(0.0, 1.0, 0.01) var sky_roughness := 0.0
 @export_range(0.0, 1.0, 0.01) var sky_reflection := 0.15
@@ -57,6 +70,8 @@ func _study_document(document: EmberTerrainPilotResource) -> EmberTerrainPilotRe
 @export_range(0.0, 1.0, 0.01) var sea_foam_strength := 1.0
 @export_range(0.0, 1.0, 0.01) var sea_foam_trail_strength := 0.38
 @export_range(0.3, 4.0, 0.1) var sea_foam_trail_lifetime := 2.2
+@export_range(0.0, 1.0, 0.01) var sea_crest_foam_strength := 0.0
+@export_range(0.0, 1.0, 0.01) var sea_crest_foam_amount := 0.28
 @export_range(0.0, 1.0, 0.01) var sand_wet_strength := 0.55
 @export_range(3.0, 20.0, 0.5) var sand_drying_seconds := 12.0
 @export_range(0.0, 1.0, 0.01) var waterfall_strength := 1.0
@@ -72,7 +87,7 @@ func _study_document(document: EmberTerrainPilotResource) -> EmberTerrainPilotRe
 @export_range(0.0, 1.0, 0.01) var underwater_haze := 0.55
 @export_range(0.0, 1.0, 0.01) var underwater_caustics := 0.80
 @export_range(0.0, 1.0, 0.01) var underwater_shafts := 0.42
-@export_enum("Выключено", "Запечённый цикл", "Живая симуляция") var obstacle_wave_mode := 0
+@export_enum("Выключено", "Запечённый цикл", "Живое взаимодействие") var obstacle_wave_mode := 0
 @export_range(0.0, 1.0, 0.05) var obstacle_wave_strength := 0.85
 
 const WATER_LAYER := 2
@@ -83,10 +98,15 @@ const RiverPhase = preload("res://scripts/prototypes/ember_compact_river_phase.g
 # UI metadata only. Saved values belong to this existing scene controller.
 # Both the editor panel and the runtime comparison route to those properties.
 const WATER_VALUES := {
+	"water_color_start_m": ["Начало перехода, м", 0.0, 31.99, 0.01, "Цвет и прозрачность"],
+	"water_color_end_m": ["Конец перехода, м", 0.01, 32.0, 0.01, "Цвет и прозрачность"],
+	"water_color_softness": ["Мягкость смешивания", 0.0, 1.0, 0.01, "Цвет и прозрачность"],
+	"water_density": ["Оптическая плотность", 0.0, 8.0, 0.01, "Цвет и прозрачность"],
+	"water_transparency": ["Прозрачность", 0.0, 1.0, 0.01, "Цвет и прозрачность"],
 	"water_detail_begin_m": ["Полные детали до, м", 0.0, 511.0, 1.0, "Дальность деталей"],
 	"water_detail_end_m": ["Упрощённые детали от, м", 1.0, 512.0, 1.0, "Дальность деталей"],
-	"obstacle_wave_mode": ["Обтекание препятствий", 0.0, 2.0, 1.0, "Волны и препятствия", ["Выключено", "Запечённый цикл", "Живая симуляция"]],
-	"obstacle_wave_strength": ["Сила обтекания", 0.0, 1.0, 0.05, "Волны и препятствия"],
+	"obstacle_wave_mode": ["Взаимодействие объектов", 0.0, 2.0, 1.0, "Волны и препятствия", ["Выключено", "Запечённый цикл", "Живое взаимодействие"]],
+	"obstacle_wave_strength": ["Сила взаимодействия", 0.0, 1.0, 0.05, "Волны и препятствия"],
 	"wave_height_voxels": ["Высота волн", 0.0, 4.0, 0.1, "Поверхность и течение"],
 	"river_flow_speed": ["Скорость реки", 0.0, 3.0, 0.01, "Поверхность и течение"],
 	"river_wave_mix": ["Сила речных волн", 0.0, 1.0, 0.01, "Поверхность и течение"],
@@ -105,7 +125,9 @@ const WATER_VALUES := {
 	"sea_approach_strength": ["Сила волны до берега", 0.0, 1.0, 0.01, "Море и берег"],
 	"sea_foam_strength": ["Пена морской волны", 0.0, 1.0, 0.01, "Море и берег"],
 	"sea_foam_trail_strength": ["Морские пенные разводы", 0.0, 1.0, 0.01, "Море и берег"],
-	"sea_foam_trail_lifetime": ["Затухание морских разводов, с", 0.3, 4.0, 0.1, "Море и берег"],
+	"sea_foam_trail_lifetime": ["Затухание пены и разводов, с", 0.3, 4.0, 0.1, "Море и берег"],
+	"sea_crest_foam_strength": ["Пена на гребнях", 0.0, 1.0, 0.01, "Море и берег"],
+	"sea_crest_foam_amount": ["Количество пены на гребнях", 0.0, 1.0, 0.01, "Море и берег"],
 	"sand_wet_strength": ["Мокрый след на песке", 0.0, 1.0, 0.01, "Море и берег"],
 	"sand_drying_seconds": ["Высыхание песка, с", 3.0, 20.0, 0.5, "Море и берег"],
 	"waterfall_strength": ["Сила водопада", 0.0, 1.0, 0.01, "Водопад"],
@@ -142,6 +164,11 @@ const WATER_VALUES := {
 	"underwater_shafts": ["Лучи в воде", 0.0, 1.0, 0.01, "Отражения и глубина"],
 }
 
+const WATER_COLORS := {
+	"shallow_color": "Цвет мелководья",
+	"deep_color": "Цвет глубины",
+}
+
 var _viewport: SubViewport
 var _camera: Camera3D
 var _floor_viewport: SubViewport
@@ -176,6 +203,8 @@ var _flow_texture: ImageTexture
 var _height_texture: ImageTexture
 var _shore_texture: ImageTexture
 var _contact_texture: ImageTexture
+var _contact_distance_image: Image
+var _contact_distance_ids := PackedInt64Array()
 var _phase_texture: ImageTexture
 var _water_regions: RefCounted
 var runtime_water_activity_enabled := true # Runtime experiment switch; no authored setting.
@@ -193,6 +222,7 @@ var _surface_distance := 410.0
 var _surface_polar := 1.14
 var _surface_yaw := 0.48
 var _surface_contacts: Array[EmberWaterContact3D] = []
+var _surface_contacts_dirty := true
 var _reaction_preview := false
 var _reaction_clock := 0.0
 var _reaction_prop: Node3D
@@ -201,18 +231,27 @@ var _apply_button: Button
 var _apply_status: Label
 var _apply_pending_ms := 0
 var _wave_obstacles: RefCounted
-var _obstacle_signature := 0
+var _obstacle_pending: RefCounted
+var _obstacle_task := -1
+var _obstacle_pending_signature := 0
+var _obstacle_builds := 0
 var _obstacle_status: Label
 var _obstacle_poll_ms := 0
 var _obstacle_shapes_signature := 0
 var _obstacle_settings_signature := 0
-var _obstacle_runtime_motion := false
 
 
 func water_settings_snapshot() -> Dictionary:
 	var values: Dictionary = {}
 	for key in WATER_VALUES: values[key] = get(key)
+	for key in WATER_COLORS: values[key] = get(key)
 	return values
+
+
+func water_color_depth_value(key: String, value: float) -> float:
+	if key == "water_color_start_m": return minf(value, water_color_end_m - 0.01)
+	if key == "water_color_end_m": return maxf(value, water_color_start_m + 0.01)
+	return value
 
 
 func _apply_in_editor() -> void:
@@ -235,6 +274,14 @@ func _capture_water_message(message: String, data: Array) -> bool:
 
 
 func _exit_tree() -> void:
+	if RenderingServer.frame_pre_draw.is_connected(_update_floor_capture_demand):
+		RenderingServer.frame_pre_draw.disconnect(_update_floor_capture_demand)
+	if _obstacle_task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_obstacle_task)
+		_obstacle_task = -1
+	if get_tree().node_added.is_connected(_on_surface_contact_tree_changed):
+		get_tree().node_added.disconnect(_on_surface_contact_tree_changed)
+		get_tree().node_removed.disconnect(_on_surface_contact_tree_changed)
 	if _water_regions != null: _water_regions.close()
 	if not Engine.is_editor_hint() and EngineDebugger.has_capture("ember_water"):
 		EngineDebugger.unregister_message_capture("ember_water")
@@ -257,6 +304,9 @@ func _reflection_size() -> Vector2i:
 func _ready() -> void:
 	if Engine.is_editor_hint():
 		return
+	_surface_contacts_dirty = true
+	get_tree().node_added.connect(_on_surface_contact_tree_changed)
+	get_tree().node_removed.connect(_on_surface_contact_tree_changed)
 	if EngineDebugger.is_active():
 		EngineDebugger.register_message_capture("ember_water", _capture_water_message)
 	_viewport = SubViewport.new()
@@ -276,14 +326,16 @@ func _ready() -> void:
 	_floor_viewport.size = get_viewport().size
 	_floor_viewport.transparent_bg = true
 	_floor_viewport.world_3d = get_viewport().world_3d
-	_floor_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	_floor_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	add_child(_floor_viewport)
 	_floor_camera = Camera3D.new()
 	_floor_camera.name = "UnderwaterFloorCamera"
 	_floor_camera.cull_mask = REFRACTION_PASS_LAYER
 	_floor_viewport.add_child(_floor_camera)
 	_floor_camera.make_current()
-	_create_controls()
+	RenderingServer.frame_pre_draw.connect(_update_floor_capture_demand)
+	if study_controls: _create_controls()
+	else: _water_view = false
 
 
 func _process(_delta: float) -> void:
@@ -294,24 +346,28 @@ func _process(_delta: float) -> void:
 	_prepare_water()
 	if not _prepared:
 		return
+	# Gameplay actors are spawned after the terrain/water becomes ready.
+	# Rebind only on contact lifecycle events, never by rebuilding shore fields.
+	if _surface_contacts_dirty and not Engine.is_editor_hint():
+		var contact_map := water_settings_map()
+		if is_instance_valid(contact_map) and is_instance_valid(contact_map._visual_surface_projection):
+			_make_contact_texture(_terrain, contact_map._visual_surface_projection, contact_map)
 	_refresh_sea_swash()
 	_refresh_waterfall()
 	_refresh_wave_obstacles()
+	_upload_surface_contacts()
 	if Engine.is_editor_hint():
 		_sync_sun_direction()
 		_refresh_editor_preview()
 		return
 	_update_reaction_preview(_delta)
 	_sync_sun_direction()
-	_upload_surface_contacts()
 	initialize_startup_camera()
 	var source := get_viewport().get_camera_3d()
 	if source == null:
 		return
 	_update_underwater(source.global_position)
 	var above_surface := source.global_position.y >= _water_height
-	_floor_viewport.render_target_update_mode = (SubViewport.UPDATE_ALWAYS
-		if above_surface else SubViewport.UPDATE_DISABLED)
 	_viewport.render_target_update_mode = (SubViewport.UPDATE_ALWAYS
 		if above_surface and scene_reflection > 0.0 else SubViewport.UPDATE_DISABLED)
 	if _viewport.size != _reflection_size():
@@ -351,6 +407,20 @@ func _process(_delta: float) -> void:
 	_set_water_parameter_if_changed("reflection_view_projection", reflection_view, scene_reflection > 0.0)
 
 
+func _update_floor_capture_demand() -> void:
+	# Publication can run after this controller's _process. Decide immediately
+	# before drawing so a newly published water mesh gets a fresh floor image.
+	if not _prepared or not is_instance_valid(_floor_viewport):return
+	var source:=get_viewport().get_camera_3d()
+	if source==null:return
+	var map:=water_settings_map()
+	var projection:=map._visual_surface_projection if is_instance_valid(map) else null
+	# Unknown/replacing owners stay conservative; region readiness is not demand.
+	var needed:bool=source.global_position.y>=_water_height
+	if is_instance_valid(projection):needed=needed and projection.has_visible_water(source.cull_mask)
+	_floor_viewport.render_target_update_mode=SubViewport.UPDATE_ALWAYS if needed else SubViewport.UPDATE_DISABLED
+
+
 func _refresh_editor_preview() -> void:
 	if Time.get_ticks_msec() < _preview_poll_ms:
 		return
@@ -369,7 +439,6 @@ func _refresh_editor_preview() -> void:
 	if contacts != _contact_signature:
 		_contact_texture = _make_contact_texture(projection.document, projection, map)
 		_material.set_shader_parameter("object_contact_distance_map", _contact_texture)
-		_material.set_shader_parameter("object_contact_available", 1.0 if not _surface_contacts.is_empty() else 0.0)
 		_sync_region_parameters()
 		_contact_signature = contacts
 	if _current_parameter_signature() != _parameter_signature:
@@ -378,16 +447,19 @@ func _refresh_editor_preview() -> void:
 
 func _current_contact_signature(map: EmberMapLoader) -> int:
 	var shapes: Array = []
-	for node in map.find_children("*", "EmberWaterContact3D", true, false):
+	for node in map.get_parent().find_children("*", "EmberWaterContact3D", true, false):
 		var contact := node as EmberWaterContact3D
-		shapes.append([contact.get_instance_id(), contact.static_surface_foam_footprint,
-			contact.foam_footprint_shape(_water_height)])
+		shapes.append([contact.get_instance_id(), contact.get_parent().is_visible_in_tree(),
+			contact.static_surface_foam_footprint,
+			contact.water_interaction_shape(_water_height) if obstacle_wave_mode > 0 else (contact.foam_footprint_shape(_water_height) if contact.static_surface_foam_footprint else {})])
 	return hash(shapes)
 
 
 func _current_parameter_signature() -> int:
 	var values: Array = []
 	for key in WATER_VALUES:
+		values.append(get(key))
+	for key in WATER_COLORS:
 		values.append(get(key))
 	return hash(values)
 
@@ -421,16 +493,18 @@ func startup_preparation_status() -> Dictionary:
 		return {"ready": false, "text": "Не удалось найти данные воды. Проверьте карту в редакторе."}
 	var extent_error := terrain_extent_error(Vector2i(map.compact_terrain.width, map.compact_terrain.depth))
 	if not extent_error.is_empty(): return {"ready": false, "text": extent_error}
-	if not _prepared:
+	if not _prepared or (_water_regions != null and not _water_regions.required_ready()):
 		return {"ready": false, "text": "Подключаем воду" if _water_regions != null and _water_regions.ready else "Готовим берега и воду"}
 	if obstacle_wave_mode != 0 and obstacle_wave_strength > 0.001 and (_wave_obstacles == null or not _wave_obstacles.ready):
-		return {"ready": false, "text": "Готовим волны у препятствий"}
+		var projection := map.get("_visual_surface_projection") as EmberTerrainPilotProjection
+		if projection != null and not _interaction_shapes(projection).is_empty():
+			return {"ready": false, "text": "Готовим волны у препятствий"}
 	return {"ready": true, "text": "Вода готова"}
 
 
 func initialize_startup_camera() -> void:
 	_prepare_camera()
-	if not _waterfall_camera_initialized and _follow != null and _waterfall != null and not _waterfall.info.is_empty():
+	if study_controls and not _waterfall_camera_initialized and _follow != null and _waterfall != null and not _waterfall.info.is_empty():
 		_show_waterfall()
 		_waterfall_camera_initialized = true
 
@@ -443,6 +517,13 @@ func _prepare_camera() -> void:
 		return
 	_hero_target = _follow.target
 	_hero_fov = _follow.fov
+	_environment = (get_parent().get_node("Map/Look/WorldEnvironment") as WorldEnvironment).environment
+	var reflection_environment := _environment.duplicate() as Environment
+	reflection_environment.background_mode = Environment.BG_COLOR
+	reflection_environment.background_color = Color(0.0, 0.0, 0.0, 0.0)
+	_camera.environment = reflection_environment
+	_floor_camera.environment = reflection_environment
+	if not study_controls: return
 	_study_target = Node3D.new()
 	_study_target.name = "WaterViewTarget"
 	get_parent().add_child(_study_target)
@@ -451,12 +532,6 @@ func _prepare_camera() -> void:
 	_study_target.global_position = Vector3(float(_terrain.width) * 0.49,
 		_water_height, float(_terrain.depth) * 0.70)
 	_surface_target_position = _study_target.global_position
-	_environment = (get_parent().get_node("Map/Look/WorldEnvironment") as WorldEnvironment).environment
-	var reflection_environment := _environment.duplicate() as Environment
-	reflection_environment.background_mode = Environment.BG_COLOR
-	reflection_environment.background_color = Color(0.0, 0.0, 0.0, 0.0)
-	_camera.environment = reflection_environment
-	_floor_camera.environment = reflection_environment
 	_follow.target = _study_target
 	_follow.pitch_lock = false
 	_follow.polar_min = 0.20
@@ -636,19 +711,21 @@ func _prepare_water() -> void:
 		_region_projection_id = projection.get_instance_id()
 		_region_staged = false
 		_prepared = false
-	if _prepared and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT): return
+	_configure_region_preparation(projection, map)
+	if _prepared and Engine.is_editor_hint() and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT): return
 	if _water_regions._revision != projection.column_revision():
 		projection.cancel_water_regions()
 		_region_staged = false
 		_apply_parameters()
 		_water_regions.request(_terrain, projection.column_revision())
-	if _prepared and _field_revision == projection.column_revision(): return
+	if _prepared and _field_revision == projection.column_revision() and not _water_regions.has_pending_preparation(): return
 	if not _water_regions.prepare(3000, _material, _ground_material, Vector2(projection.global_position.x, projection.global_position.z)): return
 	if not _region_staged:
 		projection.stage_water_regions(_water_regions)
 		_region_staged = true
 	if projection.pending_tile_count() > 0 or not _water_regions.gpu_ready(): return
 	var publish_started := Time.get_ticks_usec()
+	var source_changed := not _prepared or _field_revision != projection.column_revision()
 	_water_regions.commit()
 	_sea_swash = _water_regions
 	_waterfall = _water_regions.waterfall
@@ -659,19 +736,18 @@ func _prepare_water() -> void:
 	_material.set_shader_parameter("flow_origin_xz", Vector2(projection.global_position.x, projection.global_position.z))
 	_material.set_shader_parameter("flow_map_extent_blocks", Vector2(_terrain.width, _terrain.depth) / 16.0)
 	_material.set_shader_parameter("river_flow_enabled", 1.0 if _terrain.has_flow() else 0.0)
-	_material.set_shader_parameter("shore_field_available", 1.0)
+	_material.set_shader_parameter("shore_field_available", 0.0)
 	_material.set_shader_parameter("ripple_cell_field", preload("res://scripts/prototypes/ember_compact_ripple_field.gd").texture())
 	_material.set_shader_parameter("ripple_field_available", 1.0)
 	_base_water_height = _water_regions.stats.get("base_water_height", 16.02)
 	_water_height = _base_water_height + water_level_offset_voxels
-	_make_contact_texture(_terrain, projection, map)
-	_material.set_shader_parameter("object_contact_available", 1.0 if not _surface_contacts.is_empty() else 0.0)
+	if source_changed: _make_contact_texture(_terrain, projection, map)
 	if not Engine.is_editor_hint():
 		for tile: Node3D in projection._tiles.values():
 			(tile.get_node("Water") as MeshInstance3D).layers = WATER_LAYER
 			(tile.get_node("Ground") as MeshInstance3D).layers |= REFRACTION_PASS_LAYER
 		_ground_material.set_shader_parameter("reflection_pass_enabled", true)
-		_create_underwater_light(map)
+		if source_changed: _create_underwater_light(map)
 		_material.set_shader_parameter("planar_reflection", _viewport.get_texture())
 		_material.set_shader_parameter("floor_refraction", _floor_viewport.get_texture())
 	_material.set_shader_parameter("floor_camera_available", 0.0 if Engine.is_editor_hint() else 1.0)
@@ -682,35 +758,63 @@ func _prepare_water() -> void:
 	_field_revision = projection.column_revision()
 	_projection_id = projection.get_instance_id()
 	_contact_signature = _current_contact_signature(map)
-	_wave_obstacles = null
-	_obstacle_signature = 0
+	if source_changed: _wave_obstacles = null
 	_fields_build_count += 1
 	_region_staged = false
 	_prepared = true
 	_water_regions.stats["publish_us"] = Time.get_ticks_usec() - publish_started
 
 
+func _configure_region_preparation(projection:EmberTerrainPilotProjection,map:EmberMapLoader)->void:
+	var observers:=PackedVector2Array()
+	if not Engine.is_editor_hint():
+		# The world entry creates Player only after the startup participants.
+		# Use the terrain's existing bootstrap/focus before the camera exists.
+		if projection._detail_observer_valid:observers.append(projection.detail_policy.anchor)
+		var camera:=get_viewport().get_camera_3d()
+		if camera!=null:
+			var local:=projection.to_local(camera.global_position)
+			observers.append(Vector2(local.x,local.z))
+			if camera.get_parent() is EmberFollowCamera:
+				var actor:Node3D=camera.get_parent().target
+				if is_instance_valid(actor):
+					local=projection.to_local(actor.global_position)
+					observers.append(Vector2(local.x,local.z))
+					if actor is EmberPlayer and is_instance_valid(actor.party_followers):
+						for follower:Node3D in actor.party_followers._followers:
+							if not is_instance_valid(follower):continue
+							local=projection.to_local(follower.global_position)
+							observers.append(Vector2(local.x,local.z))
+	var cell_world:=maxf(minf(projection.global_basis.x.length(),projection.global_basis.z.length()),0.0001)
+	var metre_world:=map.imported_tile_size*minf(map.global_basis.x.length(),map.global_basis.z.length())
+	# The shader uses world-space camera distance /16, including high wide views.
+	# An XZ circle conservatively contains its active 3D sphere at every FOV.
+	var detail_cells:=maxf(water_detail_end_m,water_detail_begin_m+1.0)*16.0/cell_world
+	_water_regions.configure_preparation(not Engine.is_editor_hint(),observers,
+		48.0*metre_world/cell_world,detail_cells,8.0*metre_world/cell_world)
+
+
+func _on_surface_contact_tree_changed(node: Node) -> void:
+	if node is EmberWaterContact3D:
+		_surface_contacts_dirty = true
+
+
 func _make_contact_texture(document: EmberTerrainPilotResource,
 		projection: EmberTerrainPilotProjection, map: EmberMapLoader) -> ImageTexture:
-	# The existing contact components provide the footprint. Only this trial
-	# paints opt-in primitive props directly onto the moving water surface.
-	var contacts: Array[Dictionary] = []
+	# Props provide optional static footprints; actors use the same contact
+	# owner's motion history on the moving surface, including siblings of Map.
 	_surface_contacts.clear()
-	for node in map.find_children("*", "EmberWaterContact3D", true, false):
+	_surface_contacts_dirty = false
+	for node in map.get_parent().find_children("*", "EmberWaterContact3D", true, false):
 		var contact := node as EmberWaterContact3D
 		contact.set_surface_integrated(false)
-		if not contact.static_surface_foam_footprint:
-			continue
-		if contacts.size() >= 8:
-			continue
-		var footprint := contact.foam_footprint_shape(_water_height)
-		if footprint.is_empty():
-			continue
-		contacts.append({"owner": contact, "shape": footprint})
+		# Hidden party members can become visible without a new node_added event.
+		# Cache them too; upload excludes hidden members and reserves slots only
+		# for visible contacts.
 		_surface_contacts.append(contact)
-	for entry in contacts: entry.owner.set_surface_integrated(true)
+		contact.set_surface_integrated(true)
 	_upload_surface_contacts()
-	return null
+	return _contact_texture
 
 
 func _upload_surface_contacts() -> void:
@@ -726,25 +830,66 @@ func _upload_surface_contacts() -> void:
 	wake_details.resize(12)
 	var count := 0
 	var wake_count := 0
+	var distance_images: Array[Image] = []
+	distance_images.resize(8)
+	var distance_ids := PackedInt64Array()
+	distance_ids.resize(8)
+	var map := water_settings_map()
+	var visible_contacts := 0
+	for contact in _surface_contacts:
+		if is_instance_valid(contact) and is_instance_valid(contact.get_parent()) and contact.get_parent().is_visible_in_tree():
+			visible_contacts += 1
+	var wake_budget := maxi(1, 12 / maxi(1, visible_contacts))
 	for contact in _surface_contacts:
 		if not is_instance_valid(contact): continue
-		var footprint := contact.foam_footprint_shape(_water_height)
+		if not is_instance_valid(contact.get_parent()) or not contact.get_parent().is_visible_in_tree(): continue
+		var footprint := contact.water_interaction_shape(_water_height) if obstacle_wave_mode > 0 else (contact.foam_footprint_shape(_water_height) if contact.static_surface_foam_footprint else {})
 		if not footprint.is_empty() and count < 8:
 			var center: Vector2 = footprint["center"] / 16.0
 			var half: Vector2 = footprint.get("half", Vector2.ONE * float(footprint.get("radius", 0.0))) / 16.0
+			var kind := 1.0 if footprint["kind"] == "circle" else 0.0
+			if footprint["kind"] == "mesh":
+				kind = 2.0
+				half = Vector2(footprint.distance_half) / 16.0
+				distance_images[count] = footprint.distance
+				distance_ids[count] = footprint.distance.get_instance_id()
 			shapes[count] = Vector4(center.x, center.y, half.x, half.y)
-			metadata[count] = Vector2(1.0 if footprint["kind"] == "circle" else 0.0, float(footprint.get("angle", 0.0)))
+			metadata[count] = Vector2(kind, float(footprint.get("angle", 0.0)))
 			count += 1
-		for sample in contact.surface_wake_samples(12 - wake_count):
+		if map == null or contact._projection != map._visual_surface_projection: continue
+		if obstacle_wave_mode == 2: continue
+		# The live field owns both the incoming-wave response and motion wake.
+		# Keep the legacy analytic path only where no live patch is available.
+		if _wave_obstacles != null and _wave_obstacles.dynamic_contacts and _wave_obstacles.ready and _wave_obstacles.mode == 2:
+			var shape := contact.water_interaction_shape(_water_height)
+			if not shape.is_empty():
+				shape.center -= Vector2(map._visual_surface_projection.global_position.x, map._visual_surface_projection.global_position.z)
+				if _wave_obstacles.covers_contact(shape): continue
+		# Reserve a share for every contact so a long leader trail cannot
+		# consume all shader slots before the companions are visited.
+		for sample in contact.surface_wake_samples(wake_budget):
 			if wake_count >= 12: break
 			var point: Vector3 = sample["position"]
 			var forward: Vector2 = sample["forward"]
 			wakes[wake_count] = Vector4(point.x / 16.0, point.z / 16.0, float(sample["age"]), float(sample.get("strength", 1.0)))
 			wake_details[wake_count] = Vector4(forward.x, forward.y, float(sample["life"]), float(sample["radius"]))
 			wake_count += 1
+	if _contact_texture == null or distance_ids != _contact_distance_ids:
+		_contact_distance_ids = distance_ids
+		if _contact_distance_image == null:
+			_contact_distance_image = Image.create_empty(64, 64 * 8, false, Image.FORMAT_RF)
+		_contact_distance_image.fill(Color(1000,0,0,1))
+		for i in range(8):
+			if distance_images[i] != null:
+				_contact_distance_image.blit_rect(distance_images[i], Rect2i(0,0,64,64), Vector2i(0,i*64))
+		if _contact_texture == null: _contact_texture = ImageTexture.create_from_image(_contact_distance_image)
+		else: _contact_texture.update(_contact_distance_image)
+	_set_water_parameter_if_changed("object_contact_distance_map", _contact_texture)
 	_set_water_parameter_if_changed("object_shapes", shapes)
 	_set_water_parameter_if_changed("object_shape_meta", metadata)
 	_set_water_parameter_if_changed("object_shape_count", count)
+	_set_water_parameter_if_changed("object_contact_available", 1.0 if visible_contacts > 0 else 0.0)
+	_set_water_parameter_if_changed("object_wave_interaction", 1.0 if obstacle_wave_mode > 0 else 0.0)
 	_set_water_parameter_if_changed("reaction_samples", wakes)
 	_set_water_parameter_if_changed("reaction_details", wake_details)
 	_set_water_parameter_if_changed("reaction_count", wake_count)
@@ -896,64 +1041,126 @@ func _refresh_region_activity(fixed_time: float) -> void:
 		_water_regions.set_runtime_activity(false)
 
 
+func _obstacle_sea_snapshot(source: RefCounted) -> RefCounted:
+	var copy := preload("res://scripts/prototypes/ember_compact_sea_swash.gd").new()
+	copy._source = source._source.working_copy()
+	copy.bounds = source.bounds
+	for key in ["_slots", "_info", "_state", "_foam_age", "_record_pixels", "_phase_groups", "_distance_groups"]:
+		copy.set(key, source.get(key).duplicate())
+	return copy
+
+
+func _obstacle_coast_snapshot() -> RefCounted:
+	if _sea_swash == null: return null
+	if _sea_swash != _water_regions: return _obstacle_sea_snapshot(_sea_swash)
+	var copy := Regions.new()
+	for key in _water_regions.regions:
+		var entry: Dictionary = _water_regions.regions[key]
+		copy.regions[key] = {"window": entry.window, "core": entry.core,
+			"shore_data": entry.shore_data, "sea": _obstacle_sea_snapshot(entry.sea)}
+	return copy
+
+
+func _interaction_shapes(projection: EmberTerrainPilotProjection) -> Array[Dictionary]:
+	var shapes: Array[Dictionary] = []
+	for contact in _surface_contacts:
+		if not is_instance_valid(contact): continue
+		var shape := contact.water_interaction_shape(_water_height)
+		if shape.is_empty(): continue
+		var point := Vector3(shape.center.x, _water_height, shape.center.y)
+		if not projection.water_surface_sample(point).get("wet", false): continue
+		shape.center -= Vector2(projection.global_position.x, projection.global_position.z)
+		shape.velocity = shape.get("velocity", Vector2.ZERO) * reaction_strength
+		shapes.append(shape)
+		if shapes.size() == 8: break
+	return shapes
+
+
+func _contact_coast_signature(shapes:Array[Dictionary])->Array:
+	# A prepared contact can outlive a streamed coast. Rebuild only when the
+	# field underneath a participating contact arrives/releases, not for every
+	# unrelated far-water batch (which would restart the startup gate).
+	var contact_coasts:Array=[]
+	if _water_regions!=null:
+		for shape in shapes:
+			var key:=Vector2i(floori(shape.center.x/Regions.SIZE),floori(shape.center.y/Regions.SIZE))
+			var entry:Dictionary=_water_regions.regions.get(key,{})
+			contact_coasts.append(entry.sea.get_instance_id() if not entry.is_empty() else 0)
+	return contact_coasts
+
+
 func _refresh_wave_obstacles() -> void:
 	if _material == null or _terrain == null: return
 	var map := water_settings_map()
 	var projection := map.get("_visual_surface_projection") as EmberTerrainPilotProjection if is_instance_valid(map) else null
 	if projection == null: return
 	if obstacle_wave_mode == 0 or obstacle_wave_strength <= 0.001:
-		_material.set_shader_parameter("obstacle_patch_count", 0)
-		if _water_regions != null: _water_regions.set_water_parameter("obstacle_patch_count", 0)
-		if _wave_obstacles != null:
-			_wave_obstacles.advance(_wave_obstacles.current_time, 0, obstacle_wave_strength)
-		if is_instance_valid(_obstacle_status): _obstacle_status.text = "Обтекание выключено"
+		_set_water_parameter_if_changed("obstacle_patch_count", 0)
+		if _wave_obstacles != null: _wave_obstacles.advance(_wave_obstacles.current_time, 0, obstacle_wave_strength)
+		if _obstacle_task >= 0 and WorkerThreadPool.is_task_completed(_obstacle_task):
+			WorkerThreadPool.wait_for_task_completion(_obstacle_task); _obstacle_task = -1; _obstacle_pending = null
+		if is_instance_valid(_obstacle_status): _obstacle_status.text = "Взаимодействие с волнами выключено"
 		return
 	var now := Time.get_ticks_msec()
-	if now >= _obstacle_poll_ms:
-		_obstacle_poll_ms = now + 250
-		var shapes: Array[Dictionary] = []
-		for contact in _surface_contacts:
-			if not is_instance_valid(contact): continue
-			var shape := contact.foam_footprint_shape(_water_height)
-			if shape.is_empty(): continue
-			shape.center -= Vector2(projection.global_position.x, projection.global_position.z)
-			shapes.append(shape)
-		var settings := {"wave_speed": float(_material.get_shader_parameter("wave_speed")),
-			"river_speed": river_flow_speed, "wave_height": wave_height_voxels, "river_mix": river_wave_mix,
-			"spacing": river_wave_spacing_blocks, "opening": river_arc_opening,
-			"sea_period": sea_swash_period, "sea_height": sea_swash_height, "sea_reach": sea_swash_reach,
-			"sea_approach": sea_approach_distance, "sea_approach_strength": sea_approach_strength,
-			"offset": water_level_offset_voxels}
-		var next_signature := hash([shapes, settings, _field_revision])
-		var shape_signature := hash(shapes)
-		var settings_signature := hash(settings)
-		_obstacle_runtime_motion = (not Engine.is_editor_hint() and _wave_obstacles != null
-			and shape_signature != _obstacle_shapes_signature and settings_signature == _obstacle_settings_signature)
-		# The comparison concerns fixed obstacles. The moving-stone demonstration
-		# retains its existing wake rather than rebuilding a cache every frame.
-		if not _reaction_preview and not _obstacle_runtime_motion and (_wave_obstacles == null or next_signature != _obstacle_signature):
-			_wave_obstacles = preload("res://scripts/prototypes/ember_compact_wave_obstacles.gd").new()
-			_wave_obstacles.build(_terrain, shapes, _phase_texture.get_image() if _phase_texture != null else null,
-				_shore_texture.get_image() if _shore_texture != null else null, _sea_swash, settings)
-			_obstacle_signature = next_signature
-			_obstacle_shapes_signature = shape_signature
+	var shapes := _interaction_shapes(projection)
+	var settings := {"wave_speed": float(_material.get_shader_parameter("wave_speed")),
+		"river_speed": river_flow_speed, "wave_height": wave_height_voxels, "river_mix": river_wave_mix,
+		"spacing": river_wave_spacing_blocks, "opening": river_arc_opening,
+		"sea_period": sea_swash_period, "sea_height": sea_swash_height, "sea_reach": sea_swash_reach,
+		"sea_approach": sea_approach_distance, "sea_approach_strength": sea_approach_strength,
+		"offset": water_level_offset_voxels}
+	var settings_signature := hash([settings, _field_revision, obstacle_wave_mode, _contact_coast_signature(shapes)])
+	var moving := false
+	for shape in shapes:
+		if shape.velocity.length_squared() > 0.001: moving = true
+	var dynamic: bool = obstacle_wave_mode == 2 or moving or (_wave_obstacles != null and _wave_obstacles.dynamic_contacts and settings_signature == _obstacle_settings_signature)
+	if _obstacle_task >= 0 and WorkerThreadPool.is_task_completed(_obstacle_task):
+		WorkerThreadPool.wait_for_task_completion(_obstacle_task); _obstacle_task = -1
+		if _obstacle_pending_signature == settings_signature:
+			if dynamic: _obstacle_pending.inherit_live(_wave_obstacles)
+			_wave_obstacles = _obstacle_pending
 			_obstacle_settings_signature = settings_signature
+			_obstacle_shapes_signature = hash(shapes)
 			projection.set_wave_obstacles(_wave_obstacles)
+		_obstacle_pending = null
+	if now >= _obstacle_poll_ms:
+		_obstacle_poll_ms = now + 50
+		var needs_field: bool = _wave_obstacles == null or settings_signature != _obstacle_settings_signature or dynamic != _wave_obstacles.dynamic_contacts
+		if not needs_field and dynamic:
+			var active_ids := PackedInt64Array()
+			for shape in shapes: active_ids.append(int(shape.id))
+			var has_slot: bool = _wave_obstacles.patches.size() < _wave_obstacles.MAX_PATCHES
+			for id in _wave_obstacles.accepted_contact_ids:
+				if not active_ids.has(id): has_slot = true
+			for shape in shapes:
+				if not _wave_obstacles.covers_contact(shape) and (has_slot or _wave_obstacles.accepted_contact_ids.has(int(shape.id))):
+					needs_field = true; break
+		elif not dynamic and hash(shapes) != _obstacle_shapes_signature: needs_field = true
+		if needs_field and _obstacle_task < 0 and not shapes.is_empty():
+			_obstacle_pending = preload("res://scripts/prototypes/ember_compact_wave_obstacles.gd").new()
+			_obstacle_pending_signature = settings_signature
+			# Freeze data through the existing terrain snapshot path only when a
+			# patch is prepared; ordinary motion updates just its small contour.
+			var document := _terrain.working_copy()
+			var coast := _obstacle_coast_snapshot()
+			_obstacle_task = WorkerThreadPool.add_task(_obstacle_pending.build.bind(document, shapes.duplicate(true),
+				_phase_texture.get_image() if _phase_texture != null else null,
+				_shore_texture.get_image() if _shore_texture != null else null, coast, settings, dynamic), false, "Water contact field")
+			_obstacle_builds += 1
+		if _wave_obstacles != null and _wave_obstacles.dynamic_contacts:
+			_wave_obstacles.update_contacts(shapes)
 	if _wave_obstacles == null: return
-	_wave_obstacles.prepare(3000)
+	_wave_obstacles.prepare(1500)
 	var fixed_time: float = _material.get_shader_parameter("preview_time")
 	_wave_obstacles.advance(fixed_time if fixed_time >= 0.0 else float(now) / 1000.0,
-		0 if _reaction_preview or _obstacle_runtime_motion else obstacle_wave_mode, obstacle_wave_strength,
+		2 if _wave_obstacles.dynamic_contacts else obstacle_wave_mode, obstacle_wave_strength,
 		_sea_swash._last_time if _sea_swash != null else -1.0)
 	_wave_obstacles.bind(_material, Vector2(projection.global_position.x, projection.global_position.z))
 	if _water_regions != null:
 		for key in ["obstacle_patch_count", "obstacle_bounds", "obstacle_details", "obstacle_baked_field", "obstacle_live_field", "obstacle_mode", "obstacle_strength", "obstacle_time"]:
 			_water_regions.set_water_parameter(key, _material.get_shader_parameter(key))
 	if is_instance_valid(_obstacle_status):
-		_obstacle_status.text = ("Обтекание: только неподвижные объекты" if _reaction_preview or _obstacle_runtime_motion
-			else "Подготовка обтекания…" if not _wave_obstacles.ready else "Нет погружённых препятствий" if _wave_obstacles.patches.is_empty()
-			else "Запечённый цикл · расчёт волн отключён" if obstacle_wave_mode == 1
-			else "Живая симуляция · расчёт %.2f мс" % (float(_wave_obstacles.update_us) / 1000.0))
+		_obstacle_status.text = "Готовим локальное взаимодействие…" if not _wave_obstacles.ready else ("Живое взаимодействие · %.2f мс" % (float(_wave_obstacles.update_us + _wave_obstacles.contact_update_us) / 1000.0) if _wave_obstacles.dynamic_contacts else "Запечённое взаимодействие")
 
 
 func _apply_parameters() -> void:
@@ -964,10 +1171,16 @@ func _apply_parameters() -> void:
 	var projection := map.get("_visual_surface_projection") as EmberTerrainPilotProjection if is_instance_valid(map) else null
 	if projection != null:
 		projection.set_water_surface_offset(water_level_offset_voxels)
+	var blocks_per_m := map.imported_tile_size / 16.0 if map != null else 1.0
+	_material.set_shader_parameter("deep_start_blocks", water_color_start_m * blocks_per_m)
+	_material.set_shader_parameter("deep_end_blocks", maxf(water_color_end_m, water_color_start_m + 0.01) * blocks_per_m)
+	for key in WATER_COLORS: _material.set_shader_parameter(key, get(key))
+	for key in ["water_color_softness", "water_density", "water_transparency"]:
+		_material.set_shader_parameter(key, get(key))
 	_material.set_shader_parameter("water_level_world", _water_height)
 	_material.set_shader_parameter("sea_swash_strength", sea_swash_height)
 	_material.set_shader_parameter("sea_swash_period", sea_swash_period)
-	for key in ["sea_foam_strength", "sea_foam_trail_strength", "sea_foam_trail_lifetime"]:
+	for key in ["sea_foam_strength", "sea_foam_trail_strength", "sea_foam_trail_lifetime", "sea_crest_foam_strength", "sea_crest_foam_amount"]:
 		_material.set_shader_parameter(key, get(key))
 	_sea_update_ms = 0
 	_waterfall_update_ms = 0
@@ -1119,6 +1332,20 @@ func _create_controls() -> void:
 			water_rows.add_child(body)
 			toggle.toggled.connect(func(open: bool): body.visible = open; toggle.text = group + (" ▾" if open else " ▸"))
 			groups[group] = body
+			if group == "Цвет и прозрачность":
+				for color_key in WATER_COLORS:
+					var color_row := HBoxContainer.new()
+					body.add_child(color_row)
+					var caption := Label.new()
+					caption.text = WATER_COLORS[color_key]
+					caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+					color_row.add_child(caption)
+					var picker := ColorPickerButton.new()
+					picker.edit_alpha = false
+					picker.color = get(color_key)
+					picker.custom_minimum_size = Vector2(68, 26)
+					color_row.add_child(picker)
+					picker.color_changed.connect(func(value: Color): set(color_key, value); _apply_parameters())
 		var minimum := float(spec[1])
 		var span := float(spec[2]) - minimum
 		if spec.size() > 5:
@@ -1132,14 +1359,20 @@ func _create_controls() -> void:
 			choice.item_selected.connect(func(index: int): set(key, index); _apply_parameters())
 			groups[group].add_child(choice)
 			continue
-		_add_slider(groups[group], spec[0], (float(get(key)) - minimum) / span,
-			func(value: float): set(key, clampf(minimum + value * span, minimum, minimum + span)); _apply_parameters(),
+		var setting_row := _add_slider(groups[group], spec[0], (float(get(key)) - minimum) / span,
+			func(value: float): set(key, water_color_depth_value(key, clampf(minimum + value * span, minimum, minimum + span))); _apply_parameters(),
 			minimum, span, float(spec[3]) / span)
+		if key in ["water_color_start_m", "water_color_end_m"]:
+			var slider := setting_row.get_child(1) as HSlider
+			var readout := setting_row.get_child(2) as Label
+			slider.value_changed.connect(func(_value: float):
+				slider.set_value_no_signal((float(get(key)) - minimum) / span)
+				readout.text = "%.2f" % float(get(key)))
 
 
 
 func _add_slider(rows: VBoxContainer, caption: String, value: float,
-		callback: Callable, display_offset := 0.0, display_scale := 1.0, normalized_step := 0.01) -> void:
+		callback: Callable, display_offset := 0.0, display_scale := 1.0, normalized_step := 0.01) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	rows.add_child(row)
 	var label := Label.new()
@@ -1162,3 +1395,4 @@ func _add_slider(rows: VBoxContainer, caption: String, value: float,
 	row.add_child(readout)
 	slider.value_changed.connect(func(next_value: float) -> void:
 		readout.text = number_format % (next_value * display_scale + display_offset))
+	return row

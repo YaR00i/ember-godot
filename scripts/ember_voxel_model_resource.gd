@@ -64,6 +64,8 @@ const WORLD_SURFACE_DIRECTORY := "res://content/world_surfaces"
 ## Optional plane guides per merge part. The occupied voxels remain the Source;
 ## mesh and collider are fitted together. Empty preserves all legacy models.
 @export var solid_surface: Dictionary = {}
+## Static external original + cached looks. Edited voxels stay canonical for sculpting.
+@export var external_surface: Dictionary = {}
 
 @export_category("Surface fill layers")
 ## Sparse-by-convention column channels for level fills. Empty arrays mean that
@@ -132,6 +134,9 @@ func grid_size() -> Vector3i:
 
 func validation_errors() -> Array[String]:
 	var errors: Array[String] = []
+	if not external_surface.is_empty():
+		errors.append_array(load("res://scripts/ember_external_mesh_surface.gd").validation_errors(external_surface))
+		if solid_surface.is_empty() or not tree_surface.is_empty():errors.append("external mesh requires its editable solid volume")
 	errors.append_array(preload("res://scripts/ember_voxel_material_profiles.gd").validation_errors(material, palette.size()))
 	if not tree_surface.is_empty():errors.append_array(load("res://scripts/ember_tree_surface.gd").validation_errors(tree_surface))
 	if not solid_surface.is_empty():
@@ -208,7 +213,9 @@ func validation_errors() -> Array[String]:
 	return errors
 
 
-func to_definition() -> Dictionary:
+## Optional detached CPU buffers avoid expanding large voxel fields into Variant
+## arrays during derived preparation. The default serialized definition is unchanged.
+func to_definition(packed_buffers := false) -> Dictionary:
 	var model := {
 		"id": model_id,
 		"nameRu": display_name,
@@ -217,21 +224,22 @@ func to_definition() -> Dictionary:
 		"sizeBlocks": {"x": size_blocks.x, "y": size_blocks.y, "z": size_blocks.z},
 		"heightVoxels": height_voxels,
 		"palette": _palette_hex(),
-		"voxels": Array(voxels),
-		"emissive": Array(emissive),
-		"shine": Array(shine),
-		"transparency": Array(transparency),
-		"transmittance": Array(transmittance),
-		"collisionVoxels": Array(collision_voxels),
-		"surfaceFillLevels": Array(surface_fill_levels),
-		"surfaceFillMaterials": Array(surface_fill_materials),
-		"surfaceFillPalette": Array(surface_fill_palette),
+		"voxels": voxels.duplicate() if packed_buffers else Array(voxels),
+		"emissive": emissive.duplicate() if packed_buffers else Array(emissive),
+		"shine": shine.duplicate() if packed_buffers else Array(shine),
+		"transparency": transparency.duplicate() if packed_buffers else Array(transparency),
+		"transmittance": transmittance.duplicate() if packed_buffers else Array(transmittance),
+		"collisionVoxels": collision_voxels.duplicate() if packed_buffers else Array(collision_voxels),
+		"surfaceFillLevels": surface_fill_levels.duplicate() if packed_buffers else Array(surface_fill_levels),
+		"surfaceFillMaterials": surface_fill_materials.duplicate() if packed_buffers else Array(surface_fill_materials),
+		"surfaceFillPalette": surface_fill_palette.duplicate() if packed_buffers else Array(surface_fill_palette),
 		"voxelGroups": voxel_groups.duplicate(true),
-		"mergeParts": Array(merge_parts),
-		"voxelPartIds": Array(voxel_part_ids),
+		"mergeParts": merge_parts.duplicate() if packed_buffers else Array(merge_parts),
+		"voxelPartIds": voxel_part_ids.duplicate() if packed_buffers else Array(voxel_part_ids),
 		"material": material.duplicate(true),
 		"treeSurface": tree_surface.duplicate(true),
 		"solidSurface": solid_surface.duplicate(true),
+		"externalSurface": external_surface.duplicate(true),
 		"physical": physical,
 		"emissiveCastsLight": emissive_casts_light,
 		"emissiveLightRange": emissive_light_range,

@@ -4,7 +4,7 @@ extends RefCounted
 ## remains in the existing Ember schema; no Godot-only save format is created.
 
 const DEFAULT_MAP_ID := "landscape_compact"
-const RETIRED_MAP_IDS := ["fan_town", "fan_town_house", "fan_town_inn", "fan_town_mage", "fan_town_smith", "agent_sandbox", "agent_sandbox_interior"]
+const RETIRED_MAP_IDS := ["fan_town", "fan_town_house", "fan_town_inn", "fan_town_mage", "fan_town_smith", "agent_sandbox", "agent_sandbox_interior", "test_pier"]
 const RETURN_TRIGGER_GUARD_MS := 1200
 
 static var _pending_map_id := ""

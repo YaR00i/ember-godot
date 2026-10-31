@@ -17,6 +17,11 @@ class BoundWorldSelector extends WorldSelector:
 
 
 func _init() -> void:
+	if "--smooth-only" in OS.get_cmdline_user_args():
+		var errors:Array[String]=[]
+		_test_smooth_brush(errors)
+		print("SURFACE_SMOOTH_REGRESSION ",JSON.stringify({"pass":errors.is_empty(),"errors":errors}))
+		quit(0 if errors.is_empty() else 1);return
 	if "--native-selector-probe" in OS.get_cmdline_user_args():
 		quit(_native_selector_probe())
 		return

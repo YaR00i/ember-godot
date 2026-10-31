@@ -64,6 +64,10 @@ static func publish(built: Dictionary,parameters: Dictionary,seed: int) -> void:
 
 static func settings_errors(p: Dictionary) -> Array[String]:
 	var errors: Array[String]=[]
+	if p.has("plant_kind"):
+		if p.plant_kind!="shrub":errors.append("invalid branch plant kind")
+		var scale: Variant=p.get("shrub_leaf_scale")
+		if (not scale is float and not scale is int) or not is_finite(float(scale)) or scale<0.15 or scale>0.65:errors.append("invalid shrub leaf scale")
 	var kind: Variant=p.get("tree_type")
 	if not kind is int or kind<0 or kind>=5:return ["invalid painted tree species"]
 	if p.get("painted_tree")!=true or p.get("generation_version")!=[24,21,22,23,25][kind]:errors.append("tree surface requires matching painted species/version")
@@ -74,6 +78,12 @@ static func settings_errors(p: Dictionary) -> Array[String]:
 		if not value is int or value!=normalized.get(key):errors.append("invalid tree geometry control "+key)
 	for key in ["bark_color","foliage_color"]:
 		if not p.get(key) is Color or not Vector4(p[key].r,p[key].g,p[key].b,p[key].a).is_finite():errors.append("invalid tree colour "+key)
+	if p.has("tree_leaf_secondary_color"):
+		var colour: Variant=p.tree_leaf_secondary_color
+		if not colour is Color or not Vector4(colour.r,colour.g,colour.b,colour.a).is_finite():errors.append("invalid secondary leaf colour")
+	if p.has("tree_leaf_palette_strength"):
+		var strength: Variant=p.tree_leaf_palette_strength
+		if (not strength is int and not strength is float) or not is_finite(float(strength)) or strength<0 or strength>100:errors.append("invalid leaf palette strength")
 	for key in ["tree_leaf_density","tree_leaf_depth","tree_leaf_receive","tree_wood_rim","tree_leaf_rim"]:
 		var value: Variant=p.get(key)
 		if (not value is float and not value is int) or not is_finite(float(value)) or float(value)<0 or float(value)>100:errors.append("invalid tree surface "+key)
@@ -150,6 +160,10 @@ static func build(model: Dictionary) -> ArrayMesh:
 		material.set_shader_parameter("painted_leaf_card_albedo",Bark.artwork(Species.LEAF_ART[kind],true))
 		material.set_shader_parameter("painterly_grass_low",lerpf(1.0,float(material.get_shader_parameter("painterly_grass_low")),p.tree_leaf_depth/100.0))
 		material.set_shader_parameter("painted_leaf_shadow_strength",p.tree_leaf_receive/100.0)
+		if float(p.get("tree_leaf_palette_strength",0))>0.0:
+			material.set_shader_parameter("painted_leaf_palette_strength",float(p.tree_leaf_palette_strength)/100.0)
+			material.set_shader_parameter("painted_leaf_palette_primary",p.foliage_color)
+			material.set_shader_parameter("painted_leaf_palette_secondary",p.get("tree_leaf_secondary_color",p.foliage_color.darkened(0.35)))
 		var pigment: Color=p.foliage_color.srgb_to_linear();var pigment_reference: Color=reference.foliage_color.srgb_to_linear()
 		var mean: Vector3=material.get_shader_parameter("painted_foliage_paint_reference")
 		material.set_shader_parameter("painted_foliage_paint_reference",mean/Vector3(maxf(pigment.r,0.0001)/maxf(pigment_reference.r,0.0001),maxf(pigment.g,0.0001)/maxf(pigment_reference.g,0.0001),maxf(pigment.b,0.0001)/maxf(pigment_reference.b,0.0001)))
@@ -164,7 +178,9 @@ static func leaf_layout(model: Dictionary) -> Dictionary:
 	# Same deterministic supports and thinning as the accepted smooth projection.
 	var data: Dictionary=model.treeSurface;var p: Dictionary=data.settings
 	var layout:=Geometry.branches(data.structure)
-	var full:=Geometry.crown_cards(layout,data.structure,Vector3(data.pivot.x,0,data.pivot.y),float(p.density),int(data.seed),Species.card_options(int(p.tree_type)))
+	var options:=Species.card_options(int(p.tree_type))
+	if p.get("plant_kind","")=="shrub":options["size"]*=float(p.shrub_leaf_scale)
+	var full:=Geometry.crown_cards(layout,data.structure,Vector3(data.pivot.x,0,data.pivot.y),float(p.density),int(data.seed),options)
 	var factors: Dictionary={}
 	for owner in p.tree_leaf_local:factors[int(owner)]=float(p.tree_leaf_local[owner])/100.0
 	return Geometry.thin_crown_cards(full,p.tree_leaf_density/100.0,factors)

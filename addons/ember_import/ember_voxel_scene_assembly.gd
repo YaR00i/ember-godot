@@ -15,7 +15,7 @@ func _fail(message: String) -> bool:
 	error = message
 	return false
 
-func _ordinary(prop: Node, scene: Node) -> bool:
+func _ordinary(prop: Node, scene: Node, require_saved := true, derived:Node=null) -> bool:
 	if not prop is EmberVoxelProp or prop.owner != scene or prop.get_script() != NativeProp:
 		return _fail("Выберите обычные voxel-детали, принадлежащие открытой сцене.")
 	if prop.water_contact_enabled or prop.is_set_as_top_level():
@@ -24,13 +24,14 @@ func _ordinary(prop: Node, scene: Node) -> bool:
 	var nodes: Array[Node] = [prop]
 	nodes.append_array(prop.find_children("*", "", true, false))
 	for node in nodes:
+		if derived!=null and (node==derived or derived.is_ancestor_of(node)):continue
 		if signals_check._has_persistent_signals(node):
 			return _fail("У детали есть сохраняемые сигналы. Операция не будет разрывать связи.")
 		if node != prop and (node.get_script() != null or str(prop.get_path_to(node)) not in ["Mesh", "ShadowBody", "Collision", "Collision/Shape", "Omni"]):
 			return _fail("У детали есть дополнительные узлы или скрипты. Сначала выберите обычное окружение.")
 		if node is Node3D and node.is_set_as_top_level():
 			return _fail("Независимые дочерние узлы не могут двигаться вместе с деталью.")
-	if not FileAccess.file_exists(source_directory.path_join(prop.model_id + ".tres")):
+	if require_saved and not FileAccess.file_exists(source_directory.path_join(prop.model_id + ".tres")):
 		return _fail("Сначала сохраните деталь как native voxel-модель через Canvas.")
 	return true
 

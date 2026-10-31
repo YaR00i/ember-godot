@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_action_resource.gd" id="1_arfgv"]
+
+[resource]
+script = ExtResource("1_arfgv")
+action_id = "harbor_cargo_complete"
+document = {
+"id": "harbor_cargo_complete",
+"nameRu": "Груз: уже завершено",
+"steps": [{
+"dialogueId": "harbor_cargo_done",
+"type": "talk"
+}]
+}

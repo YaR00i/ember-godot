@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="EmberItemResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_item_resource.gd" id="1_lvkxw"]
+
+[resource]
+script = ExtResource("1_lvkxw")
+item_id = "shore_shell"
+definition = {
+"id": "shore_shell",
+"kind": "material",
+"nameRu": "Береговая ракушка",
+"notesRu": "Небольшая светлая ракушка, найденная на песке.",
+"rarity": "common",
+"slot": "none",
+"stackMax": 99,
+"useIn": "explore",
+"worldScene": "res://prefabs/items/shore_shell.tscn"
+}

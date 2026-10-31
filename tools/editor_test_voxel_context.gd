@@ -1,6 +1,7 @@
 @tool
 extends EditorPlugin
 ## Opt-in only in a disposable copy. No authored map/source writes.
+const Mechanics = preload("res://tools/fixtures/ember_editor_mechanics_fixture.gd")
 var errors: Array[String] = []
 func _enter_tree() -> void:
 	_run.call_deferred()
@@ -21,7 +22,8 @@ func _run() -> void:
 		push_error("Disposable editor copy required")
 		return
 	await frames(90)
-	EditorInterface.open_scene_from_path("res://scenes/test_pier.tscn")
+	var fixture_scene := Mechanics.prepare_editor()
+	EditorInterface.open_scene_from_path(fixture_scene)
 	await frames(60)
 	var scene := EditorInterface.get_edited_scene_root()
 	var prop := scene.get_node("Map/Props/BarrelA") as EmberVoxelProp

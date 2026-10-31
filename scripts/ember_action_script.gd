@@ -56,6 +56,10 @@ static func _append_ref(
 
 static func _normalize_step(step: Dictionary) -> Dictionary:
 	match str(step.get("type", "")):
+		"play_cutscene":
+			var id := str(step.get("presentationId", "")).strip_edges()
+			# A broken binding must abort at runtime, never disappear before a reward.
+			return {"type": "play_cutscene", "presentationId": id}
 		"talk":
 			var dialogue_id := str(step.get("dialogueId", "")).strip_edges()
 			return {"type": "talk", "dialogueId": dialogue_id} if not dialogue_id.is_empty() else {}
@@ -71,6 +75,11 @@ static func _normalize_step(step: Dictionary) -> Dictionary:
 			if flag_id.is_empty() or not _is_flag_value(value):
 				return {}
 			return {"type": "set_flag", "flag": flag_id, "value": value}
+		"handover_quest_items":
+			return {"type": "handover_quest_items", "questId": str(step.get("questId", "")), "objectiveId": str(step.get("objectiveId", "")), "rewards": step.get("rewards", {}).duplicate()}
+		"exchange_items":
+			if not step.get("costs",{}) is Dictionary or not step.get("rewards",{}) is Dictionary: return {}
+			return {"type":"exchange_items","costs":step.get("costs",{}).duplicate(),"rewards":step.get("rewards",{}).duplicate()}
 		"wait":
 			# Normalization preserves authored timing. EmberInteractionUi owns the
 			# asynchronous pause so the resolver remains a pure content boundary.

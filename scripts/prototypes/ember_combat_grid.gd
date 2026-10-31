@@ -851,7 +851,8 @@ static func elevation(state: Dictionary, cell: Vector2i) -> int:
 
 
 static func focus_definition(state: Dictionary) -> Dictionary:
-	return ((state.get("grid", {}) as Dictionary).get("focus", {}) as Dictionary).duplicate(true)
+	var focus: Dictionary = (state.get("grid", {}) as Dictionary).get("focus", {})
+	return {} if str(focus.get("id", "")).is_empty() else focus.duplicate(true)
 
 
 static func is_focus_cell(state: Dictionary, cell: Vector2i) -> bool:

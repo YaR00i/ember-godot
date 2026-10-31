@@ -56,6 +56,7 @@ var _coverage_parameters: Dictionary={}
 var _coverage_field: SurfaceForms.CoverageField
 var _paint_locks: Dictionary={}
 var protected_paint_columns:=0
+var _retained_areas: Array[Rect2i]=[]
 
 
 func begin(source: EmberTerrainPilotResource, area_blocks: Rect2i, parameters: Dictionary, new_sections := false,paint_plan: Resource=null) -> bool:
@@ -104,6 +105,10 @@ func begin(source: EmberTerrainPilotResource, area_blocks: Rect2i, parameters: D
 		error = "Нужны назначенные материалы грунта, травы, песка, камня и слот воды. Старые цвета не переопределяются автоматически."; return false
 	before = Selection.rebase(source, addition) if new_sections else source
 	candidate = before.sectioned_copy()
+	if new_sections:
+		for key: Vector2i in before.sections:
+			var part: Terrain=before.sections[key]
+			_retained_areas.append(Rect2i(key*Terrain.Sections.CELLS,Vector2i(part.width,part.depth)))
 	var cells := Terrain.Sections.CELLS
 	for z in range(bounds.position.y / cells, (bounds.end.y - 1) / cells + 1):
 		for x in range(bounds.position.x / cells, (bounds.end.x - 1) / cells + 1):
@@ -116,9 +121,9 @@ func begin(source: EmberTerrainPilotResource, area_blocks: Rect2i, parameters: D
 			if part == null or not Rect2i(key * cells, Vector2i(part.width, part.depth)).encloses(required):
 				error = "В области есть пустое место. Сначала добавьте недостающие участки."; candidate = null; return false
 			_addresses.append(key)
-	var needed := ceili((float(parameters.sea_m) + float(parameters.land_m) + float(parameters.relief_m)) * 4.0) * 4
+	var needed := ceili((float(parameters.sea_m) + float(parameters.land_m) + float(parameters.relief_m)) * 4.0) * 4 - candidate.origin_y
 	if parameters.profile == "plains":
-		needed = ceili((float(parameters.sea_m)+float(parameters.land_m)+float(parameters.relief_m)+float(parameters.get("micro_m",Math.PLAINS_DEFAULTS.micro_m)))*4.0)*4
+		needed = ceili((float(parameters.sea_m)+float(parameters.land_m)+float(parameters.relief_m)+float(parameters.get("micro_m",Math.PLAINS_DEFAULTS.micro_m)))*4.0)*4-candidate.origin_y
 	_surface_strength=float(parameters.get("surface_strength",0.0))
 	_surface_scale=float(parameters.get("surface_scale",1.0))
 	if _operation!="generate":needed=source.height_limit
@@ -144,7 +149,7 @@ func begin(source: EmberTerrainPilotResource, area_blocks: Rect2i, parameters: D
 			var header := candidate.sections[key].duplicate(false) as EmberTerrainPilotResource
 			header.height_limit = needed
 			candidate.sections[key] = header
-	_sea = roundi(float(parameters.sea_m) * 4.0) * 4
+	_sea = roundi(float(parameters.sea_m) * 4.0) * 4 - candidate.origin_y
 	_fine_sampling = parameters.get("terrain_sampling","legacy8") == "fine16"
 	_sampler = Math.new()
 	_sampler.configure(Rect2(Vector2(area_blocks.position), Vector2(area_blocks.size)), parameters)
@@ -153,6 +158,7 @@ func begin(source: EmberTerrainPilotResource, area_blocks: Rect2i, parameters: D
 
 func cancel() -> void:
 	addition = {}
+	_retained_areas.clear()
 	cancelled = true
 	candidate = null
 	_part = null
@@ -208,6 +214,8 @@ func step(budget_us := 4000) -> void:
 func _start_part(key: Vector2i) -> void:
 	_part_key = key
 	_part = candidate.sections[key].working_copy() if candidate.sections.has(key) else Selection.empty_section(candidate)
+	if not addition.is_empty() and (_part.width<Terrain.Sections.CELLS or _part.depth<Terrain.Sections.CELLS):
+		_part=Selection.completed_section(candidate,_part)
 	_rect = bounds.intersection(Rect2i(key * Terrain.Sections.CELLS, Vector2i(_part.width, _part.depth)))
 	_point = _rect.position
 	_heights = _part.heights
@@ -220,7 +228,8 @@ func _start_part(key: Vector2i) -> void:
 	if _operation=="generate" and not _surface_phase and not _part.water_flow.is_empty():
 		for z in range((_rect.position.y - key.y * Terrain.Sections.CELLS) / 16, (_rect.end.y - key.y * Terrain.Sections.CELLS) / 16):
 			for x in range((_rect.position.x - key.x * Terrain.Sections.CELLS) / 16, (_rect.end.x - key.x * Terrain.Sections.CELLS) / 16):
-				_part.water_flow[x + z * (_part.width / 16)] = Vector2.ZERO
+				if addition.is_empty() or not before.has_column(key.x*Terrain.Sections.CELLS+x*16,key.y*Terrain.Sections.CELLS+z*16):
+					_part.water_flow[x + z * (_part.width / 16)] = Vector2.ZERO
 
 
 func _stride() -> int:
@@ -238,13 +247,14 @@ func _blend_weight(point: Vector2i) -> float:
 
 
 func _generate_group() -> void:
+	if not addition.is_empty() and before.has_column(_point.x,_point.y):return
 	var weight := _blend_weight(_point)
 	var reference := {}
 	if not addition.is_empty():
 		reference = _addition_edge(_point)
 		weight = float(reference.get("weight", 1.0))
 	elif weight <= 0.0: return
-	var sampled := float(_sampler.height_m((Vector2(_point) + Vector2.ONE * (float(_stride()) * 0.5)) / 16.0)) * 16.0
+	var sampled := float(_sampler.height_m((Vector2(_point) + Vector2.ONE * (float(_stride()) * 0.5)) / 16.0)) * 16.0 - candidate.origin_y
 	var part_start := _part_key * Terrain.Sections.CELLS
 	for z in range(_point.y, mini(_point.y + _stride(), _rect.end.y)):
 		for x in range(_point.x, mini(_point.x + _stride(), _rect.end.x)):
@@ -254,7 +264,7 @@ func _generate_group() -> void:
 			var value := clampi(roundi(lerpf(retained, sampled, weight) / float(quantum)) * quantum, 4, candidate.height_limit)
 			_heights[local] = value
 			if not _preserve_generated_cover or _tops[local]<=0:
-				_tops[local] = _sand if value <= _sea + 8 else _stone if value > _sea + 16 * 6 and _sampler.parameters.profile not in ["hills","plains"] else _grass
+				_tops[local] = _sand if _sampler.parameters.get("land_shape","island")=="island" and value <= _sea + 8 else _stone if value > _sea + 16 * 6 and _sampler.parameters.profile not in ["hills","plains"] else _grass
 				_bases[local] = _stone if _tops[local] == _stone else _soil
 				_caps[local] = mini(3, value)
 			else:_caps[local]=mini(_caps[local],value)
@@ -268,6 +278,7 @@ func _macro_height(x: int,z: int,fallback: float) -> float:
 	return float(_macro.column_value("heights",_macro.column_index(x,z))) if _macro.has_column(x,z) else fallback
 
 func _generate_surface_group() -> void:
+	if not addition.is_empty() and before.has_column(_point.x,_point.y):return
 	var weight:=_blend_weight(_point) if addition.is_empty() else float(_addition_edge(_point).get("weight",1.0))
 	if weight<=0.0:return
 	var part_start:=_part_key*Terrain.Sections.CELLS
@@ -299,18 +310,15 @@ func _generate_surface_group() -> void:
 func _addition_edge(point: Vector2i) -> Dictionary:
 	# New neighbouring sections share the same sampler. Only retained, untouched
 	# terrain supplies a join; occupied sections inside the rectangle stay intact.
-	var patch := Rect2i(_part_key * Terrain.Sections.CELLS, Vector2i.ONE * Terrain.Sections.CELLS)
 	var nearest := BLEND_M * 16.0
 	var sample := Vector2i.ZERO
 	var found := false
-	for edge in [[Vector2i(patch.position.x - 1, point.y), point.x - patch.position.x],
-		[Vector2i(patch.end.x, point.y), patch.end.x - point.x - _stride()],
-		[Vector2i(point.x, patch.position.y - 1), point.y - patch.position.y],
-		[Vector2i(point.x, patch.end.y), patch.end.y - point.y - _stride()]]:
-		if float(edge[1]) <= nearest and before.has_column(edge[0].x, edge[0].y):
-			nearest = edge[1]
-			sample = edge[0]
-			found = true
+	# Include the true edge of a partial section, not its 24m capacity.
+	for area: Rect2i in _retained_areas:
+		var at:=Vector2i(clampi(point.x,area.position.x,area.end.x-1),clampi(point.y,area.position.y,area.end.y-1))
+		var distance:=maxf(0.0,Vector2(point-at).length()-1.0)
+		if distance<=nearest:
+			nearest=distance;sample=at;found=true
 	if not found: return {}
 	var column := before.column_index(sample.x, sample.y)
 	return {"weight": smoothstep(0.0, BLEND_M * 16.0, maxf(0.0, nearest)),

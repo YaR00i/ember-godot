@@ -100,7 +100,7 @@ func _initialize(size: Vector2i, records: PackedByteArray, initial_state: Packed
 	_table = _rd.storage_buffer_create((2600 + 65) * 8)
 	_resources.append(_table)
 	_state = _texture(size, RenderingDevice.DATA_FORMAT_R32G32B32A32_SFLOAT, initial_state)
-	_foam = _texture(size, RenderingDevice.DATA_FORMAT_R32_SFLOAT, initial_foam)
+	_foam = _texture(size, RenderingDevice.DATA_FORMAT_R32G32B32A32_SFLOAT, initial_foam)
 	_uniforms = _make_uniforms(record_buffer)
 	_resources.append(_uniforms)
 	state_texture.texture_rd_rid = _state

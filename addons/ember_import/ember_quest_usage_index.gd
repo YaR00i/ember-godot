@@ -7,6 +7,7 @@ extends RefCounted
 const QuestStore = preload("res://addons/ember_import/ember_quest_store.gd")
 const ActionCatalog = preload("res://scripts/ember_action_catalog.gd")
 const DialogueCatalog = preload("res://scripts/ember_dialogue_catalog.gd")
+const QuestGiver = preload("res://scripts/ember_quest_giver_interact.gd")
 
 
 static func entries(quest_value: Dictionary) -> Array[Dictionary]:
@@ -82,11 +83,22 @@ static func _collect_scene_entries(
 	if current is EmberInteract:
 		var interact := current as EmberInteract
 		var script_id := interact.resolved_action_script_id().strip_edges()
+		var script_ids: Array[String] = [script_id]
+		if interact.get_script() == QuestGiver and interact.quest_id == quest_id:
+			for route_id in (interact.get("objective_scripts") as Dictionary).values():
+				if str(route_id) not in script_ids:
+					script_ids.append(str(route_id))
 		var keys: Array[String] = []
-		for document_kind in ["action", "dialogue"]:
-			var key := _document_key(document_kind, script_id)
-			if event_ids_by_document.has(key):
-				keys.append(key)
+		for routed_id in script_ids:
+			for document_kind in ["action", "dialogue"]:
+				var key := _document_key(document_kind, routed_id)
+				if event_ids_by_document.has(key):
+					keys.append(key)
+			for step in ActionCatalog.document(routed_id).get("steps", []):
+				if str(step.get("type", "")) == "talk":
+					var dialogue_key := _document_key("dialogue", str(step.get("dialogueId", "")))
+					if event_ids_by_document.has(dialogue_key) and dialogue_key not in keys:
+						keys.append(dialogue_key)
 		if not keys.is_empty():
 			var event_ids: Array[String] = []
 			for key in keys:
@@ -143,6 +155,7 @@ static func _targets_by_flag(quest: Dictionary) -> Dictionary:
 		if flag_id.is_empty():
 			continue
 		result[flag_id] = {
+			"questId": str(quest.get("id", "")),
 			"targetKind": "objective",
 			"targetId": str(objective.get("id", "")),
 			"targetLabel": str(objective.get("textRu", objective.get("id", ""))),
@@ -168,6 +181,14 @@ static func _scan_action(
 		if typeof(raw_step) != TYPE_DICTIONARY:
 			continue
 		var step: Dictionary = raw_step
+		if str(step.get("type", "")) == "handover_quest_items":
+			step = step.duplicate(true)
+			for flag in targets:
+				var target: Dictionary = targets[flag]
+				if str(target.get("questId", "")) == str(step.get("questId", "")) and str(target.get("targetId", "")) == str(step.get("objectiveId", "")):
+					step["type"] = "set_flag"
+					step["flag"] = str(flag)
+					step["value"] = true
 		if str(step.get("type", "")) != "set_flag":
 			continue
 		_append_writer(

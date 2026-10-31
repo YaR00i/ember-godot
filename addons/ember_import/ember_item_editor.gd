@@ -11,6 +11,11 @@ const Equipment = preload("res://scripts/ember_equipment.gd")
 const Party = preload("res://scripts/ember_party_state.gd")
 const Units = preload("res://scripts/prototypes/ember_combat_unit_catalog.gd")
 const EquipmentPreview = preload("res://addons/ember_import/ember_equipment_preview.gd")
+const ItemCounts = preload("res://addons/ember_import/ember_item_counts_editor.gd")
+var _world_scene: LineEdit
+var _use_label: LineEdit
+var _use_script: OptionButton
+var _contents_rows
 const OPTION_LABELS := {
 	"material": "Материал", "consumable": "Расходник", "weapon_jrpg": "Оружие", "weapon_arena": "Старое оружие арены", "armor": "Броня", "shoes": "Обувь", "accessory": "Аксессуар", "key": "Ключевой предмет",
 	"none": "Нет", "weapon": "Оружие", "head": "Старый головной убор", "body": "Броня",
@@ -190,6 +195,7 @@ func _build() -> void:
 	_notes.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
 	notes_row.add_child(_notes)
 	add_child(notes_row)
+	_build_inventory_actions()
 	_validation = Label.new()
 	_validation.name = "ItemValidation"
 	_validation.visible = false
@@ -478,6 +484,26 @@ func _field_row(label_text: String) -> HBoxContainer:
 	return row
 
 
+func _build_inventory_actions() -> void:
+	_section("ItemWorldActions","ДЕЙСТВИЯ С ПРЕДМЕТОМ")
+	_world_scene = _line_row("ItemWorldScene","Вид в мире","res://…tscn; пусто — выбросить нельзя")
+	_world_scene.text = str(_base.get("worldScene",""))
+	_use_label = _line_row("ItemUseLabel","Кнопка действия","Например: Открыть или Прочитать")
+	_use_label.text = str(_base.get("useLabelRu",""))
+	_use_script = _option_row("ItemUseScript","Событие использования",EmberActionCatalog.ids(),str(_base.get("useScriptId","")),true,true)
+	for index in _use_script.item_count:
+		var id := str(_use_script.get_item_metadata(index))
+		if not id.is_empty(): _use_script.set_item_text(index,str(EmberActionCatalog.document(id).get("nameRu",id)))
+	var hint := Label.new()
+	hint.text = "Открытие заменяет одну вещь содержимым. Для письма внутри выберите событие прочтения в его собственном предмете."
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	add_child(hint)
+	_contents_rows = ItemCounts.new()
+	_contents_rows.name = "ItemContents"
+	_contents_rows.setup(_base.get("openContents",{}),"Содержимое",_id_input.text)
+	add_child(_contents_rows)
+
+
 func _document() -> Dictionary:
 	var result := _base.duplicate(true)
 	result.merge({
@@ -508,6 +534,12 @@ func _document() -> Dictionary:
 		if _base.has(key) or value != (100 if key == "combatDelay" else 0): result[key] = value
 	var allowed := _allowed_heroes.text.split(",", false)
 	if _base.has("allowedHeroIds") or not allowed.is_empty(): result["allowedHeroIds"] = allowed
+	var contents: Dictionary = _contents_rows.value()
+	for key in ["worldScene","useLabelRu","useScriptId","openContents"]: result.erase(key)
+	if not _world_scene.text.strip_edges().is_empty(): result.worldScene = _world_scene.text.strip_edges()
+	if not _use_label.text.strip_edges().is_empty(): result.useLabelRu = _use_label.text.strip_edges()
+	if not _selected(_use_script).is_empty(): result.useScriptId = _selected(_use_script)
+	if not contents.is_empty(): result.openContents = contents
 	return Store.normalized_document(result)
 
 

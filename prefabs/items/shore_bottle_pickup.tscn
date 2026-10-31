@@ -1,0 +1,21 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_world_item_3d.gd" id="1"]
+[ext_resource type="PackedScene" path="res://prefabs/items/sealed_bottle.tscn" id="2"]
+
+[sub_resource type="BoxShape3D" id="body"]
+size = Vector3(3.36, 6.624, 3.36)
+
+[node name="MessageBottle" type="RigidBody3D"]
+freeze = true
+script = ExtResource("1")
+pickup_id = "shore_message_bottle"
+item_id = "shore_sealed_bottle"
+map_id = "landscape_compact"
+
+[node name="ItemVisual" parent="." instance=ExtResource("2")]
+scale = Vector3(16, 16, 16)
+
+[node name="BodyShape" type="CollisionShape3D" parent="."]
+position = Vector3(0, 3.312, 0)
+shape = SubResource("body")

@@ -48,7 +48,8 @@ func _run() -> void:
 	contact.static_surface_foam_footprint = true
 	prop.add_child(contact)
 	var study := Study.new()
-	assert(study.terrain_extent_error(Vector2i(8832, 8832)) != "")
+	assert(study.terrain_extent_error(Vector2i(9217, 9216)) != "")
+	assert(study.terrain_extent_error(Vector2i(9216, 9216)) == "")
 	assert(study.terrain_extent_error(Vector2i(1920, 1920)) == "")
 	assert(study.terrain_extent_error(Vector2i(3072, 1920)) == "")
 	scene.add_child(study)

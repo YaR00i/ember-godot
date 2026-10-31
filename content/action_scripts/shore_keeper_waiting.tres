@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_action_resource.gd" id="1_mrsh1"]
+
+[resource]
+script = ExtResource("1_mrsh1")
+action_id = "shore_keeper_waiting"
+document = {
+"id": "shore_keeper_waiting",
+"nameRu": "Хранитель: до находки письма",
+"steps": [{
+"dialogueId": "shore_keeper_waiting_text",
+"type": "talk"
+}]
+}

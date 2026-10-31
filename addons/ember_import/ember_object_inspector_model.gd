@@ -5,14 +5,51 @@ extends RefCounted
 ## asset metadata, scene-owned nodes and generated prefab state without writes.
 
 
+static func quest_conversation_target(target: Node) -> EmberInteract:
+	if not is_instance_valid(target):
+		return null
+	var giver_script := load("res://scripts/ember_quest_giver_interact.gd")
+	if target is EmberInteract:
+		return target as EmberInteract if target.get_script() == giver_script else null
+	var result: EmberInteract = null
+	for child in target.get_children():
+		if child is EmberInteract and child.get_script() == giver_script:
+			if result != null:
+				return null
+			result = child
+	return result
+
+
 static func supports(object: Object) -> bool:
 	return voxel_owner(object) != null or object is EmberInteract
+
+static func quest_object_zone(root: Node, quest_id: String, objective_id: String) -> Node3D:
+	if root == null:
+		return null
+	var script := load("res://scripts/ember_quest_object_zone.gd")
+	for node in root.find_children("*", "Area3D", true, false):
+		if node.get_script() == script and str(node.get("quest_id")) == quest_id and str(node.get("objective_id")) == objective_id:
+			return node as Node3D
+	return null
+
+
+static func quest_reach_zone(root: Node, flag_id: String) -> EmberInteract:
+	if root == null or flag_id.is_empty():
+		return null
+	for node in root.find_children("*", "Area3D", true, false):
+		if node is EmberInteract and node.kind == "trigger" and node.activation_mode == "enter" and node.condition_flag_id == flag_id and node.condition_value == false:
+			return node as EmberInteract
+	return null
 
 
 static func voxel_owner(object: Object) -> EmberVoxelProp:
 	var node := object as Node
 	while node != null:
 		if node is EmberVoxelProp:
+			var parent:=node.get_parent()
+			if parent!=null and parent.has_method("object_presentation_pending") and parent.get_parent() is EmberVoxelProp:
+				node=parent.get_parent()
+				continue
 			return node as EmberVoxelProp
 		node = node.get_parent()
 	return null

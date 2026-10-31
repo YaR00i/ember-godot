@@ -1,0 +1,21 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://addons/ember_import/ember_voxel_generator_recipe.gd" id="1_dsii8"]
+
+[resource]
+script = ExtResource("1_dsii8")
+generator_id = "building"
+parameters = {
+"density": 16,
+"depth_m": 3.5,
+"floor_height_m": 2.75,
+"floors": 1,
+"overhang_m": 0.25,
+"roof_color": Color(0.46666667, 0.32156864, 0.2784314, 1),
+"roof_height_m": 1.25,
+"timber_color": Color(0.29803923, 0.2509804, 0.20784314, 1),
+"wall_color": Color(0.8862745, 0.8235294, 0.6745098, 1),
+"width_m": 4.5
+}
+family_id = "vox_coastal_house"
+family_title = "Прибрежный дом"

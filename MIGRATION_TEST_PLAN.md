@@ -623,6 +623,597 @@ roots + icon/story ID/dependencies, не full story validation, баланс и�
 Ручная оценка удобства отчёта/узкого editor/125% и прежние authored gameplay
 gates остаются OPEN; green data report их не закрывает.
 
+## Сквозной редактор28.10 — этап7, подготовка полной сферы OPEN
+
+Один native EditorPlugin replay на изолированной копии main использует прежние команды земли,
+WorldEditSessions/CanvasForms/StampPanel: земля/история → две формы/склейка/покраска/выемка/
+отделение/штамп/Cancel/история → внешний объект → тот же черновик земли/объекта → общий
+Save/fresh Source+scene reopen/Discard/3 looks/canonical collision: EDITOR_FINAL_CYCLE PASS.
+Полная сохранённая main-copy в новом Forward+ процессе: boot83928мс, ходьба/опора/3 looks PASS.
+Первичный play report FAIL по времени полной сферы; актуальный результат оптимизации —
+[Производительность мира](docs/EMBER_WORLD_PERFORMANCE.md#отложенные-сборка-и-сфера) → «Отложенные сборка и сфера». Это gate производительности, не ручная приёмка.
+101 author file хеш неизменен. Подробности/следующее действие/evidence — World Authoring →
+«Сквозной сценарий редактора · этап7,28.10». Mouse/личный F6/вид OPEN.
+_forms_cycle scene-topology reload больше не использует IGNORE_DEEP для живых tool scripts;
+новый процесс проверяет настоящее холодное открытие. Успешные части заново не запускались.
+
+Оптимизация подготовки28.10: `test_anomaly_preparation.gd` — aligned RGBAF byte parity/padding,
+worker/direct arrays трёх обликов и отмена устаревшего host PASS; `test_solid_display_cache.gd`
+Forward+ — каналы volume display/сохранение boundary, disk living hit/геометрия/pull/Source PASS.
+`test_object_grass_anomaly.gd` Forward+ — объектная опора/skew transform и terrain deltas PASS;
+`test_voxel_preview_disk_cache.gd`/`test_voxel_object_library_updates.gd` — cached-only startup,
+прежние cache hits и обычная очередь недостающих previews после открытия PASS.
+Full main-copy после terrain/scatter-среза: editor gate111323/map145337мс (не быстрее), game78193мс;
+сфера138251мс/702 bindings/324tiles PASS, motion без rebuild/collision/3looks PASS.
+Расстановка не сокращалась; ограничения сравнения/evidence принадлежат World Authoring. Изменений Source/scene/history нет,
+поэтому ранее успешные Undo/Redo/save/reopen/discard не повторялись.
+
+Продолжение28.10: `test_material_height_cache.gd` — cold/direct/disk byte parity, защита от
+мутации потребителем, изменение пикселей/softness/sharpness, corrupt fallback и неизменность
+albedo PASS. Native1024px stone/soil/grass disk reopen16/15/14мс вместо15693/17971/18221мс;
+хеши одинаковы. В настоящем editor воспроизведён пустой static cache_directory без @tool;
+финальный native QA проверяет непустой путь и3 disk hits после исправления.
+Полная main-copy: gate91811→34849мс, map128537→67989мс, все work queues пусты.
+`test_material_library_depth.gd -- --normal-only` Forward+: profile binding, общий GPU bank,
+world scale, shader compile и neutral relief mean RGB=0 PASS; весь тест FAIL на прежнем
+negative control «previous plane-normal path exposes tessellation»:0.000291 вместо>0.0005.
+Порог/шейдер/фикстура не менялись. Это открытый gate чувствительности прежнего сравнения,
+не объявление всего render-теста успешным; повторный широкий прогон не запускался.
+Это warm height cache; первый bake не ускорен. Изменены только производные изображения,
+Pattern/Source/serialization/history не меняются; прежний save-цикл не повторялся.
+Evidence/ограничения — [Производительность мира](docs/EMBER_WORLD_PERFORMANCE.md#отложенные-сборка-и-сфера) → «Отложенные сборка и сфера».
+
+Растительность28.10: `test_detail_preparation.gd` Forward+ PASS; ProbePatch проверяет, что
+fresh disk hit не запрашивает endpoint meshes для footprint roots. Cold generation/3looks/
+reopen exact CPU transforms, invalidation mask/height/seed/size и stale cancellation PASS.
+На main-copy222 hits/0 generations/77878 instances:50223→48659мс; terrain не менялся.
+Полный editor Save/Undo не повторялся: Source/ключи/история не менялись. FPS не измерен.
+Research/профиль/следующий срез — [Производительность мира](docs/EMBER_WORLD_PERFORMANCE.md#доверенная-текущая-точка) → «Доверенная текущая точка».
+
+Общий PNG bank28.10: `test_material_color_bank.gd` native Forward+ PASS: normalization/mips
+и linear means точны относительно прежнего алгоритма, duplicate slots/metadata/white fallback,
+общие artwork banks при независимых editable lookups и preview, Texture2D replacement invalidation,
+источники неизменны. Контролируемый render до/после установки отдельного reference bank
+побайтно одинаков. Это не художественная приёмка основной карты.
+Main-copy222→3 banks,77878 instances/222 hits/0 generations; base-level оценка167→1MB.
+Wall startup82250мс, против прежних48659; reuse-off control99856мс. Shared run789/789 focused,
+control592/593 unfocused callbacks, поэтому ускорение/отсутствие latency regression не доказаны.
+Terrain startup/frame scheduling gate — World Authoring; FPS не измерялся.
+Source/schema/history/геометрия/шейдер не менялись; полный Save/Undo/сфера не повторялись.
+
+Startup publication budget28.10: `editor_test_terrain_preparation.gd` на disposable native editor
+PASS: initial12ms→settled4ms, первый brush отменяет повышенный budget и release его не возвращает;
+cold/warm dense+sectioned geometry/UV/colors/collision/field/layout,3looks, overlap latest edit,
+continuous stroke до отпускания, open/Discard stale и malformed cache fallback сохранены.
+Focused30FPS main-copy before/after: terrain38760→32411мс, ready49146→42573мс,
+666→424 callbacks,324 cache hits в обеих пробах,222 patches/77878 instances неизменны.
+Max startup process15881us при soft12ms (одна начатая операция может завершиться позже).
+Runtime/Source/save/history не менялись, широкая матрица не повторялась. FPS/личный ввод OPEN.
+Owners/передача следующего независимого разбора — [Производительность мира](docs/EMBER_WORLD_PERFORMANCE.md#доверенная-текущая-точка) → «Доверенная текущая точка».
+
+Editor tree cache28.10: `editor_test_tree_look_cache.gd` как временный native EditorPlugin в
+disposable stage, два fresh процесса на одном user://ember-tests/ каталоге: PASS. Проверены
+default CACHE_ROOT до overrides (старый SceneTree тест это пропускал), empty override,
+cold4 builds/4 файла/0 hits → warm0 builds/4 hits, geometry трёх обликов дуба/берёзы и Source
+побайтно равны, возврат к detailed точен. После проверок матрицу не расширяли.
+Main-copy default cache:4 hits/0 builds,324 tiles/222 patches/77878 instances, ready43043→36717мс
+от QA origin,37784→31679мс от вызова открытия. Map looks11181→5384мс; focused426/426.
+Изменён только @tool; данные/алгоритмы/история/физика не менялись, общий Save/Undo/сфера не повторялись.
+Evidence/known UID fallback и fixture shutdown warnings — [Производительность мира](docs/EMBER_WORLD_PERFORMANCE.md#доверенная-текущая-точка) → «Доверенная текущая точка».
+
+Library metadata28.10: `test_voxel_catalog_metadata.gd` headless PASS: cold/warm exact metadata,
+нет удержания dense Resource, отдельные copies, live unsaved fields без disk poisoning,
+same-size/same-second content edit, malformed/corrupt fallback, Source unchanged.
+`test_voxel_object_library_updates.gd` headless PASS: publication, selection/query/filter,
+coalescing, hidden/reopen и observer cleanup. Renderer/Source-save/geometry не менялись.
+Native main-copy + open library: catalog5136→373мс при startup; open5268→483мс;
+ready36466→35105мс,128 entries/вариации/labels/tags/size/выбор/placement flag exact,
+cached previews видны, pending0;132 Sources,258 metadata hits/0 misses/6 live reads.
+Screenshot доказывает панель/карточки, не mouse feel и не вид всей карты (камера вне неё).
+Scope/owners/evidence — [Производительность мира](docs/EMBER_WORLD_PERFORMANCE.md#доверенная-текущая-точка) → «Доверенная текущая точка»; полный save/3looks не повторялся.
+
+Foliage material batch28.10: `test_detail_material_preparation.gd` Forward+ PASS: byte parity
+с прежними lookup images, все ImageTexture независимы, preview не меняет соседа, новые saved
+presets после смены process frame, разные layouts/пустые роли. `test_detail_preparation.gd`
+Forward+ PASS: cold/warm exact transforms,3looks, mask/height/seed/size invalidation, stale cancel
+и malformed cache rejection. Main-copy222 hits/77878 instances, transform dictionaries exact.
+Save/Undo/schema не менялись; прежний полный цикл не повторялся. Scope/evidence — World Authoring.
+
+Adaptive terrain geometry29.10: test_world_detail_policy PASS, curved mixed24576→12000 vertices,
+225 physical ray samples/error budget, exact canonical faces/field, actual material weights,
+borders/winding/holes, far v2 cache roundtrip/corrupt faces repair, sectioned collision/mesh offsets.
+terrain_shape_update PASS in stable copy (working run encountered unrelated in-progress UI compile).
+Native Forward+ main-copy full/adaptive/full PASS:7,99→5,97→7,99m vertices, grass buffers exact,
+three collision shapes exact, full topology restore;512² control pixels equal. Warm352 hits/0 misses.
+GPU change small, loading≈36s new cache/≈25s warm; no general FPS/startup acceptance.
+No author save/history/schema changes; prior Undo/save not rerun. Scope/motion/resize/weak-PC gates —
+[Производительность мира](docs/EMBER_WORLD_PERFORMANCE.md#доверенная-текущая-точка) → «Доверенная текущая точка»; no new maps/helpers.
+
+Ground material distance29.10: test_terrain_material_distance PASS (early depth return/hysteresis,
+existing fade change, shared uniforms/textures, independent base, actual preview light-profile update).
+Native Forward+ material gates:512² parallel ground pixels exact;91 travel steps,0 unsafe far selections;
+light/gray/fade updates and look1/2 fallback. Wide A/B/A18,3469→16,1817→18,3503ms GPU,
+zero pending/jobs and393/393/393 publications at phase ends. Immediate material selections keep IDs.
+Original aggregate probe asserted IDs before camera preparation finished and reports false; retain it.
+Separate validation.json accepts only evidenced material gates, not a global preparation/startup fix.
+100 author files unchanged; Source/physics/serialization/history unchanged. Manual motion/own map/
+weak-PC OPEN. Scope/evidence — [Производительность мира](docs/EMBER_WORLD_PERFORMANCE.md#доверенная-текущая-точка) → «Доверенная текущая точка».
+
+Editor distance policy28.10: test_world_detail_policy PASS (planar reduction, exact border/height/
+winding, holes/mixed paint, full/far cache identity+roundtrip); terrain_shape_update PASS.
+Native main-copy Forward+ PASS: camera travel/return, exact original instance buffers after unload/
+full reload, far edit promotes full, restore complete Source parity;0 sphere preparations/bindings.
+100 source files unchanged, no map save. All pending0; manual fast travel/3looks, RAM/VRAM and
+resize/multiple viewports OPEN. Source/history schema unchanged, previous save/Undo gates not rerun.
+Owners/evidence/remaining phases — [Производительность мира](docs/EMBER_WORLD_PERFORMANCE.md#доверенная-текущая-точка) → «Доверенная текущая точка».
+
+Масштаб Source29.10: `tools/test_terrain_section_windows.gd` PASS —72/144/288/576м,
+точные каналы окон/halo/границы/пропущенные секции/flow, ограниченное число адресованных
+payloads, повторная validation после изменения, copy-on-write/Undo/Redo/save/reopen/discard.
+`qa_world_scale_capacity.gd` создаёт внешние уникальные generated payloads и планы кандидатов;
+это не render/FPS PASS. Земля editor проверяется отдельным gate ниже;
+реальное население576м проверено отдельным gate ниже; runtime остаётся OPEN.
+Owner/evidence — [Производительность мира](docs/EMBER_WORLD_PERFORMANCE.md#доверенная-текущая-точка) → «Доверенная текущая точка».
+
+Ближняя земля/дальний пейзаж29.10: `test_terrain_residency.gd` — одинаковый idle fine set
+при72/144/288/576м, budget/protection/return, coarse arrays без fine physics/fields,
+границы соседних секций, отмена, outward fine/coarse seam closures и ограниченный query field.
+Native Forward+ на внешнем576м:233/252/233/233 fine tiles,576 coarse sections;
+освобождение mesh/physics/fields/looks, точный возврат faces/field,4 stale jobs,
+обычный edit/Undo/Redo/save/reopen/discard и реальный physics ray vs floor PASS.
+Followup отдельно сохраняет offscreen authoring `solid` с `physics_ready=false`,
+не накапливает resident fields; малая main остаётся на прежнем пути.
+Визуальный стык/движение требует авторской оценки; населённый FPS, Source I/O и все облики OPEN.
+Evidence/границы — [Производительность мира](docs/EMBER_WORLD_PERFORMANCE.md#владельцы-и-работающий-путь) → «Владельцы и работающий путь».
+
+Массовая расстановка576м29.10: `test_grove_scaling.gd` PASS —576 объектов,66 в одной
+области, bounded cache16, повторяемость, Apply/Undo/Redo/validation/save/reopen/discard.
+`test_terrain_smooth_placement.gd` PASS — dense/sectioned опора через шов, вода/уклон,
+защита ручных правок, совместимость provenance v1/v2; `test_grove_snapshot_storage.gd` PASS.
+`test_tree_look_preparation.gd` PASS — shared mesh identity трёх обликов, независимые
+material overrides, canonical fingerprints, PRE_SAVE/snapshot и invalidation Source.
+Native Forward+ внешний576м:859 props (503+65 деревьев,291 камень),6 общих tree meshes,
+11 независимых проверок опоры, пересечения, отсутствие ложной защиты, один Undo/Redo,
+Plan save/reopen и population snapshot/discard PASS. Генерация47,04с, peak cache16;
+Baseline: finalize0,94с и apply4,72с синхронно; порционный путь проверен ниже.
+Evidence: `C:/Users/novos/Documents/Codex/2026-10-29/ember-grove-scale/`.
+Native массовый запуск без shared geometry ранее дал device lost; финальный PASS не закрывает
+общий shutdown/TDR gate. Авторская оценка, трава, object residency/LOD и населённый FPS OPEN.
+
+Порционное подключение29.10: `test_grove_publication.gd` PASS — промежуточные экземпляры
+не попадают в native packing/Grove snapshot; Ctrl+Z/clear/stale возвращают исходный batch,
+ручная правка сохраняется; bounded/sync provenance совпадает; один Undo/Redo, validation,
+save/reopen/discard PASS. `test_terrain_plan_grove.gd` PASS; obsolete64 cap expectation обновлён.
+Native Forward+ после реального preview:859 props /437 кадров, max149,65мс /34,79с всего,
+одна EditorUndoRedoManager entry, Undo25мс/Redo15мс, Plan save/reopen/snapshot discard PASS.
+Холодная подготовка модели до1,13с, неделимый deferred look камней и ручной input OPEN.
+Owner/evidence — [Производительность мира](docs/EMBER_WORLD_PERFORMANCE.md#владельцы-и-работающий-путь) → «Владельцы и работающий путь»; населённый FPS не принят.
+
+Object detail29.10: `test_object_detail_residency.gd` native Forward+ PASS — bounds hysteresis/
+protection, exact base triangles/attribute sample, immutable Source/physical surface,
+actual carrier release, save strip/return/alternate looks/manual Mesh replacement protection.
+`test_tree_look_preparation.gd` native warm PASS: shared carriers/independent materials/
+first switch/provenance/snapshot/invalidation после weak-cache изменения.
+Большой native editor A→B→all-far→A PASS:859 roots, last-user release, selection protection,
+signature/pose, actual shadows, snapshot save/reopen, native pre/post-save, move Undo/Redo/discard.
+Paired wide full→managed:23,761→13,846мс, visible25,87→16,74млн, living carriers152→2;
+отдельный return object step785,8мс OPEN. Owner/условия/evidence — [Производительность мира](docs/EMBER_WORLD_PERFORMANCE.md#владельцы-и-работающий-путь) → «Владельцы и работающий путь». Это editor look0; manual art/input/weak-PC и общий FPS OPEN.
+
+Detail return29.10: `test_object_detail_return.gd` native Forward+ PASS — old≈800мс→25–28мс,
+exact returned faces/face pixels, signature/physics, weak carrier release, CPU/read cache invalidation.
+`test_object_detail_residency.gd` native regression PASS. Native576м all-far→A object step26,928мс,
+прежняя signature не меняется. Grass:2304 painted patches4м через12м; A/B/A21 resident,
+644/702/644 tufts; old MultiMesh release / identical returned buffers /21 disk hits / mask save-reopen PASS.
+После полного ground settle paired frame median15,706→15,730мс; это sparse grass, не dense acceptance.
+Dense grass29.10:16–64 пучков/м²,21 resident /10 650 tufts; cold ready23,177→6,296с.
+21 cache files трёх обликов byte-identical; native A→B→A release/exact return/21 hits PASS.
+`test_grass_local_candidates.gd` red→green25 700→0 distant calls; `test_detail_preparation.gd` PASS.
+`test_object_detail_brush.gd` native с пустым кэшем PASS: physical roots/цветы/3облика/история/save.
+Старт/движение29.10: shader/template async + pipeline warmup в existing startup gate;
+новых grass compilations42/1→42/1, cold frame170→50,637мс, private bindings/pixel parity PASS.
+Travel footprint old FAIL/new PASS; seam arrays/exact physics/one overview per region PASS.
+Ground/grass shared8мс, brush4мс, fine halo в прежнем budget≤384. Native5м/с:194/194 near ready,
+pending grass после остановки0; общий moving frame до87мс ещё OPEN.
+Native editor surface cold/warm/exact physics/3looks/live/latest edit/discard PASS (full-detail fixture).
+Headless startup PASS; native error-window height после autowrap reflow PASS
+(`test_voxel_editor_preparation.gd`, ember-dense-meadow/popup-after.log).
+Сплошной луг: test_detail_sleeping PASS — bounded polling/fair queue/priority/ancestor disable/
+free/release/reattach; test_detail_budget_phase red→green — continuation после Node._process.
+Detail cache regression PASS; native shader regression PASS, включая rim off/on common wrapper.
+Цель автора120FPS/2560×1440 native с переменными углами; прежнее≈11% покрытие не её приёмка.
+Full25848-patch fixture технически PASS:231 resident/191332 tufts, плотность64/10/8 сохранена;
+history/preview-discard/save-reopen/exact wind roots/return PASS. Кадр≈25мс, motion до142мс,
+0 unready near:120FPS/полная плавность/вид не приняты. Evidence — [Производительность мира](docs/EMBER_WORLD_PERFORMANCE.md#доверенная-текущая-точка) → «Доверенная текущая точка».
+test_detail_budget_progress red→green: unrelated UI не съедает allowance, ground priority/continue.
+test_detail_visible_priority red→green: near bands/FIFO, author priority, camera rerank,
+residency/Undo cancellation и немедленный explicit cancel без следующего budget turn.
+test_ground_foreground_budget red→green: missing core8мс, ready core с queued scatter4мс,
+без scatter снова8мс. Это scheduling checks, не доказательство120FPS или полной camera coverage.
+test_terrain_resident_slots red→green: release/reuse не меняет tree, освобождает mesh/material/
+physics; exact faces,32 повторных прохода, protected overflow bounded, hosts не сериализуются.
+test_grass_footprint red→green:23232 решений exact против прежних8 floor probes, без full query
+Dictionary, holes/edge/sculpt/origin/scale/rotation/tilt. detail_preparation/local_refresh PASS.
+Native576 cold scatter:105,008→82,740с,239/239 buffers exact;FOV40/70,5 tiles/14 support samples,
+pending0 после движения. GPU≈14,34мс/движениеp95≈24,16мс:120FPS и stalls остаются OPEN.
+Evidence: D:/Codex/ember-cold-scatter-20261029/comparison.json; stage files восстановлены по SHA.
+test_detail_startup_gate: реальный WorldCanvas удерживает cover для незавершённого resident
+reserve, снимает после готовности и не ждёт sleeping world; gate не сокращён.
+Throughput30.10: test_smooth_sample_parity65536 exact; test_detail_worker_parity grass/flowers/
+3looks/holes/water/borders/origin/transforms byte-exact, physical candidates/blocky/tilt fallback.
+test_detail_worker_lifetime:2 admissions, cancel completed/unfinished, remove/readd/free/release,
+await cleanup пока host жив, join/ready ровно один раз. test_detail_sleeping_admission:25000far, broad-bin false-positive reject,
+entering prepare radius/увеличение footprint без старого bounds cache,
+near/moved/oversized/free/disabled policy; legacy red2048far probes, новый green0far probes.
+31.10 `test_detail_sleeping_epochs` RED→GREEN/native Forward+ PASS:после полного
+sweep неизменные runtime inputs не перечитывают512footprints (128polls65386→0reads),
+anchor внутри того же bin/resize/move/new host/policy changes запускают admission.
+Отдельный paused ancestor RED→GREEN:resume повторяет незавершённый admission без
+policy change. Editor/custom projection без authoritative epoch сохраняет periodic
+fallback;legacy broad-bin admission,owner lifetime,resident poll epoch PASS.
+Native pattern-library Undo/Redo/save/reopen PASS;полный dense/cold/release/return
+и clean timings — у Performance owner,не приёмка120FPS/ручной кисти.
+Preparation cache/Undo/reopen/mask/seed/size/cancel, local refresh и no late tree nodes PASS.
+Native576/859props/25848patches/64-10-8/native1440/TAA: Player82,782→56,830с. Immediate4с
+east40+4сwest70 без wait_grass, required circle проверяется каждый process frame: pending0/0,
+опора без пропусков. Первый east40 — тот же путь, где контроль имел13pending; второй изменён
+на возврат, чтобы не упираться в prop, не парный A/B старого второго east.
+212/212 overlap buffers exact не доказывают полного unload-return. GPU≈13,2мс, motion
+wall p95≈23–26мс/max40мс с QA checker:120FPS/остаточные stalls/manual/weak-PC OPEN.
+Wide steady40/70 (distance960/polar1,05, тёплый scatter cache) PASS после settle, GPU14,3/13,6мс;
+это не immediate cut. Worker parity native Forward+ PASS со sleep0/vsync off в fixture.
+Evidence: D:/Codex/ember-scatter-throughput-20261029/native-final/runtime576-result.json.
+Последняя проверка стоимости30.10: test_grass_sleeping_surface_notifications25000far→0probes,
+near overlap/outside/return PASS; preparation/local refresh/worker lifetime PASS.
+ObjectLOD: test_object_resident_lod RED→GREEN — завершённый worker публикует carrier
+для resident-дерева,look0 refresh его сохраняет;Source/collision/preview/manual replacement/
+выход из streaming/look1/2 guards PASS. test_object_lod_worker_lifetime:pending не блокирует
+main,source.changed/disabled discard,exit join и metadata PASS. Native object_detail_residency/
+object_detail_return:faces/channels/materials,physics/authoring fingerprint/save/return PASS.
+Native LOD0 pixel control дуб/берёза,near/far,TAA OFF:2exact,2по1pixel±1/255;A/A exact.
+Связанный dense576/native1440p/95м gate и актуальные времена — у performance owner ниже;
+ручное движение камеры/тени и минимум120FPS остаются OPEN.
+GPU A/B/A shadow/unlit/hide — diagnostic, не visual acceptance; качество/плотность прежние.
+Прежний reference и условия сравнения — [Производительность мира](docs/EMBER_WORLD_PERFORMANCE.md#доверенная-текущая-точка) → «Доверенная текущая точка»;
+D:/Codex/ember-gpu-stalls-20261030/ (reference max252/426мс после sleeping/ObjectLOD fixes).
+Последний far-preparation gate: test_object_far_preparation native — async Source load,
+legacy/packed worker arrays+Image bytes exact для rock/cliff/house, volume без unused Source read,
+physical shape/author fingerprint/save/return/Source invalidation PASS.
+test_object_far_preparation_lifetime: nonblocking pending, changed/disabled discard, exit join
+CPU+threaded ResourceLoader, CPU cache без GPU carrier PASS. Existing object_detail_return и
+object_detail_residency native PASS. Root native без импортированных textures не принимался;
+реальный PASS — imported QA stage (CWD/root не импортировался).
+Последний material-stalls gate: test_material_height_cache cold/disk/corrupt/private/input/params PASS;
+test_object_depth_sun25k, preorder/internal/replacement/missing PASS (5,7мс→7мкс local median).
+test_object_depth_preparation native:3 layers/mips byte exact, source immutable, warm cache,
+private numeric texture/image и live amplitude isolation PASS. test_object_depth_lifetime:
+pending/edit/disabled/exit/signals, source handoff/last-consumer release/removed host PASS.
+Far parity initially red на isolated source-identity churn, исправлено; final native far parity
+и object_detail_return PASS. compact_material_patterns native: drag/Undo/Redo/discard/PNG/
+variant/save-reopen/atlas/finish/side/legacy PASS. Авторский ручной view/input OPEN.
+Native576/859props/25848patches/64-10-8/native1440/TAA: warm Player27,169→25,251с;
+initial194953instances прежние, immediate required missing0/0/floor PASS. Baseline p95=46,742/41,517,
+p99=53,398/48,411,max112,375/52,823мс →final p95=33,392/26,621,p99=40,439/33,940,max47,037/35,812мс.
+Motion100%frames>8,33мс, includes QA checker. GPU steady14,346/14,621мс;120FPS/manual OPEN.
+Конечные игровые camera poses немного различаются: GPU не выдавать за paired A/B/A выигрыш.
+Evidence D:/Codex/ember-material-stalls-20261030/final/result.json и comparison.json; далее
+GPU shadow receive/filter/ground и точная причина остающихся≤47мс stalls. Shadow cache не внедрён.
+Свет30.10, steady GPU gate: --remote-debug local:///visual profiler/RD timestamps PASS;
+actual native1440/TAA/FOV40/70 + wide960/polar1,05, fixed camera и primitive counts в паре.
+Shadow render median0,667/0,493мс, opaque10,709/10,982мс; кэш генерации не основной резерв.
+Автор после кадров одобрил filter2 при прежнем angular1,4/blur1/distance1600; main изменена
+одна строка, остальные bytes сохранены. Near40/70 GPU14,598/14,653→9,613/10,090мс,
+wide40/70=14,312/13,205→11,004/10,473; p95выбранного10,369/10,976/11,971/11,371мс.
+Это не120FPS и не gameplay/stall acceptance. Старый stage template не включает7 новых
+unrelated main mechanics nodes; full current main с ними этим snapshot не принимается.
+Focused external test-shadow-filter.gd: OptionButton/history1action/Undo5/Redo2/save/reopen2/
+discard/new-owner и softness/range/shadows invariants PASS. Production shader trials не приняты.
+Evidence D:/Codex/ember-light-shadow-20261030/. Manual edges/движение и рывки — следующий gate
+по решению автора; плотность и разрешение не снижать.
+Аудит и prep30.10: targeted cache/rotation/packed/living/physical/return fixes сохранены.
+`test_detail_cache_maintenance`:1000files, nonblocking admission,coalescing,cancel/join,disk budget,
+не-cache files сохранены. `test_detail_preparation`:cold signature вdispatcher,cache/3looks/
+mask/seed/size/source change/cancel/reopen PASS. `test_detail_worker_parity`:pure/mixed object
+cells byte exact3looks при yaw/nonuniform transform,live preview fallback. Worker lifetime PASS.
+`test_detail_fade_culling`:complete/partial fade boundary,return,disabled policy,anomaly guard;
+native A/B/A70°4,03→3,09млн submitted triangles; temporal PNG noise не является pixel-exact gate.
+`test_world_detail_policy`:prepare29,fades16–24/release32;budget phase после nodes без double connect.
+576м/859props/25848patches/все7mainnodes,native1440p scale1/filter2: warm timing отдельно от
+cold-cache correctness на≈95м out40/back70. Cold required0/0,floor0/0; release/return258/258 и
+272/272 byte exact. Новому cold stream gate соответствовал исходный fail61/32. Budgets2/4мс
+провалили coverage и отклонены; production сохраняет8мс. Actual camera/PNG проверены.
+Warm wall p9523,1/24,7,max32,5/36,7;GPU p959,2/9,1мс.120FPS/stalls OPEN. Whole-frame
+audit Astra/high: отдельные OFF/ON/OFF и QA-only main callback scopes на том же dense gameplay
+маршруте40/70, native1440p. Native-call profiler заметно искажает CPU; его inclusive times не
+считать ожидаемой экономией. Native capture ON дал4CowDataerrors, без native capture повтор
+дал0runtime errors/329warnings; причина в engine не доказана.
+GrassPatch clean fast path/bounds memo реализован. `test_grass_clean_resident` red→green:
+clean callbacks пропускают readiness, surface/transform/size invalidation остаются; bounds
+следуют parent rotation/nonuniform scale/unit/mode/reparent/reentry. Native local sculpt/paint/
+source restore и cache/preview/cancel/3looks в `test_grass_local_refresh`/`test_detail_preparation`
+PASS; fade и sleeping admission PASS. Старый `test_detail_sleeping` использует несовместимые
+Node3D stubs без policy/map/area и падает одинаково до/после; это не regression этого fix,
+его PASS не заявлен. Actual dense1440p clean A/B: median19,32/19,10→15,86/15,53мс,
+p9528,40/29,34→24,12/26,23; cold required/floor0/0, unload/exactreturn258/258.120FPS OPEN.
+Terrain upload indexing31.10: `test_terrain_render_indexing` RED→GREEN/headless/native
+Forward+ PASS. Flat/slope/mixed base и все native LOD triangle attributes exact,
+thresholds/canonical layout/physics payload без изменений. Main terrain/shadow pixels
+на двух LOD biases и seam pixels exact. Worker supplies compact upload;commit drops
+temporary upload. Native `test_world_detail_policy`/5120-ray HeightMap+affine fallback/
+`test_terrain_smooth_tools` existing8tools,Undo/Redo,Save/Reopen PASS.
+`test_detail_frame_budget` native PASS:existing cover5мс→revealed3мс,active brush
+сохраняет5мс context/4мс cap,charged foreground subtracts once,recreate/reparent,
+actual WorldCanvas readiness getter. Integrated576m native cold/release/return PASS,
+no absent/pending/floor gaps,281exact;120FPS/wide70/rare stalls/manual остаются OPEN.
+
+Priority fairness31.10: `test_detail_turn_fairness` RED→GREEN/headless/native PASS.
+Near waiter не вытесняет дальнего владельца bounded slot;реальные digest и два read
+slots завершаются. Cancel requeued turn,has_pending_work и release во время dispatch
+PASS. Native cache-read/material-async/preparation/pattern-library regressions PASS,
+включая live profile/Undo/Redo/save/reopen. Static startup control timeout90с→21,823с;
+это deadlock fix,не общий FPS benchmark. Dense result — Performance owner.
+
+Material digests31.10: `test_detail_material_async` RED→GREEN/headless/native PASS —
+slow80ms не блокирует producer(native44us),идут кадры,same-second changed/deleted/
+recreated saved profile меняет реальные bound pixels;pre/in-flight cancel,один slot,
+queued consumer progression и teardown/join. `test_detail_material_preparation` native
+сохраняет byte/uniform parity,private images/textures,texture revision/weak bank и bounds.
+`test_detail_preparation` дополнен реальным GrassPatch profile edit во время role IO:
+последующее publish сохраняет preview;layout/source guard,cold cache/source/seed/mask,
+reader exit и native pattern-library Undo/Redo/save/reopen PASS. CPU gain не принимает
+120FPS;общий dense/cold/release/return и clean timings — Performance owner.
+
+Saved material/budget30.10: `test_detail_material_preparation` native parity/private textures,
+6packed artwork channels, unchanged imported texture identity, same-second user:// file save,
+delete/recreate, bounded16/context и release PASS. Native `test_detail_preparation` PASS.
+`test_terrain_whole_budget` red→green: observer9000мкс раньше charge87мкс/admit1, теперь
+charge≥9000/admit0; обычный кадр admit1. `test_detail_budget_phase` PASS. Общий8мс не снижен.
+Dense cold A/B с одинаковыми QA scopes: material_patterns single-call p953,854→1,082мс;
+whole wall median19,343/18,043→18,462/15,832;p9526,887/29,192→25,420/25,797;
+max40,188/45,049→72,598/55,021мс. Max не улучшен;54,158мс внутри Preparation turn требует
+отдельных write/resume scopes, причина не доказана. Native runtime errors0/329existing warnings.
+Fresh cold correctness без scopes: required0/0,floor0/0, unload/exactreturn258/258;120FPS OPEN.
+Floor/resume30.10: `test_object_floor_signature` red→green: signature не строит bins;
+faces/slots/roles hash прежний; actual floor height/role, disabled/layers, mesh/shape replacement,
+volume collider faces, yaw±45/tilt/nonuniform scale/negative coordinates/cell-size changes PASS.
+512м quad first-query≈6,4мс→6–8мкс; один запрос готовит один bin, не всю площадь.
+Native `test_object_detail_brush`:8192triangles/104instances,3looks/roots/Undo/Redo/save/reopen/
+discard PASS. `test_detail_worker_parity` extended red→green: resumed object queries только
+в budget turn;3looks byte exact/mixed/preview PASS. Lifetime/cancel/free и preparation PASS.
+`test_detail_ground_support` red3missing corners→green0 при той же capacity384; policy lead30,
+fades16–24/release32. Scope: default4м painted patches/tuft1; более крупные footprints — отдельный gate.
+29м версии давали1missing;30м без ground guard оставляли2outside-visible patches в infinite wait.
+Эти варианты отклонены. Accepted cold30+support: required0/0,floor0/0, queue settles, unload267/267,
+return265exact+2unused hysteresis outside prepare. Final timing p9526,37/26,35→25,13/26,79,
+max50,63/40,94→61,38/46,72; общего FPS gain нет. Job poll max8,55→0,40мс/signature17,36→4,76.
+Native runtime errors0;3new intentional integer-index division warnings (332total vs329).
+Старые72мс не воспроизведены, причина не установлена; gate остаётся OPEN.
+Render frame30.10: native test_water_floor_capture_demand — fine publication/dry Source replacement,
+hidden/layers, underwater/return, fresh first pixel, far overview без Regions, empty/return/clear,
+detached controller callback release PASS. Main-copy79wet consumers/capture ALWAYS/native1440p.
+24 grass/flower/ground/stone RGB cases с прежним shader body: exact0 changed pixels. Dense576m
+near40/70+wide40/70 A/B/A all-viewportsGPU median≈8,8–9,4→8,2–8,6мс; B p958,6–9,1.
+Full gameplay route:2110/2244frames, wall median17,805/16,184,p9525,288/25,602,
+max40,645/49,018;0runtime errors/332existing warnings. Performance120FPS/ручной вид OPEN;
+этот timing route не повторял полный per-frame coverage/unload exact gate.
+Prepared roles: test_detail_material_preparation расширен — texture bytes/non-texture uniforms,
+private texture+preview+rim, cross-shader payload, saved SHA/remove/recreate, texture.changed/PNG
+bank refresh, bounded16 CPU payloads, no retained GPU bank after last consumer, release PASS.
+Native test_detail_preparation3looks/cache/mask/height/seed/size/cancel и worker lifetime PASS.
+Native accepted8 после cache: required0/0,floor0/0, release267/267, return265exact+2unused;
+spatial checker выбирает консервативных кандидатов и применяет прежний точный radius test.
+QA4мс бюджет отклонён:1missing и back route timeout; production8мс прежний.
+Terrain shadow water-pass regression: forced refraction/reflection bit в shadow projection
+RED error0,00754/0,01210 → GREEN0/0. Реальные водные camera clipping + visible caster negative
+controls PASS. Два discard теперь !IN_SHADOW_PASS; sun/filter/bias не менялись. Авторское
+мерцание self-shadow зелёного рельефа в движении ещё требует live оценки.
+Final post-shadow-fix native gameplay:2091/2285frames, wall median18,252/15,798,
+p9525,637/24,502,p9928,984/28,746,max278,305/71,395; rootGPU median7,474/8,402,
+p959,074/10,279.0runtime errors/332existing warnings. Frame2313 late stall278,305мс —
+renderer setup241,516мс того же кадра; причина внутри setup не доказана.
+Clean A–B–A warmed wall12–13,5мс,p9522–23,5; row build≈0,065мс, не главный limiter.
+Water core selection revision cache:40 reference cases/halo/hysteresis/edit и wet streaming
+release/return/cancel PASS. Observer selection semantics сохранены. CPU dry576core scan
+0,390→0,00131мс/call; same warmed clean route median12–13,5→12–13,4мс,
+p9522–23,5→19,4–20,8;max51,7мс.0runtime errors/332existing warnings.
+Evidence: D:/Codex/ember-frame-accounting-20261030/selection-clean-valid/,
+selection-comparison.json, selection-cpu.log, streaming-valid.log. selection-clean/ INVALID.
+Native preflight: actual FollowCamera FOV40/70,viewport2560×1440,scale1; native70.png просмотрен.
+Dry steady _prepare_water median0,010мс/p950,014; RAM3,93GB/video1,87GB sample, не long gate.
+QA430paths restored exact SHA; evidence native-preflight/, stage-restored.json.
+Current foreground5ms/HeightMap/poll epoch: test_detail_shared_budget (active debit/prior debit/nested
+count once), progress despite unrelated UI, phase/whole-ground, epoch+closed-context/projection
+replacement, rotated/negative/affine bounds100cases, native preparation3looks/cancel PASS.
+Terrain height-map5120rays: normals/heights exact on fixture, real dense tile maxheight≈0,00000394,
+normal0; cold/cache/section offset/holes/walls/nonuniform/deform fallback PASS. Canonical field unchanged.
+Dense final5 native1440p/FOV40→70 with real Player: absent0/0,pending0/0,floor0/0,release267/267,
+return265exact+2unusedhysteresis,322heightmaps. Legacy pending flags are NOT visible-hole proof;
+coverage-final/4ms actual absent≤7 near20,8–24m rejected,611ms outlier source unproved (screenshots possible).
+Final alpha-gameplay after own out/back warmup, normal TAA/quality/density: median10,804/11,737,
+p9515,024/16,177;p9917,184/18,430;max21,142/36,762;76,56/85,90%frames>8,33;325heightmaps.
+0runtime errors; snapshot GPU A/B/A only0,2–0,5ms gain. Alpha RGB exact FOV40/70 in QA TAA OFF;
+TAA ON retained in game. Snapshot GPU≈9,1–9,5ms still exceeds120FPS budget. No performance PASS.
+Evidence D:/Codex/ember-frame-budget-20261030/: final5/, alpha-gameplay/, alpha-probe/, alpha-pixel/,
+heightmap-affine.log, epoch-lifetime.log, shader-final.log, preparation-final.log, *-accepted.log.
+Actual camera/native resolution/scale read each clean leg. Long memory, cold caches, wind/mixed,
+manual/editor brush feel and green-slope self-shadow remain OPEN.
+Stage430recorded paths restored exact SHA,Root unchanged; stage-restored.json. Budget progress fixture
+removed a redundant process_frame connection; accepted log has0errors. Native alpha image inspected.
+Current terrain feature programs: native test_terrain_material_features validates real scene/profile
+commands (light/gray/voxel/anomaly/profile enable/cancel), same uniforms/texture RIDs, private
+bindings/shared programs, all3looks ground+cover render parity and ResourceLoader source equality.
+Dense576 acceptance at native1440p/TAA/FOV40→70: same-camera A/B/A + cold-scatter coverage/release/
+return + minimal paired gameplay. Result/current numbers/open gates —
+[Производительность мира](docs/EMBER_WORLD_PERFORMANCE.md#доверенная-текущая-точка).
+Evidence D:/Codex/ember-material-path-20261030/: acceptance/, acceptance.log,
+production-pixel-parity.json, features-mixed-final-test.log. Full120FPS/stalls/manual/wet/mixed OPEN.
+Evidence продолжения — D:/Codex/ember-active-frame-20261030/. Evidence —
+D:/Codex/ember-render-frame-20261030/; owner — [Производительность мира](docs/EMBER_WORLD_PERFORMANCE.md#доверенная-текущая-точка) → «Доверенная текущая точка».
+Manual motion/native PNG reimport/cold total startup/weak-PC/долгая память OPEN.
+Подробности/приоритеты — [Производительность мира](docs/EMBER_WORLD_PERFORMANCE.md#доверенная-текущая-точка) → «Доверенная текущая точка».
+
+
+
+Ранний reveal75,7с/32–42pending оставлен только как отклонённая проба в ember-startup-reserve-20261029.
+Native minimal25k field: add node≈981мс/25848 property calls; reuse slots≈0,9мс/0 calls PASS.
+Контроль sleep0: first grass68→10с/core114→18с, полный local193→98с; cold p95337→33мс,
+max473→368мс. Это editor fixture,120FPS не достигнуты. Native full source buffers231/231 exact;
+history/preview-discard/save-reopen/return PASS, ground pending/jobs0 перед сравнением.
+Legacy pilot projection/save-reopen и travel seam/budget/physics PASS. Ручной main/runtime OPEN.
+Evidence — D:/Codex/ember-frame-phases-20261029/ (control-before/after,full-after,slot-probe).
+Astra/high audit29.10: legacy harness FOV≈70 при metadata40; старые FPS не принимать как FOV40.
+Final FOV40/2560×1440: editor near≈22/wide≈27мс GPU; native prepared snapshot≈18,8мс,
+camera/draw calls/visible+shadow primitives совпали, image MAE0,252/255. Не gameplay/streaming.
+Две DEPTH-записи ground shader:18,89→13,10→20,20мс GPU, near frame MAE0,238/255;
+drift1,31мс, механизм early-Z вероятный. Более дешёвый shader path требует своего gate:
+перекрытия персонажа/земли/стыки/вода/depth effects. Код игры аудит не менял.
+Terrain/water+grass materials/shadows/pixel count controls — World Authoring, «Сплошной луг29.10».
+QA restored/85 hashes unchanged PASS;120FPS не достигнуты. Evidence — D:/Codex/ember-astra-audit-20261029/.
+Новый общий performance gate по решению автора29.10 — [Производительность мира](docs/EMBER_WORLD_PERFORMANCE.md) → «Текущие решения и gates»:72/144/288/576м, full coverage64/10/8, FOV40/70/наклонный wide,
+cold/move/стыки/A→B→A/memory, plane/slope/mixed geometry controls и настоящий player route.
+Editor/snapshot/gameplay раздельно; native1440p/120FPS с учётом p95/p99/max/stalls, не среднего.
+После значимых правок фундаментального пути — его stress и связанные correctness regressions;
+локальный unit/helper PASS не закрывает общую систему. Порядок/детальная матрица — только у owner.
+Команда реализации29.10: test_terrain_cheap_profile headless/native PASS; material-distance PASS;
+native foliage24/24RGB exact с реально развёрнутым include-reference. Preset/UI/history/save
+путь принят технически. WORLD_DETAIL_POLICY: nativeLOD/actualrayerror/cachecorrupt/roundtrip/
+indexedlooks/height-update PASS; smooth uniform/cartoon/tools PASS. Nonblend defect0LOD исправлен:
+red→green +persistent assertion и независимый native фактический4096→2048→1024→512 PASS;
+fine colors/layout/physics сохранены, true-mode arrays/key битово прежние.
+Terra: настоящий main-copy Player/physics/nav/3looks native PASS, GPU≈12,8мс/p9513,47;
+dense canonical true editor:25848patches/859props, sourcepalette/12seams/release0/exactreturn PASS,
+actualLOD2048→1024→512. GPU near40≈12,76/wide40≈16,26/near70≈15,22/wide70≈14,60мс;
+разные poses/wind, не парный A/B. Все sampled GPU>8,33; performance OPEN.
+True-field motion wall p95≈27–29/max139–162мс, missingnear0; peak11GiB private/minfree6,34GiB.
+Источник — D:/Codex/ember-world-integration-qa-20261029/ (gameplay-result,blend-true/result,lod-render).
+Full576 gameplay/Low2 control ещё проверяются; snapshot и ground-only startup их не заменяют.
+Water startup576: test_water_runtime_extent red→green PASS, old528м guard заменён общим
+Sections cap576м; Regions неизменён. Последние wet22/23/core9216/halo9312/sea/shore/waveheight/
+missinghalo/no-dense/rootfields и startup-ready PASS. Новые boundary assertions preview
+отличают576valid/>576/malformed; полный native runtime576 повторяет Terra после fix.
+WaterRegions streaming: реальный runtime576 достиг480012мс сготовойземлёй/лугом, Playerне создан,
+водныйworkerжив/cacheрастёт/committed0 — coldwholeworldprep, неdeadlock/OOM. Новый
+test_compact_water_streaming red→green: initialbatch2/required3wet/nearready, canceldeparted/
+staleedit/reentry/dry0fields/missinghalo/sea-lake/waves/bindingnear1far0 PASS; globalinlet/edit/Undo PASS.
+Actual dry576 water-owner2,134с/0windows/0bytes; focused trueentry22,140с/Playerphysics PASS.
+Finalorigin/extent/contactarrival+release/unrelatedbatch/COW snapshot PASS; fullnative576должна
+принятьTerra отдельно. Evidence — D:/Codex/ember-water-streaming-foundation-20261029/.
+FinalTerra native576 completed: Source/859props/25848patches/64+10+8, Playercreated105,333сcold,
+waterready/near239patches195985instances/pending0, forward5/back8tiles/support14/14+15/15PASS.
+GPUFOV40median14,382/p9515,112/p9915,347; quality5→2→5=14,382→9,741→14,363.
+Остальные40/70near/wideposes GPU≈13,9–14,65мс, разныйQAwind;120неприняты.
+Wallmotionp95≈24–25/max128,111мс; overlap212/212buffers exact, НО9,8мoffstart/нетreleaseIDs:
+gameplayunload→sameanchorexactreturn неPASS. Editorrelease0/exactreturn остаётся отдельнымPASS.
+Wetstream nativeappearance/ручноеощущение/arbitraryteleport ещёOPEN. Source576сухой.
+ФонHoshiCompanion оставлен; собственныеengines/monitorзакрыты,209stagepaths restoredSHAexact.
+Evidence runtime576-result.json/runtime576-streaming-native.log/stage-preservation.json в
+D:/Codex/ember-world-integration-qa-20261029/. Локальные успешные наборы без причины не повторялись.
+test_grass_property_refresh red1,731с→green0,431с на5000 списков; test_grass_mask_storage PASS:
+read-only snapshot/alias isolation/legacy text/explicit zeros/types/invalid legacy/corrupt blob/Node duplicate.
+test_grass_preparation_tree red4→green0 late nodes; cache/sleeping/brush rebase и native physical
+grass/flowers/3looks/history/save regressions PASS после последних изменений. Полный suite не запускался.
+Вечер сохранён в main, native polygon просмотрен; ручной main/вид/ввод OPEN. Owner/evidence — [Производительность мира](docs/EMBER_WORLD_PERFORMANCE.md#владельцы-и-работающий-путь) → «Владельцы и работающий путь». Успешные terrain/object regressions целиком не повторялись.
+
+Editor no-sphere28.10: native main-copy profiling PASS,0 sphere preparations/bindings,
+222 scatter hits/77878instances; two view captures + one near A/B/A grass/flowers hide/restore.
+GPU19,685→16,110→19,677мс, original draws/primitives restored; source100 files unchanged.
+All samples unfocused/1844×1123, not an .exe comparison or mouse acceptance. Production code unchanged;
+no save/history/full regression rerun. Evidence/limits — [Производительность мира](docs/EMBER_WORLD_PERFORMANCE.md#отложенные-сборка-и-сфера) → «Отложенные сборка и сфера».
+
+Windows prepared build28.10: standalone release .exe main, clean user profile, sphere forced in memory:
+1333 shipped hits/0 misses/0 local hits,324tiles/222patches/77878instances/702bindings, all queues0,
+no runtime ERROR. One current character placeholder warning documented. Cold/warm logs preserve focus;
+warm unfocused is not strict A/B. Native screenshot is one game camera, not complete art/controls acceptance.
+`test_world_prepared_cache.gd` headless PASS:7categories/empty-local/no-copy/custom-isolation/names/counters.
+`test_terrain_prepared_bundle.gd` headless PASS: previous CLI/checksum/corrupt/traversal/version.
+`test_world_export_materials.gd` headless PASS: derived overrides+surface materials only, private Mesh,
+geometry/metadata exact, source/art materials unchanged; actual cliff+house fresh .scn reopen PASS.
+`test_compact_world_startup.gd` Forward+ PASS: cover/player waits for pending foliage, then former
+water/camera/input/plain/waterfall/cancel gates. Editor save/history unchanged; broad suite not repeated.
+Main/Source protection100 files unchanged. Limits/owners/evidence — World Authoring → Windows-сборка.
+
+## Внешний mesh28.10 — первый статичный камень
+
+`tools/test_external_mesh_source.gd` headless: pristine/legacy owner protection, sculpt/paint/material
+mapping invalidation, invalid provenance path, Save/fresh reopen original+edited derivative, original
+hash immutable. Only user:// roundtrip; requires the published first external Source fixture.
+Native main-context capture (evidence path in World Authoring): existing Session open → side Remove →
+Undo/Redo →3 displays → Save/fresh Source/scene-copy reopen → continued sculpt/Discard.
+After Save, edited prop never substitutes pristine GLB. Same collider across3 looks; physics ray
+and prop.floor sample match. Existing `test_volume_smooth -- --native` guards ordinary voxel props.
+Publication: existing catalog IDs lists asset; main has ExternalCoastalRock at(-40,15,862), no new map.
+Local anomaly: `tools/test_external_mesh_anomaly.gd` in Forward+ PASS. Real small-map preparation
+discovers the published external StandardMaterial prop; original UV/albedo adapter vs Standard on
+same geometry mean RGB error≈0.000012. Both local looks/inside/boundary,2 distances/angles,30-frame
+movement per look preserve instance/mesh/material/targets (0 builds); global switch/disable restore
+the original owner/mesh/material. Existing Map cell size/levels reach adapter. Canonical collision,
+original texture and GLB hash unchanged. GPU morph vs independently frozen geometry light/shadow
+mean RGB error≈0.000000069; existing test_world_anomaly_surface_light native PASS/0 changed pixels.
+Source/history/serialization unchanged by the material adapter; no repeat of successful Save matrix.
+Scoped main-context captures prepare the sphere only on this rock, excluding distant terrain/gameplay; full main startup,
+F6/mouse/artist acceptance OPEN. Reprepare tool refuses dirty derivative; no forced author overwrite.
+Adapter evidence: Documents/Codex/2026-10-28/ember-external-anomaly/{targeted,native-regression,main-capture}.log.
+Evidence: Documents/Codex/2026-10-28/ember-external-rock/{capture,source,physics,legacy-native}.log.
+
+## Слои камня Б25.10 — editor-перенос выполнен, ручная приёмка OPEN
+
+Дополнение28.10: тот же test_stone_material_layers проверяет stone_weathering_enabled default-off,
+preview/Undo/Redo/Save-copy/fresh reopen/discard и сохранение остальных полей. Main-context on/off
+near/far +3 looks/collision PASS; общий parallax shader двух bark consumers компилируется.
+Evidence/границы — Terrain Authoring → «Связная фактура стыков28.10». Мышь/сфера OPEN.
+
+
+`tools/test_stone_material_layers.gd` native PASS: legacy opt-out/finite validation,
+два видимых stone-only блока, независимые switches/width/strength/pattern/tint preview,
+Undo/Redo, Save-copy/fresh reopen/discard, прежние PNG/depth/rim, form_pull0 и cached
+look1/2/0. Slider input сохраняет mesh/preparations; старый A/B/C shader entry компилируется.
+`tools/test_depth_control.gd` PASS по непосредственно затронутой глубине/POM.
+Native main-copy: тот же WorldEditor preview route; обычный и0.45× камни получают один
+профиль, физический scale учтён, geometry/terrain не перестраиваются. Save/reopen/discard,
+облики и sphere carrier с consistent per-triangle face IDs PASS; изменение controls и движение
+сферы не увеличили sphere.preparations. Layer profiles у clones/source используют одну таблицу.
+Световая привязка сферы исправлена; отдельный focused gate ниже. Старый shader/старый
+carrier повторяли дефект: он предшествовал Б. Геометрию для исправления света не меняли.
+First prepared mesh≈0.64с, один на все экземпляры main; fresh≈0.71с. Это не полный frame/FPS benchmark.
+Fresh canonical main/панель читают сохранённые две включённые группы Б; depth20/pull30/rim-off прежние.
+Scene/terrain/model/prefab hashes прежние, Pattern изменён только включением Б. Evidence/harness —
+`C:/Users/novos/Documents/Codex/2026-10-25/ember-stone-layer-editor/`.
+Ручной gate: main detailed → cartoon_stone → оба выключателя/диапазоны → Undo/Redo/Save/reopen/
+отмена, затем normal/small/sphere в движении. Physical input/art/weak-PC OPEN. Новые поля не закрывают
+общую приёмку камня или универсальную схему слоёв; C не переносился. Исторические A/B/C кадры —
+`C:/Users/novos/Documents/Codex/2026-10-25/ember-stone-layers/`.
+
+## Прибрежный дом25.10 — generator/editor/main выполнены, ручная приёмка OPEN
+
+`tools/test_building_generator.gd` native Forward+ PASS: canonical Source/convex owner colours,
+deterministic generation, library publish Undo/Redo, exact fractional metre fields, parameter Undo/Redo,
+two-storey preview without Source writes, existing variant update, fresh Source/Recipe reopen,
+saved-data Undo/Redo, discard and dirty-sculpt protection; existing rock integer controls retained.
+All writes user://; the update check compares Source/Recipe data, not serializer incidental bytes.
+Native actual main: persisted CoastalHouse at(-208,12,208), ground range12–15 under4-unit foundation;
+existing panel and three global world looks, then detailed overview. No shader/script errors.
+Shared palette/Prop changes: old rock buffers unchanged and test_stone_material_layers PASS.
+Main terrain and previous scene nodes byte-preserved; only one ext_resource and one instance added.
+Evidence: `C:/Users/novos/Documents/Codex/2026-10-25/ember-coastal-house/`.
+Manual: main → house → Generator → change dimensions/floors/roof/colours → preview/save/reopen;
+assess scale/front/side/roof/ground contact and walk around, three looks. Physical input/art OPEN.
+Exterior only: windows/door are closed masses. Interior/interaction/settlement not implemented;
+moving sphere with house, full suite/FPS/weak-PC not tested. These are not implicit PASS.
+
+## Свет камня/земли в сфере25.10 — sampling исправлен, ручная оценка OPEN
+
+`tools/test_world_anomaly_surface_light.gd` native Forward+ PASS: actual rock prefab,
+existing carrier/target texture and sphere vertex path compared with independently baked
+same vertices/normals and identity targets. Gray light/shadow fixture excludes pigment/POM/B;
+0 pixels differ materially, mean RGB error≈4.19e-8. Before fix2430 pixels differed;
+returning only the old light origin in an external QA shader gives1811 and FAIL.
+Native main: voxel/low poly interiors, moved field, reverse camera, sphere off; no shader/script errors.
+207 mesh identities retained, sphere.preparations stayed1. False dark grid on rock removed,
+shadow striping reduced; physical stair silhouettes remain, author art/motion/input gate OPEN.
+Scene/terrain/Pattern/Source/prefab bytes unchanged; shader-only slice does not rerun editor save/history.
+Evidence/harness: `C:/Users/novos/Documents/Codex/2026-10-25/ember-rock-sphere-fix/`.
+Start main detailed → anomaly preview → move sphere over rock → switch inner looks → off.
+Global FPS/weak-PC/general rock acceptance not claimed. Full suite not run.
+
 ## Роли и текстуры компактной земли — ручная приёмка OPEN
 
 Smooth bark LAB: `test_smooth_bark_material_study.gd` — exact saved Source SHA,
@@ -653,7 +1244,7 @@ explicit18/no preset upgrade, canonical Source18 and hierarchy validation,
 bounded121 supports/48 branches, taper/parent attachments across6 seeds,
 deterministic Source/UV/light normals, real sprite roots, private Recipe/Source
 save/reopen and existing build_on_structure byte/collision parity. Broken
-hierarchy rejected. `capture_tree_branching_study.gd`: previous leaf-card17 A,
+hierarchy rejected. Historical capture (scene/capture retired23.10; quality-cleanup archive): previous leaf-card17 A,
 bare18 B/leaf18 C; returnА exact, immutable old/new Source/geometry/grass/floor,
 UV/group normals independent of camera. Native3 presets×side/back in game and
 full overview, under/orbit8/motion/near-far, POM4cm/profile guards, clean exit0.
@@ -666,7 +1257,7 @@ Bare branch network20: `test_tree_branch_network_study.gd` — same Source/Recip
 owner, four parent orders,≤256 lines/≤128 groups (old versions retain128),
 seed/taper/real attachments, invalid parent/detached fork/budget rejection,
 private save/reopen/rebuild/collision parity, full233-row bark table. Targeted PASS.
-`capture_tree_branch_network_study.gd`: bare18/plain20/bark20 comparison,
+Historical capture (scene/capture retired23.10; quality-cleanup archive): bare18/plain20/bark20 comparison,
 exact return, three presets×side/back in game and complete tree views,
 front/side/rear/overview/orbit8/close/near-far/motion, Source/terrain/paint/grass/
 physical floor guards, exit0 PASS. Preserved provider1–19/seed7,31 Source/structure/
@@ -734,6 +1325,15 @@ profile: their persistent save/reopen is outside this contract. Alpha gaps
 produce subtle real ground illumination changes; atmosphere rays, forest
 budget/wind/LOD and production transfer deferred.
 Evidence — C:/Users/novos/Documents/Codex/2026-10-15/ember-tree-leaf-optics/.
+
+Leaf rim shadow visibility2026-10-27: native Forward+,
+`--script res://tools/test_tree_leaf_shadow_visibility.gd` writes user://tree-leaf-shadow-visibility.
+Real shadows-only blocker must change diffuse lighting; rim on/off must match
+under full occlusion and differ in direct Sun. Authored diffuse receiving0.4 retained.
+RED before shader correction, GREEN after: occluded changed80651→0 pixels,
+lit changed80651. Exact large-crown moving-line acceptance in landscape_compact OPEN;
+same-pose native map capture is diagnostic, not author acceptance.
+Evidence — D:/ember-tree-shadow-cutoff-2026-10-27/visibility-regression/.
 
 Separate-leaf samples first stage: texture test includes v8 exact authored RGBA/
 base alpha/filtered mips. `capture_leaf_plane_group.gd` extracts one/six existing
@@ -1153,7 +1753,7 @@ First bark look rejected: `test_bark_material_study.gd` — deterministic field,
 exact previous committed marks v1/v2, branch frame rotation, private source/paint/
 roles, matching Recipe reproduction and occupied/collision cells. Existing
 test_voxel_bark_pattern covers UI/Undo/Save/Reopen and retained versions;
-object lighting/mapping regressions PASS. `capture_bark_material_study.gd`:
+object lighting/mapping regressions PASS. Historical rejected capture (scene/capture retired23.10):
 4 modes×3 presets×side/back, flat/trunk close comparisons, movement, near/far,
 transform/local Sun, Source/terrain/grass/physics/POM preserved, return/disabled
 exact, relief changes pixels independently of colour, clean exit0. Artistic
@@ -1186,6 +1786,51 @@ workflow и Source rules regressions. Ручная motion/flicker/стыки/nea
 не доказывает готовый pixel-art. Owners/budget — Terrain Authoring → «Три подачи
 материала и света»; evidence — ember-material-looks. Рабочий editor не запускать
 headless; native capture/import выполняются в disposable QA project/cache.
+
+Солнечные тени панели: `test_world_shadow_controls.gd` native Forward+ проверяет копию
+реального Sun, метрический масштаб, один drag/Undo/Redo, cascade/quality IDs, сохранение и
+fresh reopen/runtime-ready Map, discard/закрытие владельца, Undo после смены масштаба/карты.
+Связанный лёгкий regression — `test_world_look_panel.gd` (в том числе прежний water/Sun snapshot).
+Тесты не записывают авторскую карту. По TAA-срезу `test_world_shadow_controls.gd` также проверяет
+ряд softness/filter/TAA, один toggle/Undo/Redo с изменением runtime viewport, независимость Hard от
+угла Sun, Save/fresh reopen/discard, выключенный stale owner и отсутствие смешивания карт в истории.
+`test_shadow_grain_render.gd` native Forward+ воспроизводит зерно на однотонной поверхности с настоящей
+мягкой тенью, проверяет снижение с Map TAA+Ultra в покое/движении и возврат при выключении.
+`editor_test_shadow_taa.gd` включать только в guarded `ember-shadow-grain/editor-qa/` со своим cache:
+4реальных editor viewport, штатный EditorUndoRedoManager toggle/Undo/Redo, EditorInterface save+reload/restore-on-release; exit0.
+При изменении viewport AA на основной карте проверить три облика/траву/камень/берег и GPU одного ракурса;
+стоимость main viewport не выдавать за полный FPS. TAA sharpness/ghosting и мышь/полёт — ручная приёмка.
+
+Общий voxel-рельеф: `test_terrain_voxel_relief_render.gd` (только native Forward+)
+сравнивает настоящий bank/POM shader с геометрическими ступенчатыми плитками: цвет должен
+совпадать с ячейкой высоты. Negative control прежней pixel-выборки обязан ухудшать совпадение;
+не принимать пустой чёрный render за PASS. Дополнительно на основной карте — paving/sand
+near/far и три облика. Editor-only пропадание тени при дереве за камерой проверяется отдельно;
+успех F6/plain receiver не закрывает этот ручной gate.
+
+Общий voxel-light: `test_voxel_light_render.gd` только native Forward+ проверяет настоящий terrain/toon
+shader на receiver: continuous negative control, flat per-cell light, привязка при переносе камеры,
+exact возврат disabled и реальные hard directional shadows. Soft-PCSS кадры — ограничение, не flat-cell PASS.
+`test_voxel_light_controls.gd`: две scene-owned настройки в прежней панели, один drag/Undo/Redo,
+метрический scale, диапазоны/NaN, отсутствие remesh, Save/fresh reopen/discard и закрытый owner;
+временная копия основной карты сохраняет значения/Sun/Source path. POM coupling — тест выше с light enabled.
+Дополнение на основной карте: ground/rock/bark/leaves/grass near/far/контровой, три облика и voxel/low-poly
+внутри сферы; ползунки и движение сферы не вызывают rebake. Источник/сцену автора не сохранять тестом.
+Авторская оценка зерна мягких теней и своего движения остаётся ручной.
+
+Рябь voxel-травы: `test_grass_voxel_light_render.gd`, только native Forward+, основная карта в памяти,
+записи только user://. Два фиксированных grass shadow ROI проверяют temporal RGB std<0.003;
+сохранить ракурс/ROI при изменении композиции маршрута. Native captures: near/far, движение,
+Hard/soft, три облика и voxel-сфера; bindings/отсутствие rebake/scatter и light cell/levels должны сохраниться.
+Подстановка прежнего shader во внешнем negative control должна возвращать мерцание и нарушать gate.
+Полёт мышью и оценка резкости/шлейфов остаются автору. UI/history/save при этой shader-only правке не повторять.
+
+Зелёное покрытие/размер и оптическая глубина: `test_grass_ground_material.gd`, native Forward+,
+user:// копия Pattern: validation, разрешённые grass depth controls/PNG и недоступная подтяжка пучков,
+живой size preview (цвет/grass-light/POM согласованы), Undo/Redo размера/глубины/плавности, выключение0мм,
+save/fresh reopen/discard и сохранность других глубин. Size/amplitude не должны пересоздавать неизменный height bank;
+ссылки на исходные текстуры удерживает derived material. `test_grass_voxel_light_render.gd` — затронутый render gate.
+Основная карта: три облика, поле/камера, near/far; свой ввод и заметность2мм остаются авторской оценкой.
 
 Source rules: `test_terrain_surface_rules.gd` проверяет bitmap validation,
 default/voxel preservation, geometry cache invalidation, dense/sectioned exact,
@@ -1574,6 +2219,21 @@ no column uses slot 4 (77600 moved to grass); Map uses smooth ground, material b
 shadows, SSAO radius 10.4. test_compact_world_map, test_native_map_references and test_landscape_rock_placement still PASS
 (rock does not float). Cost: first launch after a terrain change ~15 s, cached ~2 s (was 0.9 s); GPU game view 0.8 -> 2.4 ms.
 Author acceptance of the look OPEN; weak PC not measured.
+One anomaly sphere 22 Oct: `test_world_anomaly.gd` PASS in native Forward+ on a copy of
+landscape_compact: shared band, both inner looks, three positions, 180 motion/radius frames with
+zero geometry preparation and stable mesh/scatter/collision/floor/Source; material and grass edits,
+global-look suspension, Undo/Redo, user:// save/reopen/discard. Isolated GPU coverage verifies that
+voxel leaf cells draw zero pixels outside/in low poly and detailed cards draw zero inside voxel.
+`test_world_anomaly_authoring.gd` PASS; `editor_test_world_anomaly.gd` PASS with the real panel and
+EditorUndoRedoManager, native save/reopen/discard/validation; internal displays retain original editor owners.
+Evidence `Documents/Codex/2026-10-22/ember-world-anomaly/`. Manual shared-boundary motion, rock/bark
+silhouette, leaf/grass transition, brush/selection/input, walk-through and weak PC OPEN; one sphere only.
+Anomaly editing regression 23 Oct: `test_world_anomaly_editing.gd` uses the real flatten brush on a working copy:
+no preparation during strokes/history, unchanged prop displays survive, explicit preview coalesces edits,
+grass cancellation/material reuse and spatial-group coverage, isolated terrain save/reopen/discard/validation.
+Run headless for CPU pauses; `editor_test_world_anomaly.gd` in a disposable native Forward+ editor checks
+paused opening, explicit preview/return, real EditorUndoRedoManager, save/reopen/discard and ephemeral mode.
+No authored map writes; final FPS under an idle GPU and mouse/feel remain manual gates.
 Rock look switch 20 Oct: test_rock_look_switch (native) — key 4 builds one quad per exposed
 voxel face (11094 vs independent count), corners on the 1/16 grid, outward winding, same
 collider/floor/Source; pattern sticks under yaw/shift in the voxel look; key 5 returns the
@@ -1675,6 +2335,14 @@ GPU кадра 0,343 мс с четырьмя текстурами и 0,331 мс
 при параллельно открытом редакторе, не его FPS.
 
 ## Landscape Compact в обычной карте и 3D-редакторе — ручная приёмка OPEN
+Цельный сценарий 23.10 на основной карте/в рабочем native редакторе и Forward+ игре1600×900 PASS:
+мазок → один Undo/Redo → штатный Save → fresh validation → discard новой правки → reopen;
+Undo/Redo и сохранение параметров сферы, три облика editor/runtime, движение персонажа с опорой,
+явный preview/возврат к земле и движение сферы без пересборки. Данные/коллизии между обликами общие.
+Тестовый след/настройки возвращены, исходные SHA256 карты и terrain совпали. Replay/evidence и границы —
+`docs/directions/world-map.md` → «Принятый контракт · цельная редактируемая локация».
+Команды не закрывают ручную мышь/ощущение/общий вид; полный набор не запускался, код не менялся.
+
 
 `scenes/landscape_compact.tscn` связывает одну карту с собственным
 `content/world_terrains/landscape_compact.res`. Старые Test Pier, World Canvas,
@@ -1688,6 +2356,57 @@ Landscape V2 Experimental и их dense Surface не меняются. Исто�
 мазок/Undo/Redo/Discard, Save/Reopen и откат Resource при ошибке сохранения сцены.
 `tools/test_compact_brush_overlap.gd` сравнивает оптимизированный повторный мазок
 с полным обходом для подъёма, опускания и неровностей, включая Undo/Redo.
+`tools/test_compact_brush_material_depth.gd` воспроизводит понижение ниже cap в schema 1/2:
+live Source/preview, тонкий слой, большой span-снимок, Undo/Redo/Cancel, user:// save/reopen/discard
+и validation; отдельно проверяет Resource/projection writers и обновление только глубины.
+`tools/editor_test_compact_brush_material_depth.gd` — disposable native Forward+ fixture:
+штатные World Editor session/«Сохранить мир», EditorUndoRedoManager, reopen/discard и физическая высота.
+Для ручной приёмки заново открыть сцену → «Площадка» вниз → Undo/Redo → Save/reopen → боковые материалы.
+Боковая покраска27.10: `test_compact_brush_material_depth -- --side-only` проверяет dense/sectioned,
+wall pick detailed/voxel, сохранение верха/высот, новый material slot в detailed mesh, одинаковую
+площадь/field, Source==preview, validation/Undo/Redo/Cancel/save/reopen в user://. Прежний height-only
+worker — `test_terrain_shape_update`; окрашенные bands не используют corner-only layout reuse.
+Native `editor_test_voxel_merge_dock -- --terrain-wall-only`: копия main, прежние level/protect,
+стенка через WorldEditor pick, GPU overlay, EditorUndoRedoManager, Save/fresh reopen/Discard,
+три вида локального участка. Color-only regression low-poly: мировая высота painted band при тех же
+vertices/normals/count; Forward+ `test_compact_brush_material_depth -- --side-look-capture` смотрит
+сохранённый участок QA Source с диагностической палитрой, не создавая карту.
+Общая холодная загрузка не входит в этот gate; ручной low-poly input
+по упрощённому силуэту OPEN. Авторскую main/Source не менять и новых рабочих карт не создавать.
+`tools/test_terrain_shape_update.gd` — fixture-only regression высотного CPU worker:
+точное совпадение vertex/normal/paint/UV, collision и floor field с полным build;
+старое material kernel/smooth math и low-poly сравниваются с исходным алгоритмом.
+Включены наружные стены/дыра/high origin, paint/topology invalidation и cancel.
+Dense FieldJob сравнивается с прежним generic sampling на той же fixture.
+`tools/editor_test_terrain_live_brush.gd` — native Forward+ regression на disposable fixture:
+повторное изменение опубликованных mesh vertices **до pointer-up**, отсутствие промежуточных
+Undo и одна операция на мазок. Проверяются Undo/Redo, cancel → немедленный новый мазок,
+отсутствие позднего repaint старым worker (mesh/physics/field сравниваются с Source),
+штатные save/fresh validation/reopen/discard. Устанавливать как временный EditorPlugin
+только в `ember-rock-pilot-*` с app name `Ember Rock Pilot`; данные в `user://`.
+Прежний PASS кадров не закрывает live gate: до исправления ни одного обновления за 32 события,
+несмотря на плавный ввод. Native input replay на копии основной карты измеряет также
+первое и повторные обновления до release во всех трёх обликах; evidence — тот же тематический owner.
+Focused набор исправления рывков 23.10: этот тест, cap-depth/history/save и uniform materials PASS.
+Native Forward+ input replay на копии основной карты, raise/smooth UI r=3.5/depth=4/detail
+(UI округляет запрос 3.31; native fixture использует точно 3.31),
+32 отпечатка/кадра, три облика, видимая карта: параметры/замеры и evidence —
+docs/directions/editor.md → «Результат». Native Undo/Redo/cancel/save/reopen/discard PASS.
+Полный набор не требуется: Resource/schema/качество и прочие инструменты не менялись.
+Авторская приёмка 23.10: плавность и живой показ земли подходят, небольшая задержка приемлема;
+крупные маски по наблюдению автора также без явных зависаний. Все сочетания предельных радиусов,
+стыки/облики, ручные история/сохранение и предпросмотр аномалии остаются OPEN.
+Предельные UI маски radius8 проверены scripted native input на копии основной карты:
+circle/square, raise/smooth detailed; худший square — также voxel/low-poly и coarse.
+После оптимизации dense input: max кадра107мс, первый показ165–186мс (detail); полная готовность
+после release до2.5с. Parity с прежней кистью на фиксированных клетках всех7 режимов/2 форм,
+cap-depth dense/sectioned/broad и native fixture live/history/save/reopen/discard PASS.
+Последняя ускоренная кисть принята автором 23.10 как пригодная к работе: остаточные задержки
+некритичны. Отдельная ручная матрица всех предельных режимов/стыков/обликов и save-цикл
+этим отзывом не закрыты; полный прогон не запускался. Дальнейшая полировка — по конкретной помехе.
+Повторный короткий native replay на свежей сохранённой копии: первый hover25мс (старые254мс
+не повторились), первый press max square275мс, последующие0.5с max56мс. Cancel/source/projection
+и завершение очередей PASS; разовая пауза press не исправлена. Подробности/evidence — editor.md.
 `tools/test_compact_brush_scale.gd` сравнивает крупный и детальный режимы на
 ровной карте, проверяет 2×2-группы и шаги высоты ¼/½ блока, два последовательных
 шага по 4 вокселя, квадратный и круглый
@@ -2136,6 +2855,36 @@ Save/Reopen/Discard, камера и pinned actions. F6 проверяет дв�
 пройти разные склоны в F6. Это генерация с заменой правок внутри области;
 защита ручной кисти при переносе плато остаётся отдельным прежним gate.
 Авторская форма/удобство/проходимость, большая настоящая карта и weak PC OPEN.
+
+Прибрежная опушка25.10: `test_terrain_smooth_placement.gd` PASS с расширенным fixture
+768×400 и Map budget524288: размещение/опора работают, default cap продолжает отклонять
+такой размер; прежние support/section/style/frame/cancel/manual/history/save checks PASS.
+Fixture BoxMesh переведён в ArrayMesh перед сохранением, как реальные native props.
+`test_detail_brush_rebase.gd` воспроизводил lookup/erase после west rebase; PASS после
+поиска по frame: отдельный новый мазок, прежняя маска/Cancel, старый ластик/Undo,
+разные flower Sources и library variants/mixed не смешиваются.
+Native main-copy PASS: editable plan/Apply/Undo/Redo, brush Cancel/Undo/Redo, Save/reopen/
+Discard, validation,0/1/2/0; персонаж пересёк центральный просвет до X≈-234 с опорой тела.
+Publication сохранила33 прежних node-блока и terrain bytes; добавлены7 props/47 detail patches,
+четыре placement-области. Fresh canonical load:74 Props,5 regions,стиль1/default look2 PASS.
+Evidence — `C:/Users/novos/Documents/Codex/2026-10-25/ember-coastal-copse/`.
+Ручная художественная оценка/мышь/плотность OPEN; sphere/FPS/weak-PC не запускались.
+
+Западная поляна25.10: `test_terrain_mainland_extension.gd` PASS — extent384×400 →
+768×400 без заполнения лишнего края, retained каналы, dry mainland join/материал,
+мировые высоты при origin_y=-32, прежний island sampler, validation/plan save/reopen,
+UI mainland/нулевой уровень моря. `test_compact_section_selection.gd` PASS — signed
+extension, stale/cancel, old world transforms включая сферу, history/save/reopen/discard/
+recovery. `test_terrain_generation_split.gd` PASS. `test_terrain_anomaly_section_materials.gd`
+PASS — все четыре боковые грани carrier, цвета/overrides/topology совпадают dense/sectioned.
+Focused wave clock reprepare PASS; полный водный прогон не запускался.
+Native Forward+ на данных main:0/1/2/0, реальный player input через старый стык на
+новую землю с опорой тела; сфера готовится и двигается без нового prepare PASS.
+Публикация сверила все прежние payloads/authoring masks/world transforms и Source UID;
+fresh canonical load проверил сохранённый budget до Source, стиль1/78tiles/очередь0.
+Evidence — `C:/Users/novos/Documents/Codex/2026-10-25/ember-new-clearing/`.
+Ручной ввод/вид пологого стыка и удобство параметров OPEN. Полный suite/FPS/weak-PC
+не проверялись; холодная QA загрузка без сферы22–25с, подготовка сферы заметна.
 
 Генератор выбранной области (2026-10-03): `tools/test_compact_terrain_generation.gd`
 проверяет deterministic sampling независимо от work budget, отличия profiles/seed,
@@ -2934,6 +3683,86 @@ Forward+: сравнение с CPU reference через несколько ци
 смена drying, холодные запросы, текущая билинейная физика и перенос истории
 существующего поля; повтор frozen preview не делает dispatch, удаление owner
 освобождает GPU handles. Headless сохраняет прежний reference для data gates.
+Детальный берег24.10: `tools/test_detail_swash_shore.gd` в native Forward+ проверяет
+подклеточное пересечение реальной наклонной земли, сухую сторону, возврат legacy
+и неизменность Source; после отзыва также continuous front foam внутри raw-dry
+клетки, сухую/глубокую стороны и прежний width control. Два дополнительных RED→PASS
+pixel-сценария: calm sheet и shallow trailing face не белятся как новая кромка;
+advancing face остаётся пеной. Это защищает устранение двойной полосы, воспроизведённой автором.
+`test_detail_swash_geometry`
+RED coarse span11.31→PASS near1.41/far11.31, неизменные Source/collision.
+GPU test сверяет RGBA carrier: Rage/Gunclamped/Bcrest/Agrain, query(true), прежний
+state и перенос всех каналов. Native PASS702сравнения. Web/pattern/trails функции
+byte-identical к входу исправления. Текущий main gate: calm/approach/фактический
+пик0.66/retreat, detailed+voxel, два ракурса пика и low poly —11кадров;
+Water mesh/поля не пересобираются. Geometry/history gates выше повторно не запускались.
+Предыдущий gate320wet/query/contact в `ember-smooth-shore/` не повторялся, query не изменён.
+Scene/Source SHA прежние; текущий evidence — `C:/Users/novos/Documents/Codex/2026-10-24/ember-double-front/`.
+Ручная оценка набега/спада/обоих ракурсов OPEN; это не приёмка следов/обтекания.
+«Живая поверхность»24.10: `tools/test_water_crest_foam.gd` native Forward+ PASS:
+редкое видимое покрытие, рост перед пиком/decay/expiry, отсутствие во впадине, выключение
+strength/amount/wave height/speed и рост покрытия от amount. Используется настоящий
+shader fragment/pattern; прежняя волновая математика/web/pattern/sea trails сохранены.
+`tools/test_water_crest_controls.gd` PASS на user:// settings fixture: реальная панель,
+один Undo на drag/Redo, атомарная F6 validation/snapshot history,
+save/fresh reopen/discard. Проверка мыши/горячих клавиш этим не заменена.
+На main в памяти14native кадров: четыре фазы9/13.05/14.95/17.1с во всех трёх
+обликах плюс два ракурса открытой воды на пике; поля1раз/mesh identity прежние.
+`test_detail_swash_shore` PASS; geometry/GPU history suites не повторялись.
+Source SHA прежний; Scene меняет только четыре одобренных foam preset значения.
+Текущий evidence — `C:/Users/novos/Documents/Codex/2026-10-24/ember-water-liveliness/`.
+Текущий повтор этого render gate — «Пена по волне» ниже; controls/save не повторялись.
+Авторская оценка редкости/белизны/движения и длительности OPEN; shader-frame PASS
+не закрывает всю воду, следы или обтекание. Отдельного GPU benchmark здесь нет.
+«Цвет и прозрачность»24.10: `tools/test_water_color_render.gd` native Forward+ PASS:
+defaults совпадают с прежними gradient/transmission, оба цвета и endpoints меняют
+реальный fragment, мягкость/плотность/прозрачность дают ожидаемые крайние значения.
+`tools/test_water_color_controls.gd` PASS: два реальных picker/пять slider, один Undo
+на popup/drag, Redo, непротиворечивые endpoints, атомарное отклонение invalid/NaN/alpha,
+F6 bulk history, перевод метров16/32, save/fresh reopen/discard и сохранность Sun/foam.
+`test_world_look_panel.gd` regression PASS. Main-map в памяти: цветовой вариант в трёх
+обликах, opaque/clear/restored; старый/новый default ROI delta0.0001283, fields1 и
+неизменные Water mesh refs. Scene/terrain SHA прежние, новый цвет в карту не записан.
+Evidence — `C:/Users/novos/Documents/Codex/2026-10-24/ember-water-color/`.
+Ручные picker/drag/горячие клавиши и художественная оценка собственных цветов OPEN;
+берег/history/контакты не менялись, их suites автоматически не расширялись.
+«Единое взаимодействие объектов»24.10: `tools/test_water_interaction_field.gd`
+native Forward+ PASS: тихая вода не получает возмущение от неподвижного тела,
+движение создаёт отклик в том же поле, остановка сохраняет/затухает историю,
+incoming воздействует на стоящее тело, перенос наследует state, finite/CFL bounds,
+контакты помещаются с absorbing margin, allocation не выдаёт пятую область за готовую.
+`tools/test_water_interaction_controls.gd` PASS: existing prop water flag/radius,
+derived component lifecycle без второго saved node, move Undo/Redo, live mode/history,
+недоступность legacy arc-only controls в live, save/fresh reopen/discard на user://.
+Native main в памяти: один новый painted rock+герой+спутник, calm0/reaction_count0,
+обычное движение без field replacement/bake, stop, incoming/три облика, дальний
+перенос с private background preparation; fields1 и прежние Water mesh refs.
+Репрезентативный handler CPU p50≈0.73/p95≈2.45/max≈4.08мс, 1–2patches на текущем
+ПК/30FPS cap; не полный FPS/startup/weak-PC benchmark. Одно поле p50≈1.37/p95≈1.75мс.
+`test_compact_wave_obstacles` повторён для изменённого leaf: static cache/CFL/sea/query,
+GPU baked/live parity и vertex_error≈0.000545 PASS; `test_water_contact_boundaries` PASS.
+`test_landscape_water_integration` явно mode0 и без нового authored prop в fixture:
+startup/hide/show/stop/dry/add/remove analytic fallback PASS; это не замена main live gate.
+Source SHA прежний; Scene меняет только `WaterInteractionRock` и live mode2.
+Main/refraction/радиус сложной формы требуют авторской оценки; мышь и реальные
+editor hotkeys не проверены API. Главная приёмка воды/полная fluid simulation OPEN.
+Evidence — `C:/Users/novos/Documents/Codex/2026-10-24/ember-water-interaction/`;
+границы physics/render/CPU и владельцы — Water Rendering → «Единое взаимодействие объектов с водой».
+«Пена по волне»24.10 — shader-only, без смены settings/document/session. Native Forward+
+`test_water_crest_foam.gd`: RED→PASS для видимости на пике и подъёме, непрерывности seed
+через пик, распада/истечения и скрытого стыка циклов при speed2/lifetime4; прежние zero/
+trough/amount gates PASS. `test_water_contact_foam.gd`: RED→PASS для отсутствия замкнутой
+обводки в live field, входящей высоты без рассеяния и истечения. Активные клочки,
+strength0, width/верхняя часть диапазона, sharpness и legacy path PASS.
+Main в памяти: полный цикл detailed, шесть фаз×два ракурса до/после; look1/2 — по
+два ракурса одной фазы. Стоя/ход/остановка тел — оба ракурса до/после, плюс остановка
+look1/2. Всего56PNG; поле берега1раз, mesh refs прежние, Scene/Source/controller/field/
+wave include и принятые foam web/trails/shore byte-identical. History/save/physics suites
+не повторять без изменений этих owners. Широкий FPS benchmark не проводился.
+Авторская оценка движения OPEN. Evidence — `C:/Users/novos/Documents/Codex/2026-10-24/ember-foam-by-wave/`.
+Контроллер камеры во время этого QA обновляется штатно. Ранее замороженный QA мог
+оставлять floor camera в старой позиции (17.46м против0м при обновлении); большой
+прежний дефект преломления здесь не повторился, причина/ручная проверка остаются OPEN.
 На RTX 5070 / авторских 96×48 м / 113 117 активных клетках CPU-подготовка
 обновления ~1,58 мс вместо ~47. Активные 90 кадров native 3D: median 6,98 мс /
 p95 7,86; настоящий F6: median 7,17 / p95 10,65. Coast/terrain rebuild = 0,
@@ -2970,6 +3799,13 @@ F6-перенос дополнительно проверяется с наст�
 `tools/capture_compact_water_arcs.gd` сравнивает мягкий/чёткий гребень, контакт,
 движение/остановку и ширину панели; `-- --live-motion` снимает настоящую F6-пробу
 движения камня. Forward+ runtime capture завершился с exit 0 без ошибок/предупреждений.
+
+`tools/test_landscape_water_integration.gd` — native Forward+ на основной карте в памяти с user:// sandbox:
+обычный startup обязан сам подключать поздно появившихся героя/спутников; ручной _make_contact_texture запрещён
+как подмена этого gate. Проверяет отдельные shader-дуги, hide/show, stop/dry, позднее добавление/удаление
+статичного контакта и отсутствие пересборки береговых полей. Скрытые могут оставаться в кэше, но не в upload/бюджете.
+Свой F6-проход и форма пены/волны — ручной gate; Source/Scene не сохранять. Без schema/UI/save изменений
+прежние проверки Undo/Redo/reopen этого водного интерфейса не повторять.
 
 `tools/test_compact_river_study.gd` проверяет изогнутое мокрое русло, векторы
 течения, одинаковую глубину общих вершин, неизменность исходной пробы,
@@ -3100,6 +3936,223 @@ click; compare width4/24/64, roughness0/15/40, coarse, edit region, Undo, reopen
 Test existing water fill then floor-only view; same plane, props/pier unchanged.
 Water appearance not artistically accepted by technical capture; no shader
 redesign in this slice. Gate remains open until user's scene/visual acceptance.
+
+## Оригинальная Хоши в exploration27.10 — technical PASS, manual OPEN
+
+Контракт/owners/сборка — `docs/directions/characters.md` → «Сделано без приёмки».
+Игровой toon follow-up: native `test_hoshi_world_light.gd` PASS — та же модель с/без
+невидимого сверху перекрытия света: средняя яркость ROI0.083826→0.063988 (drop0.019838).
+Negative control только обхода ATTENUATION даёт drop0.000330 и не проходит тот же критерий
+drop>0.012. Исходные текстуры/REST не переписываются; отдельно адаптированы unshaded глаза/
+брови и world-lit обводка. Основная карта снимается с сохранённым светом, реальным деревом,
+тем же местом без shadow occlusion и солнцем; сфера отключена только в RAM, чтобы изолировать
+реакцию персонажа на обычный свет. Evidence — `D:/hoshi-world-toon-2026-10-27`.
+Персональная оценка лица/цветов/ступеней/обводки и поведения в движении OPEN; вкладка/параметры
+персонажей в этом срезе не добавлены. Детализация каскадов вокруг игрока — отдельная открытая задача.
+Follow-up «лесенка на земле»: native main split0.1/0.25/0.3, camera200/130/поворот просмотрены.
+Увеличение первой зоны улучшило обычную тень, но с полной18м сферой выявились линии земли;
+candidate откатан, production split0.1 сохранён. На одинаковом полном voxel main кадре при
+split0.25/той же геометрии отключение voxel light flags убирает крупную сетку тени персонажа:
+`sphere-resolution/tree-close/voxel-quant25.png` vs `voxel-noquant.png`.
+Сетка света LIGHT_VERTEX — подтверждённый источник этих ступеней. Автор уточнил: пиксельные
+тени внутри voxel-аномалии нужны; подробные тени должны возвращаться снаружи, low-poly имеет
+собственный облик. Глобально сглаживать voxel shadows нельзя; открыта именно чёткость/возврат
+детального света за пространственной границей, а не выбор пиксельности внутри.
+Evidence и2×одинаковые crop — `D:/hoshi-world-toon-2026-10-27/shadow-grid-comparison.png`.
+После уточнения автора Sun split0.3 сохранён: подробная зона30м вместо10м, atlas4096/2каскада/
+полная дальность100м/blend прежние. Native main с полной18м сферой и QA receiver offset0:
+одна точка/камера, поле внутри/на границе/снаружи/повторно снаружи, отдельно low-poly просмотрены.
+Внешняя тень после voxel→detail возвращается: mean RGB ROI0.002538<0.005 PASS;
+inside pixel look не выключался, shader изменений нет. Evidence —
+`D:/hoshi-shadow-transition-2026-10-27/return-check.json`, `transition-comparison.png`.
+Тонкие тени voxel-ступеней заметнее с новым каскадом; bias/receiver-пробы в production не переносились.
+Авторская оценка этих линий/непрерывного прохода/других дистанций OPEN.
+`test_hoshi_player.gd` native Forward+: загрузка private original VRM-derived сцены,
+явный skin→Skeleton binding (регрессия T-pose при разных defaults двух проектов),136 REST unchanged,
+скрытие капсулы, фактическая высота collision, сохранённый toon shadow0.73, реальное перемещение,
+быстрый клип/остановка/Shift1.2м/с, другой герой/capsule height и возврат Хоши, контакт с полом PASS.
+`test_hoshi_main.gd` native: сохранённый main flag, настоящая карта/всё покрытие/свет,
+загрузка через обычный spawn, перемещение, inventory movement guard, смена party лидера/возврат PASS.
+Source Companion/VRM и REST не изменены; private asset SHA source совпал с исходным файлом.
+Процедурные walk/run отвергнуты автором. Вместо них подключена отдельная private AnimationLibrary
+из Quaternius Standard (CC0), native RetargetModifier3D,136 исходных REST неизменны.
+Полная повторная сборка `stage_hoshi_avatar.py --motions <UAL1_Standard.glb>` PASS;
+после неё native `test_hoshi_player.gd` PASS (`ready-motion.log`, errors[]), новые walk/run кадры
+просмотрены. Прежний main PASS ниже не считается повторной проверкой новых клипов;
+их ручная оценка в игре OPEN.
+`test_explore_stepping` PASS. Followers запущен поддержанным disposable runner:
+`python tools/run_party_tests.py --test test_party_followers.gd` PASS. Рабочий direct gate отказался
+от unsafe fixture, поэтому отказ не считается PASS. Другие party gates не запускались.
+Первоначальный Hoshi main capture отключает только сферу в RAM; сохранённые сфера/вода прежние.
+Отдельный shadow repro с полной сферой и Camera3D игрока воспроизвёл полосы в тени при
+дистанции130/200. Negative control hard splits показывает полосы; blend на том же кадре
+их убирает (ROI900:1260×300:630: узких тёмных пикселей631→57, пороги G<90/соседи±5>110).
+В Sun main сохранён blend_splits=true, прочие параметры теней прежние. Close/обычная дистанция/
+поворот просмотрены; авторское движение через границу остаётся OPEN. Путь/кадры —
+`docs/EMBER_WATER_RENDERING.md` → shadow follow-up27.10; временный IPC probe убран из проекта.
+Motion/3D outline fidelity/свой F5/manual interaction остаются OPEN. Камень закрывал первый близкий
+ракурс; отдельный portrait-only capture изменил только камеру, не повторял успешные игровые gates.
+Evidence: `D:/hoshi-ember-2026-10-27/{player-checks.json,main-checks.json,player.log,main.log}`.
+
+## Контакт воды с мешами27.10 — технические проверки, ручной вид OPEN
+
+`tools/test_water_mesh_contact.gd` headless: два раздельных ArrayMesh-островка,
+реальные кромки/открытый проход/solid interior, перенос/yaw с повторным использованием
+сечения, изменение того же Mesh Resource, полное погружение без ложного круга.
+Cache signature стабилен для одинаковых пикселей разных Image и меняется при правке среза.
+Существующий solver принимает mesh shape,
+сохраняет fluid в проходе и откликается на incoming. Startup готовой воды без contacts
+не ждёт пустой patch. На старом circle fallback тест RED, после сечения PASS.
+`tools/test_water_mesh_gpu.gd` Forward+30FPS: настоящий controller upload/atlas и
+`study_object_distance` показывают две solid-области/воду между ними до и после движения.
+`tools/test_water_obstacle_sampling.gd` Forward+: fresh/expired у solid boundary в
+реальных live/baked экспортах. Старое смешивание fresh age даёт0.498 вместо0 — RED;
+после wet-normalization fresh0/expired1 — PASS в обоих режимах.
+`test_water_interaction_field`, `test_water_contact_boundaries`, `test_compact_wave_obstacles`
+PASS: calm/motion/stop/history, lifecycle/несколько бассейнов/берег, cache/CFL/query/removal.
+`test_water_contact_foam` Forward+ PASS: calm/ambient-only/expired/strength0 без пены,
+локальная волна даёт клочки; coverage≈0.289, sharpness/width/legacy работают.
+Native-участок основной карты с текущими PNG в памяти: calm0, движение даёт отклик,
+stop velocity0, остаток sum|h| после30с≈4.57 против≈42.48 при движении; field не
+перестроен от обычного перемещения. Кадры wave/moving/settled просмотрены.
+Это технические сигналы, не приёмка формы/силы волн автором. Реальный пример/ограничение
+полного startup/PNG-import и сценарий ручного возврата — Water Rendering → «Следующий разбор моря27.10».
+
+## Умеренное море27.10 — белые гребни и остаточные пятна
+
+Owner: Water Rendering → «Умеренное море». Автор выбрал отдельные белые гребни;
+охват объекта предыдущим контактом ему понравился. Текущая правка — только shader,
+без записи Source/сцены/settings и изменения физической поверхности.
+
+- `tools/test_water_crest_foam.gd`, native Forward+ PASS: рождение/плотность, рост,
+  остаток после гребня, затухание, нулевые настройки, слабая амплитуда,
+  непрерывность отдельных пятен при смене цикла в ложбине. Возраст проверяется
+  в том же production shader, синтетический clock держит время рождения постоянным.
+- `tools/test_water_contact_foam.gd`, native Forward+ PASS: прежние calm/ambient-only/
+  expired/strength0, разрыв кольца и параметры ширины/резкости; не новый solver test.
+- Native Forward+30FPS: участок существующего main вокруг WaterInteractionRock,
+  два ракурса, времена2/5/9/12с; диагностическая маска только open_foam отделяет
+  новый рисунок от береговой пены/бликов. Камеры отражения/дна обновляются обычно.
+  Рабочая карта не сохраняется, новых карт нет. Evidence: `C:/Users/novos/Documents/Codex/2026-10-27/ember-water-contact/`,
+  `natural-sea.gd`, `natural-sea.log`, `natural-sea-mask.gd`, `natural-sea-mask.log`,
+  `open-natural-*.png`, `contact-white-*.png`,
+  `foam-mask-*.png`, `crest-natural-test.log`, `contact-white-test.log`.
+- Ручная приёмка OPEN: переоткрыть main/F6, посмотреть белый контакт, отдельные
+  гребни и их остатки в движении; оценить плотность/размер/скорость распада.
+  Прежние настройки находятся в «Вид мира → Вода → Море и берег».
+- Это аналитический след, не накопленная пена, переносимая течением. Полная
+  fluid simulation, новый океан, shipping bake/export и новая лодка не выполнены.
+  Полный холодный старт и weak-PC из предыдущего среза остаются OPEN.
+
+## Полёт на крыльях27.10 — основа пробы принята автором
+
+Актуальный итог27.10: автор принял управление/ощущение и текущие облака/настройки
+как относительно готовую основу отдельной пробы. Это не закрывает будущие крылья,
+оружие/врагов, интеграцию main или полноту чужих ресурсов/миссии. Старые manual OPEN
+ниже читаются в контексте этой более поздней приёмки базового сценария.
+
+`tools/godot/Godot_v4.7.2-stable_win64_console.exe --headless --path . --script res://tools/test_wing_flight.gd`
+— инерция после отпускания, локальный крен/тангаж, тяга/тормоз, подъём/спуск,
+30/60/120Hz и нормализация при переворотах; камера целиком наследует ориентацию,
+тело остаётся в нижней части кадра. Swept-пересечение только следующих ворот
+вперёд, промах/обратный проход, физическое касание/сброс, пауза/продолжение,
+шесть ворот/финиш/повтор, private progress без persistence/restore, выход из
+flight mode обратно в grounded/camera проверены. PASS 27 октября.
+`tools/test_hoshi_wing_takeoff.gd` (тот же Godot, `--path . --script ...`,
+Forward+ `--windowed --resolution 1600x900 --max-fps 30 -- --capture`) — PASS:
+30/60/120Hz: обычный прыжок → второе нажатие/deploy → полёт без RT; кокон не вращает
+physical orientation. Удержание=один boost/толчок, очередь трёх нажатий, удержанный RT
+после паузы, сброс очереди. Автовзмахи в ровном полёте, отсутствие при пикировании,
+крен в обе стороны не переворачивает тело (±90°) PASS. Реальные Player/площадка/Hoshi,
+WASD/поза walk, один прыжок/приземление без крыльев, подавление echo, Space + Joypad A
+для раскрытия, Ctrl и RT axis подключённого геймпада для boost, пауза/аварийный сброс PASS.
+Воспроизведён стартовый ложный crash от контакта опоры; контакт только StartPlatform
+до FLYING теперь поддержка, остальные столкновения сохраняют сброс. Кадры
+`user://ember-tests/hoshi-wings/{walking,deploy-cocoon,flight,boost-cocoon}.png`
+просмотрены в Forward+. Fixture отключает OS focus-lost guard для явного управления
+кадрами; runtime-пауза при потере фокуса сохраняется. Самолётный `test_wing_flight.gd`
+PASS после добавления wing orientation hook.
+Native-анимации вспомогательных перьев/готовая поза тела не восстановлены; ручные
+ритм/размеры/камера/пролёт шести ворот в Hoshi-режиме остаются OPEN по GDD.
+Итерация по обратной связи: крутой вираж сравнивается с обычным по фактическому
+углу скорости/радиусу и расходу скорости; нейтраль/крен/отрицательный тангаж,
+один курок и малая скорость не дают усиления. 30/60/120Hz нового приёма PASS.
+Камера: ограниченное запаздывание при переворотах, догоняние полной ориентации,
+плавный подъём/возврат и сброс при рестарте PASS. Камера обоих знаков тангажа,
+плавный FOV со скоростью/возврат ground lens PASS. Семь camera sliders управляют
+реальной камерой; ограничение lag0/30°, осмотр/возврат, Save/Load/Reset/холодное
+открытие и legacy JSON без camera PASS. Forward+ RMB + mouse/release PASS;
+реальное удобство правого стика требует автора. Native camera-menu.png просмотрен.
+ `test_flight_cloud.gd`: время
+плотности/пауза/R, сквозной пролёт реального CharacterBody через весь объём PASS;
+`-- --capture` в Forward+ сохраняет внешний/внутренний/выходной кадры. Внешний
+F-14 также просмотрен с пятью облаками и sky-layer; GPU sun on/off сравнение
+подтверждает световую реакцию объёма. Цветовая регрессия в плотной части
+дневного облака проверяет yellow cast и белый клиппинг; оба0 в Forward+.
+Исправлены повторное умножение EMISSION на плотность и потеря слабого синего
+в packed fog buffer. Конфиг облаков проверен через реальные позиции/толщину/visible/material/sky:
+reload/R без накопления высоты, count0, clamp, неверный тип без частичного
+применения, независимость двух экземпляров сцены PASS. Дополнительный нейтральный
+GPU-фон проверяет все sampled края без примеси голубого sky: максимальная разница
+RGB0,00393. Natural default и spatial-filter off/192×128 просмотрены отдельно;
+Вкладка «Облака»: настоящие сигналы кнопок Save/Reset/Load пишут/читают только
+fixture cfg, ползунки и ColorPicker меняют shader; несохранённые правки остаются
+по R. Изоляция/невалидный config и прежний flight restart PASS. Native меню и
+прокрутка до самозатенения просмотрены; мышь/геймпад автора остаются manual OPEN.
+`test_cloud_edge_transport.gd` в Forward+1600×900/30FPS: -- --legacy RED
+(22dark blocks/loss0,991); без аргумента GREEN (0/loss0,014). Изолирует тонкий
+освещённый край без тени/канта/препятствий, сравнивает с тем же небом без облака.
+Общий temporal RGB threshold устраняет extinction-without-light; оценка шума
+в движении остаётся ручной. Только native temporal accumulation, spatial blur off.
+Новые edge/rim параметры проверены на реальном материале; GPU rim off/on меняет
+кадр, дальние облака не меняют верхнюю часть неба, диск настоящего Sun виден.
+FogVolume smooth union/box fade и близкий F-14 с/без Obstacles просмотрены;
+вертикальная граница в этом ракурсе исчезает без испытательного столба.
+Авторская оценка вида/движения остаётся OPEN. Форма/ощущение требуют авторской оценки.
+По второй пробе усилен подъём камеры, предельное запаздывание 14°, возврат медленнее;
+targeted и Forward+ PASS. Экранный центр тела в сильном манёвре ниже 75% высоты
+и остаётся в кадре; новая ручная оценка OPEN. Полётная математика прежняя.
+
+Forward+: та же команда без `--headless`, с `--windowed --resolution 1600x900
+--max-fps 30` перед `--script` и `-- --capture` в конце. Кадры меню/крен0/90/180
+просмотрены; программные физические клавиши тяги/крена/тангажа, отпускание и
+Esc pause/resume и Пробел+Shift+S (эквивалент двух курков и подъёма носа) PASS.
+Снимки меню, `maneuver.png`, `tight-turn.png` просмотрены;
+положение тела при микродвижениях камеры проверено. Папка: `user://ember-tests/wing-flight/`.
+Связанные `test_camera_relative_movement.gd`, `test_explore_stepping.gd` PASS.
+Автору понравилась основа управления/вес первой пробы. Новые микродвижения/
+запаздывание камеры, крутой вираж на реальном геймпаде и прохождение трассы
+автором OPEN. Запуск — `tools/Start-Wing-Flight.cmd`; F5 остаётся
+основной картой. Физика AC8 точно не скопирована.
+
+Частные ресурсы: автор запустил отдельную лабораторную AC8, native `.usmap` получен
+и проверен чтением F-14D/земли. Внешний `D:/projects/ac8-flight-reference-20261027/reference-flight.gd`
+с аргументом `-- --reference-check` через Godot `--script` загрузил оба GLB,
+создал trimesh земли, сохранил просмотренный кадр Forward+ — PASS. Контроллер
+полёта прежний, его успешные проверки не повторялись из-за замены внешнего вида.
+Запуск автору: внешний `Start-F14-Flight.cmd` / рабочий стол `F-14 - Flight Test`.
+Итерация по отзыву о «игрушечности»: обороты/отклик смягчены и зависят от скорости,
+RT/LT меняют запоминаемую достигнутую скорость, отпущенные курки включают её
+поддержание (с компенсацией сопротивления/высоты). Headless flight gate PASS:
+208км/ч и разгон → отпускание10с; тормоз → отпускание → меньшее значение;
+нейтральный шум курков; малая/средняя/высокая скорости и фактические дуги,
+плавный первый кадр вращения, reset. Связанные30/60/120Hz/вираж/камера PASS.
+Forward+ physical keyboard release/hold и внешний F-14 overlay PASS.
+Обновлённое меню просмотрено отдельно (`--capture --menu-only`), HUD не перекрывает его.
+Ощущения новых поворотов/удержания скорости на реальном геймпаде OPEN.
+По следующему отзыву RT/LT: `tools/test_flight_trigger_mode.gd` RED воспроизвёл
+обычное торможение двух курков перед подтягиванием стика, затем GREEN — режим
+готов без падения скорости; HUD ready/active/low-speed и RT/LT percentages PASS.
+`test_wing_flight.gd`: достижимые1700–1800км/ч/верхний предел/удержание, slider →
+actual motion, Save/Reset без записи/Load и cold scene reopen в отдельном
+`user://ember-tests/flight-tuning-<pid>.json`, malformed JSON без потери сессии,
+тип/диапазон/nonfinite/unknown validation PASS. Проверки не используют авторский набор.
+Forward+ input и панель со всеми шестью слайдерами/кнопками просмотрены;
+внешний F-14 overlay/трасса×6 PASS. Реальный ввод/новый вираж/настройки автору OPEN.
+Корпус в нейтральном материале, часть текстур/игровые шейдеры не восстановлены,
+самолёт в пробном масштабе, collision по корпусу. Один участок основания карты,
+без построек/AI/миссии. Свой полёт/читаемость земли OPEN. Основные game/VR-файлы
+не менялись; извлечённые ресурсы остаются вне репозитория.
 
 ## Передвижение вне боя — 13 сентября 2026 (ручная приёмка открыта)
 
@@ -4047,6 +5100,76 @@ Native isolated editor сценарий PASS; рабочая пользоват�
 
 ## Общий редактор рецептов генерации (ручная приёмка открыта)
 
+26.10 · объёмный штамп: `tools/test_solid_stamp.gd` PASS — concave fixture capture/library/reopen,
+полная palette identity при одинаковом RGB, новые owned parts/поворот/зеркало, лимиты без mutation,
+carve/paint/Undo-Redo и3 облика. `--native` PASS — Save/Place через прежнюю панель на копии
+реального Straight Source (9111 ячеек), detached preview/Cancel/commit==preview, valid active part,
+один Undo-Redo/part UI, продолжение Add, общий Save/fresh Source+scene reopen/discard; три облика
+сохраняют каноническую объёмную коллизию (уточнённый gate27.10, native повтор PASS).
+Данные только user://, авторские файлы неизменны. `test_solid_merge` PASS по shared identity.
+`test_voxel_stamp` имеет прежние6 ошибок pointer-line (582/590/592/594/595/598), подтверждены
+и на pre-slice baseline в headless/native; общий PASS не заявляется. Мышь/вид на main OPEN.
+Owners/ограничения/evidence — World Authoring → «Объёмный штамп».
+
+26.10 · объёмный Smooth: `tools/test_volume_smooth.gd` — local concave/convex/flat/isotropic,
+immutable/deterministic donor palette+parts. `--native` — held preview/release/one Undo-Redo,
+Cancel stale math+mesh, exact affected chunk faces/colours, validation/save/reopen/discard,
+carve after Smooth и сохранность canonical carved physics во всех3 обликах (уточнено27.10:
+voxel display cubes не перемещают физическую границу; detailed/low poly дополнительно равны ей).
+Прежний `test_voxel_surface_sculpt --smooth-only`
+проверяет старый высотный Smooth/history. Main-copy — union/smooth/input Esc/Source+looks;
+последняя проверка preview-паузы — тот же объект в native fixture, без полного повтора земли.
+Мышь/вид/большие радиусы OPEN; owners/evidence — World Authoring → «Объёмное сглаживание стыка».
+
+26.10 · цельный Canvas: `tools/test_canvas_forms.gd` — user:// fixture, dirty paint до добавления,
+две формы/union/carve/separate, один Undo/Redo, общий Save/Source+scene reopen/discard и3 looks/physics.
+`--interaction-recovery` проверяет верхний Canvas input: pick/held move без remesh/раннего commit,
+release/Undo/Redo/Esc/Save guard; recovery созданного union и отделённого куска, reopen group/discard.
+`--lifecycle-only` проверяет повторное открытие dirty Canvas, обновление inactive cache,
+снятие технического preview после Save, различие voxel/detail позиций и pose-only Save.
+Native main-copy проверяет существующий Straight со sphere, union/carve/separate/Save и повторное
+открытие Source/узлов сцены. Mouse feel/вид автора OPEN; новые рабочие карты не создаются.
+Как попробовать: уступ → Canvas → «Формы» → +форма/двигать/соединить → вырезать/красить →
+выделить/отделить → общий Save. Owners/evidence/границы — World Authoring → «Единый процесс лепки».
+
+26.10 · ручной силуэт: `tools/test_solid_grab.gd` — procedural fixture, volume/profile/история,
+invalid output ownership, Remove→volume boundary и native close grass-POM regression.
+Actual Canvas API pointer/preview/Esc/release/Undo/Redo проверены на main-copy; Source-save/
+Save Undo/Redo/discard, presentation/cache,3 looks/physics/map light и цвета после исправлений PASS.
+При повторе проверялись только найденные Save/colour defects; мышь/ощущение OPEN.
+Owners/evidence/точный scope — World Authoring → «Ручной силуэт через Canvas».
+
+26.10 · боковая выемка: `tools/test_solid_volume.gd` fixture/user:// — closed boundary,
+carve/paint/3 looks, old convex-wall negative control, one Undo/Redo, Grab after carve,
+validation/save/reopen/discard PASS. Native main-copy: прежний Canvas stroke API, held preview/
+Cancel/release/history/Save Undo/Redo/reopen/discard;3 looks/inner ray/collision/floor PASS.
+27.10 · `test_solid_volume -- --physical-looks` фиксирует прежнюю ошибку физического края:
+ступенчатый carved volume, sweep края, три облика и возврат, одна каноническая коллизия,
+реальный raycast==floor и одинаковые высоты между обликами. Каноническая поверхность содержит
+выемки; визуальные voxel-кубики не меняют опору. SOLID_VOLUME и связанный native stamp PASS.
+Final cache/material isolation, scene save/restore view, unknown collision protection PASS.
+Мышь/ощущение/вид и большой объём OPEN; не повторять полный набор без дефекта.
+Owners/evidence — World Authoring → «Единая объёмная лепка».
+
+26.10 · union двух объёмов: `tools/test_solid_merge.gd` fixture/user:// проверяет exact occupied
+union/paint/material identity (same RGB, different artwork)/closed seam/3 looks, rotated guides,
+topology validation/persistence/separate. `--presentation-only` native — generated material
+override не мешает merge, authored override защищён и pre-save не пишет runtime material.
+Прежний `test_voxel_merge` PASS. Native main-copy panel/cancel/one Undo-Redo/preview equality/
+save-reopen результата/Canvas discard,3 looks/cavity ray/collision/floor PASS.
+После сдвига только демонстрационных входов повторить только стык/выемку/облики, не весь сценарий.
+Мышь/художественная оценка/сфера/большие сборки OPEN — World Authoring → «Склейка объёмов26.10».
+
+26.10 · «Уступы v0»: природная форма/seed и3 прежних main assets, вечерний Sun/Sky.
+Новый параметр/history/save/reopen/discard проверены; после финальной правки математики
+повторены только3 формы/9 опор/облики. Старые recipes при0 byte-exact по volume/guides.
+`tools/test_cliff_generator.gd` проверяет только3 формы/слои, guides/
+reproducibility, прежний recipe editor и library history/save/reopen/discard/manual-dirty.
+Native focused QA выполнена; исправленные оболочки/общая панель проверены отдельно,
+успешный цикл сохранений не повторялся. Main-copy: placement history/сохранённые позы и9
+Prop look/support ray comparisons PASS. Мышь/обход/вид OPEN; большой sphere/union не проверялись.
+Owners/точные ограничения/evidence — World Authoring → «Уступы v0».
+
 2026-09-12: после вариаций/bottom fix 15 targeted/related suites PASS без ERROR/WARNING — generator_editing,
 workshop_layout, large_tree_object/dialog, generator, tree/bush/grass_generator,
 object_canvas, assembly_canvas, projection_cache, stamp, selection_interaction,
@@ -4342,57 +5465,93 @@ Ghost под курсором и выбор точки кликом не вхо�
 
 ## Склейка и разбор текущей формы (manual gate открыт)
 
-Пользовательский UI — общая правая `Ember · Мир` и нижняя «Склейка», без Window.
-`test_voxel_merge_dock.gd` PASS: width302/font20, pinned preview/Apply/Cancel,
-явный расчёт, field invalidation, view-only orientation, bound context, stale parent,
-Canvas guard, reuse, merge/unmerge, Undo/Redo/Save-Reopen и source hashes.
-`editor_test_voxel_merge_dock.gd` PASS в disposable Forward+ 1600×900/125%:
-панели внутри shell, explicit alignment/bake, повтор с тем же набором,
-pending защита от другой selection/режима/map/shape, камера/collapse/orbit,
-merge preview==commit, одна Undo/Redo, Save/Reopen; настоящий Canvas dirty guard,
-discard/sculpt/save и source stale rejection перед обновлённым unmerge.
-Cancel/Esc/возврат Рельеф/scene change очищают refs; terrain file/built tiles прежние.
-Связанные merge/bake24/split/conversion/shapes/object-brush/host targeted PASS;
-host/placement native regressions PASS. В части QA shutdown остаётся прежний
-absolute get_node/scan-aborted после PASS; zero-warning lifecycle не заявляется.
-Live удобство и F6 нового UI, большой preview и весь shell1280/125% OPEN.
+Текущий UI — Surface Canvas → «Формы». Scene commands входят в тот же WorldEditSessions,
+без промежуточного Save; прежние отдельные merge dialog/session и dialog-only test удалены.
 
-Дополнительный gate совмещения: взять `Fragment_new` и нижний блок, нижний
-назначить основным. При дробном смещении включить «Совместить сетки»: видны
-полупрозрачное прежнее положение и Δ XYZ; сцена в 3D не меняется. Снять
-checkbox/отменить панель — исходные позиции прежние. Повторить и склеить: результат
-совпадает с preview; один Undo возвращает детали и точные дробные позиции,
-Redo возвращает склейку. Save/reopen и F6 сохраняют новую геометрию/коллизию.
-При смене основной детали checkbox сбрасывается; rotation/scale не округляются.
+- `test_canvas_appearance.gd` — Forward+ regression на четырёх настоящих объектах основной карты,
+  извлечённых в user:// fixture: чистый Canvas→3D→пустой Save не заменяет вид на voxel preview,
+  не меняет материал/свет соседей и сохраняет три облика. Первый реальный мазок создаёт прежний
+  preview, Undo до чистого состояния убирает его. RED до исправления / PASS после; main не пишется.
+  Ручная оценка после обычного перезапуска Godot OPEN; это не проверка удобства мышью.
+  `-- --draft-preview`: carved Source → три вида ready prop против отдельно подготовленной публикации
+  (triangles/transform/material/light/physics/floor), stale revision, Undo/Redo, Save/fresh Source reopen.
+  `--looks-only` повторяет только виды/Discard/validation/physical restore; `--paint-preview` выбирает
+  hull/living путь без изменения occupancy. Carve/paint PASS, author Source/main unchanged.
+  Add27.10: `--add-preview` берёт настоящий сохранённый Source с owner0, восстанавливает
+  геометрию только в fixture и выполняет добавление. Три вида/material/physics/floor, stale,
+  Undo/Redo/save/reopen PASS; `--looks-only` — только затронутые виды/Discard. Floor сравнивает
+  поверхность/нормаль с допуском1e-4 и правильный live owner; ссылки разных экземпляров не равны.
+  `test_solid_volume -- --addition`: RED→PASS для owner0/occupancy/трёх channels/history/persistence;
+  invalid positive owner остаётся rejected. Renderer/cache записи — native Forward+, не headless.
 
-Автоматически: `tools/godot/Godot_v4.7.2-stable_win64_console.exe --headless
---path . --script res://tools/test_voxel_merge.gd`. `-- --benchmark` дополнительно
-измеряет плотные 131072 вокселя; без `--headless`, с `-- --capture` — native
-Forward+ preview в `user://voxel_merge.png`. Tests не меняют авторские карты.
-Связанные: extraction, fragment, canvas_growth, object_split, assembly_canvas,
-groups, object_canvas, native_voxel_resource, selection_interaction.
+- `test_canvas_forms.gd -- --scene-commands`: existing scene forms/repeat/dirty paint,
+  точная маска Paint/face footprint Add/voxel Smooth/явное отключение Grab, heightfield capabilities,
+  native preview/Cancel/stale rejection/commit==preview, align/bake, part split, один Undo/Redo,
+  save/fresh Source+scene reopen/discard и3 looks==physics. Только user:// fixture.
+- `-- --interaction-recovery`: pointer move/release/Esc и история/recovery/discard;
+  во время перемещения новая геометрия не строится. API events не заменяют авторскую мышь.
+- `editor_test_voxel_merge_dock.gd`: opt-in plugin только в существующем ember-rock-pilot
+  checkout. Обычный объект при неактивном world tool, scene merge/repeat с dirty paint,
+  FORMS input ownership, part command, World Smooth остаётся в3D, scene history/Save/Source+scene
+  reopen/discard/3 looks и неизменность исходников PASS. Имя gate сохранено, старого dock нет.
+  `-- --canvas-entry-only` ограничивает прогон реальной toolbar-кнопкой для1/2 объектов,
+  dirty paint/repeat/empty selection и действиями Inspector primary/menu; native screenshot/PASS.
+  `-- --forms-cycle-only`: main-copy Corner/Straight, held paint→switch→Undo/independent masks,
+  placement/union preview Cancel/guard remap/Undo/Redo, carve/paint/separate, StampPanel library user://,
+  placement preview Cancel/commit==preview/cavity/Undo/Redo/continue sculpt, validation/Save/fresh Source+
+  scene reopen/discard/3 looks==physics PASS. Pure `test_canvas_forms -- --forms-guard-math` checks
+  translation/scope/cut/stale/immutable guards. UI теснота/footer и авторская мышь OPEN; Hoshi исключён.
+  `-- --shared-mask-only`: main-copy protected paint, Source locked group + exact mask/scope/cut,
+  one Undo/Redo, target isolation/restore, Grab blocked in both contexts, clear mask preserving scope,
+  Source+scene fresh reopen/validation/discard PASS; session guard не попадает в Source.
+  `--shared-mask-direction-only`: только signed face/adjacent при pick на соседней грани и нативная панель.
+  Math `test_canvas_forms -- --shared-mask-math`:6 normal directions, voxels/columns, region/height,
+  stale/empty enabled masks fail closed PASS. Мышь/формы/склейка этим не принимаются.
+  `-- --brush-settings-only`: main-copy, radius128/force5 через смену кисти и 3D↔Canvas, Add/Remove
+  depth/Grab softness, ViewStore→ConfigFile save/fresh load/import/normalize, invalid bounds и Source
+  unchanged/validation/dirty=false PASS. Новых geometry/history изменений нет, их gate не повторяется.
+  Мазок гигантским радиусом не выполняется: это проверка настроек, не гарантия времени расчёта.
+  `-- --canvas-plane-only`: shared Source/SurfacePlaneJob, held reference+donor parts, Undo/Redo,
+  Cancel/stale, mask/locked/hidden height и legacy columns, profile/3D↔Canvas, validation/3 looks==physics,
+  Save/fresh Source+scene reopen/discard на main-copy PASS. `--canvas-plane-transfer-only` повторяет
+  только исправленные profile mask и depth12 после прежнего Smooth max8, с кадром нативной панели.
+  Мышь/цвет/UX Canvas не приняты; evidence — World Authoring → «Общая плоскость Canvas/3D».
+  `-- --world-plane-only`: тот же минимальный цикл на main-copy для Level по поверхности,
+  fixed plane/cut-only/donor parts/reference, held/no early history/Cancel/Undo/Redo, прежняя земля,
+  validation/3 looks==physics/Save/fresh reopen/discard PASS. `--plane-capture-only` даёт только
+  панель/готовый preview. Math `test_volume_smooth -- --plane`:6 направлений/наклон/offset bounds,
+  fill vs cut/donor material+part/immutable/cancel PASS. Canvas и реальная мышь этим не принимаются.
+  `-- --world-smooth-only`: на копии main реальный Corner, held3D delta==VolumeSmooth (включая
+  donor parts), нет раннего commit, один Undo/Redo, pending/Cancel/stale, земля smooth/cancel,
+  возврат к объекту без Canvas,3 looks==physics, validation/Save/fresh Source+scene reopen/discard PASS.
+  Мышь/вид/большие радиусы остаются автору; evidence — World Authoring → «Сглаживание прямо в3D».
+  `-- --world-context-only`: на копии основной карты ground/два уступа, обычный выбор/Alt+Q
+  через dirty preview collider, text focus/active gesture guards, unavailable brush/busy refresh,
+  общий draft/кисть/радиус, Canvas→другой объект→Canvas→3D и неизменная3D-камера;
+  Undo/Redo предыдущей цели, save/fresh Source+scene reopen/discard/validation PASS.
+  Evidence — World Authoring → «Один3D-контекст»; input API не принимает реальную мышь.
+  Fixture path уникален на процесс, чтобы старое открытое дерево сцены не заменяло свежую fixture.
+  После функционального PASS наблюдался engine get_node error при выходе QA; shutdown остаётся OPEN.
+  Dirty prop интегрирован отдельным прежним native полным циклом join/Undo/Redo/split/Save/Source+scene
+  reopen/Discard/3 looks==physics PASS. `--projection-frame-only` проверяет готовую проекцию после
+  изменения размеров union; не повторяет сохранение. Технические проверки этого среза завершены.
+- `test_voxel_merge.gd` и `test_voxel_merge_orientation_bake.gd` сохраняют чистый расчёт,
+  alignment/overflow и24 поворота. Scene/publication проверяются общим Canvas gate;
+  больше не тестируется удалённый standalone publish. `test_solid_merge -- --presentation-only`
+  проверяет общий ObjectSession guard generated versus authored material в Forward+.
 
-Ручная приёмка:
+Owners/стоимость/ограничения — World Authoring → «Единое управление миром и Canvas».
+Save rollback остаётся прежним WorldEditSessions: относящиеся failure/stale gates —
+`test_world_editor.gd`; Source storage/transaction в этом срезе не менялись, полный прогон не нужен.
+Первый native editor запуск содержал устаревший `qa_solid_merge_native.gd` только в disposable
+checkout с preload удалённого dialog; это не ошибка рабочего checkout. Функциональный gate PASS;
+прежние ObjectDB/scan-aborted shutdown warnings не считаются исправленными.
 
-1. В 3D выбрать 2–3 native-доски одного родителя, при необходимости сохранить
-   их через Canvas. «Ещё… → Склеить voxel-детали…»: выбрать основную,
-   обновить preview. В пересечениях красная подсветка; отмена ничего не меняет.
-2. Склеить: положение прежнее, одна модель. Ctrl+Z возвращает доски, Ctrl+Shift+Z
-   возвращает склейку. Проверить цвета и актуальную collision через F6.
-3. Открыть склейку в Canvas, удалить несколько вокселей. В списке
-   «Новые воксели → …» выбрать исходную часть и долепить её; выбрать
-   «Добавленное» и добавить отдельный выступ. Save, закрыть/открыть Canvas.
-4. «Ещё… → Разобрать склейку…»: удалённое не возвращается, лепка остаётся
-   в своей части, выступ становится отдельным объектом. Проверить Undo/Redo.
-5. Save сцены, перезапуск Godot, F6 Причала: положение и collision не расходятся.
-6. Повторить с поворотом 90° и плотностями 16/32. Произвольный относительный
-   поворот, несогласованная сетка, лишний script/связь или overflow палитры
-   должны дать объяснение без частично изменённой сцены.
-
-Ограничения: ≤32 исходных частей (+Добавленное), ≤524288 ячеек, common parent,
-совместимый материал/физика, без воды/custom lights и произвольного resampling.
-Большие операции синхронны: замеры отдельных стадий не доказывают отзывчивость
-редактора на полной авторской карте. Этот performance/manual gate не закрыт.
+Ручная приёмка на основной карте: выбрать2 соседние формы → команда соединения → выбрать
+основную/при необходимости align+bake → Предпросмотр → отменить либо применить → продолжить
+лепку и покраску → Отделить выделение/Разобрать части → Undo/Redo → Save/reopen/F6.
+Проверить удобство мыши, возврат в3D, крупные формы и три облика. Новых рабочих карт нет;
+сфера и предельная производительность этим функциональным прогоном не закрываются.
 
 ## Отделение фрагмента в объект (manual gate открыт)
 
@@ -4866,6 +6025,100 @@ scan-aborted при автоматическом выходе. Логи врем
 
 ## Surface и voxel authoring
 
+Три цветочных набора25.10: `tools/test_flower_sets.gd` native Forward+ fixture/user:// PASS.
+Actual selector3 Source/разные shapes/независимые overlapping masks, preview/Cancel/paint/erase,
+один Undo/Redo, save/reopen/discard refs/shape/mask/size, Source shape validation.
+Material editor shape preview/Undo/Redo/Save/reopen/discard без изменения другого Source/масок;
+активная sphere подхватывает mesh после shape edit, движение без повторной preparation PASS.
+`test_flowered_grass.gd` прежний PNG/tint/обычный editor regression PASS. Main native0/1/2/0,
+сфера обоих внутренних обликов и motion/кеш PASS; новая публикация только2 refs/2 nodes,
+31 прежний node-блок/terrain bytes прежние. Свежий reopen сверил exact masks/refs/size/seed/owner.
+Обычная трава: новая80-triangle форма в0, прежний low1 восстановлен, voxel2 совпадает с исходным
+snapshot; оба исходника сохранены. Арт травы/ромашек и двух новых наборов одобрен по картинкам. Сиреневые соцветия затем
+укрупнены ~30%/стебли выше ~9% по просьбе автора: native main/две камеры/0/1/2 PASS,
+Scene/terrain прежние; размерную поправку ещё оценить (`ember-lilac-scale/main.log`/PNG).
+Ручной ввод/горячие клавиши/движение OPEN. Evidence —
+`C:/Users/novos/Documents/Codex/2026-10-25/ember-meadow-sets/`:
+sets-test.log/old-regression.log/prototype.json/reopen.log/publication.json/native PNG.
+Схема Pattern расширена additive flower_shape с default0; старые Resources/выборы совместимы.
+Полного suite не было; Source травы/материалы/вода/свет и старый grass_tuft_mesh/recipe не менялись.
+
+Кисть деталей24.10: `tools/test_detail_brush.gd` native Forward+ на искусственном8×8м fixture
+и user:// копии, без чтения/записи авторской карты: mask validation/NaN, preview без owner,
+paint/erase, один Undo/точный Redo, Cancel/Esc через API pointer, save/fresh reopen/discard,
+плотность/seed, три облика без смены XZ/count и без повторной генерации, terrain неизменен — PASS.
+Non-default size/jitter/variation/yaw/seed Save/reopen и302px panel PASS отдельно.
+Main native integration — отдельное чтение основной карты в памяти: трава/галька, три облика,
+панель, сфера/движение без повторных preparations. Примеры опубликованы только тремя scene nodes;
+свежая загрузка/владение/точные маски/count67/30 PASS, terrain и прежние байты сцены сохранены.
+Source/backend/history checks не заменяют мышь/доступ к кнопке после рестарта importer и вид;
+эти gates OPEN. Полного stress/FPS/weak-PC benchmark нет. Evidence —
+`C:/Users/novos/Documents/Codex/2026-10-24/ember-detail-brush/`.
+
+31.10: `test_detail_pattern_validation.gd` RED→GREEN покрывает реальный warm wheat
+prepare без повторного полного voxel scan, неизменные3meshes, in-place ownership/
+palette/nested groups edits и kind invalidation. Native pattern-library и surface-rules
+сценарии повторены PASS. `test_detail_cache_write.gd` RED→GREEN: artificial slow80ms
+transport не блокирует producer, immutable snapshot/cancel до enqueue, count+byte bounds,
+teardown/join. Async writer сохраняет формат и Source; fresh reopen/invalid payload
+проверяет `test_detail_preparation` (bad payload проверяется после завершения записи).
+`test_detail_cache_read.gd` RED→GREEN/native PASS: slow80ms heartbeat,
+private settings snapshot,packaged fallback,malformed transforms,2-slot bound включая
+готовые результаты до budgeted delivery,cancel/free/join/map exit,unpainted near/far
+object invalidation и invalid cover. `test_detail_preparation` native PASS включает
+real cache hit при light/gray edit:готовящийся материал сохраняет актуальный preview,
+стабильный light edit не пересоздаёт scatter. Pattern-library native Undo/Redo/save/
+reopen PASS;ручная кисть/движение OPEN. Async read не меняет cache key/формат/Source.
+Native dense/cold и отклонённый3мс вариант — Performance owner, не helper acceptance.
+
+31.10 admission: `test_terrain_publication_admission.gd` RED→GREEN — observer не
+публикует вне бюджета, expired deadline сохраняет fine/physics, quick reverse берёт
+текущий wanted, stale overview не освобождает новую поверхность, deadline между
+регионами и eventual release. `test_terrain_travel_preparation` сохраняет coverage
+до budgeted replacement; native `test_terrain_resident_slots` подтверждает reuse/
+physics/brush LOD без scene-tree churn. `test_detail_owner_lifetime` проверяет weak
+owner при ancestor reparent/detach/reattach/off-tree;detail preparation PASS.
+Native dense/cold/release/return PASS;120FPS и ручная камера OPEN — Performance owner.
+
+31.10 Jolt Physics в `project.godot`:native `test_terrain_heightmap_collision` PASS,
+5120rays,max height delta0,00000763raw;cache/offset/hole/edge/affine/deform сохраняют
+каноническую поверхность. `test_explore_stepping` PASS на30/60/120Hz,stairs/diagonal/
+high wall/ceiling/cancel/camera;`test_hoshi_player` capsule/walk PASS.
+`test_physical_crates` native в отдельном guarded mixed sandbox PASS:F/G/push/weights/
+recovery/save/load/Undo/reopen;первый запуск без fixture marker REFUSED,не приёмка.
+Dense Jolt5ms cold/release281/return281exact/actual foot support PASS.3ms после Jolt
+REJECTED:potentially-visible absent4/3,startup≈69s;production5ms. Manual feel после
+restart Godot→F5 и full120FPS OPEN. Raw/effective backend — Performance owner.
+
+Библиотека кисти25.10: `tools/test_detail_pattern_library.gd` native Forward+ fixture/user:// PASS:
+пять разных форм, mixed/fixed selection, palette lookup, preview/Cancel, общий Undo/Redo, erase,
+save/fresh reopen/discard canonical refs/masks/size, validation, стабильные три облика/один bake,
+плотность без дубликатов/умножения, пять cold waiters делят один bake;
+terrain и canonical source cache прежние. Старые два набора PASS.
+Выделенные Solid CPU buffers совпали с прежними arrays/formats для hull/living/voxel.
+Main:22 камушка/5 source nodes, прежние67/30, облики/сфера без повторной подготовки; fresh load PASS.
+Сохранены исходные terrain/preset/geometry и прежние байты Scene (кроме ссылки и новых nodes).
+Физический ввод/вид и FPS/stress OPEN; evidence —
+`C:/Users/novos/Documents/Codex/2026-10-25/ember-pattern-library/`.
+
+Природные объёмные черновики: `tools/test_natural_detail_sets.gd` native Forward+ fixture/user://
+проверяет оставшиеся wheat/shell (2 набора), не отклонённые voxel-цветы. Выбор/preview/Cancel,
+paint/erase/один Undo/Redo, masks/refs/размер save/fresh reopen/discard, стабильные XZ/count/кеш;
+Surface Canvas palette/history/Save/reopen/discard, part ownership/erase/bake, fallback добавления
+и явный saved-source refresh PASS. Main:10 черновых объёмных деталей; их внешний вид OPEN.
+Старые daisy/wildflowers Source файлы сохранены, их выбор отключён/пример снят с main.
+
+`tools/test_detail_stone_looks.gd` native fixture PASS: оба источника small stones используют
+hull в detailed/low, hidden в voxel; текстурная цветущая трава без voxel Source остаётся видимой.
+Маски/terrain/scatter прежние; один shrinking binding на камни без voxel-only дубля,
+sphere motion без подготовки. Main52/52/0 видимых камушков, крупные props сохранены.
+
+Текстурные цветы — основной текущий gate выше (`test_flower_sets.gd`). Прежний
+`test_flowered_grass.gd` сохраняет regressions preview/Cancel/erase/Undo/Redo/save/reopen/discard,
+PNG/tint/private draft/validation и обычного material editor; он повторён после добавления наборов.
+Историческое evidence ромашек — `C:/Users/novos/Documents/Codex/2026-10-25/ember-flower-shapes/`;
+текущие формы/наборы и ручная приёмка — World Authoring → «Текстурная цветущая трава».
+
 Минимальный suite выбирается по затронутому контракту:
 
 - Resource/serialization: `tools/test_native_voxel_resource.gd`;
@@ -5111,6 +6364,470 @@ progress_restore, map_transition, combat_defeat_retry, explore_pause_menu.
 убедиться, что меню автосейва и удаление слота работают привычно.
 
 Общие interaction gates запускаются через `python tools/run_interaction_tests.py`
+Актуальный аудит27.10: четыре gates PASS; после воспроизведённого отказа PrimitiveMesh
+исправлен type guard в voxel light callback, fixture предоставляет нейтральный coverage
+input только в изолированной копии. Native Forward+ action-chain PASS, пять UI экранов
+просмотрены при1280×800. Это API/render-аудит; новый main-сценарий описан ниже.
+Evidence/точный scope аудита — Handoff → «Проверка взаимодействий27.10».
+
+### Конструктор механизмов29.10
+
+- 3D wire-add: source→пустой щелчок→ограниченное меню→hold→door. Native popup
+  key selection (Input.parse_input_event с window_id, не Viewport.push_input),
+  auto source edge/continue output, один EUM action, Undo/Redo/scene save/reopen/
+  discard PASS (inspector-editor.log, native-wire-add-popup/connected.png).
+  Targeted inspector: cancel/no mutation, hide-before-id_pressed, node+edge Undo,
+ 3D metadata retention through property edit/save/reopen, metadata-only identity,
+  NaN rejection, ports-off cancellation PASS (auto-roles-forward.log).
+  Drag: motion не меняет source/history, preview=commit, один Undo/Redo, сохранённое
+  размещение при reopen, click/Esc/ports-off без записи, Component identity PASS.
+  Valid/occupied/self-cycle подсветка использует Model.errors; запрет не меняет
+  документ/оставляет draft; успешные press+release потребляются при action callback.
+  Targeted Forward+ PASS (gestures-forward.log/auto-roles-forward.log). Native Editor
+  EUM drag/Undo/Redo/source reopen/цвета/tooltip PASS (inspector-editor.log), кадры
+  native-wire-drag-preview.png/native-wire-port-feedback.png просмотрены.
+  Ручная мышь/положение меню на мониторе/host125%/main OPEN.
+- Inspector UI (`_test_mechanism_inspector`): роли4плитками, один shared property Control,
+  compact wire focus, menu add logic, применить/снять/Undo, независимые circuits/picker,
+  ports off при editing on, stale scene и teardown/rebind/picker/toggle state PASS
+  (inspector-forward.log). Native EUM/viewport mouse-event API/save/reopen/discard
+  PASS (inspector-editor.log), EditorDock1600 и те же controls1280 preview просмотрены.
+  Полная host-layout1280/125%/реальная мышь/основная карта OPEN. Базовые circuit/physics/
+  hold/latch regressions PASS; source schema/save owner не менялись.
+- Latch (`_test_latch_gate`): таблица set/reset/reset-priority/retained disconnect,
+  cascade two memories/atomic observer+один autosave, неизменные кадры без записи,
+  real load true/reset/load false, invalid batch без мутации, pending restore guard,
+  именованные входы/layout/Undo/source reopen PASS (latch-forward.log).
+  Native palette add/graph connections/set-reset labels/EUM/source save/reopen/discard
+  PASS (latch-editor.log/native-latch-properties.png), окно просмотрено.
+  `python tools/run_party_tests.py --test test_party_save_v2.gd` PASS; UID warnings
+  disposable fixtures с text-path fallback, ошибок нет. Автор/мышь/main OPEN.
+- Hold (`_test_hold_gate`): duration/instant-on/retrigger/no startup pulse/zero delta/
+  partition/disconnect/invalid duration; runtime pause/layout-only move, field apply/
+  Undo/source duration reopen без countdown PASS. Native Graph add/connection requests/
+  seconds/EUM/save/reopen/discard PASS, hold-editor.log/native-hold-properties.png.
+  Актуальный Forward+ весь test без fixture замен PASS (hold-current-forward.log);
+  физическая плита→hold→дверь/выход с плиты/удержание/закрытие дополнительно PASS
+  (hold-door-forward.log). Параллельные source-файлы не менялись.
+  Пользовательская мышь/ощущение/main OPEN.
+- Autogenerated door/plate: `_test_generated_roles` в test_mechanism_circuits;
+  вложенная группа/исходные poses, helper назначение/Undo/Redo/снятие/восстановление
+  StaticBody shapes, защита несохраняемого target, Character/rigid вес→plate→door,
+  occupied passage и закрытый/открытый физический ray, source helpers reopen PASS.
+  Runtime Forward+ весь targeted test PASS; последнее дополнение owner guard отдельно
+  auto-roles-targeted.log PASS. Native editor роль/compact form/EUM/save/reopen/discard
+  PASS (auto-roles-native.log/native-auto-role-*.png). Main/мышь/streaming OPEN.
+- Ordinary roles: выделение→форма→lever/lamp→новый пустой Circuit/существующий,
+  bounded dialog с длинным сообщением/scroll/доступным OK (регрессия высоты7582px),
+  sibling NodePaths без изменения parent/transform/script; runtime F adapter→lamp,
+  Undo/Redo/дубли/типовые ошибки, source save/reopen/discard/adapter exclusion PASS
+  (`test_mechanism_circuits.gd`). Native Forward+ роль/провода/EUM/save/reopen/discard
+  PASS, exit0; просмотр native-role-dialog.png/native-ordinary-wires.png,
+  roles-native.log в прежней папке. Мышь/main/streaming OPEN.
+- 3D `ember_mechanism_world_wires.gd`: проекция портов/разведение подписей и hit test,
+  реальные mouse-event команды выход→вход/Shift+вход, scene Undo/Redo, занятый вход,
+  Esc/режим off/смена сцены, тот же serialization path PASS в targeted тесте ниже.
+  Native EditorPlugin Forward+ overlay/EditorUndoRedoManager/save/reopen/discard
+  PASS, exit0; screenshot просмотрен. Evidence world-native.log/native-world-wires.png
+  в прежней папке. Это API input, ручные мышь/навигация/split-view/125%/main OPEN.
+- `test_mechanism_circuits.gd`: AND/OR truth tables, NOT/disconnected NOT, cycle/
+  duplicate-input rejection, реальные2 плиты→дверь, lever F-adapter→OR lamp и
+  один autosave/реальный load flags; source scene+save world reopen. GraphEdit
+  connection signals/add NOT/rewire/Undo/Redo/rejection без мутации, metadata-only
+  move не меняет эффектор/physics clock, stale scene guard, source save/reopen/
+  discard/runtime adapter не попадает в .tscn; legacy envelope→common Circuit
+  conversion/Undo/Redo; pause/input return при lab Window PASS.
+- Native EditorUndoRedoManager wire Undo/Redo, legacy без components → conversion
+  → Undo/Redo, save_scene_as/reopen/discard несохранённой связи, authored-only
+  nodes/NodePath PASS, exit0. Native форма просмотрена. Native Forward+ две схемы,
+  live wires, отключение/Undo и input return PASS, exit0. Мышь этим не принята.
+- Связанные `test_pressure_gate.gd` (F/settle/closed-open ray/occupied gate/
+  source/save/load/find/Undo) и `test_quest_crate_placement.gd` PASS. Прежний gate
+  сохранён как regression через общий движок; old root-field asserts заменены
+  checks компонентов новой .tscn-схемы. Контракт containment прежний.
+- Штатный запуск: `python tools/run_mixed_editor_tests.py --test test_mechanism_circuits.gd`.
+- Ящики/бой29.10: `python tools/run_shore_combat_tests.py --native --test test_combat_world_items.gd`.
+  Реальные weak/strong contacts/два типа, exports scene reopen, world F→held entry,
+  identified object units без initiative/outcome, occupied-cell hit и воспроизводимый
+  miss (оба типа), preview без persistent mutation, постановка/повторный подъём,
+  Retry без копии, victory→тот же world body→F, cold autosave и очистка dynamic
+  tombstone PASS. Native кадры просмотрены. Баланс/ручной ввод/full main OPEN.
+  Related: physical crates gate, mixed `test_combat_action_plan.gd` и
+  `test_combat_vertical_profile.gd`, native `run_shore_combat_tests.py --native` PASS.
+  Evidence `C:/Users/novos/Documents/Codex/2026-10-29/crate-combat/`.
+- Дерево с яблоком29.10: mixed runner `--test test_fruit_tree.gd`, настоящий Forward+.
+  Native LMB/UI/wall/combat, rendered sway response/очистка stale sway/возврат к покою,
+  неизменные shared mesh/collision/соседнее дерево, физический drop/F, повторы без
+  награды, три cold saves/scene+icon roundtrip PASS. Свежий runner PASS; общая shader
+  зависимость — tree palette/leaf pile Forward+ PASS. main-copy strike/drop/F PASS,
+  кадры просмотрены. Evidence `C:/Users/novos/Documents/Codex/2026-10-29/fruit-tree/`.
+  Вид/ощущение/амплитуда/full main OPEN — Inspector «Дерево с яблоком29.10».
+- Физика предметов29.10: mixed runner `--test test_world_item_physics.gd`, Forward+.
+  Яблоки без толчка катятся по противоположным склонам в разные стороны; на плоскости
+  после падения есть отскок/вращение/путь и затухание до покоя. Общая native-size
+  convex Shape3D, default box других моделей, validation/scene reopen, save позы и
+  очистка отложенного импульса PASS. Fruit gate (повтор без нового толчка/F/cold saves)
+  и physical crates regression PASS. Evidence `C:/Users/novos/Documents/Codex/2026-10-29/item-physics/`.
+  Вид/ощущение в полной карте OPEN, коэффициенты пока пробные.
+- Ягодный куст29.10: mixed runner `--test test_berry_bush.gd`, Forward+.
+  Opt-in ветвистый Source/v7 совпадает с сохранённым recipe; пять побегов/leaf-card
+  budget, валидность shrub scale, точные branch_id/t, короткие плодоножки и малые
+  ягоды. Seed/детерминизм/Source save/reopen/неизменность/нулевой count/отказ чужому
+  frame и прежние3 cloud пресета PASS. Плодовые узлы запечены post-generation builder.
+  Уточнение округлой кроны: inward mid/upper shoots, ягоды5,5 scale/диаметр1,1,
+  минимум5 опор выше80% recipe height. Native side/top render просмотрен;
+  focused F/save/roundtrip/детерминизм и main-crop PASS — `round-*.log`.
+  Финальная настройка после приёмки вида: scale5,5/диаметр1,1, количество30 вместо20,
+  15 twig attachments (8 сверху). Принятые Source/recipe/mesh сверены хешами и неизменны.
+  Native кадр сверху просмотрен, focused F/save/scene roundtrip PASS — `more-berries-*.log`.
+  Общая зависимость — `--test test_tree_leaf_palette.gd` Forward+ PASS:
+  прежний sprigs mesh/collision, palette/preview/update/history/save/reopen/discard.
+  Реальный Player F route, full stack сохраняет урожай/награду, combat lock,
+  атомарные3 ягоды+flag/один autosave, повтор без награды, cold states до/после,
+  native scene roundtrip/item/icon/physical model validation/recreate after harvest PASS. Native crop
+  основной земли, sample высоты и F PASS. Before/after/model кадры просмотрены.
+  Evidence `C:/Users/novos/Documents/Codex/2026-10-29/berry-bush/branch-*.log` и
+  `tree-leaf-regression.log`; ручной F5/full main,
+  общий UI урожая и editor preview/Undo/save/discard совмещённой регенерации OPEN
+  Художественный вид принят автором; остальные формы отложены. Scope — Inspector I3.15 «Ягодный куст29.10».
+- Срезаемая трава29.10: `--test test_cuttable_grass.gd` у mixed runner, настоящий
+  Forward+ для сохранённого native material bank. Walk/UI/wall/combat guards, native
+  LMB → stubble/64 узких травинки в4 batches → gated herb/F, одна reveal запись/без instant loot,
+  повтор без добычи, три cold saves/scene roundtrip/bindings/cut plane/cleanup PASS.
+  Свежий disposable runner PASS; main-copy strike/stubble/scatter/F/cleanup PASS,
+  VFX regression: short lifetime/wind drift/shrink, сохранённые64 poses/узкие blade
+  meshes/нет PhysicsBody/ground rays PASS, текущие native кадры просмотрены.
+  Evidence `C:/Users/novos/Documents/Codex/2026-10-29/grass-blade-wisps/`.
+  Ручные F5/вид/ощущение/full main OPEN; scoped owners — Inspector «Срезаемая трава29.10».
+- Кучка листьев29.10: `--test test_leaf_pile.gd` у того же runner. Native Forward+
+  также проверяет реальный проход: player physics overlap/non-player/combat/reentry,
+  одна reveal запись/эффект, cold load/F, старый save под стоящим игроком без самораскрытия.
+  main-copy move_and_slide/scatter/reveal/F/cleanup PASS, native кадр просмотрен;
+  evidence `C:/Users/novos/Documents/Codex/2026-10-29/leaf-walk/`, ручное ощущение OPEN.
+  LMB → Area/cover flag → прежний gated WorldItem → F; invisible/frozen/no-prompt до
+  удара, UI/wall/combat guards, одна reveal запись/без instant inventory, повтор без
+  добычи, all240 initial vertex/UV continuity/4 batches, independent effect buffers,
+  полный размер во время полёта/cleanup2,8с, три cold-save состояния (до/открыто/подобрано), повторное
+  появление тела через реальный ExploreScene._refresh_world_items и scene roundtrip PASS.
+  Save slots в API0–2, визуально автору1–3. Существующее скрытое тело после возврата
+  старого save корректно снова включает физику. Strike/crates Forward+ regressions PASS.
+  Геометрия участка main/strike/reveal/F PASS, кадры просмотрены; full main/мышь/125%/
+  вид/weak-PC OPEN. Evidence: `C:/Users/novos/Documents/Codex/2026-10-29/leaf-pile/`.
+  Текущий облик — рисованный alpha-atlas/плоские карточки: native просмотр слоёв/
+  контура/разлёта и тот же leaf gameplay/save gate повторно PASS; evidence
+  `C:/Users/novos/Documents/Codex/2026-10-29/leaf-palette/`. Приглушённая палитра/
+  общий ramp: leaf gate повторно PASS; unrelated gameplay gates не повторялись.
+- Цвет листвы29.10: `--test test_tree_leaf_palette.gd` у mixed runner, настоящий
+  Forward+ (shader defaults недоступны в dummy headless renderer). Старые Source/
+  Recipe сохраняют силу0; invalid colour/strength rejection, реальные creation/edit
+  controls/no remesh на input, local/scene Undo/Redo, preview/update placed instance,
+  Source/Recipe/map save/reopen/discard, прежние sprig arrays/UV/collision PASS.
+  Native generator-palette.png/main-autumn-maple.png просмотрены, художественная/
+  mouse/main/125% приёмка OPEN. Owners — Terrain Authoring «Цвет листвы29.10».
+- Удар/разрушение29.10: `--test test_world_strike.gd` у того же runner. Forward+
+  Input.parse_input_event(LMB) → unhandled input, открытая сумка/GUI/wall/reach/
+  carried/big/combat guards,8 source-coloured fragments, release плиты, один autosave,
+  cold load/count0 без resurrection/reward, Source immutable, максимум4эффекта и
+  cleanup PASS. Кадры просмотрены; удар на геометрии участка main в копии PASS.
+  Связанные test_physical_crates/test_quest_crate_placement Forward+ PASS.
+  Evidence: `C:/Users/novos/Documents/Codex/2026-10-29/world-strike/`.
+  Ручной F5/реальная мышь/ощущение/полная main и слабый ПК OPEN; автор отложил свой
+  прогон до оптимизации другого чата. Cosmetic budget не доказывает общие FPS.
+- Ящики/вес/возврат29.10: `--test test_physical_crates.gd` у того же runner;
+  Forward+ F/G/реальный контакт толкания/сумма весов, character exclusion,
+  radius/killbox/missed crossing/generic RigidBody/HP invariant/save/cold load,
+  UI/Undo/Redo/source reopen PASS. Native поля веса просмотрены; геометрия участка
+  main в изолированной копии/settle/weighted plate PASS. Связанные crate placement,
+  world-item cycle и mechanisms Forward+ PASS. Evidence: `C:/Users/novos/Documents/Codex/2026-10-29/physical-crates/`.
+  Ручной gate: main Map/Props/PhysicalCrates → F5 → F/G/толкание/плита/Save/Load;
+  оценить дальность/тяжесть и своё размещение. Полный main/streaming/125% OPEN.
+  Evidence: `C:/Users/novos/Documents/Codex/2026-10-29/mechanism-circuits/` →
+  circuits.log/editor.log/native.log/native-*.png и regression logs/fixture-path.txt.
+- Ручное OPEN: Graph → Механизмы → Создать набор → переподключить 2плиты/рычаги
+  через ВСЕ/ЛЮБОЙ/НЕ; выбрать physical targets/параметры → Применить; Undo/Redo/
+  Ctrl+S/reopen/discard. F6 camera_preset_study → ИГРАТЬ → оба ящика на плитах/
+  рычаги/F, открыть схему, посмотреть сигналы, снять связь/Undo/закрыть окно и
+  вернуть управление. Main/save/streaming/125%/узкий экран/свой сценарий остаются
+  OPEN. Правила и ограничения — Inspector Design I3.15 «Конструктор механизмов29.10».
+
+### Quest: собрать и передать предметы29.10
+
+- `test_quest_handover.gd` disposable PASS: pre-owned/live sum,3/3→drop→2/3→
+  pickup→3/3 без автоматического done, HUD, raw flag guard, отказ cancel/missing/
+  locked/invalid target/reward stack без потерь. Успех inventory+done+reward в
+  одном observer snapshot/одном autosave; реальные user://save/load до и после,
+  повтор без награды. Обе формы, invalid item/capacity validation, Graph Undo/
+  Redo/save/reopen/discard и NPC bind Undo/Redo; Action form roundtrip, изменение
+  requiredCount3→2 после привязки берётся из текущего Quest.
+- Прежние test_quest_purchase/talk_shop/action_script/quest_state/quest_npc_options
+  PASS. Native Forward+ форма,3/3/2/3/сдача просмотрены, exit0; внешние evidence —
+  `2026-10-29/quest-handover/`. Сумка/store автора и main не менялись.
+- Ручной OPEN: F6 camera_preset_study → «Начать / сбросить ракушки» → NPC/F →
+  подобрать×3 → выбросить/подобрать → NPC/F → сумка0,5монет, повтор без награды.
+  Отдельно попытка2/3 и отмена разговора. Настроить item/count/NPC/реплику/награду
+  в Graph, Undo/Redo/Ctrl+S/reopen/discard. Проба вызывает world-item commands
+  кнопками, не проверяет управление настоящим игроком/физику. Мышь/125%/свой main
+  OPEN. Правила/owners — Inspector Design I3.15 «Цель «Собрать и передать»29.10».
+
+### Quest: покупка у выбранного продавца29.10
+
+- `test_quest_purchase.gd` в disposable fixture PASS: ранняя/root/locked покупка,
+  успешные1/2→2/2, две последовательные цели не закрываются одним событием,
+  wrong item/shop, grant/sell/cancel/broke/stack_full, clamp; один autosave с
+  inventory/stock/flags и реальный load_autosave, без нового зачёта на загрузке.
+- Обе формы сохраняют purchase поля; validation отвергает товар вне ассортимента.
+  Graph изменение/Undo/Redo/native Resource save/reopen/discard, Journal/HUD count,
+  NPC→обычная лавка→сценка/выбор→награда один раз PASS. Связанные talk/shop,
+  action_script, quest_state PASS. Forward+ native authoring/shop/progress
+  просмотрены, exit0. Evidence — внешний `2026-10-29/quest-purchase/`.
+- Ручной OPEN: F6 camera_preset_study → «Начать / сбросить чай ·30 монет» →
+  «Чай · поговорить со смотрителем»/F → лавка/F×2 → Esc → NPC → сценка/выбор
+  → итог21монета; повтор без награды. Настроить свой товар/количество/лавку в
+  Graph, Save/reopen/Undo/discard. Мышь/125%/узкое окно/main ещё не принимались.
+  Канонические правила и инструкция — Inspector Design I3.15 «Цель «Купить»29.10».
+
+### Камера: отдельная проба ракурсов29.10
+
+- `test_story_authoring.gd` в disposable Forward+15FPS PASS: настоящая форма/
+  независимые фильтры, cancel/validation/create/Undo/Redo/scene save/reopen/
+  discard, authored-only nodes без transient UI, relative bindings/world-space
+  displacement под rotated/scaled folder и physics-owner guard, свежий picker,
+  два cues по clock/skip, reward/cancel, head-in-frame и camera/input restore.
+- Native editor тот же create через EditorUndoRedoManager, Undo/Redo/Save/reopen,
+  выбор story и вид формы/шкалы PASS, exit0. Не ручная мышь/125% приёмка. Прежний
+  AV не объявлен исправленным; fixture scan-aborted при shutdown отмечен в логе.
+  Связанные quest/history/visual/camera/talk/shop/action и plugin parse PASS.
+- Ручное OPEN: на camera_preset_study Ember Graph → Создать сценку → ActorA/B/
+  Item, X1.1/4с, два «Посылка» в1/2с → создать/шкала/Ctrl+S → заменить первый
+  play_cutscene в пробной цепочке на своё имя → F6/Поговорить/два выбора/монет3;
+  затем cancel/Undo/reopen/discard. Инструкция — I3.15 «Создание сценки автором29.10».
+  Main/streaming/game-save/rig/physics gate этим не закрыт.
+  Evidence: `C:/Users/novos/Documents/Codex/2026-10-29/story-authoring/` →
+  native.log,editor.log,native-form.png,native-timeline.png,plugin-parse.log,
+  workspace.log и test_*.log. Actor/source/награды автора не менялись.
+- `test_quest_presentation.gd` в disposable Forward+15FPS PASS: Action editor
+  play_cutscene picker/validation/Undo/Redo/native save/reopen, QuestGiver route
+  → dialogue/presentation →3 coins/done, cancel/retry/normal finish/skip,
+  shared history, missing/duplicate ID, node exit и старый callback без наград.
+  Связанные dialogue/history/visual/camera/talk/shop/action и Graph parse PASS.
+  Lab заранее ставит3 предыдущие цели только в своём ExploreState, старый
+  Action награды/main/авторский save не меняются. ShotRig settings возвращаются,
+  финальные позы остаются только на текущий запуск, не сериализуются в WorldItems.
+- Ручное OPEN: F6 → «Поговорить со смотрителем» → выбор → конец → монет3;
+  повтор NPC → монет3, reset trial → отмена → монет0. В открытой сцене выбрать
+  Action/Graph «Показать сценку» → имя → Save/Undo/reopen/discard. Это API/
+  fixture PASS, не ручная приёмка мыши. Main camera/input/world-save gate OPEN.
+  Evidence: `C:/Users/novos/Documents/Codex/2026-10-29/quest-presentation/`,
+  native.log,quest-completed.png,graph-parse.log и test_*.log.
+  Native editor lookup/picker PASS и native-authoring.png просмотрен; один
+  процесс затем завершился0xC0000005 при закрытии, повтор exit0. Это не чистый
+  PASS первого editor-процесса и не native fix. Evidence/launch/fixture/probe —
+  native-crash-evidence.json/editor-shutdown-av.log/probe-shutdown-av.gd в том же
+  каталоге; причина остаётся открытой у общей stability gate.
+- `test_dialogue_story_history.gd`, runner `run_interaction_tests.py --test …`:
+  native Forward+15FPS1280×900/720 PASS — настоящий Dialogue checkpoint/choice/
+  resume, real F/H/Enter/S key events, button pressed signals, history modal/
+  copy/limit, unchosen branches absent, skip/cancel, binding save/reopen и
+  изоляция от реального прогресса. Воспроизведённый free locked pressed button
+  исправлен remove_child + queue_free. Talk/shop/action и visual/camera PASS.
+  История — последние200 записей в памяти UI, не сохранение и не replay.
+- Ручное OPEN: F6/P → дождаться разговора → H → выделение/прокрутка → Esc →
+  выбрать ответ кнопкой или W/S/F/Enter → дождаться движения предмета; повтор/
+  отмена и свой ресурс Dialogue/Dialogue Time → Ctrl+S/reopen. Main NPC/H/
+  клавиатура+мышь/125% и native editor mouse остаются открытыми.
+  Evidence — `C:/Users/novos/Documents/Codex/2026-10-29/dialogue-history/`,
+  native.log,720/native.log,workspace.log и dialogue-*.png. Авторские saves
+  не использованы для проверки; изолированный ExploreState принадлежит lab.
+- В этой же сцене `story_example`/`ember_story_preview.gd`. Новый
+  `tools/test_story_preview.gd` в disposable Forward+15FPS PASS: движение/поворот/
+  титр/ракурс, пауза/scrub, удержание snap после перемотки, skip в0/3.65/7.9с,
+  cancel/repeat/обычный finish/выход; правка конечного native ключа UndoRedo,
+  save/reopen и показ нового результата; отсутствующая цель/неподдержанная
+  дорожка отклоняются до старта. Связанный test_camera_preset_study PASS.
+- Native editor в disposable fixture: сцена/панель анимации/story_example
+  открыты, дорожки видны; результат preview и @tool камера просмотрены.
+  Это не ручная проверка мыши/горячих клавиш редактора. Она OPEN:
+  Item.position последний ключ4.3с → X1.1 → Ctrl+S/F6/P/End → Esc;
+  затем редакторские Undo/Redo/reopen/discard при изменении ключей.
+  RESET — исходная editor-поза; Esc — фактическое состояние до просмотра.
+- Evidence: в том же каталоге ниже `test_story_preview.gd.native.log`,
+  `test_camera_preset_study.gd.native.log`, `story-editor.log`,
+  `story-detail.png`, `story-finish.png`, `story-native-editor.png`.
+  Текст — титры; реальный Dialogue/Action/main/риги пока не подключены.
+- Owner/референсы/инструкция — Object Inspector Design → I3.15 «Проба ракурсов29.10».
+- `tools/test_camera_preset_study.gd`, отдельный fixture project с двумя scripts
+  и `scenes/prototypes/camera_preset_study.tscn`, native Forward+15FPS PASS:
+  кнопки шести планов/цель в кадре, одна сторона оси, перенос пары, прерванный
+  переход, пустая/исчезнувшая цель, смена привязки, save/reopen/reset.
+- Запуск сцены из рабочего проекта Forward+ без ошибок, без загрузки main.
+  Просмотрены шесть кадров; evidence —
+  `C:/Users/novos/Documents/Codex/2026-10-29/camera-presets/native.log`,
+  `workspace-scene.log`, `shot-0.png`…`shot-5.png`.
+- Ручное OPEN: открыть сцену/F6 → 1–6/Tab → Пробел → слайдеры → H → R.
+  Проверить читаемость лиц/плеч/предмета и темп переходов. Runtime-слайдеры
+  временные; стартовые значения/NodePath anchors сохраняются в Inspector ShotRig.
+  Не приёмка катсцены/интеграции диалога/main. Editor-документы/история не менялись.
+
+### Груз у берега28.10
+
+Цельная authoring-проба28.10:
+- test_quest_conversation_draft в native Forward+15FPS PASS после воспроизведения
+  потери текста на selection: реплики/финал/режим/награда сохраняются между NPC и
+  целями; до назначения Quest/NPC не меняются. Save не выдаёт ложный успех,
+  навигация предупреждает, cancel сохраняет, discard/reset убирают неназначенное.
+  Назначение второй цели сохраняет черновик первой и финала. Успешный разговор
+  подтверждается отдельным ack, zone-save не очищает текст. Черновики сессионные.
+  Связанные authoring journey, NPC options, quest workflow/Undo/reopen/discard и
+  plugin parse PASS. В test_quest_graph_workflow освобождены два fixture UndoRedo
+  после clear_history; это cleanup проверки, не заявление об игровом memory fix.
+  Evidence: quest-workflow/pending-native.log/png, pending-journey.log,
+  pending-options.log, pending-workflow.log, reply-selection-probe.log.
+  Ручное OPEN: текст → выбрать NPC → переключить цель → назначить/сбросить →
+  Ctrl+S/reopen/F5. Сохранение черновика между перезапусками не реализовано.
+- test_quest_authoring_journey в native
+  Forward+15FPS PASS: свои тексты без заготовленных диалогов, пустой текст не
+  создаёт NPC, напоминания/награда и отдельный completed_script_id, COW старой
+  реплики/повтор без лишнего Resource, Undo/Redo Dialogue+Action+Quest+NPC,
+  scene reopen, физический маршрут/F/зона и точная награда. После done виден
+  свой финальный текст; отмена/повтор и cold save/load не дублируют монеты.
+  Старый quest workflow и изолированный plugin parse PASS. Evidence:
+  quest-workflow/short-reply-native.log/png, short-reply-workflow.log.
+  Малая native UI-проба не является benchmark; полная main не запускалась.
+  Ручное OPEN: свои тексты/напоминания → награда → финальная реплика →
+  Ctrl+S/reopen/F5/прохождение, мышь/узкое окно/DPI. Инструкция — I3.14.
+- `python tools/run_mixed_editor_tests.py --test test_quest_authoring_journey.gd`
+  запускает тот же сценарий без окна: поля названия/4 целей, «Следующая цель»,
+  создание NPC/места/ящика, свои тексты/напоминания/3 монеты/финал из карточки.
+  Нет ручной записи quest flags/objective_scripts; callback adapters выполняют
+  те же authoring owners с фиксированными позициями вместо editor map-selection.
+- Сцена и saves — disposable fixtures. Авторские карты, saves и файлы
+  оптимизации этой проверкой не меняются. В harbor_cargo различены4 display name,
+  чтобы picker показывал просьбу/напоминание/награду/финал.
+- Авторская сборка на main/мышь/gizmo/DPI всё ещё OPEN; пошаговый путь и известные
+  ограничения — Inspector Design I3.14 → «Сборка первой цепочки из карточек».
+
+Карточка NPC: напоминание и награда28.10:
+- `test_quest_npc_options.gd` в disposable mixed fixture/native Forward+ PASS:
+  режим напоминания и две награды из UI, пустая награда не сохраняется, talk-only
+  не меняет цель/сумку, старый общий Action и исходный Dialogue не переписываются;
+  отмена разговора/повтор, точные количества, Undo/Redo, scene save/reopen и cold
+  save/load с завершённой целью, чтение настроек назад, создание reminder NPC.
+- Reminder+reward и choice+reward запрещены; диалог с записью флага квеста
+  нельзя назначить напоминанием. Runtime owners и Quest/save schema прежние.
+- Старый native quest workflow: два разговора/выбранный ответ/создание NPC/
+  передача/отмена/Undo/Redo/reopen/discard PASS; изолированный plugin parse PASS.
+- Evidence в прежней папке quest-workflow: npc-options-native.log,
+  npc-reminder.png/npc-reward.png, ember-native.log/conversation-plugin-check.log.
+- Ручное OPEN: main → Ember Graph → «Груз у берега» → выбрать CargoKeeper →
+  цель «Найти ящик» → «Только напомнить» и диалог; последняя цель → награда3 монеты.
+  Назначить → Undo/Redo → Ctrl+S/reopen/F5; отменить/завершить/повторить разговор.
+  Оценить мышь/расположение карточки/узкое окно/125%. Новый полный main-прогон
+  для этой editor-формы не выполнялся; нижний PASS цепочки относится к сборке.
+
+Срез: вторая цепочка из существующих механик, main/Map/Props/HarborCargoQuest.
+Смотритель(112,6,280) → место/ящик(112,7.15,328) → F взять/поставить в золотую
+зону(112,6,376) → вернуться/3 монеты. Прежняя береговая миссия сохранена.
+- `python tools/run_mixed_editor_tests.py --test test_quest_harbor_errand.gd`
+  и тот же gate в Forward+ PASS: создание через authoring owners/упаковка/reopen,
+  отмена разговора/напоминание без зачёта, физический вход/F/settle, сохранение
+  после постановки и cold load с верным маршрутом NPC, отмена награды и повтор
+  без лишних монет. Проверки работают в disposable fixture, авторские saves не трогают.
+- `errand-main.gd`/`errand-main.log`: Forward+ PASS того же маршрута на RAM-окне
+  реальной landscape_compact с настоящим рельефом/физикой и прежними игроком/UI.
+  Props вне поручения исключены только из RAM-пробы. Это не полный старт/ходьба
+  по всей карте; API-расстановка игрока не доказывает ручной ввод/доступность маршрута.
+  Форма золотой рамки подогнана к Surface, кадры до/перенос/после просмотрены.
+- `errand-assets.gd`/log PASS новых production Quest/Action/Dialogue и ссылок
+  финального prefab, стабильного crate pickup_id и сохранённой рамки.
+- Evidence: `C:/Users/novos/Documents/Codex/2026-10-28/quest-workflow/`:
+  `errand-native.log`, `errand-main-start/intro/carry/placed/done.png`, asset/main logs.
+- Ручная приёмка OPEN: переоткрыть main/F5 → найти нового смотрителя у берега →
+  пройти все4 стадии по F → Q/3 монеты → Save/Load → повтор разговора без награды.
+  Создание всей цепочки автором без ключей OPEN; gaps — Inspector Design I3.15.
+
+### Послание на берегу27.10
+
+Одна проверяемая цепочка на `landscape_compact`, технические owners — Handoff →
+«Предметы в мире и бутылка». Автор выбрал клетку1м; первая поляна5×5м.
+
+- `python tools/run_world_item_tests.py --native`: world/inventory transfer,
+  физический drop/pickup, атомарное открытие, чтение,0/2/3 ракушки/обмен,
+  отсутствие дубликатов, старыйv2/Load в той же сцене, ItemEditor и draft
+  Undo/Redo/save/reopen/discard — PASS. Reward endpoint в **этом** тесте задан fixture.
+- `python tools/run_shore_combat_tests.py --native`: настоящий Combat/HUD/AI
+  до победы, enemy initiative после расстановки, двойная задержка при rear,
+  Map/scene identity,1м, отсутствие боевого пола/Environment, scaled camera/picking,
+  кожа в autosave **до** receipt, отсутствие повторной выдачи, итоговые10 монет — PASS.
+  Отдельная defeat-fixture(HP героев обнулены только в тесте) проверяет in-place
+  Retry: новая попытка/seed без повторной расстановки и без изменения persistent party.
+  Победа после Retry достигнута обычными preview/commit/ИИ без изменения HP.
+- `python tools/run_save_destination_tests.py --test test_combat_encounter_transition.gd`
+  и `--test test_combat_defeat_retry.gd`: прежняя отдельная арена/result/Retry/Load PASS.
+  Coverage texture даётся fixture в памяти; `_refresh_world_items` не трогает
+  уже выведенную из дерева exploration-сцену. Авторские карты/saves не меняются.
+- Связанные interaction4 gates, inventory_equipment, party_save_v2 и
+  quest_journal_authoring — PASS; diagnostic journal включается явно в тесте.
+  Чистый `test_combat_prototype.gd` в disposable project PASS: baseline состав
+  прежний, добавление шаблона кабана не подселяет его в лабораторные бои.
+
+Main evidence: `C:/Users/novos/Documents/Codex/2026-10-27/ember-shore-mission/`.
+`main-mission.gd` запускает настоящий controller/содержимое main с RAM dense_window
+участка без сохранения карты, реальные PNG текстуры алиасами в памяти, Forward+30FPS.
+Проход делается API/F route с переносом игрока между точками, не ручным ходом.
+`main-mission.log`: SHORE_MAIN_MISSION PASS — бутылка/drop/open/read/хранитель/
+3 ракушки/настоящий бой/кожа/одноразовая награда, identity мира сохранена;
+screen→cell picking PASS. Просмотрены boar-on-main/battle-on-main/mission-complete.
+Старый `main-bottle.log` закрывает только этапы до сдачи ракушек. Этот проход
+не доказывает полный холодный старт/экспорт/weak-PC и ручное управление.
+
+28.10 автор подтвердил прохождение всей миссии от начала до конца: функциональный
+ручной gate закрыт. Это не отдельная приёмка баланса/authoring/всех визуальных деталей.
+Маршрут для повторной проверки: обычный F5 → береговая бутылка(F) → сумка(открыть/выбросить/
+подобрать/прочитать) → хранитель за домом(согласиться/позже) →3 ракушки →
+хранитель → кабан(ЛКМ/со спины/враг первый) → расстановка/бой → победа/кожа →
+хранитель/награда. Q/повтор и свой Save/Load между этапами/перезапуск отдельно
+ещё OPEN: сообщение о прохождении не подтверждает все эти варианты.
+Ввод/ощущение инициативы и арт/анимации остаются отдельной оценкой;
+автоматическое поле на любом склоне и переработка всей authoring UI не заявлены.
+
+Обратная связь28.10: `python tools/run_shore_combat_tests.py --test test_explore_feedback.gd --native`:
+focus bottle/NPC, отдельный outline material без изменения source, F на выделенный
+предмет, переключение/сбор/уход/сумка/диалог/combat lock, HUD скрытых/активных/
+завершённых целей, stage toast и resume без нового toast — PASS.
+`test_shore_combat.gd` Forward+ PASS: завершение эффекта/блокировка и возврат
+команд, прежние AI/result/Retry/награда. World-item regression PASS.
+Native main-feedback прошёл всю миссию; после исправления stencil/размера[F]
+повторён только визуальный участок bottle/NPC/shell/HUD(`feedback-ui-final.log`) PASS.
+Новый UI/эффект вручную ещё OPEN; main кадры/лог —
+`ember-shore-mission/main-feedback.log`, `feedback-*.png` в прежнем evidence folder.
+
+Вход отпрыжками28.10 заменяет прежнее затемнение по просьбе автора.
+`python tools/run_shore_combat_tests.py --native` PASS:2 героя/1 враг и4 героя/
+2 экземпляра одного enemy template. Те же мировые Node identities остаются видимыми,
+позиция лидера проходит дугу и совпадает с semantic клеткой после посадки;
+black cover/непрозрачный Lab fade отсутствуют, команды заблокированы в движении.
+У полного состава без deployment panel первый AI не действует до посадки.
+Прежние Retry/result/skin/reward и возврат управления остаются PASS.
+Враги связываются по combat_unit_id внутри своей field zone; сторонние зоны не
+подменяют одноимённый шаблон. Источники рига/модели Хоши не редактируются.
+`main-hop.gd`/`main-hop.log` — native PASS Hoshi/спутник/кабан на RAM-участке main,
+квестовые флаги подготовлены явно только для visual probe. Это не новое доказательство
+всей цепочки и не ручная оценка темпа. `hop-before/mid/landed.png`,
+`hop-transition.gif` —56 native кадров, финальная запись fixed30FPS(26 кадров входа),
+это offline запись движения, не замер производительности. Вид одобрен автором.
+
+Подбор28.10:
+`python tools/run_world_item_tests.py --native` PASS: тот же ItemVisual отделяется
+от физического тела только после выдачи, повтор не создаёт grant/эффект, подъём,
+движущийся collector, схлопывание и освобождение эффекта, autosave во время показа.
+Связанный combat hop/result/Retry gate PASS после переноса общей формулы дуги
+в `ember_arc_motion.gd`. `main-pickup.gd`/log: native визуальная проба бутылки и
+ракушки на RAM-участке main рядом с Хоши PASS; это не повтор всей принятой миссии.
+`pickup-pop.gif` —39 native кадров bottle pickup в fixed30FPS, `pickup-bottle-10/18.png`
+и `pickup-shell-10/18.png` показывают полёт/сжатие. Запись не является замером FPS.
+Новая анимация подбора вручную OPEN.
+
+Запуск полного набора или отдельного теста
 (либо `--test <имя>`): `test_talk_shop.gd`, `test_action_script.gd`,
 `test_interact_launch_rules.gd`, `test_quest_state.gd`. Старые city/story assertions
 архивированы; общие mechanics сохранены на synthetic native dialogue/action/shop/
@@ -5881,7 +7598,7 @@ Placement ID: у уже открытого BarrelA с пустым ID вручн
 существующего placeholder не считается гарантированным; при повторной ошибке
 черновик не отбрасывать и не перезапускать редактор до отдельного восстановления.
 
-Ручной gate открыт: в test_pier выбрать Map/Props/BarrelA → «Создать экземпляр» →
+Актуальный ручной gate: на основной карте выбрать свой voxel-объект → «Создать экземпляр» →
 исходную бочку → «Редактировать в Canvas», изменить воксель, сохранить → 3D:
 изменилась только выбранная, collider следует новой форме. Повторный Save в этом
 сеансе не создаёт ещё source; Ctrl+Z/Redo в 3D возвращают форму/ссылки. Сохранить
@@ -5893,66 +7610,34 @@ independent copy; изменения исходника не должны зат
 water fill и несовпадающий legacy prop пока не поддержаны. Полностью пустая native
 модель поддержана последующим этапом 2.1, см. gate выше.
 
-### Test Pier — отдельный exploration gate
+### Exploration/editor mechanics — без Test Pier
 
-`tools/test_test_pier.gd` загружает `scenes/test_pier.tscn` как F6, проверяет
-активную пару protagonist/mira, одного follower, Tab, два героя сумки и Q/E,
-authored content без legacy hydration, физический пол, ray/capsule к западной
-границе воды. Реальный pause-menu load после перемещения A→B возвращает A через
-reload сцены; следующий F6-equivalent старт сохраняет пару и A. Сохранение
-содержит mapId=test_pier. SHA256 исходных v1/v2 папок остаются неизменны;
-тест пишет в unique `user://ember-tests/test-pier-*`.
-Обычный Forward+ `-- --capture` сохраняет `pier.png` и `pier-inventory.png`
-в fixture папке, печатает абсолютные пути и завершает процесс.
-Targeted и Forward+ пройдены 9 сентября 2026. Связанные party_followers,
-party_save_v2, progress_restore, map_transition, inventory_equipment,
-explore_pause_menu, camera_relative_movement — 7/7 PASS; pack contract и
-`git diff --check` пройдены. Ручной gate: F6 именно
-test_pier.tscn → пройти настил/берег, обойти грузы и все края (нет падения в воду),
-Tab и I/Q/E дают только двух героев, T меняет следование, RMB вращает камеру;
-Esc → сохранить, отойти, загрузить, закрыть и снова F6 → прежнее место/пара.
-Автоматический edge probe не заменяет ручной обход всех границ.
-Regression первого editor-open: `test_voxel_surface_sculpt.gd` запускает отдельный
-`--native-selector-probe` и отвергает любой ERROR в его output даже при exit 0.
-Реальная test_pier привязывается к selector через обычный refresh_context:
-без Surface toolbar скрыт; повторный выбор Map не читает legacy JSON; временные
-неизвестные размеры безопасны; native Surface даёт размеры; legacy fan_town
-сохраняет прежний полный grid с heights. Sculpt, world_surface_projection и
-test_test_pier повторно проходят после исправления. Ручной повтор: закрыть/открыть
-test_pier, выбрать Map, F6; новых ошибок `cannot read ... test_pier.json` быть не должно.
+Test Pier и последние пять исходных импортов удалены23.10.2026. Старые записи
+PASS/пути в этом документе описывают исторические прогоны и не требуют их возврата.
+`tools/test_exploration_mechanics.gd` заменяет прежний `test_test_pier.gd`:
+пара protagonist/mira, follower, Tab и сумка/Q/E, физический пол и преграда,
+pause Save/Load с reload и повторный вход. Запись — unique user://ember-tests/.
+`tools/fixtures/ember_editor_mechanics_fixture.gd` создаёт тестовые объекты/воду/пол;
+редакторная сцена/Surface появляются только в защищённом временном проекте.
+Три искусственные Source/mixed prefab/source-only принадлежат native fixture;
+реальные карты и авторская библиотека в эти прогоны не копируются.
+
+Адресный запуск: `python tools/run_remaining_editor_tests.py --mechanics-test
+test_exploration_mechanics.gd`. В том же runner доступны `--mechanics-editor`
+для editor_test_world_editor/voxel_context/voxel_conversion/voxel_object_canvas.gd
+и `--mechanics-native` для test_voxel_placement_preview/voxel_preview_renderer.gd.
+World editor сохраняет кисть/water/один Undo/Redo/Save/reopen и объектный fork;
+его тестовая поверхность320×64×128 покрывает операции, а большие бюджеты остаются
+у test_surface_large_profile. `run_native_voxel_tests.py` проверяет каталог,
+полку и source-free PCK на3 синтетических моделях.
+
+После удаления: `python tools/test_retired_city_references.py` и
+`--headless --path . --script res://tools/test_retired_content_catalogs.gd`
+проверяют отсутствие retired-ссылок/моделей, fallback старого сохранения Причала
+во вход landscape_compact и неизменное round-trip старого прогресса.
+Ручной проход управления относится к основной карте; API/PASS не заменяет мышь,
+горячие клавиши и ощущение игры. Старый ручной gate обхода Причала снят вместе со сценой.
 Бой/Retry active-party gate ниже этим не закрывается.
-
-Контракт 9 сентября 2026 сохраняет единственные Explore/Party/save owners.
-`test_party_save_v2.gd` проверяет 1–4, strict setter, missing/corrupt
-`activeHeroIds` → legacy четыре, reopen/adopt с синхронным UI listener и metadata.
-`test_party_followers.gd` проверяет solo Mira, пару без ГГ, изменение состава при
-прежнем лидере, уход лидера и Tab без смещения игрока.
-`test_inventory_equipment.gd` проверяет запрет inactive equip/use/unequip,
-циклический выбор пары, roster reorder при открытой сумке и сохранение полного
-порядка стратегии. `test_encounter_resource.gd` покрывает compatible subsets и
-отказ unsupported/capacity; `test_combat_encounter_transition.gd` — отказ до
-смены сцены без мутаций, pending/active lock, snapshot isolation и solo/pair
-victory. `test_party_progression.gd` и `test_combat_result_bridge.gd` проверяют
-XP только участников, павших, preview=commit и неизменность отсутствующих.
-`test_combat_prebattle_deployment.gd` сохраняет exact-four baseline и проверяет
-пару в четырёх cells; `test_combat_defeat_retry.gd` добавляет pair Retry с точным
-составом, placement, HP/MP/inventory и новым seed без мутаций мира.
-
-9 сентября 2026 прошли 34/34 scripts (exit 0, без SCRIPT ERROR/ERROR/FAIL):
-20 combat, 2 battlefield, encounter, inventory, 3 party, а также
-health_consumables, progress_restore, explore_pause_menu, map_transition,
-defeat_respawn, talk_shop и camera_relative_movement. Запуск последовательный
-из-за shared user://. `python tools/test_vox_axes.py` и `git diff --check` прошли.
-Обычные Forward+ followers и defeat/retry на RTX 5070 завершились с exit 0;
-просмотрены четыре PNG: пара в мире, сумке, ready и после Retry.
-Ручной Forward+ gate остаётся открытым:
-одиночка и пара в мире, followers, Tab/Q/E и сумка, расстановка/победа/Retry,
-save/reopen и возврат лидера. Для безопасных captures tests
-followers запускается через `python tools/run_party_tests.py --capture-active`,
-`test_combat_defeat_retry.gd` — с `-- --capture-active` (обычный Forward+,
-fixture saves, PNG в unique `user://ember-tests`). Captures не заменяют ручную input-приёмку.
-
-## Migration gates
 
 ### G1/G2 — content ownership
 
@@ -6501,3 +8186,250 @@ shutdown diagnostics retained. Evidence Temp/ember-scene-save-crash-20260914-060
 Manual acceptance CLOSED 2026-09-14: user confirmed the reported Ctrl+S crash fix
 with «отлично». No original map writes by automated editor checks; no attribution
 of earlier teardown failure without further evidence.
+
+
+## Расширение main3×3 и редактируемое море —25 октября2026
+
+Контракт/текущая истина — World Authoring → «Приоритет25.10 · карта3×3».
+Focused: `tools/test_terrain_coast_expansion.gd`; related selection/lake regressions.
+History regression: `tools/test_section_brush_history_tiles.gd` and
+`tools/test_compact_section_brush_batches.gd`; caps/base/side and bounded dirty tiles.
+На копии main: старые channels/overrides/flows/rules/poses сохраняются; partial25m edge
+достраивается; coast repeat/move/off/manual protection, UI/Undo/Redo/save/reopen/discard.
+Forward+ на временной копии проекта: три облика, берег/стык, raise/smooth через стык,
+видимое изменение до release, один Undo на мазок, Cancel и отсутствие позднего remesh
+после Discard. Авторская мышь/горячие клавиши/композиция OPEN; API их не закрывает.
+Дополнительный риск масштаба: full3×3 сфера TIMEOUT241с, готовое движение не проверено;
+следующий focused gate — её подготовка, не полный прогон редактора.
+Не повторять эту матрицу после каждого визуального изменения; расширять по конкретному риску.
+
+
+## Планер берега25.10 — технически выполнен, ручной ввод OPEN
+
+Owner результата/ограничений — World Authoring → «Планер берега»; полный контракт здесь не дублируется.
+- `tools/test_coast_planner_workflow.gd` PASS: drag ghost/no terrain write/one Undo,
+  exact Undo/Redo/Esc/add/Delete/map hit; focus после поля, validation, compressed Plan,
+  обычный/deferred save rollback, foreign-file conflict, retry/reopen/Discard/Save As;
+  native publication после clean Discard. Terrain-файл не переписывается от точек/плана.
+- `tools/test_coast_preview_looks.gd` PASS:2→0→1→2, совпадение preview/commit geometry,
+  отсутствие изменения Source, возврат hidden tiles при Cancel.
+- `tools/test_terrain_coast_expansion.gd` PASS после исправления exclusive upper bounds.
+- `tools/test_grove_snapshot_storage.gd`: RED1050002B → GREEN812B; native instance ref,
+  исключение derived texture/runtime node, сохранение pose/metadata/авторского child,
+  повторный restore не разворачивает prefab. `test_terrain_plan_grove` и
+  `test_world_recovery_async` PASS. BoxMesh fixture приведён к runtime ArrayMesh contract;
+  производственный свет ради теста не менялся.
+- Native Forward+ main-copy:72 voxel preview tiles; Apply/Undo/Redo/Save/Discard/reopen PASS.
+  Related early replay:20 input updates before release do not publish terrain; one Undo.
+  Bounded jobs ускорены в QA driver, поэтому wall time этого replay не является замером FPS.
+  Recovery458MB/hang →5606B, worker completes, Save completes. Новая карта проекта не создавалась.
+- Main migration:247 SceneState nodes/properties и Plan.data совпали с живым backup,
+  Source SHA256 не изменился; Plan.res150814B. Актуальное сжатие масок/размер main —
+  «Маски травы / локальность / вход берега» ниже. Backup/evidence: Documents/Codex/2026-10-25/ember-planner-review.
+- Старый рабочий editor завершился после live script reload; MCP отключился, причина не
+  подтверждена. Повторять этот reload не требуется; свежий disposable editor прошёл сценарий.
+  Main проверена/опубликована без headless editor, через Resource publisher и atomic scene-reference migration.
+Ручной gate: открыть Godot/main заново, проверить клик/список/точки/клавиши/панель и свой
+Preview/Apply/Undo/Save. Автоматический PASS не закрывает ощущение ввода, композицию,
+скорость подготовки большого берега или full3×3 sphere gate.
+
+
+## Повторное чтение цвета растительности26.10 — technical PASS, manual OPEN
+
+`tools/test_foliage_color_reuse.gd` — native Forward+, user://; reference отключает только
+новый shortcut и использует прежний weighted fallback.24 картинки (grass/flower/ground/
+bank-depth stone ×6 условий): single/mixed same IDs, distinct IDs, gray, blade-off,
+legacy smooth-off; light modes0/1/2. Exact RGB, покрытие не пустое. Шейдер ограничен
+прежним painterly/blades, не меняет weights и не вводит uniforms/varyings/schema.
+Прежний `test_foliage_indexing` с before snapshots:12 GPU sphere кадров0 changed pixels,
+geometry/bounds/target mapping прежние. Main-copy:3 looks×2 расстояния,76 323 instances,
+220 masks/221 buffers exact; рабочие scene/terrain/Plan byte-identical.
+Профиль/замеры/границы — World Authoring → «Повторное использование цвета растительности26.10».
+Editor/history/serialization не менялись, полный save-cycle не повторять без новой причины.
+Evidence: Documents/Codex/2026-10-26/ember-foliage-color-reuse. Manual feel/большая сфера OPEN.
+
+
+## Индексация растительности25.10 — technical PASS, manual OPEN
+
+`tools/test_foliage_indexing.gd` — native Forward+, user:// fixture. Для сравнительной проверки
+CLI args задают внешний output и `record` (до правки); без record старый before.bin/кадры
+сравниваются с новым builder. Обычный запуск без before выполняет compactness/table/render
+visibility проверки и не зависит от авторской карты. Не использовать headless для render.
+Пять исходных meshes: exact expanded position/normal/tangent/color/UV/UV2/order/AABB,
+indices/compactness. До реализации RED (нет indices), после GREEN. Подготовка сферой
+той же позиции/normal получает те же target rows после индексации;12 GPU кадров травы /
+сиреневых соцветий (2 looks×3 положения×2 объекта) —0 changed pixels, покрытие не пустое.
+Main-copy A/B: прежний builder против нового на тех же materials,3 looks×2 расстояния;
+211 patch meshes exact,76 323 instances /220 masks /221 buffers без изменений. Source
+scene/terrain/Plan SHA256 прежние. Средний выигрыш не трактовать как FPS-гарантию; подробный
+профиль и границы — World Authoring → «Маски, локальное обновление», индексация25.10.
+Editor/history/save code не менялся, полный save-cycle не повторяется для mesh-only среза.
+Evidence: Documents/Codex/2026-10-25/ember-foliage-indexing. Авторский feel/вид и большая
+сфера основной3×3 карты остаются открытыми.
+
+
+## Подготовка и подключение земли25.10 — technical PASS, manual OPEN
+
+Owner/профиль/ограничения — World Authoring → «Подготовка земли в редакторе».
+`tools/editor_test_terrain_preparation.gd` запускается native Forward+ EditorPlugin только
+в disposable checkout, fixtures/cache в user://. Не запускать working `--headless --editor`.
+Dense/sectioned cold-warm, вода и три облика; vertices/UV/colours/collision/field/layout
+совпадают с прежним mesher. После удаления повторной GPU-упаковки только packed normals /
+tangents допускают<=1e-4; cold/warm нового пути byte-equal. Независимый старый mesher15
+случаев и render при трёх углах солнца PASS (max1/255, mean<6e-7).
+Новый input при частичной публикации отменяет старую; до commit видимые mesh/physics/field
+прежние. Непрерывный мазок публикуется до release. Open/Discard с prepared resources не
+подключает их к новому Source; неизменённые tiles сохраняют pick field/layout. Invalid
+CPU cache отвергается и пересчитывается. Runtime cache/shape/history regressions PASS.
+Полная main-copy native проверяет прежние masks/76323 detail buffers, локальную правку,
+Undo/Redo, native Save/reopen/discard; source files рабочей карты byte-identical.
+Max terrain process8–10мс; cold≈54.7с/reopen≈36.55с, полное ожидание не считать ускоренным.
+Профили — наблюдения одного сценария, не shipping FPS и не ручная приёмка.
+Evidence: Documents/Codex/2026-10-25/ember-terrain-publication-study.
+
+
+## Трава Б26.10 — main integration technical PASS, manual OPEN
+
+Owners/границы — Terrain Authoring → «Объёмная трава Б на основной карте26.10».
+- `test_grass_cards_main.gd` native Forward+: настоящая landscape_compact,125 обычных узлов,
+  110 непустых/72 280 пучков. Проверены8 треугольников, UV полного атласа без palette overwrite,
+  правильные atlas/grass slot, переходы GrassPatch1→2→0, opaque прежних обликов,
+  byte-exact buffers возврата и неизменные density/seed/size/transform авторских узлов.
+  Сняты game camera/общий/близкий/движение; own visual acceptance OPEN.
+- `test_detail_preparation` PASS: fresh-node/disk reopen, exact cached transforms трёх обликов,
+  отмена старой маски и отказ от невалидного кэша.
+- `test_grass_local_refresh` PASS: sculpt/paint/restore затрагивают только близкие patches,
+  покраска песка убирает траву; дальние экземпляры сохранены.
+Scene/terrain/cartoon_grass/общая фабрика и общий shader SHA256 прежние; PNG атласа совпадает
+с принятой пробой Б, mipmaps включены. Только обычная детальная трава получает новый mesh.
+Первый full-map cold capture превысил180с; диагностика подтвердила последовательную подготовку,
+а не зависшие/неактивные узлы; повторный full-map прогон PASS. Общая загрузка/FPS не закрыты.
+Сфера18м выключена только в capture RAM; её performance gate не затронут. Есть прежнее
+предупреждение UID берёзы с успешным path fallback, без ошибок шейдера/тестов.
+Evidence: `D:/aion2-grass-study-2026-10-26/main-map/{main-checks.json,main.log,preparation.log,refresh.log}`.
+Ручное действие: перезапустить Godot, F5/main detailed, оценить обычный маршрут/склоны/свет/движение.
+
+## Трава/цветы на объекте27.10 — technical PASS, manual OPEN
+
+`test_object_detail_brush.gd`, native Forward+: распознавание grass/stone по физической грани,
+preview/Cancel, Undo/Redo, стабильные104 instances/3 looks, root height, detailed-only lean,
+цветы, локальная инвалидация после движения/перекраски, save/reopen/discard/validation — PASS.
+Повторная root query ограничена local bucket320 из8192 треугольников fixture.
+`test_solid_volume -- --physical-looks`: floor sample совпал с physics ray в3 обликах.
+`test_object_grass_anomaly.gd`: object-root shift0, terrain endpoint deltas сохранены — PASS.
+Отдельный native ground preview/cleanup PASS после исправления exit-уведомления.
+Полный ground harness ранее имел один cold-preview timing failure; повторялся только этот
+проваленный сценарий, остальные успешные проверки не дублировались. Его известный1 ObjectDB
+leak при выходе не исправлялся в этом срезе. Авторский ввод/вид/долгая сессия OPEN.
+Main: две EDM1-маски через прежнюю кисть, свежий Save точен, предыдущие значения/size/seed
+сохранены; terrain/voxel Sources/collisions неизменны. Owners/evidence — Terrain Authoring →
+«Трава и цветы на уступе». Наклон внутри сферы наследуется от исходного scatter, не отдельного blend.
+
+## Узкое смешивание volume-покраски27.10 — technical PASS, manual OPEN
+
+`test_volume_material_blend.gd` PASS: нормализованные положительные веса/непустые slots,
+непрерывность общей точки между треугольниками, два покрытия/тройной стык, узкая полоса,
+чистая трава вдали, детерминизм. Source/вершины/нормали/CUSTOM0 прежние; voxel без смешивания.
+`test_solid_volume.gd` PASS: выемка/paint, Undo/Redo/save/reopen/discard/validation;
+его известный1 ObjectDB leak при выходе не закрыт этим срезом.
+Native Forward+ main3 looks просмотрены;3 volume-prefab свежая validation PASS,
+физические грани точны, сцена/terrain/Source/внешние collision.res не изменены.
+Evidence/ограничение доминирующего height-профиля — Terrain Authoring → «Узкий переход объёмной покраски».
+Вид и управление автором OPEN; художественный грунт этим срезом не принят.
+
+## Общая дистанция глубины27.10 — technical PASS, manual OPEN
+
+`tools/test_material_depth_distance.gd`, native Forward+ в disposable project:
+прежняя панель near/far → земля/solid/alternate-материал сферы; Undo/Redo,
+смена3 обликов, пересоздание материала, разные world units, независимость масштаба рисунка,
+безопасный интервал при near≥far, save/fresh reopen/discard — PASS.
+Валидный bounded Source основной карты; меш/коллизия сохраняются, preparations сферы0.
+Evidence — Terrain Authoring → правило расстояния; ручная оценка затухания OPEN.
+
+## Регулярная рябь объёмной поверхности27.10 — technical PASS, manual OPEN
+
+`--headless --path . --script res://tools/test_volume_surface_fairing.gd`:
+наклонный бинарный объём, угол ошибки граней13.651° RED →1.977° GREEN;
+среднее расстояние до аналитической плоскости0.07559→0.01084 вокселя, max0.02131.
+Проверяются ограничение перемещения0.35 вокселя, исходные ячейки, неизменные bounds/Source.
+`test_solid_volume` PASS: боковая выемка, покраска, связная замкнутая поверхность,
+Grab после вырезания, Undo/Redo/save/fresh reopen/discard/validation на user://.
+`test_solid_volume -- --physical-looks` Forward+ PASS: единая canonical collision,
+surface_floor_sample совпадает с physics ray, облик не меняет физическую высоту.
+Native disposable publication:3 реальных volume-prefab main проверены в3 обликах с физикой;
+сохранены выемки/paint ownership. После рабочей публикации fresh load/validation и совпадение
+mesh/collider PASS. SHA256 main/terrain/трёх voxel Sources прежние. Производные mesh/collision
+обновлены, коллизии вынесены в бинарные .res без раздувания текстовых prefab.
+Forward+ просмотр main detailed/low poly/voxel и серого материала PASS; чувство кисти/сфера/
+свой проход остаются авторскими gates, не закрывать их этими API-проверками.
+Использован прежний Surface Nets с ограниченной релаксацией; это не принятие Б/В грунта,
+нового общего mesher или глобальный прогон. Сборка/публикация материалов — Forward+:
+headless попытка в disposable checkout дала null images при сериализации Texture2DArray,
+её выходы отброшены; финальные материалы/коллизии подготовлены и свежезагружены нативно.
+Evidence/backup/скрипты публикации: `C:/Users/novos/Documents/Codex/2026-10-27/ember-volume-fairing/`.
+
+## Общая глубина библиотеки27.10 — technical PASS, manual OPEN
+
+`--path . --script res://tools/test_material_library_depth.gd` (Forward+): реальные library IDs
+soil/grass/stone, один Pattern-редактор → profiles земли и многоматериального объекта;
+независимость амплитуд, выключение одного материала, Undo/Redo/save/reopen/discard/validation,
+нет remesh/collider change, возврат трёх обликов. Одинаковые рецепты делят GPU-банк;
+амплитуда не пересоздаёт карты. Для числовой проверки использован обычный реальный Dialog,
+а не ручной ввод; собственная мышь/ощущение остаются автору.
+Нейтральная карта высоты должна сохранять освещение формы; отдельный `-- --normal-only`
+проверяет это после исправления POM-нормали. Старый plane-normal путь — отрицательный контроль.
+На том же нейтральном поле RGB-разница нового пути0, прежнего0.001064; gate отделяет
+нормаль формы от видимой внутренней триангуляции.
+`test_landscape_material_authoring`: прежний цикл брусчатки/карты/покраски/сохранения PASS.
+Его fixture адаптирован к секционной main через ограниченное dense_window: прежняя проверка
+сравнивала пустые legacy top_materials; та же ошибка воспроизведена до текущих изменений.
+`test_stone_material_layers`: прежние слои/регуляторы/история/сохранение PASS;
+`test_object_pattern_scale`: масштаб/геометрия/облики/привязка параметров сферы PASS.
+После POM-нормали повторяется только относящийся render gate, не вся матрица истории.
+Копия main: просмотр трёх обликов, после исправления нормали повторный подробный кадр.
+Дальние участки/сфера ограничены только в capture RAM; полный FPS/load/свой motion не закрыты.
+Последний подробный кадр: GPU9.52мс для этого ограниченного ракурса, не сравнение полного мира.
+Смешанная высота нескольких профилей на одной границе не заявлена: пока один доминирующий ray.
+Исходные рисунки и авторская карта не записывались. Evidence:
+`C:/Users/novos/Documents/Codex/2026-10-27/ember-material-library/`.
+
+## Локальный масштаб покрытия27.10 — technical PASS, manual OPEN
+
+`--path . --script res://tools/test_object_pattern_scale.gd` (Forward+): независимость двух
+экземпляров/общего Source/Pattern; три облика; размер узла; неизменность mesh/collision/амплитуды
+глубины; привязка копий материалов сферы без подготовки; история/save/reopen/discard.
+Render сравнивает проекции земли/объекта и старую ошибочную привязку света как отрицательный контроль.
+`tools/editor_test_object_pattern_scale.gd` — EditorPlugin только в disposable ember-rock-pilot:
+настоящий Inspector/SpinBox → native Undo/Redo → Save/reopen/discard PASS.
+Surface Canvas в этом fixture отключён, чтобы его прежний восстановленный черновик не перехватывал
+3D-навигацию; это не проверка полного Canvas-перехода. Ручной ввод остаётся автору.
+Копия основной карты: три облика и изменение масштаба одного NaturalEarthOutcrop просмотрены;
+дальние участки скрыты/подготовка ограничена в capture RAM, это не замер полной загрузки/FPS.
+Авторская карта/PNG травы не записывались. Evidence:
+`C:/Users/novos/Documents/Codex/2026-10-27/ember-object-pattern-scale/`.
+Не повторять успешные проверки без относящегося изменения; художественный вид OPEN.
+
+## Маски травы / локальность / вход берега25.10 — technical PASS, manual OPEN
+
+Результат и единственный профиль — World Authoring → «Маски, локальное обновление».
+- `test_grass_mask_storage`: legacy load, compact Save/reopen/Node duplicate, exact numeric types,
+  explicit zeros/fractional values, bounded decode/validation, corrupt blob and invalid legacy retention.
+  Full256-cell sample:5549→≈600B, без квантования.
+- `test_grass_local_refresh`: реальный projection/GrassPatch, sculpt4 nearby of8 vs old8,
+  paint removes grass from sand, brush-grid revision unchanged, same-size section restore retains
+  far scatter, empty new tool cache initializes without rescatters.
+- `test_detail_brush` Forward+ PASS: маска/кисть/история/save/reopen/discard и облики.
+  `test_section_brush_history_tiles` PASS: footprints/caps/base/side/Discard не регрессировали.
+- `test_coast_planner_workflow` переведён с нижнего private handler на forward_input. RED на
+  реальном guard; GREEN после маршрутизации. Native main-copy дополнительно вызывает plugin
+  `_forward_3d_gui_input`, numeric field focus → point press/ghost/release/Undo/Redo.
+- Native main-copy:220 masks exact,76323 instance buffers byte-exact with live editor;
+  local brush25 of221, Source Undo exact, compact scene134587B, reopen/discard restores masks.
+- Публикация после закрытия автором Godot: fresh saved main,220 masks/34811 cells,
+  все247 Typed SceneState nodes/properties совпали при нормализации storage alias.
+  Actual137012B<500KiB, terrain/Plan SHA256 прежние. Source UID/прочие поля не переписаны.
+Не считать это закрытием производительности: на копии малый sculpt settle≈15.6с,
+reopen≈60с; baseline GPU≈94ms with details /40ms hidden only on copy. Background editor/Hoshi
+оставались активны. Мышь/ощущение/свой просмотр и оптимизация оставшихся CPU/GPU этапов OPEN.
+Evidence: Documents/Codex/2026-10-25/ember-grass-coast-performance. Другие успешные gates
+не повторять без нового относящегося изменения/дефекта.

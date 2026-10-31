@@ -1,0 +1,25 @@
+[gd_scene format=3 uid="uid://cq1f66c0qng67"]
+
+[ext_resource type="Script" path="res://scripts/ember_voxel_prop.gd" id="1_o0vf2"]
+[ext_resource type="ArrayMesh" path="res://content/mesh_models/coastal_rock/prepared/de5bf27f61f9ae2c/voxel-boundary.res" id="2_eletq"]
+[ext_resource type="Shape3D" path="res://content/mesh_models/coastal_rock/prepared/de5bf27f61f9ae2c/collision.res" id="3_jddhd"]
+
+[node name="vox_external_coastal_rock" type="Node3D" unique_id=55360744]
+script = ExtResource("1_o0vf2")
+model_id = "vox_external_coastal_rock"
+metadata/ember_solid_source = true
+metadata/ember_external_source = true
+metadata/ember_source_signature = "f0915f14123bd44aa07045f5d0ae96ab6e80c4913f24b4cf5eeee16bf64a47f7"
+
+[node name="Mesh" type="MeshInstance3D" parent="." unique_id=525602344]
+transform = Transform3D(16, 0, 0, 0, 16, 0, 0, 0, 16, -24, 0, -16)
+mesh = ExtResource("2_eletq")
+metadata/ember_block_position = Vector3(-1.5, 0, -1)
+
+[node name="Collision" type="StaticBody3D" parent="." unique_id=1819298278]
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Collision" unique_id=1259222067]
+transform = Transform3D(16, 0, 0, 0, 16, 0, 0, 0, 16, -24, 0, -16)
+shape = ExtResource("3_jddhd")
+metadata/ember_block_position = Vector3(-1.5, 0, -1)

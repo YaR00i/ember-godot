@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="EmberDialogueResource" format=3]
+[ext_resource type="Script" path="res://scripts/ember_dialogue_resource.gd" id="1"]
+[resource]
+script = ExtResource("1")
+dialogue_id = "story_tea_reminder_talk"
+document = {
+  "id": "story_tea_reminder_talk",
+  "nameRu": "Нужны два флакона чая из лавки у причала. Подобранные флаконы не считаются покупкой.",
+  "startStepId": "line",
+  "steps": [
+    {
+      "id": "line",
+      "type": "dialogue",
+      "nameRu": "Смотритель",
+      "textRu": "Нужны два флакона чая из лавки у причала. Подобранные флаконы не считаются покупкой.",
+      "next": "end"
+    },
+    {
+      "id": "end",
+      "type": "end"
+    }
+  ]
+}

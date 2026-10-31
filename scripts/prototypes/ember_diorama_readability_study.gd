@@ -34,7 +34,9 @@ func prepare() -> void:
 	add_child(followers);walker.party_followers=followers
 	reset_actors()
 	tree=_place_prop("res://content/voxel_models/vox_tree_1511837690.tres",Vector2(8.0,4.6))
-	door=_place_prop("res://content/voxel_models/vox_fan_door.tres",Vector2(6.3,6.25))
+	# Proportion probe, independent of a retired city prop.
+	var door_source: EmberVoxelModelResource=preload("res://addons/ember_import/ember_voxel_shapes.gd").build("block",Vector3i(16,24,3),16,Color.BROWN,"readability_door_probe","Door proportion probe").source
+	door=_place_resource(door_source,Vector2(6.3,6.25))
 	architecture_probe_available=door.get_node("Mesh").get_aabb().size.y<HeroScale.height("protagonist",1.0)
 	for child in get_node("Instructions").get_children():
 		if child is CanvasItem:child.hide()
@@ -62,6 +64,9 @@ func apply_depth() -> void:
 
 func _place_prop(path: String,point: Vector2) -> EmberVoxelProp:
 	var resource: EmberVoxelModelResource=load(path)
+	return _place_resource(resource,point)
+
+func _place_resource(resource: EmberVoxelModelResource,point: Vector2) -> EmberVoxelProp:
 	var packed:=Prefab.prepare_resource(resource)
 	assert(packed!=null)
 	var prop:=packed.instantiate() as EmberVoxelProp

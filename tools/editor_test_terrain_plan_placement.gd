@@ -31,7 +31,7 @@ func _run() -> void:
 	check(Plan.read(map).regions[0].kind == "placement","generic region missing")
 	panel._buttons.generate.pressed.emit(); var dialog: Control = world._generation_panel
 	check(dialog._placement_mode and world.inspector_panel.is_ancestor_of(dialog),"generic panel outside common dock")
-	var ids := PackedStringArray(["vox_tree_120664056","vox_vil_bush","vox_qa_placement_rock"])
+	var ids := PackedStringArray(["vox_tree_120664056","qa_placement_shrub","vox_qa_placement_rock"])
 	dialog.open_placement(Rect2i(3,3,18,18),Plan.read(map).regions[0].parameters,Grove.choices(true))
 	for i in dialog._grove_choice_ids.size():
 		if dialog._grove_choice_ids[i] in ids: dialog._grove_choices.select(i,false)

@@ -22,6 +22,8 @@ var _slots := PackedInt32Array()
 var _info := PackedFloat32Array()
 var _state := PackedFloat32Array()
 var _foam_age := PackedFloat32Array()
+var _surface := PackedFloat32Array() # Unclamped wave; detailed shore intersects the physical ground.
+var _foam_detail := PackedVector2Array() # Existing crest contribution and grain, without raw-cell coverage.
 var _record_pixels := PackedInt32Array()
 var _phase_groups := PackedByteArray()
 var _distance_groups := PackedByteArray()
@@ -205,6 +207,10 @@ func _prepare_records(source: EmberTerrainPilotResource, origin: Vector2i,
 	_state.fill(0.0)
 	_foam_age.resize(bounds.size.x * bounds.size.y)
 	_foam_age.fill(8.0)
+	_surface.resize(_foam_age.size())
+	_surface.fill(0.0)
+	_foam_detail.resize(_foam_age.size())
+	_foam_detail.fill(Vector2.ZERO)
 	_record_pixels.resize(records.size())
 	_phase_groups.resize(records.size())
 	_distance_groups.resize(records.size())
@@ -244,7 +250,7 @@ func enable_gpu() -> bool:
 	if not use_gpu or records.is_empty() or DisplayServer.get_name() == "headless" or RenderingServer.get_rendering_device() == null: return false
 	if _static_records.is_empty(): _pack_static_records()
 	_gpu = GPU.new()
-	_gpu.initialize(bounds.size, _static_records, _state.to_byte_array(), _foam_age.to_byte_array())
+	_gpu.initialize(bounds.size, _static_records, _state.to_byte_array(), _foam_image().get_data())
 	_last_gpu_full_time = _last_time
 	state_texture = _gpu.state_texture
 	foam_age_texture = _gpu.foam_texture
@@ -376,11 +382,13 @@ func _update_cpu(profiles: PackedVector2Array, incoming: PackedByteArray, crest_
 		# Shore-distance bends the front along the actual coast; phase drift is smooth.
 		var profile := profiles[_phase_groups[index] * 40 + _distance_groups[index]]
 		var surface := sea_y + profile.x
+		_surface[slot / 4] = surface
 		var depth := surface - floor_y
 		var coverage := smoothstep(0.02, 0.20, depth) if distance > 0.0 else 1.0
 		if height <= 0.001 and distance > 0.0: coverage = 0.0
 		var edge := 1.0 - smoothstep(0.05, 0.75, maxf(depth, 0.0))
 		var grain := 0.80 + 0.20 * (_grain_sin[index] * grain_cosine + _grain_cos[index] * grain_sine)
+		_foam_detail[slot / 4] = Vector2(profile.y, grain)
 		var foam := (edge * 0.75 + profile.y) * coverage * grain if height > 0.001 else 0.0
 		_state[slot] = maxf(surface, floor_y + 0.025) if distance > 0.0 else surface
 		_state[slot + 1] = clampf(foam, 0.0, 1.0)
@@ -508,7 +516,7 @@ static func coastal_influence(distance: float) -> float:
 	return 1.0 - smoothstep(15.0, float(OFFSHORE_LIMIT), absf(distance))
 
 
-func surface_height(point: Vector2) -> float:
+func surface_height(point: Vector2, unclamped := false) -> float:
 	# Match the shader's bilinear corner heights; coverage stays per terrain cell.
 	var pixel := point - Vector2(bounds.position) - Vector2(0.5, 0.5)
 	var low := Vector2i(floori(pixel.x), floori(pixel.y))
@@ -521,9 +529,13 @@ func surface_height(point: Vector2) -> float:
 		if _gpu != null:
 			var sample_cell := cell + bounds.position
 			var index := _slots[sample_cell.x + sample_cell.y * _source.width]
-			heights.append(_query_current(index)[0] if index >= 0 else 0.0)
+			if unclamped and index >= 0 and not _last_parameters.is_empty():
+				heights.append(_info[_record_pixels[index] + 2] + 0.02 + _last_parameters[4]
+					+ incident_height(Vector2(sample_cell), _last_parameters[0], _last_parameters[1], _last_parameters[2], _last_parameters[3], _last_parameters[6], _last_parameters[7]))
+			else:
+				heights.append(_query_current(index)[0] if index >= 0 else 0.0)
 		else:
-			heights.append(_state[(cell.x + cell.y * bounds.size.x) * 4])
+			heights.append(_surface[cell.x + cell.y * bounds.size.x] if unclamped else _state[(cell.x + cell.y * bounds.size.x) * 4])
 	return lerpf(lerpf(heights[0], heights[1], fraction.x), lerpf(heights[2], heights[3], fraction.x), fraction.y)
 
 
@@ -544,4 +556,13 @@ func _image(data: PackedFloat32Array) -> Image:
 
 
 func _foam_image() -> Image:
-	return Image.create_from_data(bounds.size.x, bounds.size.y, false, Image.FORMAT_RF, _foam_age.to_byte_array())
+	# Same dispatch/carrier: RG preserve age/true surface; BA let detailed
+	# foam use its continuous physical depth instead of raw-column coverage.
+	var packed := PackedFloat32Array()
+	packed.resize(_foam_age.size() * 4)
+	for i in _foam_age.size():
+		packed[i * 4] = _foam_age[i]
+		packed[i * 4 + 1] = _surface[i]
+		packed[i * 4 + 2] = _foam_detail[i].x
+		packed[i * 4 + 3] = _foam_detail[i].y
+	return Image.create_from_data(bounds.size.x, bounds.size.y, false, Image.FORMAT_RGBAF, packed.to_byte_array())

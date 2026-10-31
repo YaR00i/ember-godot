@@ -19,3 +19,7 @@ side_relief_pixels = PackedByteArray()
 roughness_pixels = PackedByteArray()
 side_roughness_pixels = PackedByteArray()
 pattern_size_m = 1.5
+
+depth_mm = 2.0
+depth_softness = 4.0
+depth_sharpness = 0.02

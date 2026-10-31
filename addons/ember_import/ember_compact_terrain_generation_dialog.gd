@@ -38,6 +38,8 @@ var _fine: CheckBox
 var _massif: CheckBox
 var _shape_seed: SpinBox
 var _profile: OptionButton
+var _land_shape: OptionButton
+var _coast_controls: Array[Control]=[]
 var _status: Label
 var _area: Label
 var _preview_button: Button
@@ -51,6 +53,9 @@ var _plateau_grid: GridContainer
 var _plateau_fields := {}
 var _plains_grid: GridContainer
 var _plains_fields := {}
+var _coast_mode:=false
+var _coast_grid: GridContainer
+var _coast_fields: Dictionary={}
 var _lake_mode := false
 var _lake_grid: GridContainer
 var _lake_fields := {}
@@ -130,6 +135,10 @@ func _ready() -> void:
 	for name in ["Мягкие холмы", "Горные хребты", "Изрезанные склоны", "Игровая суша"]: _profile.add_item(name)
 	_macro_grid.add_child(_profile)
 	_profile.item_selected.connect(func(_index): _refresh_plains_fields(); _changed())
+	var land_shape_label:=Label.new();land_shape_label.text="Форма суши";_macro_grid.add_child(land_shape_label)
+	_land_shape=OptionButton.new();_land_shape.add_item("Остров · берег по периметру");_land_shape.add_item("Сплошная суша · без нового берега")
+	_macro_grid.add_child(_land_shape)
+	_land_shape.item_selected.connect(func(_index): _refresh_land_shape();_changed())
 	for spec in [["sea_m", "Уровень моря", 0.5, 16.0, 0.25],
 		["land_m", "Подъём суши над морем", 0.25, 8.0, 0.25],
 		["relief_m", "Высота холмов / хребтов", 0.0, 24.0, 0.25],
@@ -149,6 +158,7 @@ func _ready() -> void:
 		value.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_macro_grid.add_child(value)
 		_fields[spec[0]] = value
+		if spec[0] in ["shore_m","land_fraction"]:_coast_controls.append(name_label);_coast_controls.append(value)
 		value.value_changed.connect(_changed.unbind(1))
 	var surface_box:=VBoxContainer.new();grid.add_child(surface_box)
 	_surface_box=surface_box
@@ -163,7 +173,7 @@ func _ready() -> void:
 		if spec[0]=="surface_scale":number.suffix="×"
 		surface_box.add_child(number);_surface_fields[spec[0]]=number
 		number.value_changed.connect(func(_value):_refresh_surface_fields();_changed())
-	_surface_fields.surface_strength.tooltip_text="0 — прежняя земля. Фактурность добавляет мелкий рельеф камня, песка и грунта в области до 32×32 м. Гладкий вид выбирается в «Вид мира → Материалы»."
+	_surface_fields.surface_strength.tooltip_text="0 — прежняя земля. Фактурность добавляет мелкий рельеф камня, песка и грунта в области до 32×32 м. Детальный вид выбирается в «Вид мира → Материалы»."
 	_surface_fields.surface_scale.tooltip_text="1 — обычный размер форм; 2 — вдвое крупнее. Высоту задаёт сила фактурности. Размер рисунка PNG меняется в самом материале."
 	_surface_fields.surface_seed.tooltip_text="Другие мелкие детали при тех же крупных холмах и береговой форме."
 	_refresh_surface_fields()
@@ -216,6 +226,13 @@ func _ready() -> void:
 		spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _plateau_grid.add_child(spin); _plateau_fields[spec[0]] = spin
 		spin.value_changed.connect(_changed.unbind(1))
 	_plateau_grid.hide()
+	_coast_grid=GridContainer.new();_coast_grid.columns=1;box.add_child(_coast_grid)
+	for spec in [["water_m","Уровень моря, м",-16.0,28.0,0.25],["depth_m","Глубина моря, м",0.25,16.0,0.25],["shore_m","Ширина берега, м",0.5,16.0,0.25]]:
+		var caption:=Label.new();caption.text=spec[1];_coast_grid.add_child(caption)
+		var spin:=SpinBox.new();spin.min_value=spec[2];spin.max_value=spec[3];spin.step=0.001;spin.custom_arrow_step=spec[4];spin.value=MathPlan.COAST_DEFAULTS[spec[0]]
+		_coast_grid.add_child(spin);_coast_fields[spec[0]]=spin;spin.value_changed.connect(_changed.unbind(1))
+	_coast_fields.water_m.tooltip_text="Высота поверхности в мировых метрах, та же отметка, что у существующего моря."
+	_coast_grid.hide()
 	_lake_grid = GridContainer.new(); _lake_grid.columns = 1; box.add_child(_lake_grid)
 	for spec in [["water_m","Уровень озера, м",0.5,28.0,0.25],["depth_m","Глубина озера, м",0.25,16.0,0.25],["shore_m","Ширина берега, м",0.5,16.0,0.5]]:
 		var caption := Label.new(); caption.text = spec[1]; caption.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; _lake_grid.add_child(caption)
@@ -326,7 +343,9 @@ func _ready() -> void:
 func open_for(bounds_blocks: Rect2i, new_sections_count := 0) -> void:
 	_fine.set_pressed_no_signal(true);_fine.show()
 	_grove_mode = false; _placement_mode = false; _grove_grid.hide()
+	_area.show()
 	_units_hint.text = "Высоты и размеры — в метрах; море отсчитывается от основания карты."
+	_coast_mode=false;_coast_grid.hide()
 	_plateau_mode = false; _lake_mode = false; _river_mode = false; _mountain_mode = false; _road_mode = false; _terrain_grid.show(); _plateau_grid.hide(); _lake_grid.hide(); _river_grid.hide(); _mountain_grid.hide(); _road_grid.hide()
 	_operation.select(0);_operation.disabled=new_sections_count>0;_refresh_operation()
 	_coverage_profile.select(0);_refresh_coverage_fields()
@@ -347,7 +366,7 @@ func open_for(bounds_blocks: Rect2i, new_sections_count := 0) -> void:
 
 func parameters() -> Dictionary:
 	var values := _parameters()
-	if not _grove_mode and _fine.button_pressed and (_operation.selected==0 or _plateau_mode or _mountain_mode or _river_mode or _lake_mode or _road_mode):values.terrain_sampling="fine16"
+	if not _grove_mode and _fine.button_pressed and (_operation.selected==0 or _plateau_mode or _mountain_mode or _river_mode or _lake_mode or _road_mode or _coast_mode):values.terrain_sampling="fine16"
 	if _mountain_mode and _massif.button_pressed:
 		values.mountain_shape="massif";values.shape_seed=int(_shape_seed.value)
 	return values
@@ -361,6 +380,10 @@ func _parameters() -> Dictionary:
 			if _placement_pattern.selected == 1:
 				values.pattern = "groups"; values.cluster_strength = float(_cluster_fields.cluster_strength.value)/100.0
 				values.cluster_size_m = float(_cluster_fields.cluster_size_m.value)
+		return values
+	if _coast_mode:
+		var values: Dictionary={}
+		for key in _coast_fields:values[key]=float(_coast_fields[key].value)
 		return values
 	if _road_mode:
 		var values := {}
@@ -380,7 +403,7 @@ func _parameters() -> Dictionary:
 		return values
 	if _plateau_mode:
 		return {"height_m": float(_plateau_fields.height_m.value), "transition_m": float(_plateau_fields.transition_m.value)}
-	var values := {"profile": Math.PROFILES[_profile.selected],"terrain_operation":Math.OPERATIONS[_operation.selected]}
+	var values := {"profile": Math.PROFILES[_profile.selected],"land_shape":"mainland" if _land_shape.selected==1 else "island","terrain_operation":Math.OPERATIONS[_operation.selected]}
 	for key in _fields: values[key] = int(_fields[key].value) if key == "seed" else float(_fields[key].value)
 	for key in _surface_fields:
 		values[key]=int(_surface_fields[key].value) if key=="surface_seed" else float(_surface_fields[key].value)/(100.0 if key=="surface_strength" else 1.0)
@@ -400,6 +423,7 @@ func open_plan(bounds_blocks: Rect2i, values: Dictionary) -> void:
 	_back_button.text = "← План областей"
 	_back_button.show()
 	_profile.select(Math.PROFILES.find(values.profile))
+	_land_shape.select(1 if values.get("land_shape","island")=="mainland" else 0);_refresh_land_shape()
 	for key in _fields: _fields[key].value = values[key]
 	for key in _surface_fields:_surface_fields[key].value=float(values.get(key,Math.SURFACE_DEFAULTS[key]))*(100.0 if key=="surface_strength" else 1.0)
 	_operation.select(Math.OPERATIONS.find(values.get("terrain_operation","generate")))
@@ -417,7 +441,11 @@ func open_plan(bounds_blocks: Rect2i, values: Dictionary) -> void:
 
 
 func _changed() -> void:
-	set_pending("Параметры изменены. Обновите предпросмотр.")
+	if _coast_mode:
+		title="Берег";_area.hide();_fine.hide()
+		_units_hint.text="Ширина — поперёк линии; уровень — от мирового нуля."
+		_help.text="Точки меняют контур. «Применить» обновляет землю и воду."
+	set_pending("Есть неприменённые изменения." if _coast_mode else "Параметры изменены. Обновите предпросмотр.")
 	settings_changed.emit()
 
 func _refresh_surface_fields() -> void:
@@ -443,8 +471,13 @@ func _refresh_coverage_fields() -> void:
 	_coverage_zone_grid.visible=_coverage_profile.selected==0
 	for control in _coverage_legacy_controls:control.visible=_coverage_profile.selected==1
 
+func _refresh_land_shape() -> void:
+	for control in _coast_controls:control.visible=_land_shape.selected==0
+	_fields.sea_m.min_value=0.0 if _land_shape.selected==1 else 0.5
+
+
 func _refresh_plains_fields() -> void:
-	if is_instance_valid(_plains_grid): _plains_grid.visible = _operation.selected==0 and not _grove_mode and not _plateau_mode and not _lake_mode and not _river_mode and not _mountain_mode and not _road_mode and Math.PROFILES[_profile.selected] == "plains"
+	if is_instance_valid(_plains_grid): _plains_grid.visible = _operation.selected==0 and not _grove_mode and not _plateau_mode and not _lake_mode and not _river_mode and not _mountain_mode and not _road_mode and not _coast_mode and Math.PROFILES[_profile.selected] == "plains"
 
 func open_grove(bounds_blocks: Rect2i, values: Dictionary, choices: Array[Dictionary], selected := true) -> void:
 	open_for(bounds_blocks); _plan_mode = true; _grove_mode = true; _terrain_grid.hide(); _refresh_plains_fields()
@@ -456,7 +489,7 @@ func open_grove(bounds_blocks: Rect2i, values: Dictionary, choices: Array[Dictio
 	_clearance_caption.hide(); _grove_fields.clearance_m.hide()
 	_cluster_grid.hide()
 	title = "Роща · расстановка деревьев" if selected else "Обновить рощи"
-	_help.text = "Используются готовые варианты из мастерской. Вода, крутые места, дорожный коридор и ручные объекты исключаются. До 64 деревьев в роще / 256 в плане. Земля не меняется. После применения деревья редактируются обычными инструментами. Ручные изменения и удаления защищаются; перенос/off не стирает такие деревья."
+	_help.text = "Используются готовые варианты из мастерской. Вода, крутые места, дорожный коридор и ручные объекты исключаются. Количество ограничено площадью рощи и размером созданной земли. Земля не меняется. После применения деревья редактируются обычными инструментами. Ручные изменения и удаления защищаются; перенос/off не стирает такие деревья."
 	set_pending("Настройте рощу и обновите предпросмотр." if selected else "Обновите предпросмотр для переноса/выключения рощ.")
 
 func _sync_sources() -> void:
@@ -495,7 +528,7 @@ func open_placement(bounds_blocks: Rect2i, values: Dictionary, choices: Array[Di
 	_units_hint.text = "Интервалы и свободное место — в метрах. Размеры готовых объектов сохраняются."
 	_clearance_caption.visible = selected; _grove_fields.clearance_m.visible = selected
 	title = "Расстановка объектов" if selected else "Обновить расстановку"
-	_help.text = "Готовые объекты из общей библиотеки, включая сделанные вручную. Основание и свободное место учитываются вместе с соседями, водой и дорогами. Группы создают плотные участки и просветы; плотность не задаёт точное количество. До 64 объектов в области / 256 в плане. Ручные изменения и удаления сохраняются."
+	_help.text = "Готовые объекты из общей библиотеки, включая сделанные вручную. Основание и свободное место учитываются вместе с соседями, водой и дорогами. Группы создают плотные участки и просветы; плотность не задаёт точное количество. Количество ограничено площадью области и размером созданной земли. Ручные изменения и удаления сохраняются."
 	set_pending("Выберите набор и подготовьте предпросмотр." if selected else "Подготовьте предпросмотр всех областей расстановки.")
 
 func _refresh_cluster_controls() -> void:
@@ -506,6 +539,8 @@ func open_plateau(bounds_blocks: Rect2i, values: Dictionary, selected := true) -
 
 func open_influence(bounds_blocks: Rect2i, values: Dictionary, kind: String, selected := true) -> void:
 	open_for(bounds_blocks)
+	_coast_mode=kind=="coast";_coast_grid.visible=selected and _coast_mode
+	if _coast_mode:_units_hint.text="Уровень моря — от мирового нуля; глубина и ширина берега — в метрах."
 	_plateau_mode = kind == "plateau"; _lake_mode = kind == "lake"; _river_mode = kind == "river"; _mountain_mode = kind == "mountain"; _road_mode = kind == "road"; _plan_mode = true
 	_refresh_plains_fields()
 	_fine.set_pressed_no_signal(values.get("terrain_sampling","legacy8")=="fine16");_fine.visible=selected
@@ -514,13 +549,14 @@ func open_influence(bounds_blocks: Rect2i, values: Dictionary, kind: String, sel
 	_river_grid.visible = selected and _river_mode
 	_mountain_grid.visible = selected and _mountain_mode
 	_road_grid.visible = selected and _road_mode
-	_back_button.text = "← План областей"; _back_button.show()
+	_back_button.text = "← Области"; _back_button.show()
 	_plan_save_button.visible = selected
 	if selected:
-		var fields: Dictionary = _road_fields if _road_mode else _mountain_fields if _mountain_mode else _river_fields if _river_mode else _lake_fields if _lake_mode else _plateau_fields
+		var fields: Dictionary = _coast_fields if _coast_mode else _road_fields if _road_mode else _mountain_fields if _mountain_mode else _river_fields if _river_mode else _lake_fields if _lake_mode else _plateau_fields
 		for key in fields: fields[key].value = values[key]
-	title = "Дорога · коридор и уклон" if _road_mode else "Гора · вершина и склоны" if _mountain_mode else "Река · русло и течение" if _river_mode else "Озеро · котловина и вода" if _lake_mode else "Плато · локальные влияния" if selected else "Локальные области"
+	title = "Море · берег и уровень" if _coast_mode else "Дорога · коридор и уклон" if _road_mode else "Гора · вершина и склоны" if _mountain_mode else "Река · русло и течение" if _river_mode else "Озеро · котловина и вода" if _lake_mode else "Плато · локальные влияния" if selected else "Локальные области"
 	if not selected: _area.text = "Обновление локальных областей, включая прежний след"
+	elif _coast_mode:_area.text="Берег по линии в 3D · море справа по ходу линии"
 	elif _river_mode: _area.text = "Русло по линии в 3D · уровни из водоёмов"
 	elif _road_mode: _area.text = "Дорога по линии в 3D · высоты из земли"
 	ok_button_text = "Применить озеро" if _lake_mode else "Применить области"
@@ -528,19 +564,34 @@ func open_influence(bounds_blocks: Rect2i, values: Dictionary, kind: String, sel
 	if _river_mode: _help.text = "Уровни поверхности берутся из двух водоёмов на концах линии. Русло плавно спускается между ними; берега и течение идут по изгибу. Дно должно оставаться выше основания карты. Развилки и водопады добавим отдельно.\n"
 	if _mountain_mode: _help.text = "Гора поднимает сухую землю к высоте вершины от основания карты. Массив создаёт неодинаковые склоны и мягкое подножие; номер варианта меняет его направление. Ширина вершины и два склона должны помещаться в меньшей стороне выделения. Вода и покрытия сохраняются.\n"
 	if _road_mode: _help.text = "Дорога выравнивает сухую землю между высотами на концах линии и использует существующее покрытие грунта. Мягкий край возвращается к соседнему рельефу. Слишком большой продольный уклон и пересечение с водой отклоняются; мосты добавим отдельно. Защищённые ручные правки могут оставить неровности в коридоре — они видны в предпросмотре.\n"
+	if _coast_mode:_help.text="Область моря следует сохранённой линии берега. Уровень — в мировых метрах; глубина формирует дно, ширина — пологий переход от суши. Чтобы изменить берег, вернитесь в план и перенаметьте линию.\n"
 	_help.text += "Перенос и выключение возвращают прежнюю землю и воду после обновления областей. Ручные правки защищаются и отмечаются крестиками в предпросмотре."
-	set_pending("Параметры изменены. Обновите предпросмотр.")
+	if _coast_mode:
+		title="Берег";_area.hide();_fine.hide()
+		_units_hint.text="Ширина — поперёк линии; уровень — от мирового нуля."
+		_help.text="Точки меняют контур. «Применить» обновляет землю и воду."
+	set_pending("Есть неприменённые изменения." if _coast_mode else "Параметры изменены. Обновите предпросмотр.")
 
+
+func update_plan_bounds(bounds: Rect2i) -> void:
+	_area.text="Область: %d×%d м · начало (%d, %d)"%[bounds.size.x,bounds.size.y,bounds.position.x,bounds.position.y]
 
 func set_pending(message: String) -> void:
 	get_apply_button().disabled = true
-	_status.text = message
+	_status.text = _short_coast_status(message) if _coast_mode else message
 
 
 func set_ready(message: String) -> void:
 	get_apply_button().disabled = false
-	_status.text = message
+	_status.text = _short_coast_status(message) if _coast_mode else message
 
 
 func get_apply_button() -> Button:
 	return _apply_button
+
+
+func _short_coast_status(message:String)->String:
+	_status.tooltip_text=message
+	if "Предпросмотр" in message and "готов" in message:return "Предпросмотр готов. Примени или отмени."
+	if "Подготавливаю" in message or "Строю" in message:return "Готовлю предпросмотр…"
+	return message

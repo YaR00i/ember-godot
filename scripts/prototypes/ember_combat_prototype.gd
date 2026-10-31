@@ -43,8 +43,12 @@ const ZONES := [
 ]
 
 
-static func initial_state(rng_seed: int = 1) -> Dictionary:
+static func initial_state(rng_seed: int = 1, roster_ids: PackedStringArray = PackedStringArray(["mira", "orik", "sena", "protagonist", "wisp", "raider", "warden"])) -> Dictionary:
 	var units := UnitCatalog.definitions()
+	# Catalog additions belong to authored encounters, not automatically to the
+	# baseline comparison battle. Encounters supply their own explicit roster.
+	for unit_id in units.keys():
+		if unit_id not in roster_ids: units.erase(unit_id)
 	return {
 		"encounterId": "e1_wet_conductor",
 		"turn": 1,
@@ -251,7 +255,7 @@ static func current_unit_id(state: Dictionary) -> String:
 	for raw_id in state.get("units", {}):
 		var unit_id := str(raw_id)
 		var unit: Dictionary = (state.get("units", {}) as Dictionary).get(unit_id, {})
-		if int(unit.get("hp", 0)) <= 0 or is_held(state, unit_id):
+		if int(unit.get("hp", 0)) <= 0 or is_held(state, unit_id) or unit.has("worldItemId"):
 			continue
 		var next_at := float(unit.get("nextAt", 0.0))
 		if next_at < best_at or (is_equal_approx(next_at, best_at) and unit_id < best_id):
@@ -267,7 +271,7 @@ static func timeline(state: Dictionary, count: int = 8, pending_action_id: Strin
 	for raw_id in units:
 		var unit_id := str(raw_id)
 		var unit: Dictionary = units[unit_id]
-		if int(unit.get("hp", 0)) <= 0 or is_held(state, unit_id):
+		if int(unit.get("hp", 0)) <= 0 or is_held(state, unit_id) or unit.has("worldItemId"):
 			continue
 		times[unit_id] = float(unit.get("nextAt", 0.0))
 		speeds[unit_id] = maxi(1, int(unit.get("speed", 10)))
@@ -636,7 +640,8 @@ static func preview(
 		(result["notes"] as Array).append(
 			"%s участвует в технике и задерживается в очереди." % str(partner.get("name", partner_id))
 		)
-	var hostile := not target.is_empty() and str(actor.get("team", "")) != str(target.get("team", ""))
+	var world_throw := effect_id=="held_throw" and unit_definition(state,held_target_id(state,actor_id)).has("worldItemId")
+	var hostile := not target.is_empty() and not target.has("worldItemId") and str(actor.get("team", "")) != str(target.get("team", ""))
 	result["hostile"] = hostile
 	result["hitChance"] = 100
 	result["hitRoll"] = 0
@@ -657,8 +662,9 @@ static func preview(
 		result["critical"] = bool(result["hit"]) and critical_chance > 0 and critical_roll <= critical_chance
 		if not bool(result["hit"]):
 			(result["notes"] as Array).append("Атака не попадает; MP и ход всё равно расходуются.")
-			result["summary"] = describe_preview(state, result)
-			return result
+			if not world_throw:
+				result["summary"] = describe_preview(state, result)
+				return result
 	var power := maxi(0, int(action.get("power", 0)))
 	var element_id := str(action.get("element", ""))
 	if power > 0 and _has_status(actor, "overheated"):
@@ -672,7 +678,7 @@ static func preview(
 	if field_bonus > 0:
 		power += field_bonus
 		(result["notes"] as Array).append("Жар-фокус усиливает огонь на +%d." % field_bonus)
-	if power > 0 and effect_id != "lift_throw" and not resolved_target_id.is_empty():
+	if power > 0 and effect_id != "lift_throw" and not world_throw and not resolved_target_id.is_empty():
 		_set_damage(result, resolved_target_id, power)
 	match effect_id:
 		"item_use":
@@ -791,7 +797,13 @@ static func preview(
 			(result["moves"] as Dictionary)[held_id] = target_cell
 			result["throwPath"] = [actor.get("cell", INVALID_CELL), target_cell]
 			result["reaction"] = "Бросок удерживаемой цели"
-			if str(actor.get("team", "")) != str(held_target.get("team", "")) and power > 0:
+			if held_target.has("worldItemId"):
+				result["objectImpactCell"]=target_cell
+				if not target.is_empty() and bool(result.hit):_add_damage(result,str(target.id),int(held_target.get("worldItemDamage",8)))
+				if held_target.worldItemBreakable:_add_fixed_damage(result,held_id,1)
+				elif not target.is_empty():
+					(result["moves"] as Dictionary)[held_id]=_nearest_release_cell_for_units(state,state.units,str(target.id),held_id)
+			elif str(actor.get("team", "")) != str(held_target.get("team", "")) and power > 0:
 				_add_damage(result, held_id, power)
 			var held_origin: Vector2i = actor.get("cell", INVALID_CELL)
 			var held_fall := Terrain.fall_damage(state, held_origin, target_cell)
@@ -861,6 +873,7 @@ static func preview(
 	if action_id not in [HELD_THROW_COMMAND, HELD_LOWER_COMMAND]:
 		_strip_held_effects(state, result)
 	_finalize_action_damage(state, result, actor, action)
+	_filter_world_item_effects(state,result)
 	_apply_guard_preview(state, result)
 	result["summary"] = describe_preview(state, result)
 	return result
@@ -870,8 +883,10 @@ static func _apply_unit_effects(unit: Dictionary, resolved: Dictionary) -> void:
 	# The same action projection feeds commit and the internal turn-end preview.
 	# The caller owns the mutable unit copy; healing/revival semantics stay intact.
 	var id := str(unit.get("id", ""))
+	if unit.has("worldItemId") and not unit.get("worldItemBreakable",false):return
 	if resolved.get("damage", {}).has(id):
 		unit.hp = maxi(0, int(unit.get("hp", 0)) - int(resolved.damage[id]))
+	if unit.has("worldItemId"):return
 	if resolved.get("removeStatuses", {}).has(id) or resolved.get("setStatuses", {}).has(id):
 		var statuses: Dictionary = unit.get("statuses", {}).duplicate()
 		for status in resolved.get("removeStatuses", {}).get(id, []): statuses.erase(str(status))
@@ -1380,7 +1395,7 @@ static func outcome(state: Dictionary) -> String:
 			continue
 		if str(unit.get("team", "")) == "hero":
 			heroes_alive = true
-		else:
+		elif str(unit.get("team", "")) == "enemy":
 			enemies_alive = true
 	if not enemies_alive:
 		return "victory"
@@ -2026,7 +2041,8 @@ static func _release_cell_available(state: Dictionary, carrier_id: String, cell:
 			continue
 		var unit := unit_definition(state, unit_id)
 		if int(unit.get("hp", 0)) > 0 and unit.get("cell", INVALID_CELL) == cell:
-			return false
+			var held:=unit_definition(state,held_id)
+			return held.has("worldItemId") and unit_id!=carrier_id and (held.get("worldItemBreakable",false) or _nearest_release_cell_for_units(state,state.units,unit_id,held_id)!=INVALID_CELL)
 	return true
 
 
@@ -2100,13 +2116,14 @@ static func _advance_unit_past_current(
 ) -> void:
 	if not units.has(unit_id):
 		return
+	if units[unit_id].has("worldItemId"):return
 	var current_at := INF
 	for raw_id in units:
 		var other_id := str(raw_id)
 		if other_id == unit_id or other_id in ignored_ids:
 			continue
 		var other := units[other_id] as Dictionary
-		if int(other.get("hp", 0)) > 0:
+		if int(other.get("hp", 0)) > 0 and not other.has("worldItemId"):
 			current_at = minf(current_at, float(other.get("nextAt", 0.0)))
 	if is_inf(current_at):
 		return
@@ -2115,6 +2132,14 @@ static func _advance_unit_past_current(
 	while float(unit.get("nextAt", 0.0)) <= current_at:
 		unit["nextAt"] = float(unit.get("nextAt", 0.0)) + delay
 	units[unit_id] = unit
+
+static func _filter_world_item_effects(state: Dictionary,resolved: Dictionary) -> void:
+	for id in state.get("units",{}):
+		var unit: Dictionary=state.units[id]
+		if not unit.has("worldItemId"):continue
+		for key in ["setStatuses","removeStatuses","restoreHp","restoreMp"]:resolved.get(key,{}).erase(id)
+		if not unit.get("worldItemBreakable",false):
+			resolved.get("damage",{}).erase(id);resolved.get("fixedDamage",{}).erase(id)
 
 
 static func _invalid_preview(message: String) -> Dictionary:

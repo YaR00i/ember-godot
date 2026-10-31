@@ -1,6 +1,7 @@
 """Save relocation and pause/transition regressions in disposable native projects."""
 
 from pathlib import Path
+import argparse
 import shutil
 import subprocess
 import tempfile
@@ -22,8 +23,11 @@ def prepare_project(destination):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--test', choices=TESTS)
+    args = parser.parse_args()
     engine = ROOT / 'tools/godot/Godot_v4.7.2-stable_win64.exe'
-    for test in TESTS:
+    for test in (args.test,) if args.test else TESTS:
         with tempfile.TemporaryDirectory(prefix='ember-save-destination-') as temporary:
             destination = Path(temporary).resolve()
             prepare_project(destination)

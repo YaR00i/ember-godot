@@ -113,11 +113,19 @@ func _build_actions() -> void:
 	if _prop != null:
 		var canvas_actions := VBoxContainer.new()
 		canvas_actions.name = "VoxelCanvasActions"
-		for entry in [["Редактировать в Canvas", "selected"], ["Редактировать общую модель…", "shared"], ["Создать экземпляр", "linked"], ["Создать независимую копию", "independent"]]:
-			var button := Button.new()
-			button.text = entry[0]
-			button.pressed.connect(func(): canvas_action_requested.emit(_prop, entry[1]))
-			canvas_actions.add_child(button)
+		var edit := Button.new()
+		edit.name = "EditObjectInCanvas"
+		edit.text = "Редактировать в Canvas"
+		edit.tooltip_text = "Лепить и красить выбранный объект. Другие экземпляры общей модели сохраняются."
+		edit.pressed.connect(func():canvas_action_requested.emit(_prop,"selected"))
+		canvas_actions.add_child(edit)
+		var more := MenuButton.new()
+		more.name = "CanvasModelActions"
+		more.text = "Модель и копии…"
+		var actions := ["shared","linked","independent"]
+		for label in ["Редактировать общую модель…","Создать экземпляр","Создать независимую копию"]:more.get_popup().add_item(label)
+		more.get_popup().id_pressed.connect(func(id):canvas_action_requested.emit(_prop,actions[id]))
+		canvas_actions.add_child(more)
 		add_child(canvas_actions)
 	var actions := HBoxContainer.new()
 	actions.name = "Actions"

@@ -1,7 +1,13 @@
 // Shared texture math. World-space metres survive mesh deformation; colour,
 // height and finish must use the same coordinates and projection weights.
+uniform float ember_texture_world_unit = 1.0;
 vec3 ember_texture_coordinates(vec3 world_position, float span_m) {
-	return world_position / max(span_m, 0.125);
+	return world_position / (max(span_m, 0.125)*ember_texture_world_unit);
+}
+
+// Colour and optical height share the same texel centres in the voxel look.
+vec3 ember_texture_cell_coordinates(vec3 uv) {
+	return (floor(uv * 32.0) + 0.5) / 32.0;
 }
 
 vec3 ember_texture_axis_weights(vec3 surface_normal) {

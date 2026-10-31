@@ -15,6 +15,7 @@ func _init() -> void:
 	# Wallet is still legacy-only; the fixture supplies its display definition,
 	# not any historical map/model/shop/action data. Other items are native.
 	_setup = Fixture.prepare(self, _directory)
+	_setup.coverage_texture = Fixture.placeholder_coverage()
 	call_deferred("_run")
 
 

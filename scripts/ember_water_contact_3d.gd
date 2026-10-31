@@ -1,10 +1,11 @@
 @tool
 class_name EmberWaterContact3D
 extends Node3D
-## Derived footprint ripple. The target owns only radius/foot offset; water
-## presence and exact plane height stay owned by the active water projection.
+## Derived object/actor water contact. Mesh sections and fallback radius share
+## the active projection's surface and the existing wave/history owner.
 
 const SurfaceMaterials := preload("res://scripts/ember_voxel_surface_materials.gd")
+const MeshSection := preload("res://scripts/ember_water_mesh_section.gd")
 const WAKE_MESH_FPS := 15.0
 const MASK_SIZE := 12
 const MASK_INTERVAL := 0.10
@@ -36,6 +37,7 @@ var _motion_initialized := false
 var _motion_strength := 0.0
 var _motion_yaw := 0.0
 var _motion_direction := Vector2.UP
+var _surface_velocity := Vector2.ZERO
 var _moved_this_frame := false
 var _wake_origin := Vector3.ZERO
 var _wake_origin_initialized := false
@@ -54,6 +56,10 @@ var _mask_yaw := INF
 var _mask_radius := -1.0
 var _mask_revision := -1
 var _mask_projection: Node3D
+var _mesh_section_signature := 0
+var _mesh_section := {}
+var _mesh_sections := {}
+var _section_mesh: Mesh
 
 
 func _ready() -> void:
@@ -99,6 +105,7 @@ func sample_motion(delta: float) -> void:
 	var safe_delta := maxf(delta, 0.0001)
 	var block_size := maxf(_motion_block_world_size, 0.001)
 	var speed_blocks := horizontal_delta.length() / block_size / safe_delta
+	_surface_velocity = (horizontal_delta / safe_delta).limit_length(block_size * 16.0)
 	var target_strength := clampf(speed_blocks / maxf(full_wake_speed_blocks, 0.001), 0.0, 1.0)
 	var response := 1.0 - exp(-maxf(0.01, motion_response) * safe_delta)
 	_motion_strength = lerpf(_motion_strength, target_strength, response)
@@ -116,6 +123,7 @@ func reset_motion_tracking() -> void:
 	# without interpreting that restoration as motion. Existing arcs still age.
 	_motion_initialized = false
 	_motion_strength = 0.0
+	_surface_velocity = Vector2.ZERO
 	_moved_this_frame = false
 	_wake_origin_initialized = false
 	_surface_arc_initialized = false
@@ -127,6 +135,12 @@ func refresh_now() -> void:
 		_target = get_parent() as Node3D
 	if not is_instance_valid(_target):
 		_set_contact_visible(false)
+		return
+	if not _target.is_visible_in_tree():
+		_wake_samples.clear()
+		reset_motion_tracking()
+		_set_contact_visible(false)
+		if is_instance_valid(_wake_visual): _wake_visual.visible = false
 		return
 	if _projections_dirty:
 		_resolve_projection()
@@ -169,19 +183,54 @@ func set_surface_integrated(enabled: bool) -> void:
 		_visual.visible = _contact_active and not _surface_integrated
 
 
+func _invalidate_mesh_section() -> void:
+	_mesh_section_signature = 0
+	_mesh_section.clear()
+	_mesh_sections.clear()
+
+
 func foam_footprint_shape(water_y: float) -> Dictionary:
-	# Simple prop meshes can expose their actual waterline section to the
-	# surface study. No footprint is inferred from the ripple radius.
+	# Prop meshes expose their waterline section; radius remains the fallback
+	# for actors/other visual types, not a replacement for a known mesh outline.
 	if not is_instance_valid(_target):
 		_target = get_parent() as Node3D
 	if not is_instance_valid(_target):
 		return {}
+	# The controller's reference level can belong to a different water region.
+	# A resolved contact already follows this object's actual local surface.
+	if _contact_active and is_instance_valid(_projection):
+		water_y = global_position.y - _motion_block_world_size * 0.002
 	for child in _target.get_children():
 		var visual := child as MeshInstance3D
 		if visual == null or visual.mesh == null:
 			continue
 		var scale := visual.global_transform.basis.get_scale()
 		var center := visual.global_position
+		if visual.mesh is ArrayMesh:
+			if _section_mesh != visual.mesh:
+				if _section_mesh != null and _section_mesh.changed.is_connected(_invalidate_mesh_section):
+					_section_mesh.changed.disconnect(_invalidate_mesh_section)
+				_section_mesh = visual.mesh
+				_section_mesh.changed.connect(_invalidate_mesh_section)
+				_invalidate_mesh_section()
+			var axis := _target.global_transform.basis.x
+			var angle := atan2(axis.z, axis.x)
+			var section_y := _target.global_position.y + snappedf(water_y - _target.global_position.y, 0.25)
+			var signature := hash([visual.mesh.get_rid(), visual.transform, _target.global_basis.get_scale(),
+				_target.global_rotation.x, _target.global_rotation.z, section_y - _target.global_position.y])
+			if signature != _mesh_section_signature:
+				_mesh_section_signature = signature
+				if not _mesh_sections.has(signature):
+					if _mesh_sections.size() >= 32: _mesh_sections.erase(_mesh_sections.keys()[0])
+					_mesh_sections[signature] = MeshSection.build(visual.mesh, visual.global_transform, section_y,
+						Vector2(_target.global_position.x, _target.global_position.z), angle)
+				_mesh_section = _mesh_sections[signature]
+			if _mesh_section.is_empty(): return {}
+			var result := _mesh_section.duplicate()
+			result.kind = "mesh"
+			result.center = Vector2(_target.global_position.x, _target.global_position.z) + Vector2(result.center_offset).rotated(angle)
+			result.angle = angle
+			return result
 		if visual.mesh is BoxMesh:
 			var box := visual.mesh as BoxMesh
 			var half := box.size * scale * 0.5
@@ -201,7 +250,25 @@ func foam_footprint_shape(water_y: float) -> Dictionary:
 	return {}
 
 
+func water_interaction_shape(water_y: float) -> Dictionary:
+	# One contact for stationary/moving bodies. Primitive and ArrayMesh sections
+	# retain their outline; other visuals use the authored radius.
+	if not is_instance_valid(_target) or not _target.is_visible_in_tree(): return {}
+	var shape := foam_footprint_shape(water_y)
+	if shape.is_empty():
+		# An exact mesh section with no intersection must not turn back into a disc.
+		for child in _target.get_children():
+			if child is MeshInstance3D and child.mesh is ArrayMesh: return {}
+		if not _contact_active: return {}
+		shape = {"kind": "circle", "center": Vector2(global_position.x, global_position.z),
+			"radius": radius_blocks * _motion_block_world_size}
+	shape["velocity"] = _surface_velocity
+	shape["id"] = get_instance_id()
+	return shape
+
+
 static func footprint_signed_distance(point: Vector2, footprint: Dictionary) -> float:
+	if footprint["kind"] == "mesh": return MeshSection.sample(point, footprint)
 	var relative: Vector2 = point - footprint["center"]
 	if footprint["kind"] == "circle":
 		return relative.length() - float(footprint["radius"])

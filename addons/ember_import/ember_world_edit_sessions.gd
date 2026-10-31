@@ -10,7 +10,7 @@ const SurfaceProjection = preload("res://scripts/ember_voxel_surface_projection.
 const TerrainResource = preload("res://scripts/prototypes/ember_terrain_pilot_resource.gd")
 const TerrainPlan = preload("res://scripts/ember_terrain_plan_resource.gd")
 const Grove = preload("res://addons/ember_import/ember_grove_planner.gd")
-const FIELDS := ["schema_version","model_id","display_name","tags","voxels_per_block","size_blocks","height_voxels","palette","voxels","emissive","shine","transparency","transmittance","surface_fill_levels","surface_fill_materials","surface_fill_palette","voxel_groups","voxel_part_ids","merge_parts","collision_voxels","material","physical","emissive_casts_light","emissive_light_range","emissive_light_shadows","emissive_light_soft_rings","emissive_light_soft_shadows","emissive_strength","emissive_suppress_host_shadow","emissive_torch_flicker","emissive_light_offset","emissive_lights","imported_from","imported_source_hash"]
+const FIELDS := ["schema_version","model_id","display_name","tags","voxels_per_block","size_blocks","height_voxels","palette","voxels","emissive","shine","transparency","transmittance","surface_fill_levels","surface_fill_materials","surface_fill_palette","voxel_groups","voxel_part_ids","merge_parts","collision_voxels","material","solid_surface","external_surface","tree_surface","physical","emissive_casts_light","emissive_light_range","emissive_light_shadows","emissive_light_soft_rings","emissive_light_soft_shadows","emissive_strength","emissive_suppress_host_shadow","emissive_torch_flicker","emissive_light_offset","emissive_lights","imported_from","imported_source_hash"]
 const RECOVERY := "user://ember_world_drafts"
 var entries: Dictionary = {}
 var recovery_directory := RECOVERY
@@ -25,6 +25,16 @@ var prefab_directory := EmberVoxelPrefab.PREFAB_DIR
 var _recovery_task_id := -1
 var _recovery_job := {}
 var last_recovery_profile := {}
+
+func brush_guard(entry:Dictionary,kind:String)->Dictionary:
+	return preload("res://addons/ember_import/ember_voxel_selection.gd").compile_brush_guard(entry.get("canvas_guard",{}),entry.resource.grid_size(),kind) if not entry.get("compact",false) else {}
+
+func clear_brush_mask(entry:Dictionary)->void:
+	var state:Dictionary=entry.get("canvas_guard",{}).duplicate(true)
+	if state.is_empty():return
+	state.selection.mask_enabled=false;state.selection.mask_indices=PackedInt32Array()
+	state.selection.grid_size=entry.resource.grid_size();entry.canvas_guard=state
+	changed.emit()
 
 func configure(history: Object, scene_save := Callable()) -> void:
 	undo = history
@@ -47,7 +57,11 @@ func _entry(target: Node, scene: Node, resource: EmberVoxelModelResource, path: 
 	var next := {"target":weakref(target),"scene":weakref(scene),"resource":draft,"baseline":resource.duplicate_model(),"path":path,"hash":FileAccess.get_sha256(path) if FileAccess.file_exists(path) else "","object_session":object_session,"origin":target.surface_origin if target is EmberMapLoader else Vector3.ZERO,"scene_path":scene.scene_file_path,"target_path":str(scene.get_path_to(target)),"source_resource":resource,"originals":[],"preview":null}
 	entries[_key(target)] = next
 	if object_session != null: next.source_resource = object_session._source
-	next.on_changed = func(_indices): changed.emit()
+	var entry_id:=_key(target)
+	next.on_changed = func(_indices):
+		var current:Dictionary=entries.get(entry_id,{})
+		if not current.is_empty() and current.target.get_ref() is EmberVoxelProp and (not is_instance_valid(current.preview) or not dirty(current)):preview(current)
+		changed.emit()
 	draft.geometry_changed.connect(next.on_changed)
 	return next
 
@@ -69,6 +83,8 @@ func open_map(map: EmberMapLoader, scene: Node) -> Dictionary:
 		if plan != null and (not plan is TerrainPlan or not plan.validation_errors().is_empty()):
 			error = "Повреждён план областей карты."; return {}
 		next.plan_baseline = plan.working_copy() if plan != null else null
+		next.plan_storage_path=TerrainPlan.storage_path(scene.scene_file_path,str(scene.get_path_to(map)))
+		next.plan_file_hash=FileAccess.get_sha256(next.plan_storage_path) if FileAccess.file_exists(next.plan_storage_path) else ""
 		next.grove_baseline = Grove.snapshot(map)
 		next.grove_pose_baseline = Grove.pose_version(map)
 		entries[_key(map)] = next
@@ -114,7 +130,29 @@ func open_object(prop: EmberVoxelProp, scene: Node) -> Dictionary:
 	return next
 
 func dirty(entry: Dictionary) -> bool:
-	return not same_data(entry.resource,entry.baseline) or plan_dirty(entry) or (entry.get("compact",false) and Grove.pose_version(entry.target.get_ref()) != entry.get("grove_pose_baseline",{}))
+	return entry.get("created",false) or not same_data(entry.resource,entry.baseline) or plan_dirty(entry) or (entry.get("compact",false) and Grove.pose_version(entry.target.get_ref()) != entry.get("grove_pose_baseline",{}))
+
+func adopt_object(edit:RefCounted,resource:EmberVoxelModelResource)->Dictionary:
+	var target:Node=edit._target.get_ref();var scene:Node=edit._root.get_ref()
+	if entries.has(_key(target)):return entries[_key(target)]
+	var next:=_entry(target,scene,edit._baseline,edit._source_path,edit)
+	next.resource=resource
+	return next
+
+func create_object(source:EmberVoxelModelResource,scene:Node,parent:Node3D,mesh_frame:Transform3D)->Dictionary:
+	var prepared:=EmberVoxelPrefab.prepare_resource(source)
+	if prepared==null:error="Не удалось подготовить новую форму.";return {}
+	var prop:=prepared.instantiate() as EmberVoxelProp
+	prop.authoring_source=source.duplicate_model();prop.scene_file_path=""
+	var title:String=source.display_name.validate_node_name()
+	if title.is_empty():title="Форма"
+	prop.name=title;parent.add_child(prop,true);prop.owner=scene
+	prop.global_transform=mesh_frame*prop.get_node("Mesh").transform.affine_inverse()
+	var edit:=ObjectSession.new();edit.source_directory=source_directory;edit.prefab_directory=prefab_directory
+	if not edit.open_created(prop,source,scene,undo):prop.free();error=edit.error;return {}
+	var next:=_entry(prop,scene,edit._baseline,"",edit);next.created=true
+	preview(next)
+	return next
 
 func plan_dirty(entry: Dictionary) -> bool:
 	var target: Node = entry.target.get_ref()
@@ -130,7 +168,7 @@ func set_plan(entry: Dictionary, plan: Resource) -> void:
 func dirty_count(scene: Node = null) -> int:
 	var count := 0
 	for entry in entries.values():
-		if (scene == null or entry.scene.get_ref() == scene) and dirty(entry): count += 1
+		if (scene == null or entry.scene.get_ref() == scene) and (dirty(entry) or entry.get("canvas_layout",{}).get("changed",false)): count += 1
 	return count
 
 func frame(entry: Dictionary) -> Transform3D:
@@ -152,17 +190,29 @@ func preview(entry: Dictionary) -> void:
 			return
 		target.set_editor_surface_preview(entry.resource,entry.origin)
 		return
+	if not dirty(entry):
+		_show_originals(entry,true)
+		if is_instance_valid(entry.preview):entry.preview.free();entry.preview=null
+		entry.originals.clear()
+		return
 	if not is_instance_valid(entry.preview):
 		var projection := SurfaceProjection.new()
 		projection.name = "EmberWorldObjectDraft"
 		target.add_child(projection,false,Node.INTERNAL_MODE_BACK)
 		projection.configure(entry.resource,1.0,Vector2i(entry.resource.size_blocks.x,entry.resource.size_blocks.z),null)
 		entry.preview = projection
+		var entry_id:=_key(target)
+		projection.object_frame=func():
+			var current:Dictionary=entries.get(entry_id,{})
+			return frame(current) if not current.is_empty() else Transform3D.IDENTITY
+		projection.projection_completed.connect(func():
+			var current:Dictionary=entries.get(entry_id,{})
+			if not current.is_empty() and dirty(current):_show_originals(current,false))
 		for child in target.get_children():
 			if child is MeshInstance3D:
 				entry.originals.append({"node":weakref(child),"visible":child.visible})
 	entry.preview.global_transform = frame(entry)
-	_show_originals(entry,false)
+	_show_originals(entry,entry.preview.object_presentation_pending())
 
 func _show_originals(entry: Dictionary, restore: bool) -> void:
 	for original in entry.originals:
@@ -178,7 +228,7 @@ func set_water_hidden(hidden: bool) -> void:
 
 static func compact_layout(map: EmberMapLoader) -> Dictionary:
 	var positions := {"Map": map.position}
-	for name in ["Terrain", "Props", "Regions"]:
+	for name in ["Terrain", "Props", "Regions", "WorldAnomaly"]:
 		var group := map.get_node_or_null(name) as Node3D
 		if group != null: positions[name] = group.position
 	return {"positions": positions}
@@ -190,7 +240,7 @@ static func compact_layout_error(layout: Variant) -> String:
 		var values: Variant = layout.get(field, {})
 		if not values is Dictionary: return "Повреждена расстановка compact recovery."
 		for name in values:
-			if name not in ["Map", "Terrain", "Props", "Regions"] or not values[name] is Vector3 or not values[name].is_finite():
+			if name not in ["Map", "Terrain", "Props", "Regions", "WorldAnomaly"] or not values[name] is Vector3 or not values[name].is_finite():
 				return "Повреждена расстановка compact recovery."
 	return ""
 
@@ -201,13 +251,33 @@ func restore_compact_layout(entry: Dictionary, layout: Dictionary) -> void:
 	map.authored_size_blocks = Vector2i(entry.resource.width / 16, entry.resource.depth / 16)
 	var positions: Dictionary = layout.get("positions", {})
 	if positions.get("Map") is Vector3: map.position = positions.Map
-	for name in ["Terrain", "Props", "Regions"]:
+	for name in ["Terrain", "Props", "Regions", "WorldAnomaly"]:
 		var group := map.get_node_or_null(name) as Node3D
 		var point: Variant = positions.get(name)
 		if group != null and point is Vector3 and point.is_finite(): group.position = point
 
 
 func discard(scene: Node = null) -> void:
+	var forms:Dictionary={}
+	for entry in entries.values():
+		if scene!=null and entry.scene.get_ref()!=scene:continue
+		var reference:WeakRef=entry.get("canvas_forms")
+		if reference!=null and reference.get_ref()!=null:forms[reference.get_ref().get_instance_id()]=reference.get_ref()
+	for controller in forms.values():controller.discard()
+	# Recovery can be discarded before its Canvas has been opened again.
+	for entry:Dictionary in entries.values():
+		if scene!=null and entry.scene.get_ref()!=scene:continue
+		var reference:WeakRef=entry.get("canvas_forms")
+		if reference!=null and reference.get_ref()!=null:continue
+		var target:Node3D=entry.target.get_ref()
+		if entry.has("canvas_pose_baseline"):target.transform=entry.canvas_pose_baseline
+		for removed in entry.get("canvas_removed_nodes",[]):
+			if not removed.has("entry") or removed.node.get_parent()!=null:continue
+			EmberSceneAuthoring.attach_model_instance(entry.scene.get_ref(),removed.parent,removed.node)
+			entries[_key(removed.node)]=removed.entry
+		entry.erase("canvas_removed_nodes");entry.erase("canvas_layout")
+		if entry.get("created",false):
+			entries.erase(_key(target));target.free()
 	for entry in entries.values():
 		if scene != null and entry.scene.get_ref() != scene: continue
 		if entry.get("compact", false):
@@ -228,9 +298,25 @@ func discard(scene: Node = null) -> void:
 		preview(entry)
 	changed.emit()
 
+func needs_plan_storage(scene:Node)->bool:
+	if not is_instance_valid(scene) or scene.scene_file_path.is_empty():return false
+	for entry:Dictionary in entries.values():
+		if not entry.get("compact",false) or entry.scene.get_ref()!=scene:continue
+		var target:Node=entry.target.get_ref()
+		if not is_instance_valid(target):continue
+		var plan:Resource=TerrainPlan.read(target)
+		var path:=TerrainPlan.storage_path(scene.scene_file_path,str(scene.get_path_to(target)))
+		if plan!=null and (plan.resource_path!=path or not FileAccess.file_exists(path)):return true
+	return false
+
 func save_all(scene: Node, defer_scene_save := false) -> bool:
 	_finish_recovery_task()
 	if saving: return false
+	for entry:Dictionary in entries.values():
+		if entry.scene.get_ref()!=scene:continue
+		var reference:WeakRef=entry.get("canvas_forms")
+		if reference!=null and reference.get_ref()!=null and reference.get_ref().moving:
+			error="Сначала завершите перемещение формы или отмените его Esc.";return false
 	var profile_start := Time.get_ticks_usec()
 	last_save_profile = {}
 	saving = true
@@ -242,7 +328,15 @@ func save_all(scene: Node, defer_scene_save := false) -> bool:
 	elif not defer_scene_save and not save_scene.is_valid(): error = "Сохранение сцены не настроено. Черновики не опубликованы."
 	for entry in entries.values():
 		if not error.is_empty(): break
-		if entry.scene.get_ref() != scene or not dirty(entry): continue
+		if entry.scene.get_ref() != scene: continue
+		var plan_path:=""
+		var current_plan:Resource
+		var needs_plan_file:=false
+		if entry.get("compact",false):
+			current_plan=TerrainPlan.read(entry.target.get_ref())
+			plan_path=TerrainPlan.storage_path(scene_path,str(scene.get_path_to(entry.target.get_ref())))
+			needs_plan_file=current_plan!=null and (current_plan.resource_path!=plan_path or not FileAccess.file_exists(plan_path))
+		if not dirty(entry) and not needs_plan_file:continue
 		var target: Node = entry.target.get_ref()
 		if not is_instance_valid(target) or not is_instance_valid(scene) or not scene.is_ancestor_of(target):
 			error = "Цель удалена или сцена закрыта. Черновики не потеряны."
@@ -269,7 +363,14 @@ func save_all(scene: Node, defer_scene_save := false) -> bool:
 			if plan != null and (not plan is TerrainPlan or not plan.validation_errors(Vector2i(entry.resource.width / 16, entry.resource.depth / 16)).is_empty()):
 				error = "Проверьте границы и параметры плана областей."; break
 			var plan_only := same_data(entry.resource, entry.baseline)
-			prepared.append({"entry": entry, "old_source": {} if plan_only else Store._snapshot_file(entry.path), "published": false, "compact": true, "plan_only": plan_only})
+			var item:={"entry": entry, "old_source": {} if plan_only else Store._snapshot_file(entry.path), "published": false, "compact": true, "plan_only": plan_only}
+			if plan!=null:
+				var file_hash:=FileAccess.get_sha256(plan_path) if FileAccess.file_exists(plan_path) else ""
+				if file_hash!=(entry.get("plan_file_hash","") if plan_path==entry.get("plan_storage_path","") else ""):
+					error="Файл плана изменён вне редактора. Чужие правки не перезаписаны: "+plan_path;break
+				item.plan_path=plan_path;item.scene_plan=plan;item.old_plan=Store._snapshot_file(plan_path) if FileAccess.file_exists(plan_path) else {}
+				item.plan_published=false
+			prepared.append(item)
 		else:
 			prepared.append({"entry":entry,"old_source":Store._snapshot_file(entry.path) if FileAccess.file_exists(entry.path) else {},"old_map_source":target.visual_surface,"old_origin":target.surface_origin,"old_physical":target.use_visual_surface_physics,"published":false})
 	last_save_profile.preflight_usec = Time.get_ticks_usec()-profile_start
@@ -277,6 +378,11 @@ func save_all(scene: Node, defer_scene_save := false) -> bool:
 	if error.is_empty():
 		for item in prepared:
 			var entry: Dictionary = item.entry
+			if item.has("plan_path"):
+				var published:=_publish_plan_file(item.scene_plan,item.plan_path)
+				if published==null:error="Не удалось сохранить план областей. Черновик сохранён.";break
+				item.plan_published=true
+				(entry.target.get_ref() as Node).set_meta(TerrainPlan.META,published)
 			var result: Dictionary = {"ok": true} if item.get("plan_only", false) else (
 				Store.install_prepared_asset(item.plan.next,item.plan.packed,item.plan.path,item.plan.prefab,true)
 				if item.has("plan") else
@@ -323,6 +429,10 @@ func _complete_save(prepared: Array[Dictionary], scene_snapshot: Dictionary, sce
 	if not error.is_empty():
 		var rollback_errors := PackedStringArray()
 		for item in prepared:
+			if item.get("plan_published",false):
+				_restore_checked(item.old_plan,item.plan_path,rollback_errors)
+				var target:Node=item.entry.target.get_ref()
+				if is_instance_valid(target):target.set_meta(TerrainPlan.META,item.scene_plan)
 			if not item.published and not item.get("compact", false): continue
 			var entry: Dictionary = item.entry
 			if item.has("plan"):
@@ -347,6 +457,7 @@ func _complete_save(prepared: Array[Dictionary], scene_snapshot: Dictionary, sce
 			var entry: Dictionary = item.entry
 			if item.has("plan"):
 				entry.resource.model_id = item.plan.next.model_id
+				entry.created=false
 				entry.path = item.plan.path
 				entry.object_session.accept_prepared_save(item.plan.next,item.plan.path)
 				paths.append(item.plan.prefab)
@@ -360,6 +471,8 @@ func _complete_save(prepared: Array[Dictionary], scene_snapshot: Dictionary, sce
 					if not item.get("plan_only", false): map.compact_terrain = entry.source_resource
 					var plan: Variant = TerrainPlan.read(map)
 					entry.plan_baseline = plan.working_copy() if plan != null else null
+					if item.has("plan_path"):
+						entry.plan_storage_path=item.plan_path;entry.plan_file_hash=FileAccess.get_sha256(item.plan_path);paths.append(item.plan_path)
 					entry.compact_layout_delta = {}
 			if not item.get("plan_only", false): paths.append(entry.path)
 		# Ordinary node transforms can dirty a grove without changing plan data.
@@ -370,6 +483,22 @@ func _complete_save(prepared: Array[Dictionary], scene_snapshot: Dictionary, sce
 				entry.grove_baseline = Grove.snapshot(map_node)
 				entry.grove_pose_baseline = Grove.pose_version(map_node)
 		if not paths.is_empty(): Store.asset_events.assets_published.emit(paths)
+		var forms:Dictionary={}
+		for entry in entries.values():
+			var root:Node=entry.scene.get_ref()
+			if not is_instance_valid(root) or root.scene_file_path!=scene_path:continue
+			var reference:WeakRef=entry.get("canvas_forms")
+			if reference!=null and reference.get_ref()!=null:forms[reference.get_ref().get_instance_id()]=reference.get_ref()
+		for controller in forms.values():controller.accept_save()
+		for entry:Dictionary in entries.values():
+			if entry.scene.get_ref()==null or entry.scene.get_ref().scene_file_path!=scene_path:continue
+			if entry.has("canvas_layout"):entry.canvas_layout.changed=false;entry.canvas_layout.created=false
+			entry.erase("canvas_pose_baseline")
+			var reference:WeakRef=entry.get("canvas_forms")
+			if reference!=null and reference.get_ref()!=null:continue
+			for removed in entry.get("canvas_removed_nodes",[]):
+				if is_instance_valid(removed.node) and removed.node.get_parent()==null:removed.node.free()
+			entry.erase("canvas_removed_nodes")
 	for entry in entries.values():
 		var metadata_only := false
 		for item in prepared:
@@ -394,7 +523,7 @@ func _recovery_items(copy_resources: bool) -> Array[Dictionary]:
 	var items: Array[Dictionary] = []
 	for key in entries:
 		var entry: Dictionary = entries[key]
-		if not dirty(entry): continue
+		if not dirty(entry) and not entry.get("canvas_layout",{}).get("changed",false): continue
 		var scene: Node = entry.scene.get_ref()
 		var target: Node = entry.target.get_ref()
 		var resource: Resource = entry.resource
@@ -409,6 +538,7 @@ func _recovery_items(copy_resources: bool) -> Array[Dictionary]:
 			"scene": scene.scene_file_path if is_instance_valid(scene) else entry.scene_path,
 			"target": str(scene.get_path_to(target)) if is_instance_valid(scene) and is_instance_valid(target) else entry.target_path,
 			"source": entry.path, "hash": entry.hash, "origin": entry.origin,
+			"canvas_layout":entry.get("canvas_layout",{}).duplicate(true),
 			"compact_layout": layout,
 			"grove_snapshot":Grove.snapshot(target) if entry.get("compact",false) and is_instance_valid(target) else null,
 			"grove_path":recovery_directory.path_join("grove_"+str(key)+".tscn")})
@@ -434,7 +564,7 @@ static func _save_recovery_items(job: Dictionary) -> void:
 			if saved != OK:
 				result = saved
 				break
-			for field in ["draft", "scene", "target", "source", "hash", "origin", "compact_layout", "plan_only", "terrain_plan"]:
+			for field in ["draft", "scene", "target", "source", "hash", "origin", "compact_layout", "plan_only", "terrain_plan","canvas_layout"]:
 				manifest.set_value(item.key, field, item[field])
 			if item.get("grove_snapshot") is PackedScene: manifest.set_value(item.key,"grove_path",item.grove_path)
 		if result == OK:
@@ -462,6 +592,7 @@ func start_periodic_recovery() -> bool:
 
 
 func poll_recovery() -> void:
+	SurfaceProjection.poll_retired_object_tasks()
 	if _recovery_task_id >= 0 and WorkerThreadPool.is_task_completed(_recovery_task_id):
 		_finish_recovery_task()
 
@@ -496,12 +627,34 @@ func restore_recovery(scene: Node) -> int:
 			error = "Recovery не применён: исходник изменён. Копия черновика сохранена в user://ember_world_drafts."
 			continue
 		var target := scene.get_node_or_null(NodePath(manifest.get_value(section,"target","")))
+		var canvas_layout:Dictionary=manifest.get_value(section,"canvas_layout",{})
 		if target != null and entries.has(_key(target)) and dirty(entries[_key(target)]):
 			error = "Восстановление не заменило текущий несохранённый черновик. Сначала сохраните или отмените его."
 			continue
 		var plan_only: bool = manifest.get_value(section, "plan_only", false)
 		var draft := ResourceLoader.load(path if plan_only else manifest.get_value(section,"draft",""),"",ResourceLoader.CACHE_MODE_IGNORE)
 		if draft == null or not draft.has_method("validation_errors") or not draft.validation_errors().is_empty(): continue
+		var canvas_removed:Array=[]
+		if not canvas_layout.is_empty():
+			var parent:Node=scene.get_node_or_null(canvas_layout.get("parent",NodePath()))
+			if not parent is Node3D or (parent!=scene and not scene.is_ancestor_of(parent)) or not canvas_layout.get("pose") is Transform3D or not canvas_layout.pose.is_finite():
+				error="Повреждена расстановка форм Canvas; recovery оставлен.";continue
+			var valid:=true
+			for removed in canvas_layout.get("removed",[]):
+				var node:Node=scene.get_node_or_null(removed.path)
+				if node==null:continue
+				if not node is EmberVoxelProp or not scene.is_ancestor_of(node) or node.model_id!=removed.id or FileAccess.get_sha256(source_directory.path_join(removed.id+".tres"))!=removed.hash:
+					valid=false;break
+				if entries.has(_key(node)) and dirty(entries[_key(node)]):valid=false;break
+				canvas_removed.append({"node":node,"parent":node.get_parent(),"path":removed.path})
+			if not valid:error="Исходные формы изменились; recovery не удаляет чужие правки.";continue
+			if target==null and canvas_layout.get("created",false) and draft is EmberVoxelModelResource:
+				var template:=EmberVoxelPrefab.prepare_resource(draft).instantiate()
+				var desired:Transform3D=parent.global_transform*canvas_layout.pose*template.get_node("Mesh").transform
+				template.free()
+				var made:=create_object(draft,scene,parent,desired)
+				if made.is_empty():continue
+				target=made.target.get_ref();target.name=NodePath(manifest.get_value(section,"target","")).get_concatenated_names().get_file()
 		var plan_data: Variant = manifest.get_value(section, "terrain_plan", {})
 		var recovered_plan: Resource = null
 		if manifest.has_section_key(section, "terrain_plan") and not (plan_data is Dictionary and plan_data.is_empty()):
@@ -529,6 +682,15 @@ func restore_recovery(scene: Node) -> int:
 			continue
 		entry.path = path
 		entry.hash = manifest.get_value(section,"hash","")
+		if not canvas_layout.is_empty():
+			entry.canvas_pose_baseline=target.transform
+			target.transform=canvas_layout.pose;entry.canvas_layout=canvas_layout
+			entry.canvas_removed_nodes=canvas_removed
+			for removed in canvas_removed:
+				var old_entry:Dictionary=open_object(removed.node,scene)
+				if old_entry.is_empty():continue
+				old_entry.canvas_parent=weakref(removed.parent);removed.entry=old_entry
+				entries.erase(_key(removed.node));removed.parent.remove_child(removed.node)
 		if entry.get("compact", false):
 			if not draft is TerrainResource: continue
 			if recovered_grove != null:
@@ -539,7 +701,7 @@ func restore_recovery(scene: Node) -> int:
 			var layout: Dictionary = recovered_layout
 			restore_compact_layout(entry, layout)
 			entry.compact_layout_delta = {}
-			for name in ["Map", "Terrain", "Props", "Regions"]:
+			for name in ["Map", "Terrain", "Props", "Regions", "WorldAnomaly"]:
 				var delta: Variant = layout.get("delta", {}).get(name)
 				if delta is Vector3 and delta.is_finite(): entry.compact_layout_delta[name] = delta
 		else:
@@ -563,3 +725,22 @@ func release() -> void:
 			else: target.set_editor_surface_preview(null)
 		if is_instance_valid(entry.preview): entry.preview.free()
 	entries.clear()
+
+
+func _publish_plan_file(plan:Resource,path:String)->Resource:
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(path.get_base_dir()))
+	var staged:=path.get_basename()+".stage_"+str(OS.get_process_id())+"_"+str(Time.get_ticks_usec())+".res"
+	var uid:=ResourceLoader.get_resource_uid(path) if FileAccess.file_exists(path) else ResourceUID.create_id()
+	if uid==ResourceUID.INVALID_ID:uid=ResourceUID.create_id()
+	var saved:Resource
+	var result:=ResourceSaver.save(plan.working_copy(),staged,ResourceSaver.FLAG_COMPRESS)
+	if result==OK:result=ResourceSaver.set_uid(staged,uid)
+	if result==OK:
+		saved=ResourceLoader.load(staged,"",ResourceLoader.CACHE_MODE_IGNORE)
+		if saved==null or not TerrainPlan.same(plan,saved):result=ERR_FILE_CORRUPT
+	if result==OK:result=DirAccess.rename_absolute(ProjectSettings.globalize_path(staged),ProjectSettings.globalize_path(path))
+	if FileAccess.file_exists(staged):DirAccess.remove_absolute(ProjectSettings.globalize_path(staged))
+	if result!=OK:return null
+	ResourceUID.set_id(uid,path) if ResourceUID.has_id(uid) else ResourceUID.add_id(uid,path)
+	saved.resource_path="";saved.take_over_path(path)
+	return saved

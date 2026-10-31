@@ -8,6 +8,7 @@ signal mode_changed(mode: String, label: String)
 
 const PartyState := preload("res://scripts/ember_party_state.gd")
 const HeroScale := preload("res://scripts/ember_exploration_hero_scale.gd")
+const WaterContact := preload("res://scripts/ember_water_contact_3d.gd")
 
 const MODE_TRAIN := "train"
 const MODE_FORMATION := "formation"
@@ -116,6 +117,15 @@ func mode_label() -> String:
 	return "Паровозик" if mode == MODE_TRAIN else "Живая формация"
 
 
+func combat_world_actors() -> Dictionary:
+	# Read-only identities for the existing in-world battle presentation.
+	var result := {}
+	for follower in _followers:
+		if is_instance_valid(follower) and follower.visible:
+			result[str(follower.get_meta("hero_id", ""))] = follower
+	return result
+
+
 func target_for(index: int) -> Vector3:
 	if not is_instance_valid(leader):
 		return Vector3.ZERO
@@ -174,6 +184,10 @@ func _build_followers() -> void:
 		follower.name = "PartyFollower_%s" % hero_id
 		follower.set_meta("hero_id", hero_id)
 		add_child(follower)
+		var contact := WaterContact.new()
+		contact.name = "WaterContact"
+		contact.radius_blocks = 0.25
+		follower.add_child(contact)
 
 		var mesh := MeshInstance3D.new()
 		mesh.name = "Body"

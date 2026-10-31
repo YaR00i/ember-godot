@@ -2654,3 +2654,62 @@ static func _ray_box_interval(origin: Vector3, direction: Vector3, bounds: Vecto
 		if t_min > t_max:
 			return Vector2(-1.0, -1.0)
 	return Vector2(t_min, t_max)
+
+
+class SurfacePlaneJob extends RefCounted:
+	## Local plane brush, immutable pointer-down data; world/Canvas can share this calculation.
+	var values:PackedByteArray
+	var parts:PackedInt32Array
+	var size:Vector3i
+	var segments:Array[Dictionary]=[]
+	var radius:=8
+	var depth:=4
+	var plane_point:=Vector3.ZERO
+	var plane_normal:=Vector3.UP
+	var cut_only:=false
+	var cancelled:=false
+	var task_id:=-1
+	var changes:Dictionary={}
+	var owners:Dictionary={}
+	func _filled(p:Vector3i)->bool:
+		return EmberVoxelSculptModel.contains(p,size) and values[EmberVoxelSculptModel.index_of(p,size)]>0
+	func run()->void:
+		if segments.is_empty() or values.size()!=size.x*size.y*size.z or plane_normal.is_zero_approx():return
+		var n:=plane_normal.normalized();var r:=clampi(radius,1,256);var reach:=clampi(depth,1,32)
+		var low:=size;var high:=Vector3i.ZERO
+		for segment in segments:
+			var start:=Vector3(segment.from);var finish:=Vector3(segment.to)
+			start-=n*(start-plane_point).dot(n);finish-=n*(finish-plane_point).dot(n)
+			var a:=Vector3i(start.floor());var b:=Vector3i(finish.ceil())
+			low=low.min(a.min(b)-Vector3i.ONE*(r+reach));high=high.max(a.max(b)+Vector3i.ONE*(r+reach+1))
+		low=low.max(Vector3i.ZERO);high=high.min(size)
+		for y in range(low.y,high.y):
+			if cancelled:return
+			for z in range(low.z,high.z):
+				if cancelled:return
+				for x in range(low.x,high.x):
+					var p:=Vector3i(x,y,z);var q:=Vector3(p);var signed_distance:float=(q-plane_point).dot(n)
+					if absf(signed_distance)>reach:continue
+					var projected:=q-n*signed_distance;var nearest:=INF
+					for segment in segments:
+						var a:=Vector3(segment.from);var b:=Vector3(segment.to)
+						a-=n*(a-plane_point).dot(n);b-=n*(b-plane_point).dot(n)
+						var direction:=b-a
+						var t:=clampf((projected-a).dot(direction)/direction.length_squared(),0,1) if not direction.is_zero_approx() else 0.0
+						nearest=minf(nearest,projected.distance_squared_to(a+direction*t))
+					if nearest>=r*r:continue
+					# A narrow falloff avoids cutting a hard cylinder around the brush perimeter.
+					var influence:=1.0-smoothstep(0.65*float(r*r),float(r*r),nearest)
+					if absf(signed_distance)>maxf(0.5,reach*influence):continue
+					var index:=EmberVoxelSculptModel.index_of(p,size);var before:=int(values[index])
+					if signed_distance>=0.0:
+						if before>0:changes[index]={"before":before,"after":0}
+					elif not cut_only and before==0:
+						# Fill only a nearby depression, with the same material/part as its inward donor.
+						for distance in range(1,reach+1):
+							var donor:=Vector3i((q-n*distance).round())
+							if not _filled(donor):continue
+							var at:=EmberVoxelSculptModel.index_of(donor,size)
+							changes[index]={"before":0,"after":int(values[at])}
+							if not parts.is_empty():owners[index]=int(parts[at])
+							break

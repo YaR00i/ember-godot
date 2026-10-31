@@ -1,0 +1,99 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_world_item_3d.gd" id="item"]
+[ext_resource type="PackedScene" path="res://prefabs/items/quest_crate.tscn" id="visual"]
+[ext_resource type="Script" path="res://scripts/ember_mechanism_circuit.gd" id="circuit"]
+[ext_resource type="Script" path="res://scripts/ember_mechanism_component.gd" id="component"]
+[ext_resource type="PackedScene" path="res://prefabs/items/quest_crate_break.scn" id="break"]
+
+[sub_resource type="BoxShape3D" id="plate_shape"]
+size = Vector3(56, 28, 56)
+[sub_resource type="BoxMesh" id="plate_mesh"]
+size = Vector3(56, 0.2, 56)
+[sub_resource type="StandardMaterial3D" id="plate_material"]
+albedo_color = Color(0.78, 0.59, 0.27, 1)
+
+[node name="PhysicalCrates" type="Node3D"]
+
+[node name="SmallCrate" type="RigidBody3D" parent="."]
+position = Vector3(-24, 0.3, 0)
+script = ExtResource("item")
+pickup_id = "physics_small_crate"
+item_id = "quest_crate"
+carryable = true
+breakable = true
+break_effect = ExtResource("break")
+pushable = true
+return_radius = 320.0
+[node name="ItemVisual" parent="SmallCrate" instance=ExtResource("visual")]
+scale = Vector3(16, 16, 16)
+
+[node name="LargeCrate" type="RigidBody3D" parent="."]
+position = Vector3(24, 0.3, 0)
+script = ExtResource("item")
+pickup_id = "physics_large_crate"
+item_id = "quest_crate"
+pushable = true
+item_mass = 1.0
+visual_size = 32.0
+return_radius = 320.0
+[node name="ItemVisual" parent="LargeCrate" instance=ExtResource("visual")]
+scale = Vector3(32, 32, 32)
+
+[node name="SturdyCrate" type="RigidBody3D" parent="."]
+position = Vector3(-24, 0.3, 40)
+script = ExtResource("item")
+pickup_id = "physics_sturdy_crate"
+item_id = "quest_crate"
+carryable = true
+pushable = true
+[node name="ItemVisual" parent="SturdyCrate" instance=ExtResource("visual")]
+scale = Vector3(16, 16, 16)
+[node name="Label" type="Label3D" parent="SturdyCrate"]
+position = Vector3(0, 20, 0)
+pixel_size = 0.08
+billboard = 1
+text = "Прочный"
+
+[node name="Plate" type="Area3D" parent="."]
+position = Vector3(24, 0, -64)
+collision_layer = 0
+collision_mask = 6
+[node name="Shape" type="CollisionShape3D" parent="Plate"]
+position = Vector3(0, 14, 0)
+shape = SubResource("plate_shape")
+[node name="Visual" type="MeshInstance3D" parent="Plate"]
+mesh = SubResource("plate_mesh")
+material_override = SubResource("plate_material")
+
+[node name="Lamp" type="OmniLight3D" parent="."]
+position = Vector3(24, 32, -64)
+light_color = Color(0.4, 1, 0.7, 1)
+light_energy = 3.0
+omni_range = 80.0
+
+[node name="Hint" type="Label3D" parent="."]
+position = Vector3(0, 48, -28)
+pixel_size = 0.12
+billboard = 1
+text = "Маленький: F взять / поставить · G бросить · ЛКМ / сильное столкновение разбить\nПрочный: F / G, остаётся целым · Большой: только толкать\nПлита: вес 0,5 · маленький 0,25 · большой 1"
+font_size = 40
+
+[node name="Circuit" type="Node3D" parent="."]
+script = ExtResource("circuit")
+circuit_id = "physical_crates"
+links = Array[Dictionary]([{"from": "weight_plate", "to": "indicator", "port": 0}])
+[node name="WeightPlate" type="Node" parent="Circuit"]
+script = ExtResource("component")
+component_id = "weight_plate"
+kind = "plate"
+label = "Вес не меньше 0,5"
+target_path = NodePath("../../Plate")
+required_weight = 0.5
+character_weight = 0.0
+[node name="Indicator" type="Node" parent="Circuit"]
+script = ExtResource("component")
+component_id = "indicator"
+kind = "lamp"
+label = "Есть нужный вес"
+target_path = NodePath("../../Lamp")

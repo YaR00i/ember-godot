@@ -49,6 +49,8 @@ func _exit_tree() -> void:
 
 
 func refresh_runtime_binding() -> void:
+	# Undo/Redo can reattach this node without running _ready a second time.
+	_bind_progress()
 	var base_actionable := false
 	match kind:
 		"door":
@@ -72,7 +74,9 @@ func refresh_runtime_binding() -> void:
 	else:
 		remove_from_group("ember_interact")
 	collision_mask = 2 if activation_mode == "enter" else 0
-	monitoring = not Engine.is_editor_hint() and activation_mode == "enter" and actionable
+	# Completion can change progress from inside body_entered. Physics forbids
+	# changing monitoring until that signal finishes; routing still closes now.
+	set_deferred("monitoring", not Engine.is_editor_hint() and activation_mode == "enter" and actionable)
 	_refresh_quest_marker()
 	set_process(kind == "quest_marker")
 
@@ -268,6 +272,10 @@ func _resolved_transform(node: Node3D) -> Transform3D:
 			resolved = (parent as Node3D).transform * resolved
 		parent = parent.get_parent()
 	return resolved
+
+
+func activate_from(_actor: Node3D) -> String:
+	return activate()
 
 
 func activate() -> String:

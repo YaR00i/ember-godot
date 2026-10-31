@@ -413,7 +413,7 @@ static func rounded_crown_wood(layout: Array, offset: Vector3, density: float) -
 				tail.append(b);radii.append(r1)
 		if tail.size()>1:fine.append({"path":tail,"radii":radii})
 	var st:=SurfaceTool.new();st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	st.append_from(coarse.smooth_wood(0.05,0.035),0,Transform3D.IDENTITY)
+	if not coarse.wood_lines.is_empty():st.append_from(coarse.smooth_wood(0.05,0.035),0,Transform3D.IDENTITY)
 	st.append_from(wood_mesh(fine,offset,density),0,Transform3D.IDENTITY)
 	return st.commit()
 

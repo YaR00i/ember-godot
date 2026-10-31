@@ -1,0 +1,40 @@
+[gd_resource type="Resource" script_class="EmberDialogueResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_dialogue_resource.gd" id="1_cr8h6"]
+
+[resource]
+script = ExtResource("1_cr8h6")
+dialogue_id = "shore_keeper_intro"
+document = {
+"id": "shore_keeper_intro",
+"nameRu": "Хранитель берега",
+"startStepId": "request",
+"steps": [{
+"id": "request",
+"next": "choice",
+"textRu": "Ты нашёл моё послание! Поможешь? Принеси три ракушки с берега — после этого расскажу, что нужно дальше.",
+"type": "dialogue"
+}, {
+"id": "choice",
+"options": [{
+"labelRu": "Соберу три ракушки",
+"next": "accepted",
+"setFlags": {
+"shore_sender_met": true
+}
+}, {
+"labelRu": "Вернусь позже",
+"next": "end"
+}],
+"promptRu": "Помочь Хранителю?",
+"type": "choice"
+}, {
+"id": "accepted",
+"next": "end",
+"textRu": "Спасибо! Ищи три ракушки на песке у воды, рядом с местом, где лежала бутылка.",
+"type": "dialogue"
+}, {
+"id": "end",
+"type": "end"
+}]
+}

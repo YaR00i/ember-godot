@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="EmberEncounterResource" load_steps=4 format=3]
+[ext_resource type="Script" path="res://scripts/prototypes/ember_encounter_resource.gd" id="1"]
+[ext_resource type="Resource" path="res://content/combat/battlefields/shore_boar.tres" id="2"]
+[ext_resource type="PackedScene" path="res://scenes/prototypes/combat_grid_3d_world.tscn" id="3"]
+[resource]
+script = ExtResource("1")
+encounter_id = "shore_boar"
+display_name = "Кабан на береговой поляне"
+intro_text = "Кабан защищает поляну. Каждая клетка — 1 метр."
+battlefield = ExtResource("2")
+arena_scene = ExtResource("3")
+enemy_unit_ids = PackedStringArray("shore_boar")
+victory_flag_id = "shore_boar_defeated"
+victory_xp = 15
+repeatable = false

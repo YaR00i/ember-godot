@@ -3,6 +3,7 @@ extends Control
 ## Read-only journal projection. EmberExploreState.flags remains progress owner.
 
 var progress_state: EmberExploreState
+@export var show_debug_progress := false
 var _list: VBoxContainer
 var _empty: Label
 
@@ -88,7 +89,7 @@ func _refresh() -> void:
 			_list.remove_child(child)
 			child.queue_free()
 	var flags := progress_state.flags if progress_state != null else {}
-	var entries := EmberQuestCatalog.visible_projections(flags)
+	var entries := EmberQuestCatalog.visible_projections(flags, progress_state.inventory if progress_state != null else {})
 	_empty.visible = entries.is_empty()
 	for entry in entries:
 		_list.add_child(_quest_card(entry))
@@ -125,13 +126,14 @@ func _quest_card(entry: Dictionary) -> Control:
 	var objectives: Array = entry.get("objectives", [])
 	for raw_objective in objectives:
 		var objective: Dictionary = raw_objective
+		if bool(objective.get("locked",false)) and not show_debug_progress: continue
 		var line := Label.new()
 		line.name = "QuestObjective_%s" % str(objective.get("id", ""))
 		var done := bool(objective.get("done", false))
 		var locked := bool(objective.get("locked", false))
 		var missing: Array = objective.get("missingPrerequisiteTexts", [])
 		var suffix := "  (необязательно)" if bool(objective.get("optional", false)) else ""
-		if str(objective.get("progressMode", "flag")) == "counter":
+		if str(objective.get("progressMode", "flag")) in ["counter", "purchase", "handover"]:
 			suffix = "  (%d/%d)%s" % [
 				int(objective.get("currentCount", 0)),
 				int(objective.get("requiredCount", 1)),
@@ -158,6 +160,7 @@ func _quest_card(entry: Dictionary) -> Control:
 		)
 		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		body.add_child(line)
+	if not show_debug_progress: return panel
 	var flag_ids := _entry_progress_flag_ids(entry)
 	var stored: Array[String] = []
 	var flags := progress_state.flags if progress_state != null else {}

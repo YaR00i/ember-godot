@@ -7,12 +7,12 @@ var errors := 0
 class FixtureShelf extends Shelf:
 	var refresh_count := 0
 	var fixture_entries: Array[Dictionary] = []
-	func refresh(preferred_id := "") -> void:
+	func refresh(preferred_id := "", cached_only := false) -> void:
 		refresh_count += 1
 		if _picker == null: return
 		var selected := preferred_id if not preferred_id.is_empty() else selected_model_id()
 		_all_entries = fixture_entries.duplicate(true)
-		_catalog_dirty = false
+		_catalog_dirty = cached_only
 		_apply_filter(selected)
 
 func entry(id: String) -> Dictionary:

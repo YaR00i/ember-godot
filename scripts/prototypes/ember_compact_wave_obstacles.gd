@@ -8,7 +8,7 @@ const GRID := 33
 const CELL := 4.0
 const FRAMES := 64
 const MAX_PATCHES := 4
-const VERSION := 2
+const VERSION := 3
 const CACHE_ROOT := "user://ember-water-wave-cache"
 const Contact = preload("res://scripts/ember_water_contact_3d.gd")
 
@@ -30,11 +30,18 @@ var _prepare_patch := 0
 var _prepare_step := 0
 var _build_started := 0
 var _live_time := -1.0
+var dynamic_contacts := false
+var contact_updates := 0
+var contact_update_us := 0
+var accepted_contact_ids := PackedInt64Array()
+var _contacts_signature := 0
 
 
 func build(document: EmberTerrainPilotResource, shapes: Array[Dictionary], phase: Image,
-		shore: Image, sea: RefCounted, settings: Dictionary) -> void:
+		shore: Image, sea: RefCounted, settings: Dictionary, moving_contacts := false) -> void:
+	dynamic_contacts = moving_contacts
 	patches.clear()
+	accepted_contact_ids.clear()
 	ready = false
 	cache_hit = false
 	_build_started = Time.get_ticks_usec()
@@ -43,18 +50,20 @@ func build(document: EmberTerrainPilotResource, shapes: Array[Dictionary], phase
 	_live_time = -1.0
 	var groups: Array[Array] = []
 	for shape in shapes:
-		var center: Vector2 = shape.center
 		var found := false
 		for group in groups:
-			if center.distance_to(group[0].center) < 52.0:
+			var candidate := group.duplicate()
+			candidate.append(shape)
+			var size := _contact_group_bounds(candidate).size
+			if maxf(size.x, size.y) <= 72.0:
 				group.append(shape)
 				found = true
 				break
 		if not found and groups.size() < MAX_PATCHES: groups.append([shape])
 	for group in groups:
-		var center := Vector2.ZERO
-		for shape in group: center += shape.center
-		center /= group.size()
+		for shape in group:
+			if shape.has("id"): accepted_contact_ids.append(int(shape.id))
+		var center := _contact_group_bounds(group).get_center()
 		var origin := (center - Vector2.ONE * CELL * (GRID - 1) * 0.5).snapped(Vector2.ONE * CELL)
 		var center_cell := Vector2i(center)
 		var river := document.flow_at_cell(center_cell.x, center_cell.y).length() > 0.08
@@ -71,8 +80,10 @@ func build(document: EmberTerrainPilotResource, shapes: Array[Dictionary], phase
 		var lambda2 := pow(speed * dt / CELL, 2.0)
 		var fluid := PackedByteArray()
 		var solid := PackedByteArray()
+		var water_mask := PackedByteArray()
 		fluid.resize(GRID * GRID)
 		solid.resize(GRID * GRID)
+		water_mask.resize(GRID * GRID)
 		var incident := PackedFloat32Array()
 		incident.resize(FRAMES * GRID * GRID)
 		var amplitude: float = settings.sea_height if coastal else settings.wave_height * 0.58 * (settings.river_mix if river else 1.0)
@@ -87,6 +98,7 @@ func build(document: EmberTerrainPilotResource, shapes: Array[Dictionary], phase
 				# A local field cannot couple different authored water levels.
 				if document.column_value("water_levels", column) != document.column_value("water_levels", document.column_index(clampi(center_cell.x, 0, document.width - 1), clampi(center_cell.y, 0, document.depth - 1))): continue
 				fluid[index] = 1
+				water_mask[index] = 1
 				for shape in group:
 					if Contact.footprint_signed_distance(point, shape) <= CELL * 0.25:
 						fluid[index] = 0
@@ -134,16 +146,23 @@ func build(document: EmberTerrainPilotResource, shapes: Array[Dictionary], phase
 		state.resize(GRID * GRID)
 		var ages := state.duplicate()
 		ages.fill(8.0)
+		var motion := PackedVector2Array()
+		motion.resize(GRID * GRID)
 		patches.append({"origin": origin, "period": period, "dt": dt, "lambda2": lambda2,
 			"cycle_steps": cycle_steps, "substeps": substeps, "active": active,
 			"neighbors": neighbors, "boundary": boundary, "forcing": forcing,
-			"damping": damping, "fluid": fluid, "incident": incident, "amplitude": maxf(amplitude, 0.01),
-			"coastal": coastal, "age": ages, "velocity": state.duplicate(), "h": state.duplicate(), "prev": state.duplicate(), "next": state.duplicate()})
+			"damping": damping, "fluid": fluid, "water_mask": water_mask, "solid": solid, "incident": incident, "amplitude": maxf(amplitude, 1.0 if dynamic_contacts else 0.01),
+			"coastal": coastal, "motion": motion, "age": ages, "velocity": state.duplicate(), "h": state.duplicate(), "prev": state.duplicate(), "next": state.duplicate()})
 	var digest := HashingContext.new()
 	digest.start(HashingContext.HASH_SHA256)
 	var dependencies: Array = []
 	for patch: Dictionary in patches: dependencies.append([patch.fluid, patch.incident, patch.origin, patch.period])
-	digest.update(var_to_bytes([VERSION, dependencies, shapes, settings]))
+	var geometry: Array[Dictionary] = shapes.duplicate(true)
+	for shape in geometry:
+		shape.erase("id")
+		shape.erase("velocity")
+		if shape.get("distance") is Image: shape.distance = shape.distance.get_data()
+	digest.update(var_to_bytes([VERSION, dependencies, geometry, settings]))
 	signature = digest.finish().hex_encode()
 	if patches.is_empty():
 		ready = true
@@ -151,6 +170,12 @@ func build(document: EmberTerrainPilotResource, shapes: Array[Dictionary], phase
 	atlas = Image.create_empty(GRID * 8, GRID * 8 * patches.size(), false, Image.FORMAT_RGBAF)
 	live_image = Image.create_empty(GRID, GRID * patches.size(), false, Image.FORMAT_RGBAF)
 	live_texture = ImageTexture.create_from_image(live_image)
+	if dynamic_contacts:
+		# A live contact starts from rest. No five-cycle bake or cache write on
+		# entry/movement; the existing equation develops the response over time.
+		ready = true
+		build_us = Time.get_ticks_usec() - _build_started
+		return
 	var cache := CACHE_ROOT.path_join(signature + ".res")
 	if ResourceLoader.exists(cache):
 		var cached := ResourceLoader.load(cache) as Image
@@ -160,6 +185,82 @@ func build(document: EmberTerrainPilotResource, shapes: Array[Dictionary], phase
 			ready = true
 			cache_hit = true
 			build_us = Time.get_ticks_usec() - _build_started
+
+
+static func _contact_group_bounds(group: Array) -> Rect2:
+	var result := Rect2()
+	var first := true
+	for shape in group:
+		var radius: float = float(shape.get("radius", shape.get("half", Vector2.ZERO).length()))
+		var box := Rect2(shape.center - Vector2.ONE * radius, Vector2.ONE * radius * 2.0)
+		result = box if first else result.merge(box)
+		first = false
+	return result
+
+
+func covers_contact(shape: Dictionary) -> bool:
+	for p in patches:
+		var local: Vector2 = (shape.center - p.origin) / CELL
+		var radius: float = float(shape.get("radius", shape.get("half", Vector2.ZERO).length())) / CELL
+		var margin := minf(12.0, 6.0 + radius)
+		if local.x >= margin and local.y >= margin and local.x <= GRID - 1 - margin and local.y <= GRID - 1 - margin: return true
+	return false
+
+
+func update_contacts(shapes: Array[Dictionary]) -> void:
+	if not dynamic_contacts or not ready: return
+	contact_update_us = 0
+	var next_signature := hash(shapes)
+	if next_signature == _contacts_signature: return
+	_contacts_signature = next_signature
+	var started := Time.get_ticks_usec()
+	contact_updates += 1
+	for p in patches:
+		var fluid: PackedByteArray = p.water_mask.duplicate()
+		var solid := PackedByteArray(); solid.resize(GRID * GRID)
+		var motion := PackedVector2Array(); motion.resize(GRID * GRID)
+		for z in GRID:
+			for x in GRID:
+				var i := x + z * GRID
+				if fluid[i] == 0: continue
+				var point: Vector2 = p.origin + Vector2(x, z) * CELL
+				for shape in shapes:
+					if Contact.footprint_signed_distance(point, shape) > CELL * 0.25: continue
+					fluid[i] = 0; solid[i] = 1; motion[i] = shape.get("velocity", Vector2.ZERO)
+					break
+				if fluid[i] != p.fluid[i]:
+					p.h[i] = 0.0; p.prev[i] = 0.0; p.next[i] = 0.0; p.age[i] = 8.0; p.velocity[i] = 0.0
+		var active := PackedInt32Array(); var neighbors := PackedInt32Array(); var boundary := PackedInt32Array()
+		for z in range(1, GRID - 1):
+			for x in range(1, GRID - 1):
+				var i := x + z * GRID
+				if fluid[i] == 0: continue
+				active.append(i)
+				var touches := false
+				for n in [i - 1, i + 1, i - GRID, i + GRID]:
+					neighbors.append(n if fluid[n] != 0 else i)
+					if solid[n] != 0: touches = true
+				if touches: boundary.append(i)
+		p.fluid = fluid; p.solid = solid; p.motion = motion
+		p.active = active; p.neighbors = neighbors; p.boundary = boundary
+	contact_update_us = Time.get_ticks_usec() - started
+
+
+func inherit_live(previous: RefCounted) -> void:
+	if previous == null or not previous.dynamic_contacts or not previous.ready: return
+	for p in patches:
+		for z in GRID:
+			for x in GRID:
+				var i := x + z * GRID
+				var point: Vector2 = p.origin + Vector2(x, z) * CELL
+				for old: Dictionary in previous.patches:
+					var local := Vector2i((point - old.origin) / CELL)
+					if local.x < 0 or local.y < 0 or local.x >= GRID or local.y >= GRID: continue
+					var old_i := local.x + local.y * GRID
+					for key in ["h", "prev", "age", "velocity"]: p[key][i] = old[key][old_i]
+					p["time"] = old.get("time", previous.current_time)
+					break
+	_live_time = previous._live_time
 
 
 static func _bilinear(image: Image, point: Vector2) -> Color:
@@ -213,8 +314,23 @@ func _step(p: Dictionary, seconds: float) -> void:
 	var boundary: PackedInt32Array = p.boundary
 	var forcing: PackedFloat32Array = p.forcing
 	for slot in boundary.size():
-		var force := lerpf(forcing[slot * FRAMES + frame], forcing[slot * FRAMES + (frame + 1) % FRAMES], part)
-		next[boundary[slot]] += lambda2 * force / (2.0 - damping[boundary[slot]])
+		var i := boundary[slot]
+		var force := 0.0
+		var motion := 0.0
+		if dynamic_contacts:
+			for edge in 4:
+				var n: int = i + [-1, 1, -GRID, GRID][edge]
+				if p.solid[n] == 0: continue
+				force += lerpf(p.incident[frame * GRID * GRID + i] - p.incident[frame * GRID * GRID + n],
+					p.incident[((frame + 1) % FRAMES) * GRID * GRID + i] - p.incident[((frame + 1) % FRAMES) * GRID * GRID + n], part)
+				motion += p.motion[n].dot([Vector2.RIGHT, Vector2.LEFT, Vector2.DOWN, Vector2.UP][edge]) * float(p.dt) * 0.25
+		else:
+			force = lerpf(forcing[slot * FRAMES + frame], forcing[slot * FRAMES + (frame + 1) % FRAMES], part)
+		next[i] += lambda2 * force / (2.0 - damping[i]) + clampf(motion, -0.30, 0.30)
+	if dynamic_contacts:
+		# A moving mask can leave a zero-frequency volume offset. Absorb the
+		# scattered height as well as velocity, so calm water returns to rest.
+		for i in active: next[i] *= damping[i]
 	var ages: PackedFloat32Array = p.age
 	var incident: PackedFloat32Array = p.incident
 	var velocities: PackedFloat32Array = p.velocity
@@ -243,7 +359,8 @@ func _store_frame(p: Dictionary, patch: int, frame: int) -> void:
 	for z in GRID:
 		for x in GRID:
 			var i := x + z * GRID
-			atlas.set_pixelv(offset + Vector2i(x, z), Color(h[i], incident[frame * GRID * GRID + i] + h[i], p.age[i], float(fluid[i])))
+			var wet := float(fluid[i])
+			atlas.set_pixelv(offset + Vector2i(x, z), Color(h[i], (incident[frame * GRID * GRID + i] + h[i]) * wet, p.age[i] * wet, wet))
 
 
 func _baked(patch: int, point: Vector2, seconds: float) -> Color:
@@ -269,6 +386,7 @@ func advance(seconds: float, next_mode: int, next_strength: float, sea_seconds :
 		_live_time = -1.0
 		return
 	var started := Time.get_ticks_usec()
+	if dynamic_contacts and _live_time >= 0.0 and seconds >= _live_time and seconds - _live_time < 0.05: return
 	# Seed from the cached periodic solution on mode changes/time seeks; never
 	# integrate a giant elapsed step, or queue unlimited catch-up work.
 	if _live_time < 0.0 or seconds < _live_time or seconds - _live_time > 0.25:
@@ -278,15 +396,17 @@ func advance(seconds: float, next_mode: int, next_strength: float, sea_seconds :
 			for z in GRID:
 				for x in GRID:
 					var point: Vector2 = p.origin + Vector2(x,z) * CELL
-					p.h[x+z*GRID] = _baked(patch, point, target).r
-					p.prev[x+z*GRID] = _baked(patch, point, target - p.dt).r
-					p.age[x+z*GRID] = _baked(patch, point, target).b
-					p.velocity[x+z*GRID] = (_baked(patch, point, target).g-_baked(patch, point, target-p.dt).g)/float(p.dt)
+					p.h[x+z*GRID] = 0.0 if dynamic_contacts else _baked(patch, point, target).r
+					p.prev[x+z*GRID] = 0.0 if dynamic_contacts else _baked(patch, point, target - p.dt).r
+					p.age[x+z*GRID] = 8.0 if dynamic_contacts else _baked(patch, point, target).b
+					p.velocity[x+z*GRID] = 0.0 if dynamic_contacts else (_baked(patch, point, target).g-_baked(patch, point, target-p.dt).g)/float(p.dt)
 			p["time"] = target
 		_live_time = seconds
 	for patch in patches.size():
 		var p: Dictionary = patches[patch]
-		var ticks := mini(16, floori((float(p.clock) - float(p.get("time", p.clock))) / p.dt))
+		# A newly prepared/rebased patch can start at the current clock without history.
+		p["time"] = float(p.get("time",p.clock))
+		var ticks := mini(16, floori((float(p.clock) - float(p.time)) / p.dt))
 		for _tick in ticks:
 			p.time += p.dt
 			_step(p, p.time)
@@ -297,7 +417,8 @@ func advance(seconds: float, next_mode: int, next_strength: float, sea_seconds :
 			for x in GRID:
 				var i := x + z * GRID
 				var incident: float = lerpf(p.incident[frame*GRID*GRID+i], p.incident[((frame+1)%FRAMES)*GRID*GRID+i], part)
-				live_image.set_pixel(x, z+patch*GRID, Color(p.h[i], incident + p.h[i], p.age[i], float(p.fluid[i])))
+				var wet := float(p.fluid[i])
+				live_image.set_pixel(x, z+patch*GRID, Color(p.h[i], (incident + p.h[i]) * wet, p.age[i] * wet, wet))
 	live_texture.update(live_image)
 	_live_time = seconds
 	update_us = Time.get_ticks_usec() - started
@@ -311,7 +432,7 @@ func sample(point: Vector2) -> Vector2:
 		if local.x < 0 or local.y < 0 or local.x > GRID-1 or local.y > GRID-1: continue
 		var value := _baked(patch, point, float(p.clock)) if mode == 1 else _bilinear(live_image, local + Vector2(0, patch*GRID))
 		var rim := minf(minf(local.x,local.y), minf(GRID-1-local.x,GRID-1-local.y))
-		return Vector2(value.r, value.g) * strength * smoothstep(0.0, 5.0, rim) * value.a
+		return Vector2(value.r, value.g / maxf(value.a, 0.001)) * strength * smoothstep(0.0, 5.0, rim) * value.a
 	return Vector2.ZERO
 
 

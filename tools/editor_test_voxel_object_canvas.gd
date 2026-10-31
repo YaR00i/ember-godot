@@ -3,6 +3,7 @@ extends EditorPlugin
 ## Opt-in disposable-project plugin. Never enable in the authored checkout.
 const Session = preload("res://addons/ember_import/ember_voxel_object_session.gd")
 const Workspace = preload("res://addons/ember_import/ember_voxel_sculpt_workspace.gd")
+const Mechanics = preload("res://tools/fixtures/ember_editor_mechanics_fixture.gd")
 var errors: Array[String] = []
 
 func _enter_tree() -> void:
@@ -20,15 +21,16 @@ func _run() -> void:
 		await get_tree().process_frame
 	check(Engine.is_editor_hint(), "not an actual editor run")
 	var scene: Node
+	var fixture_scene := Mechanics.prepare_editor()
 	for attempt in 10:
-		EditorInterface.open_scene_from_path("res://scenes/test_pier.tscn")
+		EditorInterface.open_scene_from_path(fixture_scene)
 		for frame in 30:
 			await get_tree().process_frame
 		scene = EditorInterface.get_edited_scene_root()
-		if scene != null and scene.scene_file_path == "res://scenes/test_pier.tscn":
+		if scene != null and scene.scene_file_path == Mechanics.SCENE:
 			break
-	if scene == null or scene.scene_file_path != "res://scenes/test_pier.tscn":
-		push_error("Editor fixture could not activate test_pier after startup")
+	if scene == null or scene.scene_file_path != Mechanics.SCENE:
+		push_error("Editor mechanics fixture did not activate after startup")
 		get_tree().quit(1)
 		return
 	var prop = scene.get_node("Map/Props/BarrelA")
@@ -74,18 +76,19 @@ func _run() -> void:
 	check(packed.pack(scene) == OK, "editor pack")
 	var path := "user://editor-canvas-reopen-%d.tscn" % OS.get_process_id()
 	check(ResourceSaver.save(packed, path) == OK, "editor scene save")
-	var reopened := (ResourceLoader.load(path, "PackedScene", ResourceLoader.CACHE_MODE_IGNORE) as PackedScene).instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE)
-	check(reopened.get_node("Map/Props/BarrelA").model_id == new_id, "editor scene reopen")
-	reopened.free()
+	var reopened := ResourceLoader.load(path, "PackedScene", ResourceLoader.CACHE_MODE_IGNORE) as PackedScene
+	check(Mechanics.saved_property(reopened,"Map/Props/BarrelA","model_id") == new_id, "editor scene reopen")
 	canvas.anchor_right = 0
 	canvas.anchor_bottom = 0
 	for width in [1500, 1000, 1200, 1500]:
 		canvas.size = Vector2(width, 650)
 		for frame in 12:
 			await get_tree().process_frame
-		for control_name in ["SaveVoxelSurfacePilot", "VoxelSculptSidebarScroll", "VoxelSculptViewportContainer"]:
+		for control_name in ["SaveVoxelSurfacePilot", "VoxelWorkshopSidebar", "VoxelSculptViewportContainer"]:
 			var control := canvas.find_child(control_name, true, false) as Control
-			check(control.get_global_rect().end.x <= canvas.get_global_rect().end.x + 1, "width %d clips %s" % [width, control_name])
+			check(control != null, "missing layout control " + control_name)
+			if control != null:
+				check(control.get_global_rect().end.x <= canvas.get_global_rect().end.x + 1, "width %d clips %s" % [width, control_name])
 		check(canvas.size.x <= width + 1, "Canvas minimum exceeded %d" % width)
 	canvas.free()
 	if "--capture" in OS.get_cmdline_user_args() and DisplayServer.get_name() != "headless":
@@ -115,7 +118,4 @@ func _run() -> void:
 	for message in errors:
 		push_error(message)
 	print("editor_test_voxel_object_canvas: ", "PASS" if errors.is_empty() else "FAIL", " Engine.is_editor_hint=", Engine.is_editor_hint())
-	if errors.is_empty():
-		get_tree().root.propagate_notification(NOTIFICATION_WM_CLOSE_REQUEST)
-	else:
-		get_tree().quit(1)
+	get_tree().quit(0 if errors.is_empty() else 1)

@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="EmberShopResource" format=3]
+[ext_resource type="Script" path="res://scripts/ember_shop_resource.gd" id="1"]
+[resource]
+script = ExtResource("1")
+shop_id = "story_tea_shop"
+definition = {
+  "id": "story_tea_shop",
+  "nameRu": "Лавка у причала · проба",
+  "listings": [
+    {
+      "itemId": "qingxin_tea",
+      "buyPrice": 6,
+      "sellPrice": 3,
+      "stock": 6
+    },
+    {
+      "itemId": "herb",
+      "buyPrice": 3,
+      "sellPrice": 1,
+      "stock": 12
+    }
+  ]
+}

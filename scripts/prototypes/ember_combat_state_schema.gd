@@ -41,8 +41,13 @@ static func validation_errors(state: Dictionary) -> Array[String]:
 				errors.append("Боец %s: отсутствует поле %s." % [unit_id, key])
 		if str(unit.get("id", "")) != unit_id:
 			errors.append("Боец %s: внутренний id не совпадает с ключом." % unit_id)
-		if str(unit.get("team", "")) not in ["hero", "enemy"]:
+		if str(unit.get("team", "")) not in ["hero", "enemy", "object"]:
 			errors.append("Боец %s: неизвестная сторона." % unit_id)
+		if str(unit.get("team",""))=="object":
+			if not unit.get("worldItemId") is String or str(unit.get("worldItemId","")).is_empty() or unit_id!="world_item:"+str(unit.get("worldItemId","")):errors.append("Некорректная идентичность предмета боя.")
+			if not unit.get("worldItemBreakable") is bool:errors.append("Некорректная прочность предмета боя.")
+			if not unit.get("worldItemMass") is float or not is_finite(unit.worldItemMass) or unit.worldItemMass<=0:errors.append("Некорректная масса предмета боя.")
+		elif unit.has("worldItemId"):errors.append("Предмет боя не может иметь сторону героя или противника.")
 		if typeof(unit.get("statuses", null)) != TYPE_DICTIONARY:
 			errors.append("Боец %s: statuses должен быть Dictionary." % unit_id)
 		else:

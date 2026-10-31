@@ -3,6 +3,10 @@ extends SceneTree
 
 const Terrain = preload("res://scripts/prototypes/ember_terrain_pilot_resource.gd")
 var _failed := false
+class PendingFoliage extends Node3D:
+	var _dirty:=true
+	var _rebuilding:=false
+	func detail_preparation_pending()->bool:return _dirty or _rebuilding
 
 
 func _initialize() -> void:
@@ -46,6 +50,9 @@ func _scene(with_water: bool) -> Node3D:
 	map.authored_size_blocks = Vector2i(8, 8)
 	if not with_water:
 		scene.get_node("PlanarReflection").free()
+	else:
+		var pending:=PendingFoliage.new();pending.name="PendingFoliage"
+		map.add_child(pending);pending.add_to_group(&"ember_grass_patches")
 	root.add_child(scene)
 	current_scene = scene
 	return scene
@@ -83,7 +90,9 @@ func _run() -> void:
 				return
 	_check(saw_water_wait, "fixture did not exercise the interval between ground and water")
 	_check(study._prepared, "water preparation timed out")
-	for frame in 12: await process_frame
+	_check(not scene._startup_complete and scene._player==null,"foliage preparation must keep cover and delay player")
+	scene.get_node("Map/PendingFoliage")._dirty=false
+	while not scene._startup_complete and Time.get_ticks_msec()<deadline:await process_frame
 	Input.action_release("move_east")
 	_check(scene._player != null, "hero never spawned after preparation")
 	_check(study._follow != null, "startup camera is missing")

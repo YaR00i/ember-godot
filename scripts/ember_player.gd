@@ -10,15 +10,21 @@ const ACTION_MESSAGE_MS := 1400
 const WaterContact := preload("res://scripts/ember_water_contact_3d.gd")
 const PartyState := preload("res://scripts/ember_party_state.gd")
 const HeroScale := preload("res://scripts/ember_exploration_hero_scale.gd")
+const HoshiVisual := preload("res://scripts/ember_hoshi_visual.gd")
+const WingFlightMotion := preload("res://scripts/ember_wing_flight_motion.gd")
+const WingFlapMotion := preload("res://scripts/ember_wing_flap_motion.gd")
 
 signal respawn_requested
+signal flight_collision
 
 @export var tile_size := 16.0
 @export var debug_damage_amount := 0.0
 
 var _prompt := ""
+var _interaction_forward := Vector3.FORWARD
 var _action_message := ""
 var _action_message_until_ms := 0
+var _next_world_strike_ms := 0
 var interact_hud: Label
 var camera_rig: EmberFollowCamera
 var interaction_ui: EmberInteractionUi
@@ -39,6 +45,26 @@ var _step_active := false
 var _step_top := 0.0
 var _step_direction := Vector3.ZERO
 var _step_elapsed := 0.0
+var _hoshi_visual: Node3D
+var flight_motion: RefCounted
+
+func install_hoshi_test_visual() -> bool:
+	if is_instance_valid(_hoshi_visual):return true
+	var visual:=HoshiVisual.new();visual.name="Hoshi"
+	add_child(visual)
+	if not visual.setup(self,tile_size):
+		visual.queue_free();push_warning("Hoshi local avatar is missing; keeping the placeholder.");return false
+	_hoshi_visual=visual;_refresh_active_visual();return true
+
+func _sync_hoshi_visual() -> void:
+	if not is_instance_valid(_hoshi_visual):return
+	var active:=controlled_hero_id==PartyState.LEADER_ID
+	_hoshi_visual.visible=active
+	get_node("Viz").visible=not active;get_node("Facing").visible=not active
+	if active:
+		var height:float=_hoshi_visual.height_m*tile_size
+		get_node("Shape").shape.height=height;get_node("Shape").position.y=height*0.5
+		if _status_label!=null:_status_label.position.y=height+2.3*tile_size/16.0
 
 
 func _ready() -> void:
@@ -50,7 +76,7 @@ func _ready() -> void:
 	_body_radius = radius
 	_applied_hero_scale = PartyState.LEADER_ID
 	collision_layer = 2
-	collision_mask = 1
+	collision_mask = 1 | 4
 	floor_snap_length = STEP_VOXELS * vw
 	var col := CollisionShape3D.new()
 	col.name = "Shape"
@@ -119,12 +145,71 @@ func _exit_tree() -> void:
 			state.progress_changed.disconnect(_refresh_active_visual)
 
 
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		if _ui_blocks_movement() or flight_motion != null: return
+		world_strike()
+		get_viewport().set_input_as_handled()
+
+func world_strike() -> bool:
+	var state := _progress()
+	if _ui_blocks_movement() or flight_motion != null or (state != null and state.combat_party_locked): return false
+	if has_meta("ember_carried_item") or Time.get_ticks_msec() < _next_world_strike_ms: return false
+	_next_world_strike_ms = Time.get_ticks_msec() + 350
+	_show_world_strike()
+	var direction := interaction_forward()
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = SphereShape3D.new(); query.shape.radius = tile_size * 0.5
+	query.transform.origin = global_position + Vector3.UP * tile_size * 0.5 + direction * tile_size
+	query.collision_mask = 4; query.collide_with_areas = true; query.exclude = [get_rid()]
+	var space := get_world_3d().direct_space_state
+	var targets := space.intersect_shape(query, 16)
+	targets.sort_custom(func(a, b): return global_position.distance_squared_to(a.collider.global_position) < global_position.distance_squared_to(b.collider.global_position))
+	for result in targets:
+		var body: Node3D = result.collider
+		if not body.has_method("receive_world_hit") or body.is_queued_for_deletion(): continue
+		var shape := body.get_node_or_null("BodyShape") as CollisionShape3D
+		var target := body.to_global(shape.position) if shape != null else body.global_position
+		var ray := PhysicsRayQueryParameters3D.create(global_position + Vector3.UP * tile_size * 0.5, target, 1 | 4)
+		ray.collide_with_areas = true; ray.exclude = [get_rid()]
+		var hit := space.intersect_ray(ray)
+		if not hit.is_empty() and hit.collider == body:
+			var destroyed: bool = body.receive_world_hit(self, direction)
+			_action_message = str(body.world_hit_feedback()) if destroyed and body.has_method("world_hit_feedback") else "Удар: ящик разбит" if destroyed else "Удар: предмет цел"
+			_action_message_until_ms = Time.get_ticks_msec() + ACTION_MESSAGE_MS
+			return destroyed
+	return false
+
+func _show_world_strike() -> void:
+	var mesh := ImmediateMesh.new()
+	mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+	for index in 13:
+		var angle := -1.1 + 2.2 * float(index) / 12.0
+		for radius in [tile_size * 0.85, tile_size * 1.1]:
+			mesh.surface_set_normal(Vector3.UP)
+			mesh.surface_add_vertex(Vector3(sin(angle) * radius, 0, -cos(angle) * radius))
+	mesh.surface_end()
+	var arc := MeshInstance3D.new(); arc.mesh = mesh
+	arc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	material.albedo_color = Color(1, 0.94, 0.7, 0.85); arc.material_override = material
+	get_tree().current_scene.add_child(arc)
+	arc.add_to_group("ember_world_strike_effects")
+	arc.global_transform = Transform3D(Basis.looking_at(interaction_forward()), global_position + Vector3.UP * tile_size * 0.5)
+	var tween := arc.create_tween()
+	tween.tween_property(material, "albedo_color:a", 0.0, 0.18)
+	tween.tween_callback(arc.queue_free)
+
 func _ensure_actions() -> void:
 	_bind("move_north", KEY_W)
 	_bind("move_south", KEY_S)
 	_bind("move_west", KEY_A)
 	_bind("move_east", KEY_D)
 	_bind("interact", KEY_F)
+	_bind("throw_item", KEY_G)
 	_bind("inventory", KEY_I)
 	_bind("quest_journal", KEY_Q)
 	_bind("party_follow_toggle", KEY_T)
@@ -145,6 +230,9 @@ func _bind(action: String, key: Key) -> void:
 
 
 func _physics_process(dt: float) -> void:
+	if flight_motion != null:
+		_tick_flight(dt)
+		return
 	if _defeated:
 		_cancel_step()
 		velocity.x = 0.0
@@ -169,6 +257,9 @@ func _physics_process(dt: float) -> void:
 		)
 	var camera_yaw := camera_rig.yaw if is_instance_valid(camera_rig) else 0.0
 	var wish := EmberCameraMovement.world_direction(input_axis, camera_yaw) * (SPEED_BLOCKS * tile_size)
+	if not wish.is_zero_approx():
+		_interaction_forward = wish.normalized()
+	if is_instance_valid(_hoshi_visual) and _hoshi_visual.visible and Input.is_physical_key_pressed(KEY_SHIFT):wish*=0.4
 	velocity.x = wish.x
 	velocity.z = wish.z
 	var motion := Vector3(wish.x, 0.0, wish.z) * dt
@@ -192,6 +283,19 @@ func _physics_process(dt: float) -> void:
 	else:
 		velocity.y = 0.0
 	move_and_slide()
+	if not _ui_blocks_movement():
+		var pushed := {}
+		for index in get_slide_collision_count():
+			var hit := get_slide_collision(index)
+			var body := hit.get_collider()
+			if body is RigidBody3D and body.has_method("push_from") and not pushed.has(body.get_instance_id()) and absf(hit.get_normal().y) < 0.5:
+				pushed[body.get_instance_id()] = true
+				body.push_from(wish.normalized(), wish.length())
+		if Input.is_action_just_pressed("throw_item") and has_meta("ember_carried_item"):
+			var held: WeakRef = get_meta("ember_carried_item")
+			if is_instance_valid(held.get_ref()):
+				_action_message = held.get_ref().throw_from(self)
+				_action_message_until_ms = Time.get_ticks_msec() + ACTION_MESSAGE_MS
 	if _step_active:
 		_finish_step_if_supported()
 	_prompt = "" if _ui_blocks_movement() else _nearest_prompt()
@@ -229,6 +333,76 @@ func _physics_process(dt: float) -> void:
 		_apply_debug_damage()
 	if interact_hud:
 		interact_hud.text = _hud_text()
+
+
+func begin_wing_flight(pose: Transform3D, speed: float = 26.0) -> void:
+	_cancel_step()
+	flight_motion = WingFlightMotion.new()
+	flight_motion.reset(pose.basis.get_rotation_quaternion(), speed)
+	global_transform = pose
+	velocity = flight_motion.velocity
+	motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
+	floor_snap_length = 0.0
+	get_node("Shape").position = Vector3.ZERO
+	get_node("Shape").rotation.x = PI * 0.5
+	get_node("Viz").hide()
+	get_node("Facing").hide()
+	_status_label.hide()
+	if is_instance_valid(camera_rig):
+		camera_rig.wing_flight_view = true
+		camera_rig.reset_follow_height()
+
+
+func end_wing_flight() -> void:
+	flight_motion = null
+	global_basis = Basis.IDENTITY
+	velocity = Vector3.ZERO
+	motion_mode = CharacterBody3D.MOTION_MODE_GROUNDED
+	floor_snap_length = STEP_VOXELS * tile_size / 16.0
+	get_node("Shape").rotation = Vector3.ZERO
+	get_node("Shape").position.y = get_node("Shape").shape.height * 0.5
+	get_node("Viz").show()
+	get_node("Facing").show()
+	_status_label.show()
+	_refresh_active_visual()
+	if is_instance_valid(camera_rig):
+		camera_rig.wing_flight_view = false
+		camera_rig.reset_follow_height()
+
+
+func _tick_flight(dt: float) -> void:
+	var controls := Vector3(
+		float(Input.is_physical_key_pressed(KEY_S)) - float(Input.is_physical_key_pressed(KEY_W)),
+		float(Input.is_physical_key_pressed(KEY_Q)) - float(Input.is_physical_key_pressed(KEY_E)),
+		float(Input.is_physical_key_pressed(KEY_D)) - float(Input.is_physical_key_pressed(KEY_A)))
+	var throttle := float(Input.is_physical_key_pressed(KEY_SPACE))
+	if flight_motion is WingFlapMotion:
+		throttle = float(Input.is_physical_key_pressed(KEY_CTRL))
+		flight_motion.ground_supported = is_on_floor()
+		motion_mode = CharacterBody3D.MOTION_MODE_GROUNDED if flight_motion.phase in [WingFlapMotion.Phase.STANDING, WingFlapMotion.Phase.JUMPING] else CharacterBody3D.MOTION_MODE_FLOATING
+	var brake := float(Input.is_physical_key_pressed(KEY_SHIFT))
+	var pads := Input.get_connected_joypads()
+	if not pads.is_empty():
+		var pad := pads[0]
+		var stick := Vector2(Input.get_joy_axis(pad, JOY_AXIS_LEFT_X), Input.get_joy_axis(pad, JOY_AXIS_LEFT_Y))
+		var magnitude := stick.length()
+		stick = stick.normalized() * clampf((magnitude - 0.18) / 0.82, 0.0, 1.0)
+		controls.x += stick.y
+		controls.z += stick.x
+		controls.y += float(Input.is_joy_button_pressed(pad, JOY_BUTTON_LEFT_SHOULDER)) - float(Input.is_joy_button_pressed(pad, JOY_BUTTON_RIGHT_SHOULDER))
+		throttle = maxf(throttle, Input.get_joy_axis(pad, JOY_AXIS_TRIGGER_RIGHT))
+		brake = maxf(brake, Input.get_joy_axis(pad, JOY_AXIS_TRIGGER_LEFT))
+	if _ui_blocks_movement():
+		return
+	flight_motion.step(dt, controls.clamp(Vector3(-1, -1, -1), Vector3.ONE), throttle, brake)
+	global_basis = Basis(flight_motion.orientation)
+	velocity = flight_motion.velocity
+	move_and_slide()
+	flight_motion.velocity = velocity
+	if flight_motion is WingFlapMotion:
+		flight_motion.ground_supported = is_on_floor()
+	if get_slide_collision_count() > 0:
+		flight_collision.emit()
 
 
 func _try_start_step(motion: Vector3) -> void:
@@ -305,6 +479,7 @@ func _hud_text() -> String:
 		return "%s\n%s" % [health, _action_message]
 	if _prompt.is_empty():
 		var controls := "WASD ходить · Tab герой · F действие · I сумка · Q задания · T строй отряда · Esc меню · RMB камера"
+		if is_instance_valid(_hoshi_visual) and _hoshi_visual.visible:controls=controls.replace("WASD ходить","WASD бег · Shift шаг")
 		if debug_damage_amount > 0.0:
 			controls += " · H тест урона"
 		return "%s\n%s" % [health, controls]
@@ -392,6 +567,7 @@ func _apply_hero_scale() -> void:
 
 func _refresh_active_visual() -> void:
 	_apply_hero_scale()
+	_sync_hoshi_visual()
 	var state := _progress()
 	var view := state.party_member_view(controlled_hero_id) if state != null else {}
 	var definition := PartyState.unit_definition(controlled_hero_id)
@@ -439,12 +615,19 @@ func _enter_defeat() -> void:
 
 
 func _nearest() -> Node3D:
+	if has_meta("ember_carried_item"):
+		var held: WeakRef = get_meta("ember_carried_item")
+		var body := held.get_ref() as Node3D
+		if is_instance_valid(body) and body.has_node("Pickup"):
+			return body.get_node("Pickup")
 	var best: Node3D = null
 	var best_d := 12.0
 	for node in get_tree().get_nodes_in_group("ember_interact"):
 		var area := node as Node3D
 		if area == null or (not area is EmberInteract and not area is EmberRegion):
 			continue
+		if not area.is_visible_in_tree() or area.is_queued_for_deletion(): continue
+		if area is EmberInteract and not area.runtime_available(_progress().flags if _progress() != null else {}): continue
 		var d := (
 			(area as EmberInteract).distance_to_world(global_position)
 			if area is EmberInteract
@@ -463,6 +646,9 @@ func _nearest_prompt() -> String:
 	if area is EmberInteract:
 		return (area as EmberInteract).prompt()
 	return (area as EmberRegion).prompt()
+
+func interaction_forward() -> Vector3:
+	return _interaction_forward
 
 
 func _try_interact() -> void:
@@ -499,7 +685,7 @@ func activate_interact(interact: EmberInteract) -> bool:
 	):
 		message = interaction_ui.activate(interact)
 	else:
-		message = interact.activate()
+		message = interact.activate_from(self)
 	if not message.is_empty():
 		_action_message = message
 		_action_message_until_ms = Time.get_ticks_msec() + ACTION_MESSAGE_MS

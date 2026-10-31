@@ -9,6 +9,8 @@ const EmberVoxelObjectLibrary = preload("res://addons/ember_import/ember_voxel_o
 const EditorPreparation = preload("res://addons/ember_import/ember_editor_preparation.gd")
 var _editor_preparation
 const ObjectBrush = preload("res://addons/ember_import/ember_voxel_object_brush.gd")
+const DetailBrush = preload("res://addons/ember_import/ember_detail_brush.gd")
+var _detail_brush: Node
 var _object_brush: Node
 var _object_brush_button: Button
 const EmberVoxelPropGizmo = preload("res://addons/ember_import/ember_voxel_prop_gizmo.gd")
@@ -34,6 +36,12 @@ var _world_editor_dock_added := false
 const EmberVoxelSculptModel = preload("res://addons/ember_import/ember_voxel_sculpt_model.gd")
 const EmberInspectorActions = preload("res://addons/ember_import/ember_object_inspector_actions.gd")
 const EmberGraphWorkspace = preload("res://addons/ember_import/ember_graph_workspace.gd")
+var _mechanism_workspace: Window
+var _mechanism_world_wires: HBoxContainer
+var _mechanism_inspector: VBoxContainer
+var _mechanism_dock: EditorDock
+var _mechanism_dock_added := false
+var _story_authoring_dialog: ConfirmationDialog
 const COMBAT_LAB_SCENE := "res://scenes/combat_lab.tscn"
 const COMBAT_ARENA_E2_SCENE := "res://scenes/combat/arenas/colored_crossing.tscn"
 const COMBAT_ARENA_E3_SCENE := "res://scenes/combat/arenas/thaw_keeper.tscn"
@@ -72,7 +80,6 @@ var _compact_map_panel: VBoxContainer
 var _placement_bottom_button: Button
 var _shape_bottom_button: Button
 var _duplicate_bottom_button: Button
-var _merge_bottom_button: Button
 var _split_bottom_button: Button
 var _conversion_bottom_button: Button
 var _material_pattern_bottom_button: Button
@@ -102,21 +109,10 @@ func _enter_tree() -> void:
 	create_shape.pressed.connect(_new_voxel_shape)
 	_voxel_object_toolbar.add_child(create_shape)
 	var edit_object := Button.new()
-	edit_object.text = "Объект / сборка в Canvas"
-	edit_object.tooltip_text = "Выберите voxel-объект или группу секций. Сборка открывается общим редактируемым холстом."
-	edit_object.pressed.connect(func():
-		var selection := EditorInterface.get_selection().get_selected_nodes()
-		if selection.size() == 1 and selection[0] is EmberVoxelProp:
-			_voxel_canvas_action(selection[0],"selected")
-			return
-		if selection.size() == 1 and selection[0] is Node3D and not selection[0] is EmberVoxelProp:
-			_open_voxel_assembly(selection[0])
-			return
-		if is_instance_valid(_last_selected_voxel):
-			_voxel_canvas_action(_last_selected_voxel, "selected")
-		else:
-			push_warning("Сначала выберите voxel-объект в сцене.")
-	)
+	edit_object.name = "OpenSelectedCanvas"
+	edit_object.text = "Редактировать в Canvas"
+	edit_object.tooltip_text = "Один объект — лепить и красить; несколько — расположить и соединить в одном Canvas. Общий исходник не меняется."
+	edit_object.pressed.connect(_open_selected_canvas)
 	_voxel_object_toolbar.add_child(edit_object)
 	var place_object := Button.new()
 	place_object.text = "Точная расстановка…"
@@ -148,7 +144,7 @@ func _enter_tree() -> void:
 		elif id == 6:
 			_walk_surface_selected()
 		elif id in [8,9]:
-			_merge_voxel_selected(id == 9)
+			_open_selected_canvas(id == 9)
 		elif id == 10:
 			make_bottom_panel_item_visible(_dock)
 			_dock.refresh_scene_voxels()
@@ -168,6 +164,8 @@ func _enter_tree() -> void:
 	add_control_to_container(EditorPlugin.CONTAINER_SPATIAL_EDITOR_MENU, _voxel_object_toolbar)
 	_object_brush = ObjectBrush.new()
 	add_child(_object_brush)
+	_detail_brush = DetailBrush.new()
+	add_child(_detail_brush)
 	_object_brush_button = Button.new()
 	_object_brush_button.text = "Кисть объектов…"
 	_object_brush_button.pressed.connect(_open_object_brush_settings)
@@ -237,6 +235,8 @@ func _enter_tree() -> void:
 	_graph_workspace.name = "EmberGraphWorkspace"
 	_graph_workspace.configure(get_editor_interface(), get_undo_redo())
 	_graph_workspace.action_save_requested.connect(_save_action_script_from_graph)
+	_graph_workspace.story_authoring_requested.connect(_open_story_authoring)
+	_graph_workspace.pressure_gate_requested.connect(_create_pressure_gate)
 	_graph_workspace.dialogue_save_requested.connect(_save_dialogue_from_graph)
 	_graph_workspace.quest_save_requested.connect(_save_quest_from_graph)
 	_graph_workspace.shop_save_requested.connect(_save_shop_from_editor)
@@ -245,6 +245,10 @@ func _enter_tree() -> void:
 	_graph_workspace.system_file_requested.connect(_show_game_systems_file)
 	_graph_workspace.scene_node_requested.connect(_select_graph_scene_node)
 	_graph_workspace.quest_event_bind_requested.connect(_bind_graph_quest_event)
+	_graph_workspace.quest_conversation_bind_requested.connect(_bind_graph_quest_conversation)
+	_graph_workspace.quest_conversation_create_requested.connect(_create_graph_quest_conversation)
+	_graph_workspace.quest_object_placement_requested.connect(_create_graph_quest_object_placement)
+	_graph_workspace.quest_reach_zone_requested.connect(_create_graph_quest_reach_zone)
 	_graph_workspace.quest_event_unbind_requested.connect(_unbind_graph_quest_event)
 	_graph_workspace.quest_event_remove_requested.connect(_remove_graph_quest_event)
 	EditorInterface.get_editor_main_screen().add_child(_graph_workspace)
@@ -347,13 +351,6 @@ func _enter_tree() -> void:
 	_world_editor._duplicate_workspace.add_child(_world_editor.duplicate_panel.parameters_panel)
 	_world_editor.duplicate_panel.edit_closed.connect(_world_editor._close_duplicate_workspace)
 	_world_editor.duplicate_panel.created.connect(func(step: Vector3): _last_duplicate_step = step)
-	_world_editor.merge_panel = preload("res://addons/ember_import/ember_voxel_merge_dialog.gd").new()
-	_world_editor.merge_panel.use_dock_layout()
-	_merge_bottom_button = add_control_to_bottom_panel(_world_editor.merge_panel,"Склейка")
-	_merge_bottom_button.hide(); _world_editor.merge_panel.hide()
-	_world_editor._merge_workspace.add_child(_world_editor.merge_panel.parameters_panel)
-	_world_editor.merge_panel.can_commit = _voxel_canvas_is_clean
-	_world_editor.merge_panel.edit_closed.connect(_world_editor._close_merge_workspace)
 	_world_editor.split_panel = preload("res://addons/ember_import/ember_voxel_split_dialog.gd").new()
 	_world_editor.split_panel.use_dock_layout()
 	_split_bottom_button = add_control_to_bottom_panel(_world_editor.split_panel,"Секции объекта")
@@ -372,6 +369,19 @@ func _enter_tree() -> void:
 	_world_editor.configure_panel_host()
 	set_input_event_forwarding_always_enabled()
 	set_force_draw_over_forwarding_enabled()
+	_mechanism_world_wires = preload("res://addons/ember_import/ember_mechanism_world_wires.gd").new()
+	_mechanism_world_wires.setup(_interact_actions, update_overlays, func(circuit, id):
+		_create_pressure_gate()
+		if is_instance_valid(_mechanism_inspector): _mechanism_inspector.focus_component(circuit, id)
+	, func():
+		var selected := EditorInterface.get_selection().get_selected_nodes()
+		return selected[0] if selected.size() == 1 and selected[0] is Node3D else null
+	)
+	_mechanism_world_wires.use_inspector_mode()
+	_mechanism_world_wires.editing_changed.connect(_set_mechanism_editing)
+	EditorInterface.get_selection().selection_changed.connect(_refresh_mechanism_selection)
+	add_control_to_container(EditorPlugin.CONTAINER_SPATIAL_EDITOR_MENU, _mechanism_world_wires)
+	_mechanism_world_wires.set_scene(EditorInterface.get_edited_scene_root())
 	print("[Ember Migration] v2.64.1 loaded: staged combat command selection")
 
 	if not scene_changed.is_connected(_on_scene_changed):
@@ -383,6 +393,7 @@ func _enter_tree() -> void:
 	if is_instance_valid(_editor_preparation):
 		_editor_preparation.finished.connect(func(success: bool, elapsed_ms: int, failures: int):
 			print("[Ember] Editor preparation: %s · %d ms · %d preview failures" % ["ready" if success else "continued", elapsed_ms, failures])
+			_object_library._on_library_visibility_changed()
 		)
 		_editor_preparation.begin.call_deferred(_object_library, EditorInterface.get_resource_filesystem())
 
@@ -415,6 +426,19 @@ func _apply_water_preview_settings(scene_path: String, node_path: NodePath, valu
 
 
 func _exit_tree() -> void:
+	_clear_mechanism_inspector()
+	var mechanism_selection := EditorInterface.get_selection()
+	if mechanism_selection != null and mechanism_selection.selection_changed.is_connected(_refresh_mechanism_selection):
+		mechanism_selection.selection_changed.disconnect(_refresh_mechanism_selection)
+	if is_instance_valid(_mechanism_world_wires):
+		remove_control_from_container(EditorPlugin.CONTAINER_SPATIAL_EDITOR_MENU, _mechanism_world_wires)
+		_mechanism_world_wires.queue_free()
+	_mechanism_world_wires = null
+	if is_instance_valid(_story_authoring_dialog):
+		_story_authoring_dialog.queue_free()
+	_story_authoring_dialog = null
+	if is_instance_valid(_mechanism_workspace): _mechanism_workspace.queue_free()
+	_mechanism_workspace = null
 	if _terrain_cache_export != null:
 		remove_export_plugin(_terrain_cache_export)
 		_terrain_cache_export = null
@@ -440,9 +464,6 @@ func _exit_tree() -> void:
 	if is_instance_valid(_world_editor) and is_instance_valid(_world_editor.duplicate_panel):
 		remove_control_from_bottom_panel(_world_editor.duplicate_panel)
 		_world_editor.duplicate_panel.free()
-	if is_instance_valid(_world_editor) and is_instance_valid(_world_editor.merge_panel):
-		remove_control_from_bottom_panel(_world_editor.merge_panel)
-		_world_editor.merge_panel.free()
 	if is_instance_valid(_world_editor) and is_instance_valid(_world_editor.split_panel):
 		remove_control_from_bottom_panel(_world_editor.split_panel)
 		_world_editor.split_panel.free()
@@ -465,6 +486,9 @@ func _exit_tree() -> void:
 	if is_instance_valid(_object_brush):
 		_object_brush.free()
 		_object_brush = null
+	if is_instance_valid(_detail_brush):
+		_detail_brush.free()
+		_detail_brush = null
 	if is_instance_valid(_walk_surface_panel):
 		remove_control_from_bottom_panel(_walk_surface_panel)
 		_walk_surface_panel.free()
@@ -734,15 +758,8 @@ func _open_voxel_assembly(group: Node3D) -> void:
 func _open_voxel_object(prop: EmberVoxelProp, shared: bool) -> void:
 	if not is_instance_valid(prop):
 		return
-	if not shared and is_instance_valid(_world_editor) and (_world_editor.active or _world_editor.sessions.entries.has(prop.get_instance_id())):
-		_world_editor.cancel_stroke()
-		if not _world_editor.entry.is_empty(): _world_editor.entry.scope = _world_editor.edit_region
-		_world_editor.entry = _world_editor.sessions.open_object(prop,EditorInterface.get_edited_scene_root())
-		if _world_editor.entry.is_empty(): push_warning(_world_editor.sessions.error); return
-		_world_editor.edit_region = _world_editor.entry.get("scope",Rect2i())
-		_world_editor.target_choice.select(1)
-		_world_editor._refresh_palette()
-		_world_editor.open_canvas()
+	if not shared:
+		_world_editor.open_object_canvas(prop)
 		return
 	var session := preload("res://addons/ember_import/ember_voxel_object_session.gd").new()
 	if not session.open(prop, get_editor_interface().get_edited_scene_root(), get_undo_redo(), shared):
@@ -797,6 +814,10 @@ func _open_surface_canvas(
 
 
 func _connect_generator_library(workspace: EmberVoxelSculptWorkspace) -> void:
+	workspace.configure_forms(_world_editor.sessions,func():
+		if workspace._object_session!=null:_world_editor.scene=workspace._object_session._root.get_ref()
+		_world_editor.entry=workspace._world_entry
+		return _world_editor.save_all())
 	if not workspace.generator_assets_changed.is_connected(_refresh_generator_library):
 		workspace.generator_assets_changed.connect(_refresh_generator_library)
 
@@ -915,6 +936,11 @@ func _make_visible(visible: bool) -> void:
 
 
 func _forward_3d_gui_input(viewport_camera: Camera3D, event: InputEvent) -> int:
+	if is_instance_valid(_mechanism_world_wires) and _mechanism_world_wires.is_editing():
+		_stop_scene_object_brush()
+		return _mechanism_world_wires.forward_input(viewport_camera, event)
+	if is_instance_valid(_detail_brush) and _detail_brush.active:
+		return _detail_brush.forward_input(viewport_camera, event)
 	if is_instance_valid(_world_editor) and (_world_editor.active or _world_editor._panel_host.blocks_viewport_tools()):
 		return _world_editor.forward_input(viewport_camera,event)
 	if is_instance_valid(_walk_surface_panel):
@@ -944,6 +970,11 @@ func _forward_3d_gui_input(viewport_camera: Camera3D, event: InputEvent) -> int:
 
 
 func _forward_3d_force_draw_over_viewport(overlay: Control) -> void:
+	if is_instance_valid(_mechanism_world_wires) and _mechanism_world_wires.active:
+		if not is_instance_valid(_mechanism_world_wires._camera):
+			_mechanism_world_wires._camera = EditorInterface.get_editor_viewport_3d(0).get_camera_3d()
+		_mechanism_world_wires.draw_overlay(overlay)
+		return
 	if is_instance_valid(_world_editor) and _world_editor._panel_host.blocks_viewport_tools(): return
 	if is_instance_valid(_world_editor) and _world_editor.active:
 		_world_editor.draw_overlay(overlay)
@@ -982,6 +1013,8 @@ func _get_unsaved_status(for_scene: String) -> String:
 	return _world_editor.unsaved_status(for_scene) if is_instance_valid(_world_editor) else ""
 
 func _apply_changes() -> void:
+	var canvas:=EditorInterface.get_editor_main_screen().find_child(SURFACE_WORKSPACE_NODE,true,false) as EmberVoxelSculptWorkspace
+	if canvas!=null and canvas._canvas_forms!=null:canvas._forms_panel.finish_input()
 	# Godot calls this before serializing a scene. West/north preview temporarily
 	# offsets displayed groups, so restore them before scene data is packed.
 	if is_instance_valid(_compact_extension_dialog) and is_instance_valid(_world_editor):
@@ -997,7 +1030,7 @@ func _save_external_data() -> void:
 	# Godot has already serialized the scene before this hook. Publish resources
 	# and the updated native PackedScene here, before Godot records its final
 	# modified time/close state. Never start a second EditorInterface Save task.
-	if is_instance_valid(_world_editor) and not _world_editor.sessions.saving and _world_editor.sessions.dirty_count(_world_editor.scene) > 0:
+	if is_instance_valid(_world_editor) and not _world_editor.sessions.saving and (_world_editor.sessions.dirty_count(_world_editor.scene) > 0 or _world_editor.sessions.needs_plan_storage(_world_editor.scene)):
 		_world_editor.save_all(true)
 
 func _build() -> bool:
@@ -1053,6 +1086,93 @@ func _bind_graph_quest_event(
 	)
 
 
+func _bind_graph_quest_conversation(scene_path: NodePath, event_token: String, dialogue_id: String, quest_document: Dictionary, handover_costs: Dictionary, choice_outcome: Dictionary, conversation_options: Dictionary) -> void:
+	var root := EditorInterface.get_edited_scene_root()
+	if root == null or _interact_actions == null:
+		return
+	var target := root.get_node_or_null(scene_path)
+	if not _interact_actions.bind_quest_conversation(target, event_token, dialogue_id, root, quest_document, null, Vector3.ZERO, handover_costs, choice_outcome, conversation_options):
+		push_warning("Разговор не назначен. Нужны NPC этого задания и действующий диалог. Напоминание не может содержать события этого квеста или награду; награда по конкретному ответу требует отдельной цели.")
+		return
+	EditorInterface.mark_scene_as_unsaved()
+	_graph_workspace.call_deferred("accept_quest_binding_save", "Разговор цели назначен · Ctrl+Z отменяет", true)
+
+
+func _create_graph_quest_conversation(anchor_path: NodePath, display_name: String, event_token: String, dialogue_id: String, quest_document: Dictionary, handover_costs: Dictionary, choice_outcome: Dictionary, conversation_options: Dictionary) -> void:
+	var root := EditorInterface.get_edited_scene_root()
+	if root == null or _interact_actions == null:
+		return
+	var anchor := root.get_node_or_null(anchor_path) as Node3D if not anchor_path.is_empty() else null
+	var placement := EmberSceneAuthoring.quest_npc_position(root, anchor)
+	if not bool(placement.get("ok", false)):
+		push_warning(str(placement.get("error", "Нет места для NPC.")))
+		return
+	var npc := _interact_actions.create_quest_conversation(root, placement.position, display_name, event_token, dialogue_id, quest_document, handover_costs, choice_outcome, conversation_options)
+	if npc == null:
+		push_warning("Не удалось создать собеседника. Проверьте задание и выбранный диалог.")
+		return
+	var selection := EditorInterface.get_selection()
+	selection.clear()
+	selection.add_node(npc)
+	EditorInterface.mark_scene_as_unsaved()
+	_graph_workspace.call_deferred("accept_quest_binding_save", "Создан собеседник %s · сохраните сцену Ctrl+S · Ctrl+Z отменяет" % display_name, true)
+
+
+func _create_graph_quest_reach_zone(anchor_path: NodePath, objective_id: String, quest_document: Dictionary) -> void:
+	var root := EditorInterface.get_edited_scene_root()
+	if root == null or _interact_actions == null:
+		return
+	for entry in EmberQuestUsageIndex.entries(quest_document):
+		if str(entry.get("targetId", "")) == objective_id:
+			push_warning("Эта цель уже связана с событием. Добавьте отдельную цель для места.")
+			return
+	var anchor := root.get_node_or_null(anchor_path) as Node3D if not anchor_path.is_empty() else null
+	var placement := EmberSceneAuthoring.quest_npc_position(root, anchor)
+	if not placement.get("ok", false):
+		push_warning(str(placement.get("error", "Выберите место на карте.")))
+		return
+	var zone := _interact_actions.create_quest_reach_zone(root, placement.position + Vector3.UP * 4.0, objective_id, quest_document)
+	if zone == null:
+		push_warning("Не удалось создать место цели. Проверьте выбранную цель.")
+		return
+	var selection := EditorInterface.get_selection()
+	selection.clear()
+	selection.add_node(zone)
+	EditorInterface.mark_scene_as_unsaved()
+	_graph_workspace.call_deferred("accept_quest_binding_save", "Место создано · переместите зону на карте · Ctrl+S сохранить сцену")
+
+
+func _create_graph_quest_object_placement(anchor_path: NodePath, objective_id: String, quest_document: Dictionary) -> void:
+	var root := EditorInterface.get_edited_scene_root()
+	if root == null or _interact_actions == null:
+		return
+	for entry in EmberQuestUsageIndex.entries(quest_document):
+		if str(entry.get("targetId", "")) == objective_id:
+			push_warning("Эта цель уже связана с событием. Добавьте отдельную цель для ящика.")
+			return
+	var anchor := root.get_node_or_null(anchor_path) as Node3D if not anchor_path.is_empty() else null
+	var placement := EmberSceneAuthoring.quest_npc_position(root, anchor)
+	if not placement.get("ok", false):
+		push_warning(str(placement.get("error", "Выберите место на карте.")))
+		return
+	var map := root as EmberMapLoader if root is EmberMapLoader else root.find_child("Map", true, false) as EmberMapLoader
+	var zone_at: Vector3 = placement.position + Vector3(64, 0, 0)
+	var floor := map.surface_floor_sample(zone_at)
+	if not floor.get("solid", false) or floor.get("submerged", false):
+		push_warning("Для отмеченной зоны нужна сухая поверхность рядом с ящиком.")
+		return
+	zone_at.y = (floor.position as Vector3).y
+	var compound := _interact_actions.create_quest_object_placement(root, placement.position + Vector3.UP * 0.15, zone_at, objective_id, quest_document)
+	if compound == null:
+		push_warning("Не удалось создать ящик и зону. Проверьте выбранную цель.")
+		return
+	var selection := EditorInterface.get_selection()
+	selection.clear()
+	selection.add_node(compound)
+	EditorInterface.mark_scene_as_unsaved()
+	_graph_workspace.call_deferred("accept_quest_binding_save", "Созданы ящик и зона · Ctrl+S сохранить сцену · F взять/поставить")
+
+
 func _unbind_graph_quest_event(scene_path: NodePath, event_entry: Dictionary) -> void:
 	var root := EditorInterface.get_edited_scene_root()
 	if root == null or _interact_actions == null:
@@ -1091,6 +1211,93 @@ func _remove_graph_quest_event(event_entry: Dictionary) -> void:
 func _on_scene_binding_changed() -> void:
 	if _graph_workspace:
 		_graph_workspace.call_deferred("refresh_quest_scene_projection")
+
+
+func _create_pressure_gate() -> void:
+	EditorInterface.set_main_screen_editor("3D")
+	_mechanism_world_wires._toggle.button_pressed = true
+	_set_mechanism_editing(true)
+
+func _clear_mechanism_inspector() -> void:
+	if is_instance_valid(_mechanism_inspector): _mechanism_inspector.release_view()
+	if _mechanism_dock_added and is_instance_valid(_mechanism_dock): remove_dock(_mechanism_dock)
+	_mechanism_dock_added = false
+	if is_instance_valid(_mechanism_dock): _mechanism_dock.queue_free()
+	if is_instance_valid(_mechanism_workspace): _mechanism_workspace.queue_free()
+	_mechanism_inspector = null; _mechanism_dock = null; _mechanism_workspace = null
+
+func _refresh_mechanism_selection() -> void:
+	if is_instance_valid(_mechanism_inspector) and _mechanism_dock_added:
+		_mechanism_inspector.select_native_object()
+		_mechanism_dock.call_deferred("make_visible")
+
+func _set_mechanism_editing(enabled: bool) -> void:
+	if not enabled:
+		if _mechanism_dock_added: remove_dock(_mechanism_dock); _mechanism_dock_added = false
+		if is_instance_valid(_mechanism_workspace): _mechanism_workspace.hide()
+		return
+	var scene := EditorInterface.get_edited_scene_root() as Node3D
+	if scene == null:
+		_mechanism_world_wires._toggle.set_pressed_no_signal(false); _mechanism_world_wires.active = false
+		return
+	if is_instance_valid(_mechanism_inspector):
+		if not _mechanism_dock_added: add_dock(_mechanism_dock); _mechanism_dock_added = true
+		_mechanism_dock.make_visible(); _refresh_mechanism_selection(); return
+	_mechanism_workspace = load("res://addons/ember_import/ember_mechanism_workspace.gd").new()
+	EditorInterface.get_base_control().add_child(_mechanism_workspace)
+	_mechanism_workspace.setup(scene, _interact_actions,
+		func(): return scene == EditorInterface.get_edited_scene_root(),
+		func():
+			var at := Vector3.ZERO
+			var selected := EditorInterface.get_selection().get_selected_nodes()
+			if not selected.is_empty() and selected[0] is Node3D and (selected[0] == scene or scene.is_ancestor_of(selected[0])):
+				at = (selected[0] as Node3D).global_position
+			else:
+				var spawn := scene.find_child("PlayerStart", true, false) as Node3D
+				if spawn: at = spawn.global_position
+			var kit := _interact_actions.create_pressure_gate(scene, at, true)
+			if kit:
+				EditorInterface.get_selection().clear()
+				EditorInterface.get_selection().add_node(kit),
+		func(): EditorInterface.save_scene()
+	)
+	_mechanism_inspector = preload("res://addons/ember_import/ember_mechanism_inspector.gd").new()
+	_mechanism_dock = EditorDock.new(); _mechanism_dock.title = "Механизмы"
+	_mechanism_dock.default_slot = EditorDock.DOCK_SLOT_RIGHT_UL
+	_mechanism_dock.add_child(_mechanism_inspector)
+	_mechanism_inspector.setup(scene, _interact_actions, _mechanism_workspace, _mechanism_world_wires, func():
+		var selected := EditorInterface.get_selection().get_selected_nodes()
+		return selected[0] if selected.size() == 1 and selected[0] is Node3D else null
+	)
+	add_dock(_mechanism_dock); _mechanism_dock_added = true; _mechanism_dock.make_visible()
+
+
+func _open_story_authoring() -> void:
+	var scene := EditorInterface.get_edited_scene_root() as Node3D
+	if scene == null:
+		push_warning("Открой3D-сцену с участниками и предметом")
+		return
+	if is_instance_valid(_story_authoring_dialog):
+		_story_authoring_dialog.queue_free()
+	_story_authoring_dialog = load("res://addons/ember_import/ember_story_authoring_dialog.gd").new()
+	EditorInterface.get_base_control().add_child(_story_authoring_dialog)
+	_story_authoring_dialog.setup(scene)
+	_story_authoring_dialog.create_requested.connect(func(values: Dictionary):
+		if scene != EditorInterface.get_edited_scene_root():
+			_story_authoring_dialog.show_error("Карта сменилась — закрой форму и открой её заново")
+			return
+		var result := _interact_actions.create_story_scene(scene, values)
+		if not result.ok:
+			_story_authoring_dialog.show_error(str(result.error))
+			return
+		_story_authoring_dialog.hide()
+		var player: Node = result.node.get_node("AnimationPlayer")
+		EditorInterface.set_main_screen_editor("3D")
+		EditorInterface.get_selection().clear()
+		EditorInterface.get_selection().add_node(player)
+		EditorInterface.edit_node(player)
+	)
+	_story_authoring_dialog.popup_centered_clamped(Vector2i(720, 700), 0.9)
 
 
 func _create_standalone_trigger(anchor: Node3D) -> void:
@@ -1383,17 +1590,19 @@ func _voxel_canvas_is_clean() -> bool:
 	var workspace := EditorInterface.get_editor_main_screen().find_child(SURFACE_WORKSPACE_NODE,true,false) as EmberVoxelSculptWorkspace
 	return workspace == null or not workspace.has_unsaved_changes()
 
-func _merge_voxel_selected(separating: bool) -> void:
+func _open_selected_canvas(separating := false) -> void:
+	_stop_scene_object_brush()
 	var selection := EditorInterface.get_selection().get_selected_nodes()
-	var scene := EditorInterface.get_edited_scene_root()
-	if _world_editor._panel_host.is_active("merge") and _world_editor.merge_panel.matches_context(selection,scene,separating):
-		_world_editor._panel_host.reveal(); return
-	if not _world_editor.can_leave_panel(): return
-	if not _voxel_canvas_is_clean():
-		push_warning("Сначала сохраните или отмените изменения Canvas, затем склейте детали.")
+	if not separating and selection.size()==1 and selection[0] is Node3D and not selection[0] is EmberVoxelProp:
+		_open_voxel_assembly(selection[0])
 		return
-	_world_editor.merge_panel.open_merge(selection,scene,get_undo_redo(),separating)
-	_world_editor._panel_host.open("merge")
+	if selection.is_empty() or selection.size()>32 or (separating and selection.size()!=1) or selection.any(func(node):return not node is EmberVoxelProp):
+		push_warning("Выберите1–32 объёмных объекта; для разбора — одну склейку.")
+		return
+	if not _world_editor.open_object_canvas(selection[0]):return
+	if separating or selection.size()>1:
+		var workspace:=EditorInterface.get_editor_main_screen().find_child(SURFACE_WORKSPACE_NODE,true,false) as EmberVoxelSculptWorkspace
+		workspace.open_scene_forms(selection,separating)
 
 
 func _walk_surface_selected() -> void:
@@ -1515,8 +1724,23 @@ func _convert_voxel_form() -> void:
 
 
 func _stop_scene_object_brush() -> void:
+	if is_instance_valid(_detail_brush): _detail_brush.deactivate()
 	if is_instance_valid(_object_brush):
 		_object_brush.deactivate()
+
+
+func _activate_detail_brush() -> void:
+	if not is_instance_valid(_world_editor) or not _world_editor.can_leave_panel(): return
+	var scene := EditorInterface.get_edited_scene_root() as Node3D
+	var map := scene.find_child("Map", true, false) as EmberMapLoader if scene != null else null
+	if map == null: return
+	_stop_scene_object_brush()
+	if _world_surface_selector != null: _world_surface_selector.get("_select_button").button_pressed = false
+	if _battlefield_painter != null: _battlefield_painter.get("_enabled").button_pressed = false
+	if is_instance_valid(_walk_surface_panel) and _walk_surface_panel.get("_brush") != null: _walk_surface_panel.get("_brush").select(0)
+	if not _world_editor._panel_host.open("details"): return
+	if _detail_brush.activate_details(scene, map, get_undo_redo()):
+		_world_editor.plugin._world_editor_dock.make_visible()
 
 
 func _activate_object_brush(model_id: String) -> void:
@@ -1662,6 +1886,8 @@ func _remove_authored_voxel(parent: Node, prop: EmberVoxelProp) -> void:
 
 
 func _on_scene_changed(root: Node) -> void:
+	if not is_instance_valid(_mechanism_inspector) or _mechanism_inspector._scene != root: _clear_mechanism_inspector()
+	if is_instance_valid(_mechanism_world_wires): _mechanism_world_wires.set_scene(root)
 	if is_instance_valid(_compact_extension_dialog):
 		_compact_extension_dialog.hide()
 	if is_instance_valid(_world_editor): _world_editor.scene_changed(root)
@@ -1705,11 +1931,15 @@ func _refresh_voxel_gizmos() -> void:
 		return
 	var graph_target: Node
 	for selected in selection.get_selected_nodes():
+		var object:=EmberObjectInspectorModel.voxel_owner(selected)
+		if object!=null:
+			_last_selected_voxel=object;object.update_gizmos();graph_target=object;break
 		var current := selected as Node
 		while current:
-			if current is EmberVoxelProp:
-				_last_selected_voxel = current
-				_last_selected_voxel.update_gizmos()
+			var conversation := EmberObjectInspectorModel.quest_conversation_target(current)
+			if conversation != null:
+				_last_selected_trigger = conversation
+				_last_selected_trigger.update_gizmos()
 				graph_target = current
 				break
 			if current is EmberInteract and EmberObjectInspectorModel.voxel_owner(current) == null:
@@ -1733,6 +1963,7 @@ func _refresh_voxel_gizmos() -> void:
 			bool(context.get("can_place", false)),
 			str(context.get("label", "Место: откройте Ember Map")),
 		)
+	if is_instance_valid(_world_editor):_world_editor.context_selection_changed(selection.get_selected_nodes())
 
 
 func _duplicate_voxel_prop(source: EmberVoxelProp) -> void:

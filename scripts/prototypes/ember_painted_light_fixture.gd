@@ -153,3 +153,62 @@ static func grass_tuft_mesh() -> ArrayMesh:
 	arrays[Mesh.ARRAY_COLOR]=colors; arrays[Mesh.ARRAY_TEX_UV]=uv; arrays[Mesh.ARRAY_TEX_UV2]=uv2
 	var mesh := ArrayMesh.new(); mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
+
+
+static var _blade_tufts: Dictionary = {}
+static var _grass_cards: ArrayMesh
+
+static func grass_card_mesh() -> ArrayMesh:
+	# Accepted card study: offset roots and directions, not a shared crossed centre.
+	if _grass_cards != null: return _grass_cards
+	var surface := SurfaceTool.new(); surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	surface.set_color(Color(1,0,0,0)); surface.set_uv2(Vector2.ZERO)
+	for spec in [[-0.055,-0.035,0.23,0], [0.04,0.03,1.11,1], [-0.03,0.065,2.37,2], [0.065,-0.05,2.92,3]]:
+		var across := Vector3(cos(spec[2]),0,sin(spec[2]))
+		var base := Vector3(spec[0],0,spec[1])
+		var points := [base-across*0.085,base+across*0.085,base+across*0.085+Vector3.UP*0.17,base-across*0.085+Vector3.UP*0.17]
+		var cell: int = spec[3]
+		var origin := Vector2(cell%2,cell/2)*0.5
+		var uv := [origin+Vector2(0,0.5),origin+Vector2(0.5,0.5),origin+Vector2(0.5,0),origin]
+		for index in [0,2,1,0,3,2]:
+			surface.set_normal((Vector3.UP+across*0.15).normalized())
+			surface.set_uv(uv[index]); surface.add_vertex(points[index])
+	surface.index(); _grass_cards = surface.commit()
+	return _grass_cards
+
+static func grass_blade_mesh(low_poly := false) -> ArrayMesh:
+	# Shared derived tuft, built once per look. Artwork/palette and scatter stay with their owners.
+	if _blade_tufts.has(low_poly): return _blade_tufts[low_poly]
+	var surface := SurfaceTool.new(); surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+	surface.set_color(Color(1,0,0,3.0/255.0))
+	surface.set_uv(Vector2(3,3)/255.0); surface.set_uv2(Vector2(3.0/255.0,0))
+	# Irregular roots, broad tapered blades and open gaps, rather than two whole-clump cards.
+	for spec in [
+		[0.15,0.014,0.142,0.024,0.046], [2.47,0.022,0.112,0.027,0.053],
+		[4.91,0.011,0.158,0.021,0.036], [1.60,0.027,0.094,0.025,0.059],
+		[3.55,0.018,0.133,0.026,0.044], [5.84,0.032,0.105,0.023,0.063],
+		[2.95,0.006,0.164,0.020,0.028], [0.82,0.035,0.086,0.029,0.054]
+	]:
+		var angle: float = spec[0]
+		var lean := Vector3(cos(angle),0,sin(angle)); var across := Vector3(-lean.z,0,lean.x)
+		var root := lean*float(spec[1]); var height: float = spec[2]
+		var width: float = spec[3]; var reach: float = spec[4]
+		var normal := (Vector3.UP+lean*0.28).normalized()
+		for band in 3:
+			var t0 := band/3.0; var t1 := (band+1)/3.0
+			var bend0 := maxf(0.0,(t0-0.25)/0.75) if low_poly else t0*t0
+			var bend1 := maxf(0.0,(t1-0.25)/0.75) if low_poly else t1*t1
+			var base := root+Vector3.UP*(height*t0)+lean*(reach*bend0)
+			var top := root+Vector3.UP*(height*t1)+lean*(reach*bend1)
+			var half0 := width*0.5*(1.0-t0); var half1 := width*0.5*(1.0-t1)
+			var corners := PackedVector3Array([base-across*half0,base+across*half0,top+across*half1,top-across*half1])
+			# An actual tip; avoid zero-area faces at the end of every blade.
+			var indices := [0,2,1,1,2,0] if band==2 else [0,2,1,0,3,2,1,2,0,2,3,0]
+			for index in indices:
+				surface.set_normal(normal); surface.add_vertex(corners[index])
+	# Share exact position/normal/colour/UV tuples before the first GPU pack.
+	# Triangle order and both authored windings stay intact.
+	surface.index()
+	var mesh := surface.commit()
+	_blade_tufts[low_poly] = mesh
+	return mesh

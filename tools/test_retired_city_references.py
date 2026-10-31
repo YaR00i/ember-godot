@@ -1,6 +1,6 @@
-"""Check incoming active references before retiring the seven historical scenes.
+"""Reject restored historical scenes and incoming active references.
 
-Retired scenes may retain historical references until the next cleanup slice.
+Save compatibility IDs are allowed; executable scene dependencies are not.
 This is a static gate, not proof against every dynamically constructed path.
 """
 
@@ -9,7 +9,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 RETIRED = ('fan_town', 'fan_town_house', 'fan_town_inn', 'fan_town_mage',
-           'fan_town_smith', 'agent_sandbox', 'agent_sandbox_interior')
+           'fan_town_smith', 'agent_sandbox', 'agent_sandbox_interior', 'test_pier')
 RETIRED_ACTIONS = ('sbx_bush_se_actions', 'sbx_bush_se_actions_2', 'sbx_bush_se_actions_3',
                    'sbx_bush_sw_actions', 'sbx_bush_sw_actions_2', 'sbx_planter_nw_actions',
                    'sbx_quest_active_actions', 'sbx_quest_active_actions_2',

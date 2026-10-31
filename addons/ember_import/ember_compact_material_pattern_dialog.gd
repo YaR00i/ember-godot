@@ -8,11 +8,16 @@ signal pattern_created(id: String, role: String)
 signal edit_closed
 signal variant_opened(id: String, role: String)
 signal light_profile_previewed(pattern: Resource, id: String)
-const EDIT_FIELDS := ["role_id", "base_color", "light_color", "shadow_color", "pixels", "side_pixels", "gloss", "sheen", "pixel_relief", "micro_relief", "micro_size_m", "micro_roughness", "relief_pixels", "side_relief_pixels", "roughness_pixels", "side_roughness_pixels", "pattern_size_m", "roughness_variation", "albedo_texture", "albedo_relief_enabled", "albedo_periodic", "grass_light_enabled", "grass_light_low", "grass_light_tint_strength", "grass_light_cool", "grass_light_warm", "grass_light_shadow_color", "grass_light_shadow_fill", "style_rim_custom", "style_rim_enabled", "style_rim_strength", "style_rim_width_mm", "depth_mm", "depth_softness", "depth_sharpness", "form_pull_mm"]
+const EDIT_FIELDS := ["role_id", "base_color", "light_color", "shadow_color", "pixels", "side_pixels", "gloss", "sheen", "pixel_relief", "micro_relief", "micro_size_m", "micro_roughness", "relief_pixels", "side_relief_pixels", "roughness_pixels", "side_roughness_pixels", "pattern_size_m", "roughness_variation", "albedo_texture", "albedo_relief_enabled", "albedo_periodic", "grass_light_enabled", "grass_light_low", "grass_light_tint_strength", "grass_light_cool", "grass_light_warm", "grass_light_shadow_color", "grass_light_shadow_fill", "style_rim_custom", "style_rim_enabled", "style_rim_strength", "style_rim_width_mm", "depth_texture", "depth_mm", "depth_softness", "depth_sharpness", "form_pull_mm", "flower_shape", "stone_edges_enabled", "stone_weathering_enabled", "stone_edge_width_mm", "stone_edge_strength", "stone_faces_enabled", "stone_face_pattern_variation", "stone_face_tint_variation"]
 
 const Materials = preload("res://scripts/ember_voxel_surface_materials.gd")
 const Pattern = preload("res://scripts/ember_compact_terrain_pattern.gd")
 const PatternGrid = preload("res://addons/ember_import/ember_voxel_pattern_editor.gd")
+
+var _stone_groups:Array[Control]=[]
+var _stone_switches:Dictionary={}
+var _stone_sliders:Dictionary={}
+var _stone_values:Dictionary={}
 
 var _draft: Pattern
 var _history := UndoRedo.new()
@@ -34,6 +39,10 @@ var _opened_hash := ""
 var _stroke_before := PackedByteArray()
 var pattern_path_override := "" # Test fixture.
 var variant_directory_override := "" # Test fixture.
+var additional_validation: Callable # Consumer-specific requirement, e.g. the flower cover needs an atlas.
+var _cover_mode := false
+var _cover_texture_preview: TextureRect
+var _cover_shape: OptionButton
 var parameters_panel: VBoxContainer
 var _title: Label
 var _canvas_title: Label
@@ -53,6 +62,9 @@ var _file_dialog: FileDialog
 var _file_import := false
 var _texture_dialog: FileDialog
 var _texture_label: Label
+var _depth_texture_label: Label
+var _depth_texture_buttons: Array[Button] = []
+var _texture_field := "albedo_texture"
 var _texture_options: Dictionary={}
 var _style_rim_switch: CheckBox
 var _style_rim_slider: HSlider
@@ -65,6 +77,8 @@ var _depth_dragging := false
 var _grass_light_switch: CheckBox
 var _grass_light_rows: VBoxContainer
 var _grass_light_pickers: Dictionary={}
+var cheap_ground_profile := false
+var _ground_profile_notice: Label
 
 
 func _init() -> void:
@@ -82,6 +96,11 @@ func _notification(what: int) -> void:
 func _ready() -> void:
 	parameters_panel = VBoxContainer.new(); parameters_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_title = Label.new(); _title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; parameters_panel.add_child(_title)
+	_ground_profile_notice=Label.new()
+	_ground_profile_notice.text="Для земли дополнительный рельеф материала выключен; форма поверхности сохраняется. Сохранённые настройки рельефа доступны для объектов."
+	_ground_profile_notice.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+	parameters_panel.add_child(_ground_profile_notice)
+	_ground_profile_notice.visible=cheap_ground_profile
 	_parameter_scroll = ScrollContainer.new(); _parameter_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_parameter_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL; parameters_panel.add_child(_parameter_scroll)
 	var column := VBoxContainer.new(); column.size_flags_horizontal = Control.SIZE_EXPAND_FILL; _parameter_scroll.add_child(column)
@@ -169,6 +188,7 @@ func _ready() -> void:
 
 
 func _choose_texture() -> void:
+	_texture_field = "albedo_texture"
 	if _draft==null:return
 	_texture_dialog.popup_centered_ratio(0.65)
 
@@ -178,17 +198,18 @@ func _remove_texture() -> void:
 func _load_texture(path: String) -> void:
 	var texture:=load(path) as Texture2D
 	if texture==null:_message.text="Не удалось открыть PNG из проекта.";return
-	_change_texture(texture)
+	_change_texture(texture, _texture_field)
 
-func _change_texture(value: Texture2D) -> void:
-	if _draft==null or _draft.albedo_texture==value:return
+func _change_texture(value: Texture2D, field := "albedo_texture") -> void:
+	if _draft==null or _draft.get(field)==value:return
 	if value!=null and (value.get_width()>4096 or value.get_height()>4096):
 		_message.text="Максимальный размер текстуры — 4096 × 4096.";return
 	_history.create_action("Текстура материала")
-	_history.add_do_method(_set_texture.bind(value));_history.add_undo_method(_set_texture.bind(_draft.albedo_texture));_history.commit_action()
+	_history.add_do_method(_set_texture.bind(value,field));_history.add_undo_method(_set_texture.bind(_draft.get(field),field));_history.commit_action()
 
-func _set_texture(value: Texture2D) -> void:
-	_draft.albedo_texture=value;_refresh_grid()
+func _set_texture(value: Texture2D, field := "albedo_texture") -> void:
+	_draft.set(field,value);_refresh_grid()
+	light_profile_previewed.emit(_draft,_id)
 
 func _change_texture_option(value: bool,key: String) -> void:
 	if _loading or _draft==null or _draft.get(key)==value:return
@@ -224,6 +245,7 @@ func set_variant_choices(choices: Array[Dictionary]) -> void:
 	_sync_variant_choice()
 
 func _sync_variant_choice() -> void:
+	if _cover_mode: _variant_choice.hide(); return
 	for index in _choices.size():
 		if _choices[index].id == _id: _variant_choice.select(index); break
 
@@ -264,7 +286,8 @@ func _load_variant(id: String, role: String, path: String) -> bool:
 			_finish_sliders[key].editable = _draft.role_id in ["grass","soil"]
 			_finish_sliders[key].tooltip_text = "Мелкая фактура травы и грунта; цветной рисунок сохраняется." if _finish_sliders[key].editable else "Эта проба фактуры доступна для травы и грунта."
 	_loading = false; _grid.current_tone = 0; _ink_choice.select(0); _refresh_grid()
-	_title.text = "%s · %s" % [EmberTerrainPilotResource.surface_role_name(role), id]; _canvas_title.text = _title.text + " · 16×16"
+	_title.text = "Цветущая трава · рисунок" if _cover_mode else "%s · %s" % [EmberTerrainPilotResource.surface_role_name(role), id]
+	_canvas_title.text = _title.text + " · 16×16"
 	_message.text = "Правки пока в черновике. Сохранение изменит общий вариант."
 	_pending_variant.clear(); _switch_box.hide(); _new_variant_box.hide(); _parameter_scroll.scroll_vertical = 0
 	show(); _sync_variant_choice(); variant_opened.emit(id, role)
@@ -301,6 +324,13 @@ func _refresh_grid() -> void:
 	if _draft!=null and is_instance_valid(_texture_label):
 		_texture_label.text="PNG: "+_draft.albedo_texture.resource_path.get_file()+" · рисунок ниже сохранён как запасной" if _draft.albedo_texture!=null else "Текстура PNG не выбрана · используется рисунок 16×16"
 	if _draft == null: return
+	if _cover_mode:
+		_texture_label.text = "PNG: " + _draft.albedo_texture.resource_path.get_file() if _draft.albedo_texture != null else "Выберите PNG-атлас."
+		_cover_texture_preview.texture = _draft.albedo_texture
+		_cover_texture_preview.modulate = _draft.base_color
+		_cover_shape.select(_draft.flower_shape)
+	if is_instance_valid(_depth_texture_label):
+		_depth_texture_label.text = "Рельеф: " + _draft.depth_texture.resource_path.get_file() if _draft.depth_texture != null else "Рельеф выводится из рисунка"
 	for key in _texture_options:
 		_texture_options[key].set_pressed_no_signal(_draft.get(key))
 		_texture_options[key].disabled=_draft.albedo_texture==null
@@ -312,6 +342,46 @@ func _refresh_grid() -> void:
 	var names=["Основной","Светлый","Тёмный"] if _channel=="color" else ["Средний","Выше","Ниже"] if _channel=="relief" else ["Средняя","Матовая","Гладкая"]
 	for caption in names: _ink_choice.add_item(caption)
 	_ink_choice.select(_grid.current_tone)
+
+
+func configure_texture_cover() -> void:
+	# Reuse texture import, tint, history and Save; don't offer unused terrain/16x16 controls.
+	_cover_mode = true
+	for child in get_children():
+		if child is Control: child.hide()
+	var column := _parameter_scroll.get_child(0)
+	var tint_label: Control = _tones[0].get_parent().get_child(_tones[0].get_index() - 1)
+	for child: Control in column.get_children():
+		var keep: bool = child == _texture_label or child == _tones[0] or child == tint_label
+		if child is Button and child.text == "Выбрать текстуру PNG…": keep = true
+		if child is HBoxContainer and child.get_child_count()>0 and child.get_child(0) is Button and child.get_child(0).text == "Отменить": keep = true
+		if child is Label and child.text.begins_with("Общий вариант"):
+			child.text = "Рисунок цветущей травы. Слева в атласе — отдельный лист, справа — головка цветка. Сохранение обновит этот набор на карте."
+			keep = true
+		child.visible = keep
+	tint_label.text = "Оттенок рисунка"
+	var shape_label:=Label.new();shape_label.text="Форма растения";column.add_child(shape_label)
+	_cover_shape=OptionButton.new();column.add_child(_cover_shape)
+	for label in ["Ромашки","Лютики · чашечки","Луговые соцветия"]:_cover_shape.add_item(label)
+	_cover_shape.item_selected.connect(_change_cover_shape)
+	_cover_texture_preview = TextureRect.new()
+	_cover_texture_preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_cover_texture_preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_cover_texture_preview.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_cover_texture_preview.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_cover_texture_preview.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	add_child(_cover_texture_preview)
+
+
+func _change_cover_shape(value: int) -> void:
+	if _loading or _draft==null or _draft.flower_shape==value:return
+	_history.create_action("Форма цветущей травы")
+	_history.add_do_method(_set_cover_shape.bind(value))
+	_history.add_undo_method(_set_cover_shape.bind(_draft.flower_shape))
+	_history.commit_action()
+
+func _set_cover_shape(value: int) -> void:
+	_draft.flower_shape=value;_refresh_grid();light_profile_previewed.emit(_draft,_id)
 
 
 func _on_grid_changed() -> void:
@@ -370,6 +440,7 @@ func _set_tone(index: int, color: Color) -> void:
 	_tones[index].color = color
 	_loading = false
 	_refresh_grid()
+	if _cover_mode: light_profile_previewed.emit(_draft,_id)
 
 
 func _change_finish(value: float, key: String) -> void:
@@ -388,7 +459,7 @@ func _set_finish(key: String, value: float) -> void:
 	(_finish_sliders[key] as HSlider).value = value
 	(_finish_values[key] as Label).text = "%.2f" % value if key in ["micro_size_m","pattern_size_m"] else "%d%%" % roundi(value / (0.3 if key in ["pixel_relief","micro_relief"] else 0.5 if key in ["micro_roughness","roughness_variation"] else 1.0) * 100.0)
 	_loading = false
-	if key.begins_with("grass_light_"):light_profile_previewed.emit(_draft,_id)
+	if key.begins_with("grass_light_") or (key=="pattern_size_m" and _draft.role_id=="grass"):light_profile_previewed.emit(_draft,_id)
 
 
 func _create_grass_light_controls(column: VBoxContainer) -> void:
@@ -421,7 +492,7 @@ func _create_grass_light_controls(column: VBoxContainer) -> void:
 
 func _refresh_grass_light_controls() -> void:
 	if not is_instance_valid(_grass_light_switch):return
-	var available:=_draft!=null and _draft.role_id=="grass"
+	var available:=not _cover_mode and _draft!=null and _draft.role_id=="grass"
 	_grass_light_switch.visible=available;_grass_light_rows.visible=available and _draft.grass_light_enabled
 	if not available:return
 	var loading_before:=_loading;_loading=true
@@ -454,7 +525,7 @@ func _restore_grass_light_preview() -> void:
 	if _draft==null or _baseline.is_empty():return
 	var original: Pattern=_draft.duplicate(true)
 	for field in EDIT_FIELDS:
-		if field.begins_with("grass_light_") or field.begins_with("style_rim_") or field.begins_with("depth_") or field=="form_pull_mm":original.set(field,_baseline[field])
+		if field.begins_with("grass_light_") or field.begins_with("style_rim_") or field.begins_with("depth_") or field.begins_with("stone_") or field in ["form_pull_mm","pattern_size_m"]:original.set(field,_baseline[field])
 	light_profile_previewed.emit(original,_id)
 
 
@@ -533,6 +604,7 @@ func _save(keep_open := false) -> bool:
 	if _draft == null: return false
 	if _grid._painting: _grid._painting = false; _finish_stroke()
 	var errors := _draft.validation_errors()
+	if additional_validation.is_valid(): errors.append_array(additional_validation.call(_draft))
 	if not errors.is_empty(): _message.text = errors[0]; return false
 	if FileAccess.get_sha256(_opened_path) != _opened_hash:
 		_message.text = "Файл изменился после открытия. Сохраните правки новым вариантом или отмените и откройте заново."
@@ -575,10 +647,20 @@ func _create_style_rim_controls(column: VBoxContainer) -> void:
 	_style_rim_width_label=Label.new();_style_rim_width_label.custom_minimum_size.x=56;width_row.add_child(_style_rim_width_label)
 	_style_rim_width_slider.value_changed.connect(func(value: float):_change_style_rim({"style_rim_width_mm":value}))
 	_create_depth_controls(column)
+	_create_stone_controls(column)
 
 func _create_depth_controls(column: VBoxContainer) -> void:
 	# Detailed look: depth derived from the painted colour (EmberMaterialHeight).
-	var caption:=Label.new();caption.text="Подробный облик: глубина из рисунка";column.add_child(caption)
+	var caption:=Label.new();caption.text="Глубина материала · без изменения коллизии";column.add_child(caption)
+	_depth_texture_label = Label.new();column.add_child(_depth_texture_label)
+	var select := Button.new();select.text="Выбрать PNG рельефа…";column.add_child(select)
+	_depth_texture_buttons.append(select)
+	select.pressed.connect(func():
+		_texture_field="depth_texture"
+		_texture_dialog.popup_centered_ratio(0.65))
+	var clear := Button.new();clear.text="Выводить рельеф из рисунка";column.add_child(clear)
+	_depth_texture_buttons.append(clear)
+	clear.pressed.connect(func():_change_texture(null,"depth_texture"))
 	for entry in [["depth_mm","Глубина, мм (0 — нет)",0.0,30.0,0.5],["depth_softness","Плавность рельефа, px",0.5,6.0,0.1],["depth_sharpness","Резкость изломов",0.0,1.0,0.01],["form_pull_mm","Подтяжка граней к вокселям, мм (0 — плоские)",0.0,60.0,1.0]]:
 		var title:=Label.new();title.text=entry[1];column.add_child(title)
 		var row:=HBoxContainer.new();column.add_child(row)
@@ -594,9 +676,68 @@ func _create_depth_controls(column: VBoxContainer) -> void:
 			_depth_dragging=false
 			if _draft!=null:light_profile_previewed.emit(_draft,_id))
 
+func _create_stone_controls(column:VBoxContainer)->void:
+	for spec in [["stone_edges_enabled","Рёбра и стыки",[["stone_edge_width_mm","Ширина рёбер, мм",80.0,0.5],["stone_edge_strength","Выраженность",1.0,0.01]]],["stone_faces_enabled","Оформление граней",[["stone_face_pattern_variation","Разброс рисунка",1.0,0.01],["stone_face_tint_variation","Разброс оттенка",1.0,0.01]]]]:
+		var group:=VBoxContainer.new();column.add_child(group);_stone_groups.append(group)
+		var toggle:=CheckButton.new();toggle.text=spec[1];group.add_child(toggle);_stone_switches[spec[0]]=toggle
+		toggle.tooltip_text="Слой материала камня в детальном мире. Исходная форма сохраняется."
+		var enabled_field:String=spec[0]
+		toggle.toggled.connect(func(value):_change_stone_layers({enabled_field:value}))
+		if enabled_field=="stone_edges_enabled":
+			var weathering:=CheckButton.new();weathering.text="Неровная фактура стыков";group.add_child(weathering)
+			weathering.tooltip_text="Светлые потёртые участки и местные углубления. Выключение возвращает прежние рёбра. Только детальный облик."
+			_stone_switches["stone_weathering_enabled"]=weathering
+			weathering.toggled.connect(func(value):_change_stone_layers({"stone_weathering_enabled":value}))
+
+		for setting in spec[2]:
+			var label:=Label.new();label.text=setting[1];group.add_child(label)
+			var row:=HBoxContainer.new();group.add_child(row)
+			var slider:=HSlider.new();slider.min_value=0;slider.max_value=setting[2];slider.step=setting[3];slider.size_flags_horizontal=Control.SIZE_EXPAND_FILL;row.add_child(slider)
+			var number:=Label.new();number.custom_minimum_size.x=60;row.add_child(number)
+			var field:String=setting[0];_stone_sliders[field]=slider;_stone_values[field]=number
+			slider.value_changed.connect(func(value):_change_stone_layers({field:value}))
+
+func _refresh_stone_layers()->void:
+	var available:bool=not _cover_mode and _draft!=null and _draft.role_id=="stone"
+	for group in _stone_groups:group.visible=available
+	if not available:return
+	for field in _stone_switches:_stone_switches[field].set_pressed_no_signal(_draft.get(field))
+	for field in _stone_sliders:
+		var value:float=_draft.get(field)
+		_stone_sliders[field].set_value_no_signal(value)
+		_stone_values[field].text="%.1f мм"%value if field=="stone_edge_width_mm" else "%.0f%%"%(value*100.0)
+		_stone_sliders[field].editable=_draft.stone_edges_enabled if field in ["stone_edge_width_mm","stone_edge_strength"] else _draft.stone_faces_enabled
+
+func _change_stone_layers(values:Dictionary)->void:
+	if _loading or _draft==null:return
+	var before:Dictionary={};var after:Dictionary={}
+	for field in values:
+		if _draft.get(field)!=values[field]:before[field]=_draft.get(field);after[field]=values[field]
+	if after.is_empty():return
+	var toggle:bool=after.has("stone_edges_enabled") or after.has("stone_faces_enabled") or after.has("stone_weathering_enabled")
+	_history.create_action("Материал камня · "+("включение слоя" if toggle else "ширина рёбер" if after.has("stone_edge_width_mm") else "выраженность рёбер" if after.has("stone_edge_strength") else "разброс рисунка" if after.has("stone_face_pattern_variation") else "разброс оттенка"),UndoRedo.MERGE_DISABLE if toggle else UndoRedo.MERGE_ENDS)
+	_history.add_do_method(_set_stone_layers.bind(after));_history.add_undo_method(_set_stone_layers.bind(before));_history.commit_action()
+
+func _set_stone_layers(values:Dictionary)->void:
+	for field in values:_draft.set(field,values[field])
+	_refresh_stone_layers();light_profile_previewed.emit(_draft,_id)
+
 func _refresh_depth_controls() -> void:
+	_refresh_stone_layers()
 	if _draft==null or _depth_sliders.is_empty():return
+	_ground_profile_notice.visible=cheap_ground_profile
+	for button in _depth_texture_buttons: button.disabled = cheap_ground_profile
+	for field in ["pixel_relief","micro_relief"]:
+		_finish_sliders[field].editable=not cheap_ground_profile
+		_finish_sliders[field].tooltip_text=_ground_profile_notice.text if cheap_ground_profile else ""
+	_texture_options.albedo_relief_enabled.disabled=cheap_ground_profile
+	_texture_options.albedo_relief_enabled.tooltip_text=_ground_profile_notice.text if cheap_ground_profile else "Световой рельеф из цвета PNG"
+	_channel_choice.set_item_disabled(1,cheap_ground_profile)
+	if cheap_ground_profile and _channel=="relief":_select_channel(0);_channel_choice.select(0)
 	for field in _depth_sliders:
+		var grass_form: bool = _draft.role_id == "grass" and field == "form_pull_mm"
+		_depth_sliders[field].editable = not cheap_ground_profile and not grass_form
+		_depth_sliders[field].tooltip_text = _ground_profile_notice.text if cheap_ground_profile else "Подтяжка граней не меняет травяной покров; глубина покрытия регулируется выше." if grass_form else ""
 		_depth_sliders[field].set_value_no_signal(_draft.get(field))
 		_depth_labels[field].text="%.1f"%_draft.get(field) if field!="depth_sharpness" else "%.2f"%_draft.get(field)
 

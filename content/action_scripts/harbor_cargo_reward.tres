@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_action_resource.gd" id="1_u6vpc"]
+
+[resource]
+script = ExtResource("1_u6vpc")
+action_id = "harbor_cargo_reward"
+document = {
+"id": "harbor_cargo_reward",
+"nameRu": "Разговор · CargoKeeper",
+"steps": [{
+"dialogueId": "harbor_cargo_thanks",
+"type": "talk"
+}, {
+"costs": {},
+"rewards": {
+"coin": 3
+},
+"type": "exchange_items"
+}, {
+"flag": "harbor_cargo_reward",
+"type": "set_flag",
+"value": true
+}, {
+"flag": "harbor_cargo_status",
+"type": "set_flag",
+"value": "done"
+}]
+}

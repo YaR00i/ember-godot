@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EmberDialogueResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_dialogue_resource.gd" id="1_885lg"]
+
+[resource]
+script = ExtResource("1_885lg")
+dialogue_id = "shore_letter_text"
+document = {
+"id": "shore_letter_text",
+"nameRu": "Послание, найденное на берегу",
+"startStepId": "letter",
+"steps": [{
+"id": "letter",
+"next": "end",
+"textRu": "Если ты нашёл это письмо, разыщи меня за прибрежным домом. Мне нужна помощь с одной находкой. Я буду ждать за домом.",
+"type": "dialogue"
+}, {
+"id": "end",
+"type": "end"
+}]
+}

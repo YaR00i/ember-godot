@@ -5,7 +5,7 @@ extends RefCounted
 ## turbulence, not the proprietary NMS generator or hydraulic erosion.
 
 const PROFILES := ["hills", "ridges", "eroded", "plains"]
-const DEFAULTS := {"profile": "hills", "seed": 7, "sea_m": 2.0, "land_m": 2.0,
+const DEFAULTS := {"profile": "hills", "land_shape":"island", "seed": 7, "sea_m": 2.0, "land_m": 2.0,
 	"relief_m": 6.0, "feature_m": 18.0, "shore_m": 5.0, "land_fraction": 0.72}
 const PLAINS_DEFAULTS := {"flat_fraction": 0.8, "flat_size_m": 16.0,
 	"micro_m": 0.0, "flat_transition_m": 2.0}
@@ -25,6 +25,7 @@ var _sites := {} # Derived only for this sampler/job; never part of the map.
 
 
 static func parameter_error(values: Dictionary) -> String:
+	if values.get("land_shape","island") not in ["island","mainland"]:return "Выберите остров или сплошную сушу."
 	if values.get("terrain_sampling","legacy8") not in ["legacy8","fine16"]:return "Неизвестная точность рельефа."
 	if values.get("coverage_profile","legacy") not in ["legacy","large"]:return "Выберите крупные зоны или прежний рисунок покрытий."
 	for spec in [["coverage_zone_m",4.0,48.0],["coverage_soil_amount",0.0,1.0],["coverage_stone_slope",5.0,100.0],["coverage_sand_width_m",0.0,6.0]]:
@@ -45,7 +46,7 @@ static func parameter_error(values: Dictionary) -> String:
 	var detail_seed: Variant=values.get("surface_seed",SURFACE_DEFAULTS.surface_seed)
 	if typeof(detail_seed)!=TYPE_INT or detail_seed<0 or detail_seed>1000000:return "Номер рисунка деталей: целое число от 0 до 1000000."
 	# Arrays retain double precision at UI endpoints such as 0.3 and 0.9.
-	var limits := {"sea_m": [0.5,16.0], "land_m": [0.25,8.0],
+	var limits := {"sea_m": [0.0 if values.get("land_shape","island")=="mainland" else 0.5,16.0], "land_m": [0.25,8.0],
 		"relief_m": [0.0,24.0], "feature_m": [2.0,96.0],
 		"shore_m": [0.5,24.0], "land_fraction": [0.3,0.9]}
 	for key in limits:
@@ -116,6 +117,9 @@ func legacy_coast_height(point_cells: Vector2, height_limit: int) -> int:
 
 
 func height_m(point_m: Vector2) -> float:
+	if parameters.get("land_shape","island")=="mainland":
+		var form: float = _plains_height(point_m) if parameters.profile=="plains" else float(parameters.relief_m)*_landform(point_m/float(parameters.feature_m))
+		return float(parameters.sea_m)+float(parameters.land_m)+form
 	var feature := float(parameters.feature_m)
 	var radius := area_m.size * (0.5 * float(parameters.land_fraction))
 	var relative := (point_m - area_m.get_center()) / radius

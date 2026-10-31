@@ -45,11 +45,19 @@ static func source_signature(model_id: String) -> String:
 
 static func source_render_contract(model: Dictionary) -> String:
 	var contract:=BUILD_CONTRACT
+	if not model.get("externalSurface",{}).is_empty():contract+=":"+load("res://scripts/ember_external_mesh_surface.gd").CONTRACT
 	if model.get("material",{}).has("object_surface"):contract+=":"+preload("res://scripts/ember_voxel_material_profiles.gd").RENDER_CONTRACT
 	if preload("res://scripts/ember_voxel_material_profiles.gd").optics_parameters(model.get("material",{})).enabled:contract+=":"+preload("res://scripts/ember_voxel_material_profiles.gd").OPTICS_RENDER_CONTRACT
 	if PackedByteArray(model.get("surfaceFillMaterials",[])).has(EmberVoxelSurfaceMesher.SURFACE_FILL_WATER):contract+=":column-water-v1"
 	if not model.get("treeSurface",{}).is_empty():contract+=":"+str(load("res://scripts/ember_tree_surface.gd").render_contract(model))
 	if not model.get("solidSurface",{}).is_empty():contract+=":"+load("res://scripts/ember_voxel_solid_surface.gd").CONTRACT
+	if not model.get("solidSurface",{}).is_empty():
+		var solid=load("res://scripts/ember_voxel_solid_surface.gd")
+		if solid.uses_volume(model) and solid.active(model):contract+=":"+solid.VOLUME_CONTRACT
+	# Single-colour authored rocks keep their existing valid derived signature.
+	# Multicolour convex parts must rebuild the corrected owner-based palette.
+	if not model.get("solidSurface",{}).is_empty() and model.get("palette",[]).size()>2:
+		contract+=":"+load("res://scripts/ember_voxel_solid_surface.gd").PART_PALETTE_CONTRACT
 	return contract
 
 
@@ -272,6 +280,17 @@ static func preview_source_revision(model_id: String) -> String:
 		FileAccess.get_modified_time(vox_path) if FileAccess.file_exists(vox_path) else 0,
 	]
 
+
+static func preview_from_looks(resource:EmberVoxelModelResource,meshes:Array[ArrayMesh],world_size:float,shadow:ArrayMesh=null)->EmberVoxelProp:
+	var model:=model_of(resource.to_definition())
+	var prop:=_make_tree(resource.model_id,model,resource.grid_size(),1.0/resource.normalized_density(),world_size,meshes[1],shadow,meshes[1])
+	# Existing authored lamps keep their scene overrides; the draft must not duplicate them.
+	for light in prop.find_children("*","Light3D",true,false):light.free()
+	prop.authoring_source=resource
+	prop.install_prepared_looks(meshes)
+	# Projection already supplies the Source corner frame; cancel the prefab's centred adapter.
+	prop.transform=prop.get_node("Mesh").transform.affine_inverse()
+	return prop
 
 static func prepare_resource(resource: EmberVoxelModelResource, projection_cache: RefCounted = null) -> PackedScene:
 	## Same builder as ordinary prefabs, but no files/cache/live meshes are changed.
@@ -535,6 +554,7 @@ static func _make_tree(
 	root.name = model_id
 	root.model_id = model_id
 	if not model.get("solidSurface",{}).is_empty():root.set_meta("ember_solid_source",true)
+	if not model.get("externalSurface",{}).is_empty():root.set_meta("ember_external_source",true)
 	root.voxels_per_block = VoxMesher.voxels_per_block(model)
 	root.block_world_size = tile_size
 	var visual := MeshInstance3D.new()

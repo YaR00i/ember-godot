@@ -1,8 +1,10 @@
 extends RefCounted
-## Opt-in convex parts of the canonical voxel Source. Directions are authored
-## shape guides; support distances always come from occupied voxel corners.
+## Authored solid parts of the canonical voxel Source. Unedited guides fit
+## convex hulls; a carved occupancy keeps its full concave volume boundary.
 ## The returned triangles also own collision, picking and floor queries.
 const CONTRACT := "voxel-solid-surface-v4-silhouette-frame-stable-buffers"
+const VOLUME_CONTRACT := "solid-edited-volume-v3-surface-paint-weights"
+const PART_PALETTE_CONTRACT := "solid-part-palette-v1"
 ## Material look applied to solid-surface meshes that carry form normals (CUSTOM0).
 ## 0.35 keeps steep bevels from streaking while staying continuous across edges.
 const FACET_PROJECTION_BIAS := 0.35
@@ -20,20 +22,70 @@ static func occupancy_hash(voxels: PackedByteArray) -> String:
 static func active(model: Dictionary) -> bool:
 	if model.get("solidSurface", {}).is_empty():return false
 	var voxels:=VoxMesher.model_channel(model,"voxels")
-	if occupancy_hash(voxels)!=model.solidSurface.get("occupancy",""):return false
 	var ids:=PackedInt32Array(model.get("voxelPartIds",[]))
 	if ids.size()!=voxels.size():return false
-	# New voxels without a merge-part owner must remain visible and physical.
-	# Until assigned to a part, ordinary sculpting uses the exact voxel mesh.
+	# Part zero is the editor's legitimate "Added" selection. Volume surfaces
+	# read material slots from voxels and need no convex guide for those cells.
 	for index in voxels.size():
-		if voxels[index]>0 and ids[index]==0:return false
+		if voxels[index]>0 and (ids[index]<0 or ids[index]>model.solidSurface.parts.size()):return false
 	return true
+
+## The saved guide reference describes the generated hull. A changed occupancy
+## has its own concave boundary; never fit a convex hull across a carved cavity.
+## A composed union has no single hull reference and records its volume topology
+## in this same profile. Legacy/uncarved sources need no migration.
+static func uses_volume(model: Dictionary) -> bool:
+	if model.get("solidSurface",{}).is_empty():return false
+	var voxels:=VoxMesher.model_channel(model,"voxels")
+	if model.solidSurface.get("topology","hull")=="volume" or occupancy_hash(voxels)!=model.solidSurface.get("occupancy",""):return true
+	var ids:=PackedInt32Array(model.get("voxelPartIds",[]))
+	if ids.size()==voxels.size():
+		for index in voxels.size():
+			if voxels[index]>0 and ids[index]==0:return true
+	return false
+
+## Grab preserves guides on uncarved objects, and the volume boundary on carved
+## ones. Unknown ownership still takes the protective ordinary voxel path.
+static func grab_profile(source: EmberVoxelModelResource, voxels: PackedByteArray, owners: PackedInt32Array) -> Dictionary:
+	if source.solid_surface.is_empty(): return {}
+	var previous := source.voxels
+	var previous_owners := source.voxel_part_ids
+	if previous_owners.size()!=previous.size(): return {}
+	if voxels.size()!=previous.size() or owners.size()!=voxels.size():
+		return {"error":"Тянуть: не удалось сохранить части объёма. Жест не применён."}
+	var before_occupancy := previous.duplicate()
+	var after_occupancy := voxels.duplicate()
+	var seen := PackedByteArray();seen.resize(source.merge_parts.size()+1)
+	var baseline_valid := true
+	var owners_valid := true
+	for i in previous.size():
+		before_occupancy[i]=mini(previous[i],1)
+		after_occupancy[i]=mini(voxels[i],1)
+		if previous[i]>0:
+			var owner := previous_owners[i]
+			if owner<1 or owner>=seen.size(): baseline_valid=false
+			else: seen[owner] |= 1
+		if voxels[i]>0:
+			var owner := owners[i]
+			if owner<1 or owner>=seen.size(): owners_valid=false
+			else: seen[owner] |= 2
+	if not baseline_valid: return {}
+	if not owners_valid:
+		return {"error":"Тянуть: новый объём потерял принадлежность к частям. Жест не применён."}
+	for owner in range(1,seen.size()):
+		if seen[owner]==1:
+			return {"error":"Тянуть: исчезает целая часть объекта. Уменьшите силу жеста."}
+	var profile := source.solid_surface.duplicate(true)
+	if before_occupancy.hex_encode().sha256_text()==source.solid_surface.get("occupancy",""):
+		profile.occupancy=after_occupancy.hex_encode().sha256_text()
+	return {"profile":profile}
 
 static func validation_errors(data: Dictionary, part_count: int, palette_count: int) -> Array[String]:
 	var errors: Array[String] = []
 	if data.is_empty(): return errors
 	if data.get("version") != 1 or not data.get("parts") is Array:
 		return ["invalid solid surface version/parts"]
+	if data.get("topology","hull") not in ["hull","volume"]:errors.append("invalid solid surface topology")
 	if data.parts.size() != part_count or part_count < 1 or part_count > 32:
 		errors.append("solid surface requires one guide per merge part (1..32)")
 	if not data.get("occupancy") is String or str(data.get("occupancy","")).length()!=64 or not str(data.get("occupancy","")).is_valid_hex_number():errors.append("invalid solid surface occupancy reference")
@@ -103,6 +155,7 @@ static func face_of(corners: PackedVector3Array, plane: Plane) -> PackedVector3A
 static func hull_faces(model: Dictionary) -> Dictionary:
 	var size := VoxMesher.ember_grid_size(model)
 	var voxels := VoxMesher.model_channel(model,"voxels")
+	var part_ids := PackedInt32Array(model.get("voxelPartIds",[]))
 	var points := part_points(model)
 	var faces: Array[Dictionary] = []
 	var part_planes: Array = []
@@ -128,13 +181,79 @@ static func hull_faces(model: Dictionary) -> Dictionary:
 				if distance<best: best=distance; nearest=point
 			var sample := Vector3i((nearest-plane.normal*0.51).floor()).clamp(Vector3i.ZERO,size-Vector3i.ONE)
 			var slot := int(voxels[VoxMesher.cell_index(sample.x,sample.y,sample.z,size.x,size.z)])
+			if part_ids[VoxMesher.cell_index(sample.x,sample.y,sample.z,size.x,size.z)] != part+1:
+				# The support corner belongs to this part, but stepping inward can land
+				# in a neighbouring roof/window/frame. One of its eight incident cells
+				# belongs to the owner; retain that part's painted colour.
+				var owner_distance := INF
+				for dy in [-1,0]:
+					for dz in [-1,0]:
+						for dx in [-1,0]:
+							var candidate := Vector3i(nearest)+Vector3i(dx,dy,dz)
+							if candidate.x<0 or candidate.y<0 or candidate.z<0 or candidate.x>=size.x or candidate.y>=size.y or candidate.z>=size.z: continue
+							var index := VoxMesher.cell_index(candidate.x,candidate.y,candidate.z,size.x,size.z)
+							if part_ids[index] != part+1 or voxels[index]==0: continue
+							var distance := (Vector3(candidate)+Vector3.ONE*0.5).distance_squared_to(centre)
+							if distance<owner_distance: owner_distance=distance;slot=int(voxels[index])
 			if slot==0: slot=1
 			faces.append({"part":part,"plane":plane,"face":face,"slot":slot})
 	return {"faces":faces,"planes":part_planes}
 
 
 static func build(model: Dictionary) -> ArrayMesh:
+	if uses_volume(model): return volume_mesh(model)
 	var mesh := ArrayMesh.new()
+	var arrays := hull_geometry(model)
+	if arrays.is_empty(): return mesh
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays,[],{},CUSTOM_FORMAT)
+	mesh.surface_set_name(0,"solid_surface")
+	mesh.set_meta("solid_surface_contract",CONTRACT)
+	mesh.set_meta("solid_form_contract",FORM_CONTRACT)
+	return mesh
+
+## Immutable worker input; the same hull, volume and voxel builders as published props.
+static func look_geometry(model:Dictionary,pulls:PackedFloat32Array)->Dictionary:
+	if not active(model):return {}
+	var volume:=uses_volume(model)
+	var hull:Array=volume_geometry(model) if volume else hull_geometry(model)
+	var detailed:Array=hull.duplicate()
+	var living:Dictionary={}
+	var has_pull:=false
+	for pull in pulls:has_pull=has_pull or pull>0.0
+	if volume and not detailed.is_empty():
+		var custom:PackedFloat32Array=detailed[Mesh.ARRAY_CUSTOM0]
+		var normals:=PackedVector3Array();normals.resize(custom.size()/4)
+		for i in normals.size():normals[i]=Vector3(custom[i*4],custom[i*4+1],custom[i*4+2])
+		detailed[Mesh.ARRAY_NORMAL]=normals
+	elif not volume and has_pull:
+		var field:=LivingFaces.new();field.prepare_field(model)
+		living=living_geometry(model,AUTHORED_BLOCK_M,pulls,field)
+		if not living.is_empty():detailed=living.arrays
+	return {"arrays":[detailed,hull,voxel_geometry(model)],"volume":volume,"living":living,"pulls":pulls}
+
+## Upload on the main thread and retain the ordinary prop material contracts.
+static func look_meshes(model:Dictionary,geometry:Dictionary)->Array[ArrayMesh]:
+	var result:Array[ArrayMesh]=[]
+	for look in 3:
+		var mesh:=ArrayMesh.new();var arrays:Array=geometry.arrays[look]
+		if not arrays.is_empty():
+			mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays,[],{},CUSTOM_FORMAT)
+			mesh.surface_set_name(0,"solid_surface")
+		mesh.set_meta("solid_surface_contract",CONTRACT);mesh.set_meta("solid_form_contract",FORM_CONTRACT)
+		if geometry.volume:mesh.set_meta("solid_volume_boundary",true)
+		if look==2:
+			mesh.set_meta("solid_pixel_cells",float(VoxMesher.voxels_per_block(model)));mesh.set_meta("solid_voxel_look",true)
+		elif look==0 and not geometry.living.is_empty():
+			mesh.set_meta("solid_living_faces",LIVING_CONTRACT);mesh.set_meta("solid_living_pulls",geometry.pulls)
+			mesh.set_meta("solid_living_stats",geometry.living.stats)
+		apply_materials(mesh,model)
+		if look==0 and not geometry.volume:mesh=load("res://scripts/ember_solid_material_layers.gd").prepared_mesh(mesh,model)
+		result.append(mesh)
+	return result
+
+
+## CPU-only buffers: workers never create rendering resources or modify the Source.
+static func hull_geometry(model: Dictionary) -> Array:
 	var vertices := PackedVector3Array(); var normals := PackedVector3Array()
 	var colours := PackedColorArray(); var uv := PackedVector2Array(); var uv2 := PackedVector2Array()
 	var density := float(VoxMesher.voxels_per_block(model))
@@ -145,17 +264,14 @@ static func build(model: Dictionary) -> ArrayMesh:
 			for point in [face[0],face[i+1],face[i]]:
 				vertices.append(point/density); normals.append(plane.normal)
 				colours.append(Color(1,0,0,slot/255.0)); uv.append(Vector2(slot,slot)/255.0); uv2.append(Vector2(slot/255.0,0))
-	if vertices.is_empty(): return mesh
+	if vertices.is_empty(): return []
 	var arrays := []; arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX]=vertices; arrays[Mesh.ARRAY_NORMAL]=normals
 	arrays[Mesh.ARRAY_COLOR]=colours; arrays[Mesh.ARRAY_TEX_UV]=uv; arrays[Mesh.ARRAY_TEX_UV2]=uv2
 	arrays[Mesh.ARRAY_CUSTOM0]=form_custom(vertices,normals,PackedInt32Array())
 	attach_edge_frame(arrays,vertices,normals)
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays,[],{},CUSTOM_FORMAT)
-	mesh.surface_set_name(0,"solid_surface")
-	mesh.set_meta("solid_surface_contract",CONTRACT)
-	mesh.set_meta("solid_form_contract",FORM_CONTRACT)
-	return mesh
+	return arrays
+
 
 static func apply_materials(mesh: ArrayMesh, model: Dictionary) -> void:
 	if mesh.get_surface_count()==0 or mesh.surface_get_name(0)!="solid_surface":return
@@ -166,7 +282,6 @@ static func apply_materials(mesh: ArrayMesh, model: Dictionary) -> void:
 	for surface in mesh.get_surface_count(): mesh.surface_set_material(surface,material)
 
 static var _depth_shader: Shader
-static var _white_texture: ImageTexture
 const DEPTH_FADE_M := Vector2(9.0, 22.0)
 ## One authored block is one metre in every world; a world may draw a block as 16 units (the playable
 ## maps), so everything measured in metres here is a physical size, not a world-unit size.
@@ -184,32 +299,6 @@ static func solid_depth_shader() -> Shader:
 	return _depth_shader
 
 
-## Binds the painted-colour depth of one material (Pattern.depth_mm > 0) to the detailed material.
-static func _bind_pattern(material: ShaderMaterial, slot: int, pattern) -> bool:
-	if material == null or pattern == null or pattern.depth_mm <= 0.0 or pattern.albedo_texture == null:
-		if material != null: material.set_shader_parameter("material_depth_enabled", false)
-		return false
-	var height_leaf=load("res://scripts/ember_material_height.gd")
-	var key := "%d|%.3f|%.3f" % [slot, pattern.depth_softness, pattern.depth_sharpness]
-	if material.get_meta("ember_detail_key", "") != key:
-		var height=height_leaf.texture_for(pattern.albedo_texture, pattern.depth_softness, pattern.depth_sharpness)
-		if height == null: return false
-		material.set_shader_parameter("material_depth_height", height)
-		material.set_shader_parameter("material_depth_slots", Vector2i(slot, slot))
-		material.set_meta("ember_detail_key", key)
-	if _white_texture == null:
-		var white:=Image.create(1,1,false,Image.FORMAT_R8);white.fill(Color.WHITE);_white_texture=ImageTexture.create_from_image(white)
-	material.set_shader_parameter("material_depth_coverage", _white_texture)
-	var scale := depth_scale(material)
-	material.set_shader_parameter("material_depth_amplitude_m", pattern.depth_mm * 0.001 * scale)
-	material.set_shader_parameter("material_depth_steps", 32)
-	material.set_shader_parameter("material_depth_fade_near_m", DEPTH_FADE_M.x * scale)
-	material.set_shader_parameter("material_depth_fade_far_m", DEPTH_FADE_M.y * scale)
-	material.set_shader_parameter("material_depth_shadows", true)
-	material.set_shader_parameter("material_depth_enabled", true)
-	return true
-
-
 ## World units per authored metre as the material currently knows it (1 = a metre-sized world).
 static func depth_scale(material: ShaderMaterial) -> float:
 	return float(material.get_meta("ember_units_per_metre", 1.0))
@@ -222,20 +311,24 @@ static func set_world_scale(material: ShaderMaterial, units_per_metre: float) ->
 	if units_per_metre <= 0.0 or is_equal_approx(previous, units_per_metre): return
 	material.set_meta("ember_units_per_metre", units_per_metre)
 	if not material.get_meta("ember_detailed_depth", false): return
+	material.set_shader_parameter("terrain_depth_world_unit",units_per_metre)
 	var ratio := units_per_metre / previous
 	for parameter in ["material_depth_amplitude_m", "material_depth_fade_near_m", "material_depth_fade_far_m"]:
 		var value = material.get_shader_parameter(parameter)
 		if value != null: material.set_shader_parameter(parameter, float(value) * ratio)
 
 
-## First material of the mesh that asks for depth, read from its saved Pattern.
+## The same per-material bank as ground. No first-slot restriction on layered objects.
 static func bind_detail(material: ShaderMaterial, mesh: ArrayMesh) -> bool:
 	var materials=load("res://scripts/ember_voxel_surface_materials.gd")
 	var ids: PackedStringArray=mesh.get_meta("solid_surface_material_ids",PackedStringArray())
-	for slot in ids.size():
-		if ids[slot].is_empty():continue
-		if _bind_pattern(material, slot, materials.load_compact_terrain_variant(ids[slot])):return true
-	return false
+	materials.set_terrain_depth_profiles(material,mesh.get_meta("solid_surface_roles",PackedStringArray()),ids)
+	var scale:=depth_scale(material)
+	material.set_shader_parameter("terrain_depth_world_unit",scale)
+	material.set_shader_parameter("material_depth_fade_near_m",DEPTH_FADE_M.x*scale)
+	material.set_shader_parameter("material_depth_fade_far_m",DEPTH_FADE_M.y*scale)
+	material.set_shader_parameter("material_depth_shadows",true)
+	return bool(material.get_shader_parameter("material_depth_enabled"))
 
 
 ## Live update from a draft Pattern (editor preview): amplitude is a uniform; the height map is only
@@ -243,8 +336,11 @@ static func bind_detail(material: ShaderMaterial, mesh: ArrayMesh) -> bool:
 static func update_detail(material: ShaderMaterial, mesh: ArrayMesh, pattern, id: String) -> void:
 	if material == null or mesh == null or not material.get_meta("ember_detailed_depth", false):return
 	var ids: PackedStringArray=mesh.get_meta("solid_surface_material_ids",PackedStringArray())
-	for slot in ids.size():
-		if ids[slot]==id:_bind_pattern(material, slot, pattern)
+	if not id in ids:return
+	var drafts:Dictionary=material.get_meta("ember_depth_drafts",{})
+	drafts[id]=pattern
+	material.set_meta("ember_depth_drafts",drafts)
+	load("res://scripts/ember_voxel_surface_materials.gd").set_terrain_depth_profiles(material,mesh.get_meta("solid_surface_roles",PackedStringArray()),ids,drafts)
 
 
 static func material_for(mesh: ArrayMesh, detailed := false) -> ShaderMaterial:
@@ -262,6 +358,7 @@ static func material_for(mesh: ArrayMesh, detailed := false) -> ShaderMaterial:
 	if detailed:
 		material.set_meta("ember_detailed_depth",true)
 		bind_detail(material,mesh)
+		load("res://scripts/ember_solid_material_layers.gd").bind(material,mesh)
 	return material
 
 ## Object-local periodic projection + rim from the continuous form normal.
@@ -352,10 +449,33 @@ const LIVING_REACH_VOXELS := 10.0
 const LIVING_CACHE_LIMIT := 6
 static var _living_cache: Dictionary = {}
 static var _living_field: Dictionary = {}
+const LivingStorage=preload("res://scripts/prototypes/ember_derived_data_cache.gd")
+static var living_disk_hits:=0
+static var _boundary_displays:Dictionary={}
 
 
 static func clear_living_cache() -> void:
 	_living_cache.clear(); _living_field.clear()
+	_boundary_displays.clear()
+
+## Published volume arrays already contain the exact boundary and smooth form
+## normals. A display switch does not need to scan the voxel grid a second time.
+static func detailed_volume_from_boundary(boundary:ArrayMesh)->ArrayMesh:
+	var key:=boundary.get_instance_id()
+	if _boundary_displays.has(key):return _boundary_displays[key]
+	var result:=ArrayMesh.new()
+	for surface in boundary.get_surface_count():
+		var arrays:=boundary.surface_get_arrays(surface)
+		var custom:PackedFloat32Array=arrays[Mesh.ARRAY_CUSTOM0]
+		var normals:=PackedVector3Array();normals.resize(custom.size()/4)
+		for i in normals.size():normals[i]=Vector3(custom[i*4],custom[i*4+1],custom[i*4+2])
+		arrays[Mesh.ARRAY_NORMAL]=normals;arrays[Mesh.ARRAY_TANGENT]=null
+		result.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays,[],{},CUSTOM_FORMAT)
+		result.surface_set_name(surface,boundary.surface_get_name(surface))
+	for meta in boundary.get_meta_list():result.set_meta(meta,boundary.get_meta(meta))
+	if _boundary_displays.size()>=6:_boundary_displays.erase(_boundary_displays.keys()[0])
+	_boundary_displays[key]=result
+	return result
 
 
 ## Pull limit in metres of every palette slot, read from the saved Patterns of the mesh materials.
@@ -372,25 +492,50 @@ static func living_pulls(material_ids: PackedStringArray) -> PackedFloat32Array:
 ## Cached wrapper: the mesh depends on the Source, the object scale and the pull of every palette slot.
 ## Returns an empty mesh when no material asks for a pull.
 static func living_mesh(model: Dictionary, unit_m: float, pulls: PackedFloat32Array) -> ArrayMesh:
-	var any := false
-	for pull in pulls: any = any or pull > 0.0
-	if not any or unit_m <= 0.0 or model.get("solidSurface", {}).is_empty(): return ArrayMesh.new()
-	var shape_key := "%d|%d|%d|%d" % [hash(str(model.solidSurface.parts)), hash(VoxMesher.model_channel(model, "voxels")), hash(PackedInt32Array(model.get("voxelPartIds", []))), hash(str(model.solidSurface.get("occupancy", "")))]
+	# Check the existing derived cache before rescanning every occupied cell.
+	# Include topology: the same voxels can intentionally switch to a volume.
+	var profile:Dictionary=model.get("solidSurface",{})
+	var shape_key := "%d|%d|%d|%d|%s|%s|%d" % [hash(str(profile.get("parts",[]))), hash(VoxMesher.model_channel(model, "voxels")), hash(PackedInt32Array(model.get("voxelPartIds", []))), hash(str(profile.get("occupancy", ""))),str(profile.get("topology","hull")),str(VoxMesher.ember_grid_size(model)),VoxMesher.voxels_per_block(model)]
 	var pull_key := ",".join(Array(pulls).map(func(value: float): return "%.4f" % value))
 	var key := "%s|%.4f|%s" % [shape_key, unit_m, pull_key]
 	if _living_cache.has(key): return _living_cache[key]
-	if _living_field.get("key", "") != shape_key:
-		var field := LivingFaces.new()
-		field.prepare_field(model)
-		_living_field = {"key": shape_key, "field": field}
-	var mesh := _build_living(model, unit_m, pulls, _living_field.field)
+	# Edited volumes still own their exact boundary and physical surface.
+	if uses_volume(model): return volume_mesh(model,true)
+	var any := false
+	for pull in pulls: any = any or pull > 0.0
+	if not any or unit_m <= 0.0 or profile.is_empty(): return ArrayMesh.new()
+	var storage:=LivingStorage.new();storage.directory="user://ember-solid-living-cache";storage.max_bytes=128*1024*1024
+	var disk_key:=storage.digest([1,Engine.get_version_info().hex,LIVING_CONTRACT,FORM_CONTRACT,VoxMesher.ember_grid_size(model),VoxMesher.voxels_per_block(model),model.solidSurface,VoxMesher.model_channel(model,"voxels"),PackedInt32Array(model.get("voxelPartIds",[])),unit_m,pulls])
+	var geometry:Dictionary=storage.read(disk_key).get("geometry",{})
+	if geometry.get("arrays") is Array and geometry.arrays.size()==Mesh.ARRAY_MAX and geometry.get("stats") is Dictionary:
+		living_disk_hits+=1
+	else:
+		if _living_field.get("key", "") != shape_key:
+			var field := LivingFaces.new()
+			field.prepare_field(model)
+			_living_field = {"key": shape_key, "field": field}
+		geometry=living_geometry(model,unit_m,pulls,_living_field.field)
+		if not geometry.is_empty():storage.write(disk_key,{"geometry":geometry},func():return false);storage.trim()
+	var mesh := _build_living(geometry,pulls)
 	if _living_cache.size() >= LIVING_CACHE_LIMIT: _living_cache.erase(_living_cache.keys()[0])
 	_living_cache[key] = mesh
 	return mesh
 
 
-static func _build_living(model: Dictionary, unit_m: float, pulls: PackedFloat32Array, worker: LivingFaces) -> ArrayMesh:
+static func _build_living(geometry:Dictionary,pulls:PackedFloat32Array) -> ArrayMesh:
 	var mesh := ArrayMesh.new()
+	if geometry.is_empty(): return mesh
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, geometry.arrays, [], {}, CUSTOM_FORMAT)
+	mesh.surface_set_name(0, "solid_surface")
+	mesh.set_meta("solid_surface_contract", CONTRACT)
+	mesh.set_meta("solid_form_contract", FORM_CONTRACT)
+	mesh.set_meta("solid_living_faces", LIVING_CONTRACT)
+	mesh.set_meta("solid_living_pulls", pulls)
+	mesh.set_meta("solid_living_stats", geometry.stats)
+	return mesh
+
+
+static func living_geometry(model: Dictionary, unit_m: float, pulls: PackedFloat32Array, worker: LivingFaces) -> Dictionary:
 	var density := float(VoxMesher.voxels_per_block(model))
 	var hull := hull_faces(model)
 	var entries: Array = hull.faces
@@ -419,21 +564,16 @@ static func _build_living(model: Dictionary, unit_m: float, pulls: PackedFloat32
 		var pull_m := pulls[slot] if slot < pulls.size() else 0.0
 		if pull_m <= 0.0 or not worker.add_living_face(entry, pull_m / worker.voxel_m, fan):
 			worker.add_flat_face(entry, fan)
-	if worker.vertices.is_empty(): return mesh
+	if worker.vertices.is_empty(): return {}
 	var arrays := []; arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = worker.vertices; arrays[Mesh.ARRAY_NORMAL] = worker.normals
 	arrays[Mesh.ARRAY_COLOR] = worker.colours; arrays[Mesh.ARRAY_TEX_UV] = worker.uv; arrays[Mesh.ARRAY_TEX_UV2] = worker.uv2
 	arrays[Mesh.ARRAY_CUSTOM0] = worker.custom
 	attach_edge_frame(arrays, worker.vertices, worker.hull_normals)
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, CUSTOM_FORMAT)
-	mesh.surface_set_name(0, "solid_surface")
-	mesh.set_meta("solid_surface_contract", CONTRACT)
-	mesh.set_meta("solid_form_contract", FORM_CONTRACT)
-	mesh.set_meta("solid_living_faces", LIVING_CONTRACT)
-	mesh.set_meta("solid_living_pulls", pulls)
-	mesh.set_meta("solid_living_stats", worker.stats.duplicate())
+	var geometry := {"arrays":arrays,"stats":worker.stats.duplicate()}
 	worker.clear_output()
-	return mesh
+	return geometry
+
 
 
 ## Working state of one living-faces build (voxel units unless a name says metres).
@@ -736,12 +876,180 @@ class LivingFaces extends RefCounted:
 		return true
 
 
-## Voxel look of the same Source: one flat quad per exposed voxel face, same vertex layout,
-## palette slots and material as the solid hull (so the pattern and the rim follow the same
-## owners). CUSTOM0 holds the cube face normal; solid_pixel_cells reads the pattern once
-## per voxel. Display only: collision/floor stay on the hull, and the Source is not changed.
+static var _volume_cache: Dictionary = {}
+const VOLUME_EDGES := [[0,1],[2,3],[4,5],[6,7],[0,2],[1,3],[4,6],[5,7],[0,4],[1,5],[2,6],[3,7]]
+const VOLUME_FACES := [
+	[Vector3i(1,0,0),Vector3i(0,1,0),Vector3i(0,0,1)],
+	[Vector3i(-1,0,0),Vector3i(0,0,1),Vector3i(0,1,0)],
+	[Vector3i(0,1,0),Vector3i(0,0,1),Vector3i(1,0,0)],
+	[Vector3i(0,-1,0),Vector3i(1,0,0),Vector3i(0,0,1)],
+	[Vector3i(0,0,1),Vector3i(1,0,0),Vector3i(0,1,0)],
+	[Vector3i(0,0,-1),Vector3i(0,1,0),Vector3i(1,0,0)]]
+
+## Surface nets over occupied voxel centres, padded by empty space. One vertex
+## per crossing cell; each exposed Source face owns a dual quad and its paint.
+## Shared vertices keep the cavity closed across material/part boundaries.
+## CPU arrays only; nothing here modifies the Source or creates a renderer.
+static func volume_geometry(model: Dictionary) -> Array:
+	var size := VoxMesher.ember_grid_size(model)
+	var values := VoxMesher.model_channel(model,"voxels")
+	var density := float(VoxMesher.voxels_per_block(model))
+	var points := PackedVector3Array(); var sums := PackedVector3Array()
+	var paint_masks:Array[Dictionary]=[]
+	var point_cells:Array[Vector3i]=[];var links:=PackedInt32Array()
+	var cells := {}; var triangles := PackedInt32Array(); var slots := PackedInt32Array()
+	for z in size.z:
+		for y in size.y:
+			for x in size.x:
+				var cell := Vector3i(x,y,z)
+				var slot := _volume_sample(values,size,cell)
+				if slot==0: continue
+				for face in VOLUME_FACES:
+					var n:Vector3i=face[0];var u:Vector3i=face[1];var v:Vector3i=face[2]
+					if _volume_sample(values,size,cell+n)!=0: continue
+					var base := cell+Vector3i(mini(n.x,0),mini(n.y,0),mini(n.z,0))-u-v
+					var corners := PackedInt32Array()
+					for key:Vector3i in [base,base+u,base+u+v,base+v]:
+						if not cells.has(key):
+							cells[key]=points.size()
+							points.append(_volume_point(values,size,key)/density)
+							paint_masks.append({})
+							point_cells.append(key)
+							sums.append(Vector3.ZERO)
+						corners.append(cells[key])
+					# Vote once per incident surface quad, not per triangle: a
+					# diagonal must not bias the painted boundary. Only connected
+					# surface corners mix, never nearby faces across an empty gap.
+					for index in corners:
+						paint_masks[index][slot]=float(paint_masks[index].get(slot,0.0))+1.0
+					# Only true net edges, never triangulation diagonals: the latter
+					# would introduce a directional bias on an otherwise flat slope.
+					for i in 4:links.append_array(PackedInt32Array([corners[i],corners[(i+1)%4]]))
+					for order in [[0,2,1],[0,3,2]]:
+						var a:=corners[order[0]];var b:=corners[order[1]];var c:=corners[order[2]]
+						var normal:Vector3=(points[c]-points[a]).cross(points[b]-points[a])
+						if normal.length_squared()<1e-16:continue
+						triangles.append_array(PackedInt32Array([a,b,c]));slots.append(slot)
+	if triangles.is_empty():return []
+	points=_fair_volume_points(points,point_cells,links,density)
+	# Both lighting variants and physics use the same relaxed positions.
+	sums.fill(Vector3.ZERO)
+	for i in range(0,triangles.size(),3):
+		var a:=triangles[i];var b:=triangles[i+1];var c:=triangles[i+2]
+		var normal:Vector3=(points[c]-points[a]).cross(points[b]-points[a])
+		sums[a]+=normal;sums[b]+=normal;sums[c]+=normal
+	var vertices:=PackedVector3Array();var normals:=PackedVector3Array();var colours:=PackedColorArray()
+	var uv:=PackedVector2Array();var uv2:=PackedVector2Array();var custom:=PackedFloat32Array()
+	var paint_packing=load("res://scripts/prototypes/ember_terrain_smooth_surface.gd")
+	for t in slots.size():
+		var a:=triangles[t*3];var b:=triangles[t*3+1];var c:=triangles[t*3+2]
+		var normal:Vector3=(points[c]-points[a]).cross(points[b]-points[a]).normalized()
+		var slot:=float(slots[t])/255.0
+		var blended:=paint_masks[a].size()>1 or paint_masks[b].size()>1 or paint_masks[c].size()>1
+		if blended:
+			# Use the ground's existing three-slot packing/normalisation. The
+			# band spans the two incident voxel rows (~12.5 cm at density16).
+			paint_packing._emit_blended(
+				[points[a],points[b],points[c]],[normal,normal,normal],
+				[paint_masks[a],paint_masks[b],paint_masks[c]],slots[t],vertices,normals,colours,uv,uv2)
+		for index in [a,b,c]:
+			if not blended:
+				vertices.append(points[index]);normals.append(normal)
+				colours.append(Color(1,0,0,slot));uv.append(Vector2(slot,slot));uv2.append(Vector2(slot,0))
+			var smooth:=sums[index].normalized()
+			custom.append_array(PackedFloat32Array([smooth.x,smooth.y,smooth.z,1]))
+		# Keep original Source face ownership in alpha for existing picking;
+		# the shader reads the blended palette IDs from UV/UV2 instead.
+		if blended:
+			for index in range(colours.size()-3,colours.size()):colours[index].a=slot
+	var arrays:=[];arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX]=vertices;arrays[Mesh.ARRAY_NORMAL]=normals;arrays[Mesh.ARRAY_COLOR]=colours
+	arrays[Mesh.ARRAY_TEX_UV]=uv;arrays[Mesh.ARRAY_TEX_UV2]=uv2;arrays[Mesh.ARRAY_CUSTOM0]=custom
+	attach_edge_frame(arrays,vertices,normals)
+	return arrays
+
+## Constrained surface-net relaxation: remove voxel-frequency corrugation,
+## without changing connectivity, paint ownership or the occupied Source.
+## Four Jacobi passes; total movement <=0.35 voxel, model bounds stay exact.
+static func _fair_volume_points(points:PackedVector3Array,cells:Array[Vector3i],links:PackedInt32Array,density:float)->PackedVector3Array:
+	var original:=points.duplicate();var counts:=PackedInt32Array();counts.resize(points.size())
+	var minimum:=Vector3(INF,INF,INF);var maximum:=-minimum
+	for p in original:minimum=minimum.min(p);maximum=maximum.max(p)
+	for i in range(0,links.size(),2):counts[links[i]]+=1;counts[links[i+1]]+=1
+	for pass_index in 4:
+		var sums:=PackedVector3Array();sums.resize(points.size())
+		for i in range(0,links.size(),2):
+			var a:=links[i];var b:=links[i+1];sums[a]+=points[b];sums[b]+=points[a]
+		var next:=points.duplicate()
+		for i in points.size():
+			if counts[i]==0:continue
+			var p:=points[i].lerp(sums[i]/float(counts[i]),0.5)
+			var shift:=p-original[i]
+			if shift.length()>0.35/density:p=original[i]+shift.limit_length(0.35/density)
+			var lo:=(Vector3(cells[i])+Vector3.ONE*0.5001)/density
+			var hi:=(Vector3(cells[i])+Vector3.ONE*1.4999)/density
+			p=p.clamp(lo,hi)
+			for axis in 3:
+				if is_equal_approx(original[i][axis],minimum[axis]) or is_equal_approx(original[i][axis],maximum[axis]):p[axis]=original[i][axis]
+			next[i]=p
+		points=next
+	return points
+
+static func _volume_sample(values:PackedByteArray,size:Vector3i,cell:Vector3i)->int:
+	if cell.x<0 or cell.y<0 or cell.z<0 or cell.x>=size.x or cell.y>=size.y or cell.z>=size.z:return 0
+	return values[VoxMesher.cell_index(cell.x,cell.y,cell.z,size.x,size.z)]
+
+static func _volume_point(values:PackedByteArray,size:Vector3i,cell:Vector3i)->Vector3:
+	var occupied:=PackedByteArray();var corners:=PackedVector3Array()
+	for i in 8:
+		var offset:=Vector3i(i&1,(i>>1)&1,(i>>2)&1)
+		occupied.append(1 if _volume_sample(values,size,cell+offset)>0 else 0)
+		corners.append(Vector3(cell+offset)+Vector3.ONE*0.5)
+	var point:=Vector3.ZERO;var count:=0
+	for edge in VOLUME_EDGES:
+		if occupied[edge[0]]!=occupied[edge[1]]:
+			point+=(corners[edge[0]]+corners[edge[1]])*0.5;count+=1
+	return point/float(count) if count>0 else Vector3(cell)+Vector3.ONE
+
+## Flat and smooth lighting share identical positions. Cache only bounded
+## derived geometry; colour is in the key, so repaint cannot reuse stale slots.
+static func volume_mesh(model:Dictionary,smooth:=false)->ArrayMesh:
+	var key:="%s|%s|%s|%s|%s"%[VOLUME_CONTRACT,VoxMesher.ember_grid_size(model),VoxMesher.voxels_per_block(model),hash(VoxMesher.model_channel(model,"voxels")),hash([model.get("palette",[]),model.solidSurface.roles,model.solidSurface.material_ids])]
+	if not _volume_cache.has(key):
+		if _volume_cache.size()>=3:_volume_cache.erase(_volume_cache.keys()[0])
+		_volume_cache[key]={"arrays":volume_geometry(model)}
+	var entry:Dictionary=_volume_cache[key]
+	var look:="smooth" if smooth else "flat"
+	if entry.has(look):return entry[look]
+	var mesh:=ArrayMesh.new();var arrays:Array=entry.arrays.duplicate()
+	if not arrays.is_empty():
+		if smooth:
+			var custom:PackedFloat32Array=arrays[Mesh.ARRAY_CUSTOM0]
+			var normals:=PackedVector3Array();normals.resize(custom.size()/4)
+			for i in normals.size():normals[i]=Vector3(custom[i*4],custom[i*4+1],custom[i*4+2])
+			arrays[Mesh.ARRAY_NORMAL]=normals
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays,[],{},CUSTOM_FORMAT)
+		mesh.surface_set_name(0,"solid_surface")
+	mesh.set_meta("solid_surface_contract",CONTRACT);mesh.set_meta("solid_form_contract",FORM_CONTRACT)
+	mesh.set_meta("solid_volume_boundary",true)
+	entry[look]=mesh
+	return mesh
+
+## One flat quad per exposed Source face, using the same material renderer.
+## Unedited objects keep hull physics; carved volumes follow their displayed boundary.
 static func build_voxel_look(model: Dictionary) -> ArrayMesh:
 	var mesh := ArrayMesh.new()
+	var arrays := voxel_geometry(model)
+	if arrays.is_empty(): return mesh
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, CUSTOM_FORMAT)
+	mesh.surface_set_name(0, "solid_surface")
+	mesh.set_meta("solid_form_contract", FORM_CONTRACT)
+	mesh.set_meta("solid_pixel_cells", float(VoxMesher.voxels_per_block(model)))
+	mesh.set_meta("solid_voxel_look", true)
+	return mesh
+
+
+static func voxel_geometry(model: Dictionary) -> Array:
 	var size := VoxMesher.ember_grid_size(model)
 	var voxels := VoxMesher.model_channel(model, "voxels")
 	var density := float(VoxMesher.voxels_per_block(model))
@@ -768,17 +1076,13 @@ static func build_voxel_look(model: Dictionary) -> ArrayMesh:
 						vertices.append(c[corner] / density); normals.append(Vector3(n))
 						colours.append(Color(1, 0, 0, slot / 255.0)); uv.append(Vector2(slot, slot) / 255.0); uv2.append(Vector2(slot / 255.0, 0))
 						custom.append(n.x); custom.append(n.y); custom.append(n.z); custom.append(1.0)
-	if vertices.is_empty(): return mesh
+	if vertices.is_empty(): return []
 	var arrays := []; arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = vertices; arrays[Mesh.ARRAY_NORMAL] = normals; arrays[Mesh.ARRAY_COLOR] = colours
 	arrays[Mesh.ARRAY_TEX_UV] = uv; arrays[Mesh.ARRAY_TEX_UV2] = uv2; arrays[Mesh.ARRAY_CUSTOM0] = custom
 	attach_edge_frame(arrays, vertices, normals)
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, CUSTOM_FORMAT)
-	mesh.surface_set_name(0, "solid_surface")
-	mesh.set_meta("solid_form_contract", FORM_CONTRACT)
-	mesh.set_meta("solid_pixel_cells", density)
-	mesh.set_meta("solid_voxel_look", true)
-	return mesh
+	return arrays
+
 
 
 ## Convex-edge data for a non-indexed triangle list. CUSTOM1.xyz is the interpolated distance (model

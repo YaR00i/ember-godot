@@ -1,0 +1,98 @@
+[
+	{
+		"file": "01_day.png",
+		"light": {
+			"elevation": 42.0,
+			"sky": 0.65,
+			"sun": 1.2,
+			"yaw": -28.0
+		},
+		"preset": 0,
+		"response": true,
+		"title": "Материалы · мягкий день"
+	},
+	{
+		"file": "02_overcast.png",
+		"light": {
+			"elevation": 55.0,
+			"sky": 1.0,
+			"sun": 0.45,
+			"yaw": -35.0
+		},
+		"preset": 1,
+		"response": true,
+		"title": "Материалы · рассеянный свет"
+	},
+	{
+		"file": "03_low_sun.png",
+		"light": {
+			"elevation": 18.0,
+			"sky": 0.55,
+			"sun": 1.1,
+			"yaw": -130.0
+		},
+		"preset": 2,
+		"response": true,
+		"title": "Материалы · низкое солнце"
+	},
+	{
+		"file": "04_bark_foliage.png",
+		"light": {
+			"elevation": 42.0,
+			"sky": 0.65,
+			"sun": 1.2,
+			"yaw": -28.0
+		},
+		"preset": 0,
+		"response": true,
+		"title": "Кора и листва · фактура и свет"
+	},
+	{
+		"file": "05_bark_low_sun.png",
+		"light": {
+			"elevation": 18.0,
+			"sky": 0.55,
+			"sun": 1.1,
+			"yaw": -130.0
+		},
+		"preset": 2,
+		"response": true,
+		"title": "Кора и листва · скользящий свет"
+	},
+	{
+		"file": "06_stone.png",
+		"light": {
+			"elevation": 42.0,
+			"sky": 0.65,
+			"sun": 1.2,
+			"yaw": -28.0
+		},
+		"preset": 0,
+		"response": true,
+		"title": "Камень · неоднородная шероховатость"
+	},
+	{
+		"file": "07_bush.png",
+		"light": {
+			"elevation": 55.0,
+			"sky": 1.0,
+			"sun": 0.45,
+			"yaw": -35.0
+		},
+		"preset": 1,
+		"response": true,
+		"title": "Листва · мягкая поверхность"
+	},
+	{
+		"file": "08_previous.png",
+		"light": {
+			"elevation": 42.0,
+			"sky": 0.65,
+			"sun": 1.2,
+			"yaw": -28.0
+		},
+		"preset": 0,
+		"response": false,
+		"title": "Прежняя реакция · тот же дневной свет"
+	}
+]

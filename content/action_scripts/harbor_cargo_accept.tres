@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_action_resource.gd" id="1_8baba"]
+
+[resource]
+script = ExtResource("1_8baba")
+action_id = "harbor_cargo_accept"
+document = {
+"id": "harbor_cargo_accept",
+"nameRu": "Разговор · QuestNPC_1",
+"steps": [{
+"dialogueId": "harbor_cargo_intro",
+"type": "talk"
+}, {
+"flag": "harbor_cargo_status",
+"type": "set_flag",
+"value": "active"
+}, {
+"flag": "harbor_cargo_meet",
+"type": "set_flag",
+"value": true
+}]
+}

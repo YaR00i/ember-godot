@@ -67,6 +67,13 @@ static func palette_role(material: Dictionary, index: int) -> String:
 	var overrides: Dictionary = value.get("palette", {})
 	return str(overrides.get(str(index), overrides.get(index, value.get("default", "legacy"))))
 
+## Palette remapping must preserve artwork identity, not just its display RGB.
+## Shared by volume merge and stamps; Resources remain the callers' owners.
+static func palette_identity(colors:PackedColorArray,material:Dictionary,index:int,solid:Dictionary={})->Array:
+	var roles:PackedStringArray=solid.get("roles",PackedStringArray())
+	var ids:PackedStringArray=solid.get("material_ids",PackedStringArray())
+	return [colors[index],palette_role(material,index),roles[index] if index<roles.size() else "",ids[index] if index<ids.size() else ""]
+
 static func set_palette_role(material: Dictionary, index: int, role: String) -> void:
 	if palette_role(material, index) == role: return
 	if not material.has(KEY): assign(material, "legacy")

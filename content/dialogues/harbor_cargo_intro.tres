@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EmberDialogueResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_dialogue_resource.gd" id="1_vcc62"]
+
+[resource]
+script = ExtResource("1_vcc62")
+dialogue_id = "harbor_cargo_intro"
+document = {
+"id": "harbor_cargo_intro",
+"nameRu": "Груз у берега · просьба",
+"startStepId": "line",
+"steps": [{
+"id": "line",
+"next": "end",
+"textRu": "Поможешь с грузом? Чуть дальше по берегу стоит деревянный ящик. Найди его, возьми по F и поставь повторным F на золотую площадку за ним. Потом вернись ко мне — получишь 3 монеты.",
+"type": "dialogue"
+}, {
+"id": "end",
+"type": "end"
+}]
+}

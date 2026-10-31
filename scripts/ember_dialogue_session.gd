@@ -3,6 +3,7 @@ extends RefCounted
 ## Pure traversal of the existing Ember scene graph. UI and persistence stay outside.
 
 const MAX_AUTO_STEPS := 64
+const HISTORY_LIMIT := 200
 const VnSceneState = preload("res://scripts/ember_vn_scene_state.gd")
 
 var _scene: Dictionary = {}
@@ -10,6 +11,7 @@ var _steps: Dictionary = {}
 var _current: Dictionary = {}
 var _flags: Dictionary = {}
 var _finished := true
+var _history: Array[Dictionary] = []
 
 
 func start(scene: Dictionary) -> bool:
@@ -54,6 +56,7 @@ func choose(index: int) -> void:
 	if typeof(option) != TYPE_DICTIONARY:
 		return
 	var option_dict: Dictionary = option
+	_record_history("answer", "Твой ответ", str(option_dict.get("labelRu", option_dict.get("id", ""))))
 	var set_flags: Variant = option_dict.get("setFlags", {})
 	if typeof(set_flags) == TYPE_DICTIONARY:
 		for flag_id in set_flags:
@@ -115,6 +118,24 @@ func flags() -> Dictionary:
 	return _flags.duplicate(true)
 
 
+func history_entries() -> Array[Dictionary]:
+	## A read-only transcript, never a list of commands to replay.
+	return _history.duplicate(true)
+
+
+func clear_history() -> void:
+	_history.clear()
+
+
+func _record_history(kind: String, speaker: String, text: String) -> void:
+	if text.strip_edges().is_empty():
+		return
+	_history.append({"sceneId": str(_scene.get("id", "")), "stepId": str(_current.get("id", "")),
+		"kind": kind, "speaker": speaker, "text": text})
+	if _history.size() > HISTORY_LIMIT:
+		_history.pop_front()
+
+
 func _enter(step_id: String) -> void:
 	var next_id := step_id.strip_edges()
 	for _guard in range(MAX_AUTO_STEPS):
@@ -125,6 +146,7 @@ func _enter(step_id: String) -> void:
 		match str(step.get("type", "")):
 			"dialogue", "choice", "splash":
 				_current = step
+				_record_history(str(step.type), current_title(), current_text())
 				return
 			"set_flag":
 				var flag_id := str(step.get("flag", step.get("flagId", ""))).strip_edges()

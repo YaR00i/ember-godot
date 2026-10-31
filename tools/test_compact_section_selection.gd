@@ -95,6 +95,8 @@ func _run() -> void:
 		node.name = name
 		map.add_child(node)
 		node.owner = frame
+	var anomaly := Node3D.new();anomaly.name="WorldAnomaly";map.add_child(anomaly);anomaly.owner=frame
+	anomaly.position=Vector3(90,2,130);var anomaly_position:=anomaly.global_position
 	var prop := Node3D.new()
 	map.get_node("Props").add_child(prop)
 	prop.owner = frame
@@ -117,6 +119,7 @@ func _run() -> void:
 	assert(editor.commit_selected_sections(map, context).is_empty())
 	assert(draft.resource == corner.candidate and editor.sessions.dirty(draft))
 	assert(prop.global_position.is_equal_approx(prop_position), "left/top growth moved authored object")
+	assert(anomaly.global_position.is_equal_approx(anomaly_position), "left/top growth moved authored sphere")
 	assert(map.to_global(Vector3(504, 12, 534)).is_equal_approx(old_ground), "left/top growth moved retained ground")
 	assert(map.authored_size_blocks == Vector2i(72, 72))
 	history.undo()

@@ -2,7 +2,9 @@ extends "res://scripts/ember_explore_scene.gd"
 ## Isolated, non-story authoring scene. Continue the existing play controller.
 ## No duplicate floor: finish native ground/water preparation before play.
 const STORAGE_ROOT := "user://ember-world-canvas-v1"
+const StartupDiagnostics=preload("res://scripts/ember_startup_diagnostics.gd")
 @export var sandbox_storage_root := STORAGE_ROOT
+@export var hoshi_test_character := false
 
 var _startup_complete := false
 var _startup_layer: CanvasLayer
@@ -11,8 +13,15 @@ var _startup_status_label: Label
 var _startup_participants: Array[Node] = []
 var _startup_canvas_visible := true
 
+func _enter_tree()->void:
+	if not Engine.is_editor_hint():StartupDiagnostics.start()
+
 func _ready() -> void:
 	if Engine.is_editor_hint(): return
+	if StartupDiagnostics.enabled():
+		var diagnostics:=StartupDiagnostics.new()
+		diagnostics.name="StartupDiagnostics"
+		add_child(diagnostics)
 	_begin_startup_screen()
 	for child in get_children():
 		if child.has_method("startup_preparation_status"):
@@ -28,6 +37,11 @@ func _ready() -> void:
 			progress.reset_new_game()
 			progress.load_latest_available()
 		progress.set_active_hero_ids(["protagonist", "mira"], false)
+	# Bounded preparation needs a focus before the normal controller creates
+	# Player/FollowCamera. Keep saved/transition spawn consumption in its owner.
+	var projection = _map._visual_surface_projection
+	if is_instance_valid(projection) and projection.has_method("set_runtime_start_anchor"):
+		projection.set_runtime_start_anchor(_map.spawn_world())
 	while is_inside_tree():
 		var status := _startup_status()
 		_set_startup_text(status.text)
@@ -38,6 +52,7 @@ func _ready() -> void:
 	await get_tree().physics_frame
 	super._ready()
 	if not is_instance_valid(_player): return
+	if hoshi_test_character:_player.install_hoshi_test_visual()
 	var held: Array[Dictionary] = []
 	for node in [_player, _party_followers, _interaction_ui, _inventory_ui, _quest_journal_ui, _pause_ui]:
 		if is_instance_valid(node):
@@ -48,6 +63,16 @@ func _ready() -> void:
 		if is_instance_valid(participant) and participant.has_method("initialize_startup_camera"):
 			participant.initialize_startup_camera()
 	_player.camera_rig._process(0.0)
+	# Saved/transition entry can differ. Hold actors until its real support is ready.
+	if is_instance_valid(projection) and projection.has_method("set_runtime_start_anchor"):
+		projection.set_runtime_start_anchor(_player.global_position)
+		while is_inside_tree():
+			var status := _startup_status()
+			if status.ready:break
+			_set_startup_text(status.text)
+			await get_tree().process_frame
+		if not is_inside_tree():return
+		await get_tree().physics_frame
 	# Keep the cover while camera/reflection transforms reach a rendered frame.
 	# process_frame works in native play and headless fixtures alike.
 	for frame in 2: await get_tree().process_frame
@@ -55,10 +80,15 @@ func _ready() -> void:
 	for entry in held:
 		if is_instance_valid(entry.node): entry.node.process_mode = entry.mode
 	_startup_complete = true
+	StartupDiagnostics.stage("world_revealed")
 	$CanvasLayer.visible = _startup_canvas_visible
 	_startup_layer.queue_free()
 	_startup_layer = null
 	_startup_participants.clear()
+
+
+func is_world_preparation_complete()->bool:
+	return _startup_complete
 
 
 func _startup_status() -> Dictionary:
@@ -69,8 +99,16 @@ func _startup_status() -> Dictionary:
 			return {"ready": false, "text": "Подготавливаем землю"}
 		if projection.has_method("pending_runtime_lod_count") and projection.pending_runtime_lod_count() > 0:
 			return {"ready": false, "text": "Подготавливаем дальний вид земли и воды"}
+		if projection is EmberTerrainPilotProjection and not projection._look_pending.is_empty():
+			return {"ready": false, "text": "Подготавливаем облики земли"}
 	elif _map.compact_terrain != null:
 		return {"ready": false, "text": "Не удалось подготовить землю. Проверьте карту в редакторе."}
+	for patch in get_tree().get_nodes_in_group(&"ember_grass_patches"):
+		if _map.is_ancestor_of(patch) and patch.detail_preparation_pending():
+			return {"ready": false, "text": "Подготавливаем растительность"}
+	var anomaly := _map.get_node_or_null("WorldAnomaly")
+	if anomaly != null and anomaly.enabled and _map.world_look == 0 and _map.compact_ground_style == 1 and not anomaly._prepared:
+		return {"ready": false, "text": "Подготавливаем аномалию: " + anomaly.preparation_state}
 	for participant in _startup_participants:
 		if not is_instance_valid(participant): continue
 		var status: Dictionary = participant.startup_preparation_status()
@@ -115,6 +153,12 @@ func _begin_startup_screen() -> void:
 
 
 func _set_startup_text(text: String) -> void:
+	var label:="anomaly" if text.begins_with("Подготавливаем аномалию") else text
+	if _startup_status_label.text!=text:
+		if not (label=="anomaly" and _startup_status_label.text.begins_with("Подготавливаем аномалию")):
+			StartupDiagnostics.stage(label)
+		var diagnostics=get_node_or_null("StartupDiagnostics")
+		if diagnostics!=null:diagnostics._phase=label
 	_startup_status_label.text = text
 	_startup_title.text = "Подготовка мира" + ".".repeat(1 + (Time.get_ticks_msec() / 450) % 3)
 

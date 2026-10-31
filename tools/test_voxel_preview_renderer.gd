@@ -3,10 +3,11 @@ extends SceneTree
 ## for the real-pixel gate. No preview files are written to the project.
 
 const Renderer = preload("res://addons/ember_import/ember_voxel_preview_renderer.gd")
-const MODEL_ID := "vox_fan_anvil"
-const PREFAB_PATH := "res://prefabs/voxels/vox_fan_anvil.tscn"
-const SOURCE_MODEL_ID := "vox_crate_1"
-const SOURCE_PREFAB_PATH := "res://prefabs/voxels/vox_crate_1.tscn"
+const Fixture = preload("res://tools/fixtures/ember_voxel_native_test_fixture.gd")
+const MODEL_ID := "qa_native_block"
+const PREFAB_PATH := "res://prefabs/voxels/qa_native_block.tscn"
+const SOURCE_MODEL_ID := "qa_native_source"
+const SOURCE_PREFAB_PATH := "res://prefabs/voxels/qa_native_source.tscn"
 
 var _textures: Dictionary = {}
 
@@ -16,6 +17,8 @@ func _init() -> void:
 
 
 func _run() -> void:
+	var state := Fixture.prepare(self)
+	if state.refused:quit(2);return
 	if DisplayServer.get_name() == "headless":
 		print("PASS voxel preview renderer")
 		print("  display: headless")

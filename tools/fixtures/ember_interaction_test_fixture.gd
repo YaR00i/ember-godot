@@ -31,6 +31,9 @@ static func prepare(tree: SceneTree) -> Dictionary:
 	if state.refused:
 		printerr("REFUSED: run python tools/run_interaction_tests.py; native fixtures require a disposable project")
 		return state
+	# These interaction fixtures have no authored terrain artwork. Provide the
+	# required coverage input in memory; this does not test grass appearance.
+	state.coverage_texture = Maps.placeholder_coverage()
 	state.error = _write_content()
 	for id in ["available", "active", "done"]:
 		var path := "res://assets/world_markers/quest_%s.svg" % id

@@ -234,12 +234,13 @@ func commit(root: Node, parent: Node3D, undo: Object, position: Vector3) -> Embe
 	prop.configure_voxel_scale(source.normalized_density(), world_size)
 	prop.scene_file_path = prefab_path
 	prop.set_meta(EmberVoxelPrefab.SOURCE_SIGNATURE_META, saved.signature)
+	var action_title := "Создать уступ" if recipe.generator_id == Generator.CLIFF else ("Создать прибрежный дом" if recipe.generator_id == Generator.BUILDING else "Создать большое voxel-дерево")
 	if undo is EditorUndoRedoManager:
-		undo.create_action("Создать большое voxel-дерево", UndoRedo.MERGE_DISABLE, root)
+		undo.create_action(action_title, UndoRedo.MERGE_DISABLE, root)
 		undo.add_do_method(self, "_attach", root, parent, prop)
 		undo.add_undo_method(self, "_detach", parent, prop)
 	else:
-		undo.create_action("Создать большое voxel-дерево")
+		undo.create_action(action_title)
 		undo.add_do_method(_attach.bind(root, parent, prop))
 		undo.add_undo_method(_detach.bind(parent, prop))
 	undo.add_do_reference(prop)

@@ -2,9 +2,11 @@ extends Node3D
 ## Shared play controller for authored exploration scenes; no scene owns a second runtime.
 
 const PartyFollowers := preload("res://scripts/ember_party_followers.gd")
+const WorldItem := preload("res://scripts/ember_world_item_3d.gd")
 
 @export var map_id := EmberMapTransition.DEFAULT_MAP_ID
 @export var player_debug_damage := 0.0
+@export var recovery_floor_y := -256.0
 
 @onready var _hud: Label = $CanvasLayer/Gate
 @onready var _map: EmberMapLoader = $Map
@@ -19,6 +21,8 @@ var _party_mode_button: Button
 var _shadow_acc := 0.0
 var _last_shadow_at := Vector3(INF, INF, INF)
 var _arrival_guard_region := ""
+var _world_item_records: Dictionary = {}
+var _world_item_placements: Dictionary = {}
 
 
 func _ready() -> void:
@@ -37,7 +41,23 @@ func _ready() -> void:
 	_add_quest_journal_ui()
 	_add_pause_ui()
 	_spawn_player(ts)
+	if progress:
+		progress.progress_changed.connect(_refresh_world_items)
+		_refresh_world_items()
 	_add_party_followers(ts)
+	var recovery := preload("res://scripts/ember_world_recovery.gd").new()
+	recovery.name = "WorldRecovery"
+	recovery.floor_y = recovery_floor_y
+	recovery.character_return = _recover_fallen_character
+	add_child(recovery)
+	var focus := preload("res://scripts/ember_interaction_focus.gd").new()
+	focus.name = "InteractionFocus"
+	focus.player = _player
+	add_child(focus)
+	var tracker := preload("res://scripts/ember_quest_tracker_ui.gd").new()
+	tracker.name = "QuestTrackerUI"
+	tracker.progress_state = progress
+	$CanvasLayer.add_child(tracker)
 	_resume_combat_return_action()
 	_map.refresh_cutaway_runtime()
 	_add_benchmark_overlay()
@@ -64,6 +84,7 @@ func _physics_process(dt: float) -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if _progress() != null and _progress().combat_party_locked: return
 	# World party control belongs to the scene, not to a particular hero model.
 	# Handling physical Tab here also makes it independent of focused HUD nodes.
 	if not event is InputEventKey or not is_instance_valid(_player):
@@ -154,6 +175,17 @@ func _respawn_player() -> void:
 	_map.refresh_omni_shadow_focus(_player.global_position)
 	_last_shadow_at = _player.global_position
 
+func _recover_fallen_character(body: CharacterBody3D) -> void:
+	# Technical recovery is not defeat/respawn: HP, inventory and quest flags stay.
+	if body.has_meta("ember_carried_item"):
+		var held: WeakRef = body.get_meta("ember_carried_item")
+		if is_instance_valid(held.get_ref()): held.get_ref().recover_from_void()
+	body.global_position = _map.spawn_world() + Vector3(0, 6, 0)
+	body.velocity = Vector3.ZERO
+	if body == _player:
+		_player._cancel_step()
+		if is_instance_valid(_party_followers): _party_followers.reset_to_leader()
+
 
 func _add_interaction_ui() -> void:
 	var ui := EmberInteractionUi.new()
@@ -174,6 +206,71 @@ func _add_inventory_ui() -> void:
 	ui.name = "InventoryUI"
 	$CanvasLayer.add_child(ui)
 	_inventory_ui = ui
+	ui.script_requested.connect(func(id: String) -> void:
+		ui.close()
+		_interaction_ui.activate_script(id))
+	ui.drop_requested.connect(_drop_inventory_item)
+
+
+func _drop_inventory_item(item_id: String) -> void:
+	if not is_instance_valid(_player): return
+	var at := _player.global_position - _player.global_basis.z * 8.0 + Vector3.UP * 8.0
+	var query := PhysicsRayQueryParameters3D.create(at+Vector3.UP*8.0,at-Vector3.UP*128.0,1)
+	if _player.get_world_3d().direct_space_state.intersect_ray(query).is_empty():
+		_inventory_ui.show_item_feedback("Здесь нет поверхности, на которую можно положить предмет")
+		return
+	var result := _progress().drop_inventory_item(item_id,map_id,at)
+	_inventory_ui.show_item_feedback("Предмет выброшен рядом" if result.ok else "Не удалось выбросить предмет")
+
+
+func _refresh_world_items() -> void:
+	if not is_inside_tree(): return
+	var progress := _progress()
+	if progress == null or not is_inside_tree(): return
+	var restored := not is_same(_world_item_records,progress.world_items)
+	_world_item_records = progress.world_items
+	var existing := {}
+	for body in get_tree().get_nodes_in_group("ember_world_item_bodies"):
+		if not is_ancestor_of(body) or body.is_queued_for_deletion(): continue
+		if body.authored_pickup: _world_item_placements[body.pickup_id] = body.placement_settings()
+		body.register_authored_item()
+		body.refresh_availability()
+		existing[body.pickup_id] = body
+		if restored or int(progress.world_items.get(body.pickup_id,{}).get("count",0)) <= 0:
+			body.restore_progress()
+	for id in _world_item_placements:
+		var source: Dictionary = _world_item_placements[id]
+		progress.ensure_authored_item(id,str(source.itemId),map_id,source.transform)
+	for id in progress.world_items:
+		var row: Dictionary = progress.world_items[id]
+		if row.mapId != map_id or int(row.count) <= 0 or existing.has(id): continue
+		var item := EmberItemCatalog.definition(str(row.itemId))
+		if str(item.get("worldScene","")).is_empty(): continue
+		var body := WorldItem.new()
+		body.name = str(id).validate_node_name()
+		body.pickup_id = id
+		body.item_id = row.itemId
+		body.map_id = map_id
+		var placement: Dictionary = _world_item_placements.get(id,{})
+		body.authored_pickup = not placement.is_empty()
+		body.available_flag_id = str(placement.get("availableFlagId",""))
+		body.carryable = bool(placement.get("carryable", item.get("worldCarryable", false)))
+		body.start_quest_id = str(placement.get("startQuestId", ""))
+		body.pushable = bool(placement.get("pushable", false))
+		body.item_mass = float(placement.get("itemMass", 0.25))
+		body.visual_size = float(placement.get("visualSize", 16.0))
+		body.return_radius = float(placement.get("returnRadius", 0.0))
+		body.breakable = bool(placement.get("breakable", false))
+		body.break_effect = placement.get("breakEffect") as PackedScene
+		body.break_impact_speed = float(placement.get("breakImpactSpeed",36.0))
+		body.throw_damage = int(placement.get("throwDamage",8))
+		if not placement.is_empty(): body.transform = global_transform.affine_inverse()*placement.transform
+		else:
+			var origin := WorldItem.Records.vector(row.position)
+			if origin.y < recovery_floor_y: origin = _map.spawn_world() + Vector3.UP * 6.0
+			body.transform = global_transform.affine_inverse() * Transform3D(Basis.from_euler(WorldItem.Records.vector(row.rotation)), origin)
+		body.progress_state = progress
+		add_child(body)
 
 
 func _add_quest_journal_ui() -> void:
@@ -236,7 +333,7 @@ func _play_text() -> String:
 	return "\n".join([
 		"Ember Godot — %s" % map_id,
 		"Пропы в сцене. Reimport из пака затирает сдвиги.",
-		"WASD ходить · Tab герой · F действие · I сумка · Q задания · T строй отряда · Esc меню · RMB yaw камеры · F3/F4 тест света",
+		"WASD ходить/толкать · Tab герой · F действие · G бросить · I сумка · Q задания · T строй отряда · Esc меню · RMB yaw камеры · F3/F4 тест света",
 	])
 
 

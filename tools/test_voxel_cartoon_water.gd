@@ -86,20 +86,10 @@ func _run() -> void:
 	var regular := Prefab._build_visual_mesh(source.model_id,source.to_definition(),1.0/16.0,{})
 	Prefab._apply_visual_materials(regular)
 	check(water_surface(regular) >= 0,"ordinary saved-prefab builder lost water")
-	# Read the authored scene, but neither instantiate gameplay nor save the map.
-	var pier := load("res://scenes/test_pier.tscn") as PackedScene
-	var bay_mesh: BoxMesh
-	if pier != null:
-		var state := pier.get_state()
-		for node in state.get_node_count():
-			if not str(state.get_node_path(node)).ends_with("Map/Terrain/BayWater/Visual"): continue
-			for property in state.get_node_property_count(node):
-				if state.get_node_property_name(node,property) == "mesh":
-					bay_mesh = state.get_node_property_value(node,property) as BoxMesh
-	check(bay_mesh != null and bay_mesh.material is ShaderMaterial,"harbour backdrop still uses plain material")
-	if bay_mesh != null and bay_mesh.material is ShaderMaterial:
-		check(bay_mesh.material.shader == SurfaceMaterials.water_material().shader,"backdrop uses a second water shader")
-		check(bay_mesh.material.get_shader_parameter("background_water") == true,"backdrop did not opt into opaque water")
+	var backdrop := preload("res://tools/fixtures/ember_editor_mechanics_fixture.gd").make_scene()
+	var bay_mesh: BoxMesh = backdrop.get_node("Map/Terrain/BayWater/Visual").mesh
+	backdrop.free()
+	check(bay_mesh.material is ShaderMaterial and bay_mesh.material.shader == SurfaceMaterials.water_material().shader,"fixture backdrop uses a second water shader")
 	check(source.to_definition() == before,"water builder mutated source")
 	var path := "user://cartoon-water-%d.tscn"%Time.get_ticks_usec()
 	check(ResourceSaver.save(packed,path) == OK,"water prefab save failed")

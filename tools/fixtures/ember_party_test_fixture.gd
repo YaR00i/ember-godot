@@ -19,6 +19,7 @@ static func prepare(tree: SceneTree, debug_damage: float = 0.0) -> Dictionary:
 	if state.refused:
 		printerr("REFUSED: run python tools/run_party_tests.py; native fixtures require a disposable project")
 		return state
+	state.coverage_texture = Maps.placeholder_coverage()
 	for definition in [
 		{"id": WEAPON, "nameRu": WEAPON_NAME, "kind": "weapon_jrpg", "atk": 14},
 		{"id": ARENA, "nameRu": "Тестовое оружие арены", "kind": "weapon_arena", "atk": 10},

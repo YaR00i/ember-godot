@@ -11,6 +11,10 @@ uniform float painted_leaf_card_cutoff = 0.40;
 uniform vec3 painted_leaf_card_plain : source_color = vec3(0.40,0.55,0.30);
 // Colour detail only: alpha/silhouette and all shadow geometry stay authored.
 uniform float painted_leaf_artwork_strength : hint_range(0.0,1.0) = 1.0;
+// Optional two-colour paint ramp. Zero retains the accepted artwork/tint exactly.
+uniform float painted_leaf_palette_strength : hint_range(0.0,1.0) = 0.0;
+uniform vec3 painted_leaf_palette_primary : source_color = vec3(0.65,0.55,0.35);
+uniform vec3 painted_leaf_palette_secondary : source_color = vec3(0.38,0.27,0.15);
 uniform float painted_leaf_saturation : hint_range(1.0,1.4) = 1.0;
 uniform float painted_leaf_transmission : hint_range(0.0,1.0) = 0.0;
 uniform float painted_leaf_rim_weight : hint_range(0.0,1.0) = 0.0;
@@ -28,6 +32,11 @@ vec3 ember_leaf_card_colour(vec3 artwork,vec3 pigment) {
 	vec3 paint=ember_foliage_linear_paint(pigment)/max(painted_foliage_paint_reference,vec3(0.00001));
 	vec3 base=painted_leaf_card_coloured ? mix(painted_leaf_card_plain,artwork,painted_leaf_artwork_strength) : painted_leaf_card_plain;
 	vec3 colour=clamp(base*paint,vec3(0.0),vec3(1.0));
+	if (painted_leaf_palette_strength>0.0) {
+		float tone=smoothstep(0.015,0.55,dot(artwork,vec3(0.2126,0.7152,0.0722)));
+		vec3 palette=mix(painted_leaf_palette_secondary,painted_leaf_palette_primary,tone);
+		colour=mix(colour,palette,painted_leaf_palette_strength);
+	}
 	if (painted_leaf_saturation!=1.0) {
 		float gray=dot(colour,vec3(0.2126,0.7152,0.0722));
 		colour=clamp(mix(vec3(gray),colour,painted_leaf_saturation),vec3(0.0),vec3(1.0));

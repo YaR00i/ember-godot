@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="EmberItemIconResource" format=3]
+[ext_resource type="Script" path="res://scripts/ember_item_icon_resource.gd" id="1"]
+[resource]
+script = ExtResource("1")
+icon_id = "forest_berry"
+definition = {
+"id": "forest_berry", "nameRu": "Лесная ягода", "size": 16,
+"palette": {".": "", "R": "#b83c61", "L": "#d36581", "D": "#842b4c", "G": "#668349"},
+"rows": ["................", "................", ".....G..G.......", "......GGGG......", "....GGGGGGG.....", ".....RRRRRR.....", "....RLLRRRRR....", "...RLLRRRRRRD...", "...RLLRRRRRRD...", "...RRRRRRRRRD...", "....RRRRRRRD....", "....RRRRRRRD....", ".....RRRRRD.....", "......DDD.......", "................", "................"]
+}

@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_action_resource.gd" id="1_nsm2k"]
+
+[resource]
+script = ExtResource("1_nsm2k")
+action_id = "shore_receive_reward"
+document = {
+"id": "shore_receive_reward",
+"nameRu": "Хранитель: выдать награду",
+"steps": [{
+"costs": {
+"shore_boar_hide": 1
+},
+"rewards": {
+"coin": 10
+},
+"type": "exchange_items"
+}, {
+"flag": "shore_reward_received",
+"type": "set_flag",
+"value": true
+}, {
+"dialogueId": "shore_reward_thanks",
+"type": "talk"
+}]
+}

@@ -10,10 +10,12 @@ var _undo_redo: Object
 var active_part := 0
 var history_context: Object
 
-func _record_parts(resource: EmberVoxelModelResource, before: PackedByteArray, after: PackedByteArray, indices: PackedInt32Array, applied := false) -> void:
+func _record_parts(resource: EmberVoxelModelResource, before: PackedByteArray, after: PackedByteArray, indices: PackedInt32Array, applied := false, inherited:Dictionary={}) -> void:
 	if resource.voxel_part_ids.is_empty():
 		return
 	var owners := preload("res://addons/ember_import/ember_voxel_parts.gd").stroke(resource,before,after,active_part,indices)
+	for index in inherited:
+		if before[index]==0 and after[index]>0:owners[index]=inherited[index]
 	_add_undo_property(resource, &"voxel_part_ids", resource.voxel_part_ids.duplicate())
 	_add_do_property(resource, &"voxel_part_ids", owners)
 	if applied:
@@ -158,6 +160,7 @@ func commit_applied_stroke(
 	before: PackedByteArray,
 	after: PackedByteArray,
 	indices: PackedInt32Array,
+	inherited:Dictionary={},
 ) -> bool:
 	if resource == null or _undo_redo == null or before == after:
 		return false
@@ -166,6 +169,8 @@ func commit_applied_stroke(
 		for index in indices: channels.voxels[index] = Vector2i(before[index],after[index])
 		if not resource.voxel_part_ids.is_empty():
 			var owners := preload("res://addons/ember_import/ember_voxel_parts.gd").stroke(resource,before,after,active_part,indices)
+			for index in inherited:
+				if before[index]==0 and after[index]>0:owners[index]=inherited[index]
 			channels.voxel_part_ids = {}
 			for index in indices:
 				if resource.voxel_part_ids[index] != owners[index]: channels.voxel_part_ids[index] = Vector2i(resource.voxel_part_ids[index],owners[index])
@@ -180,7 +185,7 @@ func commit_applied_stroke(
 			resource.collision_voxels = collision
 		return commit_applied_delta(resource,channels,indices,"Мир / Canvas · мазок")
 	_create_action("Voxel Surface · непрерывный мазок (%d voxels)" % indices.size(), resource)
-	_record_parts(resource,before,after,indices,true)
+	_record_parts(resource,before,after,indices,true,inherited)
 	_record_collision(resource, before, after, indices, true)
 	_add_do_property(resource, &"voxels", after)
 	_add_undo_property(resource, &"voxels", before)

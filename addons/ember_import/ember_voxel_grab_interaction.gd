@@ -36,6 +36,10 @@ func _intersection(position: Vector2) -> Variant:
 func begin(position: Vector2) -> bool:
 	if workspace._resource == null or workspace._selection_panel.busy():
 		return false
+	if not workspace._world_entry.is_empty() and workspace._world_sessions.brush_guard(workspace._world_entry,"none").get("invalid",false):
+		workspace._set_status("Размер формы изменился: обновите защиту перед деформацией.",true);return false
+	if workspace._selection_panel.has_saved_mask():
+		workspace._set_status("«Тянуть» не поддерживает точную маску. Снимите маску перед деформацией.",true);return false
 	if workspace._resource.voxels.size() > Fragment.GrabJob.MAX_CANDIDATES:
 		workspace._set_status("Первый срез «Тянуть» ограничен холстом524288 ячеек. Используйте отдельный объект меньшего размера.",true)
 		return false

@@ -1,5 +1,6 @@
 @tool
 extends EditorPlugin
+const Mechanics = preload("res://tools/fixtures/ember_editor_mechanics_fixture.gd")
 var errors: Array[String] = []
 func _enter_tree() -> void:
 	_run.call_deferred()
@@ -21,7 +22,8 @@ func _run() -> void:
 		push_error("Disposable editor copy required")
 		return
 	await frames(90)
-	EditorInterface.open_scene_from_path("res://scenes/test_pier.tscn")
+	var fixture_scene := Mechanics.prepare_editor()
+	EditorInterface.open_scene_from_path(fixture_scene)
 	await frames(60)
 	var scene := EditorInterface.get_edited_scene_root()
 	var parent := scene.get_node("Map/Props/MooringPost96_240")
@@ -65,9 +67,11 @@ func _run() -> void:
 	check(EditorInterface.save_scene() == OK,"editor save")
 	await frames(20)
 	var saved := ResourceLoader.load(scene.scene_file_path,"PackedScene",ResourceLoader.CACHE_MODE_IGNORE) as PackedScene
-	var reopened := saved.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE)
-	check(reopened.get_node("Map/Props/MooringPost96_240/Visual") is EmberVoxelProp,"editor reopen")
-	reopened.free()
+	check(Mechanics.saved_property(saved,"Map/Props/MooringPost96_240/Visual","script") == preload("res://scripts/ember_voxel_prop.gd"),"editor reopen lost converted voxel script")
 	print("CONVERSION_EDITOR ","PASS" if errors.is_empty() else "FAIL"," ",errors)
+	EditorInterface.set_main_screen_editor("3D")
+	EditorInterface.get_selection().clear()
+	EditorInterface.inspect_object(null)
+	history.clear_history()
 	await frames(30)
 	get_tree().quit(0 if errors.is_empty() else 1)

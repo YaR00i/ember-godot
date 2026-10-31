@@ -143,3 +143,61 @@ func _fail(message: String) -> void:
 	error = message
 	done = true
 	indices.clear()
+
+
+static func mask_axis(normal:Vector3i)->int:
+	return 0 if normal.x!=0 else 1 if normal.y!=0 else 2
+
+static func mask_key(cell:Vector3i,axis:int)->Vector2i:
+	return Vector2i(cell.y,cell.z) if axis==0 else Vector2i(cell.x,cell.z) if axis==1 else Vector2i(cell.x,cell.y)
+
+static func mask_allows(index:int,size:Vector3i,kind:String,indices:Dictionary,footprint:Dictionary,normal:Vector3i)->bool:
+	if index<0 or index>=size.x*size.y*size.z:return false
+	return indices.has(index) if kind=="voxels" else footprint.has(mask_key(cell_of(index,size),mask_axis(normal))) if kind=="columns" else true
+
+static func compile_brush_guard(state:Dictionary,size:Vector3i,kind:String)->Dictionary:
+	if state.is_empty():return {}
+	var selection:Dictionary=state.get("selection",{})
+	var enabled:bool=selection.get("mask_enabled",false)
+	var region:Rect2i=state.get("region",Rect2i());var height:int=state.get("height",-1)
+	var invalid:bool=selection.get("grid_size",size)!=size and (enabled or region.has_area() or height>=0)
+	var indices:Dictionary={};var footprint:Dictionary={};var normal:Vector3i=selection.get("mask_normal",Vector3i.UP)
+	if enabled:
+		for raw in selection.get("mask_indices",PackedInt32Array()):
+			var index:=int(raw)
+			if index<0 or index>=size.x*size.y*size.z:invalid=true;continue
+			indices[index]=true;footprint[mask_key(cell_of(index,size),mask_axis(normal))]=true
+		if indices.is_empty():invalid=true
+	return {"enabled":enabled,"invalid":invalid,"kind":kind,"indices":indices,"footprint":footprint,"normal":normal,"region":region,"height":height}
+
+static func guard_allows(index:int,size:Vector3i,guard:Dictionary,density:int)->bool:
+	if guard.is_empty():return true
+	if guard.invalid or not Bounds.contains_index(index,size,guard.height):return false
+	var region:Rect2i=guard.region
+	if region.has_area():
+		var p:=cell_of(index,size)
+		if not Rect2i(region.position*density,region.size*density).has_point(Vector2i(p.x,p.z)):return false
+	return not guard.enabled or mask_allows(index,size,guard.kind,guard.indices,guard.footprint,guard.normal)
+
+
+static func translate_brush_guard(state:Dictionary,old_size:Vector3i,new_size:Vector3i,offset:Vector3i,density:int)->Dictionary:
+	if state.is_empty():return {"guard":{}}
+	var next:=state.duplicate(true);var selection:Dictionary=next.selection
+	var region:Rect2i=next.get("region",Rect2i())
+	if selection.get("grid_size",old_size)!=old_size:
+		if selection.get("mask_enabled",false) or region.has_area() or next.get("height",-1)>=0:return {"error":"Обновите маску перед соединением: размер формы изменился."}
+		return {"guard":{}}
+
+	if region.has_area() and (offset.x%density!=0 or offset.z%density!=0):return {"error":"Рабочая область не совпадёт с новой сеткой. Снимите область перед соединением."}
+	for key in ["selected","mask_indices"]:
+		var mapped:=PackedInt32Array()
+		for raw in selection.get(key,PackedInt32Array()):
+			var index:=int(raw)
+			if index<0 or index>=old_size.x*old_size.y*old_size.z:return {"error":"Выделение устарело. Выберите его заново."}
+			var cell:=cell_of(index,old_size)+offset
+			if Model.contains(cell,new_size):mapped.append(Model.index_of(cell,new_size))
+		selection[key]=mapped
+	selection.grid_size=new_size
+	if region.has_area():next.region=Rect2i(region.position+Vector2i(offset.x/density,offset.z/density),region.size)
+	if next.get("height",-1)>=0:next.height=maxi(0,next.height+offset.y)
+	return {"guard":next}

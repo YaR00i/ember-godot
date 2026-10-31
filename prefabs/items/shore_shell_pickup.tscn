@@ -1,0 +1,10 @@
+[gd_scene load_steps=3 format=3]
+[ext_resource type="Script" path="res://scripts/ember_world_item_3d.gd" id="1"]
+[ext_resource type="PackedScene" path="res://prefabs/items/shore_shell.tscn" id="2"]
+[node name="ShoreShell" type="RigidBody3D"]
+freeze = true
+script = ExtResource("1")
+item_id = "shore_shell"
+available_flag_id = "shore_sender_met"
+[node name="ItemVisual" parent="." instance=ExtResource("2")]
+scale = Vector3(16,16,16)

@@ -77,6 +77,29 @@ func has_flow() -> bool:
 	return false
 
 
+func side_overrides(index: int) -> Dictionary:
+	if not is_sectioned():return column_material_overrides.get(index,{})
+	var point:=Vector2i(index%width,index/width)
+	var part=sections.get(point/Sections.CELLS)
+	return part.column_material_overrides.get(point.x%Sections.CELLS+(point.y%Sections.CELLS)*part.width,{}) if part!=null else {}
+
+
+func write_side_overrides(values: Dictionary) -> void:
+	# One immutable copy per touched section, shared by brush/history/projection.
+	var changed_parts: Dictionary={}
+	for index: int in values:
+		var target=self
+		var local:=index
+		if is_sectioned():
+			var point:=Vector2i(index%width,index/width);var address:=point/Sections.CELLS
+			if not sections.has(address):continue
+			if not changed_parts.has(address):changed_parts[address]=sections[address].working_copy()
+			target=changed_parts[address];local=point.x%Sections.CELLS+(point.y%Sections.CELLS)*target.width
+		if values[index].is_empty():target.column_material_overrides.erase(local)
+		else:target.column_material_overrides[local]=values[index].duplicate()
+	for key in changed_parts:sections[key]=changed_parts[key]
+
+
 func stored_column_count() -> int:
 	if not is_sectioned(): return heights.size()
 	var count := 0
@@ -91,6 +114,7 @@ func write_columns(indices: PackedInt32Array, values: PackedInt32Array, tops: Pa
 	for i in indices.size():
 		var index := indices[i]
 		heights[index] = values[i]
+		cap_depths[index] = mini(cap_depths[index], heights[index])
 		top_materials[index] = tops[i]
 		water_levels[index] = waters[i]
 		water_materials[index] = colors[i]

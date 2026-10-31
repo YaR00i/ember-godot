@@ -1,0 +1,24 @@
+[gd_scene format=3 uid="uid://co7x8h8y38d2c"]
+
+[ext_resource type="Script" path="res://scripts/ember_voxel_prop.gd" id="1_yp04g"]
+[ext_resource type="ArrayMesh" path="res://prefabs/voxels/meshes/vox_natural_earth_outcrop_block.res" id="2_efk0l"]
+[ext_resource type="Shape3D" path="res://prefabs/voxels/meshes/vox_natural_earth_outcrop_block_collision.res" id="3_efk0l"]
+
+[node name="vox_natural_earth_outcrop" type="Node3D" unique_id=447487865]
+script = ExtResource("1_yp04g")
+model_id = "vox_natural_earth_outcrop"
+metadata/ember_solid_source = true
+metadata/ember_source_signature = "26e7295606c0847fbd43401d09e4ac59d9812749209d2f81cc0011efe514d63e"
+
+[node name="Mesh" type="MeshInstance3D" parent="." unique_id=360494899]
+transform = Transform3D(16, 0, 0, 0, 16, 0, 0, 0, 16, -40, 0, -32)
+mesh = ExtResource("2_efk0l")
+metadata/ember_block_position = Vector3(-2.5, 0, -2)
+
+[node name="Collision" type="StaticBody3D" parent="." unique_id=1243234931]
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Collision" unique_id=1167932013]
+transform = Transform3D(16, 0, 0, 0, 16, 0, 0, 0, 16, -40, 0, -32)
+shape = ExtResource("3_efk0l")
+metadata/ember_block_position = Vector3(-2.5, 0, -2)

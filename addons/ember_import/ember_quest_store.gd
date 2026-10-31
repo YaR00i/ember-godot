@@ -77,7 +77,7 @@ static func flag_reference_entries() -> Array[Dictionary]:
 
 static func event_reference_entries(quest_id_filter := "") -> Array[Dictionary]:
 	## Editor-only presets. The selected token is resolved back to the existing
-	## set_flag action; tokens never enter gameplay data or save files.
+	## Action step (set_flag or handover); tokens never enter save files.
 	var result: Array[Dictionary] = []
 	for quest_id in ids():
 		if not quest_id_filter.strip_edges().is_empty() and quest_id != quest_id_filter.strip_edges():
@@ -114,7 +114,7 @@ static func event_reference_entries(quest_id_filter := "") -> Array[Dictionary]:
 					title,
 					str(objective.get("textRu", objective_id)),
 				],
-				"tooltip": "%s = true\nВыполняет только эту цель." % flag_id,
+				"tooltip": ("Передаёт предметы из сумки и закрепляет цель. Назначается через разговор NPC." if str(objective.get("progressMode", "")) == "handover" else "%s = true\nВыполняет только эту цель." % flag_id),
 			})
 	return result
 
@@ -161,6 +161,8 @@ static func action_for_event_in_document(token: String, quest_value: Dictionary)
 			var objective_id := str(parts[2]) if parts.size() > 2 else ""
 			for raw_objective in quest.objectives:
 				if typeof(raw_objective) == TYPE_DICTIONARY and str(raw_objective.get("id", "")) == objective_id:
+					if str(raw_objective.get("progressMode", "")) == "handover":
+						return {"type": "handover_quest_items", "questId": quest_id, "objectiveId": objective_id, "rewards": {}}
 					return {
 						"type": "set_flag",
 						"flag": str(raw_objective.get("flagId", "")),
@@ -203,9 +205,12 @@ static func normalized_document(raw: Dictionary) -> Dictionary:
 				"textRu": str(source.get("textRu", "")).strip_edges(),
 				"flagId": str(source.get("flagId", "")).strip_edges(),
 				"progressMode": (
-					"counter" if str(source.get("progressMode", "flag")) == "counter" else "flag"
+					str(source.get("progressMode", "flag")) if str(source.get("progressMode", "flag")) in ["counter", "purchase", "handover"] else "flag"
 				),
 				"counterEventId": str(source.get("counterEventId", "")).strip_edges(),
+				"purchaseShopId": str(source.get("purchaseShopId", "")).strip_edges(),
+				"purchaseItemId": str(source.get("purchaseItemId", "")).strip_edges(),
+				"handoverItemId": str(source.get("handoverItemId", "")).strip_edges(),
 				"requiredCount": maxi(1, int(source.get("requiredCount", 1))),
 				"optional": bool(source.get("optional", false)),
 				"requiresObjectiveIds": dependencies,
@@ -292,6 +297,21 @@ static func validation_errors(raw: Dictionary) -> Array[String]:
 			errors.append("Флаги выполнения целей не должны повторяться: %s." % objective.flagId)
 		else:
 			known_flags[str(objective.flagId)] = true
+		if str(objective.get("progressMode", "")) == "handover":
+			var item := EmberItemCatalog.definition(str(objective.get("handoverItemId", "")))
+			if item.is_empty():
+				errors.append("Для цели «Собрать и передать» выберите предмет: %s." % objective_id)
+			elif int(objective.get("requiredCount", 1)) > mini(999, int(item.get("stackMax", 99))):
+				errors.append("Нельзя сдать больше вместимости сумки за один раз: %s." % objective_id)
+		if str(objective.get("progressMode", "")) == "purchase":
+			var shop := EmberShopCatalog.definition(str(objective.get("purchaseShopId", "")))
+			var item_id := str(objective.get("purchaseItemId", ""))
+			var listed := false
+			for listing in shop.get("listings", []):
+				if str(listing.get("itemId", "")) == item_id:
+					listed = true
+			if shop.is_empty() or EmberItemCatalog.definition(item_id).is_empty() or not listed:
+				errors.append("Для цели «Купить» выберите лавку и товар из её ассортимента: %s." % objective_id)
 		if str(objective.flagId) == str(value.statusFlagId):
 			errors.append("Флаг цели не должен совпадать с общим флагом статуса: %s." % objective.flagId)
 		if str(objective.get("progressMode", "flag")) == "counter" and int(objective.get("requiredCount", 1)) < 1:

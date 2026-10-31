@@ -308,13 +308,8 @@ func preserves_mask_after_commit() -> bool:
 func allows_brush_index(index: int) -> bool:
 	if not mask_brushes_enabled():
 		return true
-	if _mask_kind == "voxels":
-		return _mask_indices.has(index)
-	if _resource == null or index < 0 or index >= _resource.voxels.size():
-		return false
-	var size := _resource.grid_size()
-	var cell := Selection.cell_of(index, size)
-	return _mask_footprint.has(_plane_key(cell, _normal_axis(_mask_normal)))
+	if _resource==null:return false
+	return Selection.mask_allows(index,_resource.grid_size(),_mask_kind,_mask_indices,_mask_footprint,_mask_normal)
 
 
 func preserve_next_source_change(clear_transient_selection := false) -> void:
@@ -525,15 +520,8 @@ func _update_status(message := "") -> void:
 		_status.text = "Выделено: %d vox%s" % [selected.size(), " · подсветка…" if _drawing else ""]
 	_paint.disabled = busy() or selected.is_empty()
 	_mask.disabled = (_mask_kind == "none") or (selected.is_empty() and not _has_mask_snapshot())
-	if _mask_kind == "voxels":
-		_mask.text = "Маска кисти"
-		_mask.tooltip_text = "Цвет или материал меняются только на точных индексах выделения; после мазка маска остаётся."
-	elif _mask_kind == "columns":
-		_mask.text = "Маска кисти"
-		_mask.tooltip_text = "Форма меняется только в отпечатке первой грани; эта грань также фиксирует направление объёмной кисти."
-	else:
-		_mask.text = "Маска кисти"
-		_mask.tooltip_text = "Маска сохранена, но текущий инструмент её не использует."
+	_mask.text = "Маска · объёмные ячейки" if _mask_kind=="voxels" else "Маска · отпечаток грани" if _mask_kind=="columns" else "Маска · недоступна"
+	_mask.tooltip_text = preload("res://addons/ember_import/ember_voxel_brush_profiles.gd").mask_help(_mask_kind)
 
 
 func _rebuild_selected_footprint() -> void:
@@ -688,20 +676,9 @@ func _rebuild_mask_footprint() -> void:
 		)
 
 
-func _normal_axis(normal: Vector3i) -> int:
-	if normal.x != 0:
-		return 0
-	if normal.y != 0:
-		return 1
-	return 2
+func _normal_axis(normal:Vector3i)->int:return Selection.mask_axis(normal)
 
-
-func _plane_key(cell: Vector3i, axis: int) -> Vector2i:
-	if axis == 0:
-		return Vector2i(cell.y, cell.z)
-	if axis == 1:
-		return Vector2i(cell.x, cell.z)
-	return Vector2i(cell.x, cell.y)
+func _plane_key(cell:Vector3i,axis:int)->Vector2i:return Selection.mask_key(cell,axis)
 
 
 func _cell_from_plane(key: Vector2i, depth: int, axis: int) -> Vector3i:

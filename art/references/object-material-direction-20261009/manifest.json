@@ -1,0 +1,74 @@
+[
+	{
+		"diffuse_revision": false,
+		"file": "00_current.png",
+		"geometry_changed": false,
+		"lighting": false,
+		"mode": 0,
+		"plastic": false,
+		"title": "0 · Текущая реакция материалов"
+	},
+	{
+		"diffuse_revision": false,
+		"file": "01_lighting.png",
+		"geometry_changed": false,
+		"lighting": true,
+		"mode": 1,
+		"plastic": false,
+		"title": "1 · Только свет и мягкое затенение"
+	},
+	{
+		"diffuse_revision": true,
+		"file": "02_surface_light.png",
+		"geometry_changed": false,
+		"lighting": true,
+		"mode": 2,
+		"plastic": false,
+		"title": "2 · Свет и новая реакция поверхностей"
+	},
+	{
+		"diffuse_revision": true,
+		"file": "03_toy.png",
+		"geometry_changed": false,
+		"lighting": true,
+		"mode": 3,
+		"plastic": true,
+		"title": "3 · Игрушечный пластик · отдельная проба"
+	},
+	{
+		"diffuse_revision": false,
+		"file": "04_crystals_lighting.png",
+		"geometry_changed": false,
+		"lighting": true,
+		"mode": 1,
+		"plastic": false,
+		"title": "Кристалл и лёд · только свет"
+	},
+	{
+		"diffuse_revision": true,
+		"file": "05_crystals_surface.png",
+		"geometry_changed": false,
+		"lighting": true,
+		"mode": 2,
+		"plastic": false,
+		"title": "Кристалл и лёд · новая реакция поверхностей"
+	},
+	{
+		"diffuse_revision": true,
+		"file": "06_surface_glancing.png",
+		"geometry_changed": false,
+		"lighting": true,
+		"mode": 2,
+		"plastic": false,
+		"title": "Новая реакция · скользящий свет"
+	},
+	{
+		"diffuse_revision": true,
+		"file": "07_toy_glancing.png",
+		"geometry_changed": false,
+		"lighting": true,
+		"mode": 3,
+		"plastic": true,
+		"title": "Игрушечный пластик · скользящий свет"
+	}
+]

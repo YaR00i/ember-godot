@@ -18,5 +18,6 @@ definition = {
 "slot": "none",
 "stackMax": 99.0,
 "tags": ["forage", "liyue"],
-"useIn": "both"
+"useIn": "both",
+"worldScene": "res://prefabs/items/herb_sprig.scn"
 }

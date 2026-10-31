@@ -1,0 +1,94 @@
+{
+	"shots": [
+		{
+			"clarity": 0.94,
+			"clouds": 1.0,
+			"file": "01_ice_clean.png",
+			"optics": true,
+			"refraction_scale": 1.0,
+			"title": "Чистый лёд · чёткая прозрачная толща"
+		},
+		{
+			"clarity": 0.94,
+			"clouds": 1.0,
+			"file": "02_ice_natural.png",
+			"optics": true,
+			"refraction_scale": 1.0,
+			"title": "Природный лёд · трещины и пузырьки"
+		},
+		{
+			"clarity": 0.94,
+			"clouds": 1.0,
+			"file": "03_crystal_clean.png",
+			"optics": true,
+			"refraction_scale": 1.0,
+			"title": "Чистый кристалл · гладкие грани"
+		},
+		{
+			"clarity": 0.94,
+			"clouds": 1.0,
+			"file": "04_crystal_rough.png",
+			"optics": true,
+			"refraction_scale": 1.0,
+			"title": "Природный кристалл · грубость и внутренние плоскости"
+		},
+		{
+			"clarity": 0.94,
+			"clouds": 1.0,
+			"file": "05_probe_ice_clean.png",
+			"optics": true,
+			"refraction_scale": 1.0,
+			"title": "Одна форма · чистый лёд"
+		},
+		{
+			"clarity": 0.94,
+			"clouds": 1.0,
+			"file": "06_probe_ice_natural.png",
+			"optics": true,
+			"refraction_scale": 1.0,
+			"title": "Одна форма · природный лёд"
+		},
+		{
+			"clarity": 0.94,
+			"clouds": 1.0,
+			"file": "07_probe_crystal_clean.png",
+			"optics": true,
+			"refraction_scale": 1.0,
+			"title": "Одна форма · чистый кристалл"
+		},
+		{
+			"clarity": 0.94,
+			"clouds": 1.0,
+			"file": "08_probe_crystal_rough.png",
+			"optics": true,
+			"refraction_scale": 1.0,
+			"title": "Одна форма · грубый кристалл"
+		},
+		{
+			"clarity": 0.94,
+			"clouds": 1.0,
+			"file": "09_all_materials.png",
+			"optics": true,
+			"refraction_scale": 1.0,
+			"title": "Все материалы · нейтральный свет"
+		}
+	],
+	"timing": {
+		"details_off": {
+			"cpu_ms_median": 0.433999985456467,
+			"draw_calls_median": 102.0,
+			"fps_cap": 30,
+			"gpu_ms_median": 0.469999998807907,
+			"gpu_ms_p95": 1.00300002098084,
+			"samples": 90
+		},
+		"details_on": {
+			"cpu_ms_median": 0.476999998092651,
+			"draw_calls_median": 102.0,
+			"fps_cap": 30,
+			"gpu_ms_median": 0.483000010251999,
+			"gpu_ms_p95": 0.787999987602234,
+			"samples": 90
+		}
+	}
+}

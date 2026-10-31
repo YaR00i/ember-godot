@@ -1,4 +1,4 @@
-vec3 wave_state(vec2 point, float seconds) {
+vec3 wave_state(vec2 point, float seconds, out float crest_phase) {
 	float travel = seconds * wave_speed;
 	// Interference from four oblique, drifting waves creates local rises without
 	// the visible square cells left by value noise at grazing camera angles.
@@ -34,6 +34,7 @@ vec3 wave_state(vec2 point, float seconds) {
 	float phase_a = dot(point, direction_a) * 1.71 + bend * 0.8 + local_bend * 1.15 - travel;
 	float phase_b = dot(point, direction_b) * 2.32 - bend * 0.55 - local_bend * 0.82 - travel * 1.27 + 1.7;
 	float phase_c = dot(point, direction_c) * 3.45 + bend * 0.33 + local_bend * 0.41 - travel * 1.66 + 0.8;
+	crest_phase = phase_a;
 	vec2 grad_a = direction_a * 1.71 + bend_slope * 0.8 + local_bend_slope * 1.15;
 	vec2 grad_b = direction_b * 2.32 - bend_slope * 0.55 - local_bend_slope * 0.82;
 	vec2 grad_c = direction_c * 3.45 + bend_slope * 0.33 + local_bend_slope * 0.41;
@@ -50,6 +51,11 @@ vec3 wave_state(vec2 point, float seconds) {
 		+ local_bend * cos(bob_phase) * (vec2(0.25, -0.18) + local_bend_slope * 2.4))
 		* local_bob_strength;
 	return vec3(slope + bob_slope, height + bob);
+}
+
+vec3 wave_state(vec2 point, float seconds) {
+	float unused_phase;
+	return wave_state(point, seconds, unused_phase);
 }
 
 

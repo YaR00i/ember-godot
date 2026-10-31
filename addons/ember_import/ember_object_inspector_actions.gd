@@ -9,6 +9,7 @@ const DialogueStore = preload("res://addons/ember_import/ember_dialogue_store.gd
 const ShopStore = preload("res://addons/ember_import/ember_shop_store.gd")
 const ItemStore = preload("res://addons/ember_import/ember_item_store.gd")
 const QuestStore = preload("res://addons/ember_import/ember_quest_store.gd")
+const StoryAuthoring = preload("res://addons/ember_import/ember_story_authoring.gd")
 const VoxelModelStore = preload("res://addons/ember_import/ember_voxel_model_store.gd")
 
 signal scene_binding_changed
@@ -19,6 +20,37 @@ var _undo_redo: Object
 
 func configure(undo_redo: Object) -> void:
 	_undo_redo = undo_redo
+
+
+func create_story_scene(root: Node3D, values: Dictionary) -> Dictionary:
+	if _undo_redo == null:
+		return {"ok": false, "error": "История редактора не подключена"}
+	var built := StoryAuthoring.build(root, values)
+	if not built.ok:
+		return built
+	var assembly: Node = built.node
+	# Capture only authored nodes before ready() builds transient dialogue controls.
+	var authored: Array[Node] = [assembly]
+	authored.append_array(assembly.find_children("*", "Node", true, false))
+	_create_action("Создать сценку «%s»" % str(values.get("title", "")), root)
+	_add_do_method("_attach_story_scene", [root, assembly, authored])
+	_add_do_reference(assembly)
+	_add_undo_method("_detach_story_scene", [assembly])
+	_commit_action()
+	return built
+
+
+func _attach_story_scene(root: Node, assembly: Node, authored: Array[Node]) -> void:
+	root.add_child(assembly)
+	for node in authored:
+		node.owner = root
+	scene_binding_changed.emit()
+
+
+func _detach_story_scene(assembly: Node) -> void:
+	if assembly.get_parent() != null:
+		assembly.get_parent().remove_child(assembly)
+	scene_binding_changed.emit()
 
 
 func save(prop: EmberVoxelProp, values: Dictionary, root_override: Node = null) -> bool:
@@ -135,6 +167,8 @@ func bind_quest_event(
 	var root := root_override if root_override != null else EditorInterface.get_edited_scene_root()
 	if root == null or _undo_redo == null or not is_instance_valid(target):
 		return false
+	if EmberObjectInspectorModel.quest_conversation_target(target) != null:
+		return false
 	var quest_id := QuestStore.quest_id_for_event(event_token)
 	var event_step := (
 		QuestStore.action_for_event_in_document(event_token, quest_document)
@@ -185,6 +219,556 @@ func bind_quest_event(
 	)
 
 
+func bind_quest_conversation(
+	target: Node, event_token: String, dialogue_id: String,
+	root_override: Node = null, quest_document: Dictionary = {},
+	created_npc: Node3D = null, created_position: Vector3 = Vector3.ZERO,
+	handover_costs: Dictionary = {},
+	choice_outcome: Dictionary = {},
+	conversation_options: Dictionary = {},
+) -> bool:
+	var root := root_override if root_override != null else EditorInterface.get_edited_scene_root()
+	if root == null or _undo_redo == null or not is_instance_valid(target):
+		return false
+	var interact := EmberObjectInspectorModel.quest_conversation_target(target)
+	var creating := created_npc != null and created_npc == target and created_npc.get_parent() == null
+	if interact == null or (not creating and not root.is_ancestor_of(interact)):
+		return false
+	var quest_id := QuestStore.quest_id_for_event(event_token)
+	var quest := quest_document if not quest_document.is_empty() else QuestStore.document(quest_id)
+	if not QuestStore.validation_errors(quest).is_empty() or str(quest.get("id", "")) != quest_id:
+		return false
+	if not interact.quest_id.is_empty() and interact.quest_id != quest_id:
+		return false
+	var objective_id := ""
+	var objective_text := ""
+	for objective in quest.get("objectives", []):
+		if QuestStore.event_token(quest_id, "objective", str(objective.id)) == event_token:
+			if str(objective.get("progressMode", "flag")) not in ["flag", "handover"]:
+				return false
+			objective_id = str(objective.id)
+			objective_text = str(objective.get("textRu", objective_id))
+	var inline_reply := conversation_options.has("text")
+	var after_completion := bool(conversation_options.get("after_completion", false))
+	if objective_id.is_empty() or (not inline_reply and not DialogueStore.exists(dialogue_id)):
+		return false
+	var private_dialogue: Dictionary = {}
+	var previous_dialogue: Dictionary = {}
+	if inline_reply:
+		var text := str(conversation_options.text).strip_edges()
+		if text.is_empty() or not choice_outcome.is_empty():
+			return false
+		var base := DialogueStore.suggested_id("%s_%s_%s_line" % [quest_id, "complete" if after_completion else objective_id, _quest_binding_source_id(target)])
+		var source := DialogueStore.document(dialogue_id)
+		# Reapplying an unchanged generated line does not create extra Resources.
+		if not dialogue_id.begins_with(base) or DialogueStore.GraphModel.short_reply_text(source) != text:
+			var copy_id := base
+			var serial := 2
+			while DialogueStore.exists(copy_id):
+				copy_id = "%s_%d" % [base, serial]
+				serial += 1
+			var title := "После задания · %s" % str(interact.get("display_name")) if after_completion else "Реплика · %s · %s" % [quest.get("titleRu", quest_id), objective_text]
+			private_dialogue = DialogueStore.GraphModel.short_reply_document(copy_id, title, text)
+			if not DialogueStore.graph_validation_errors(private_dialogue).is_empty():
+				return false
+			previous_dialogue = DialogueStore.snapshot(copy_id)
+			dialogue_id = copy_id
+	var event_step := QuestStore.action_for_event_in_document(event_token, quest)
+	var steps := [{"type": "talk", "dialogueId": dialogue_id}, event_step]
+	var goal_handover := str(event_step.get("type", "")) == "handover_quest_items"
+	var reminder := bool(conversation_options.get("reminder", false))
+	var rewards: Dictionary = conversation_options.get("rewards", {})
+	if (reminder or after_completion) and (not rewards.is_empty() or not handover_costs.is_empty() or not choice_outcome.is_empty()):
+		return false
+	if reminder or after_completion:
+		var quest_flags := [str(quest.get("statusFlagId", ""))]
+		for objective in quest.get("objectives", []):
+			quest_flags.append(str(objective.get("flagId", "")))
+		# A reminder must not accidentally complete the goal from inside Dialogue.
+		var passive_dialogue := private_dialogue if not private_dialogue.is_empty() else DialogueStore.document(dialogue_id)
+		for step in passive_dialogue.get("steps", []):
+			if str(step.get("type", "")) == "grant_cinders":
+				return false
+			if str(step.get("type", "")) == "set_flag" and str(step.get("flag", step.get("flagId", ""))) in quest_flags:
+				return false
+			for option in step.get("options", []):
+				for flag in option.get("setFlags", {}):
+					if str(flag) in quest_flags:
+						return false
+		steps = [{"type": "talk", "dialogueId": dialogue_id}]
+	if not choice_outcome.is_empty():
+		if goal_handover or not handover_costs.is_empty() or not rewards.is_empty():
+			return false
+		var source := DialogueStore.document(dialogue_id)
+		private_dialogue = DialogueStore.GraphModel.with_quest_choice_outcome(source, choice_outcome, str(event_step.get("flag", "")))
+		if private_dialogue.is_empty() or not DialogueStore.GraphModel.validation_errors(private_dialogue).is_empty():
+			return false
+		if private_dialogue == source:
+			private_dialogue = {}
+		else:
+			var base := DialogueStore.suggested_id("%s_%s_reply" % [_quest_binding_source_id(target), objective_id])
+			var copy_id := base
+			var serial := 2
+			while DialogueStore.exists(copy_id):
+				copy_id = "%s_%d" % [base, serial]
+				serial += 1
+			private_dialogue["id"] = copy_id
+			private_dialogue["nameRu"] = "Ответ · %s" % str(interact.get("display_name"))
+			previous_dialogue = DialogueStore.snapshot(copy_id)
+		steps = [{"type": "talk", "dialogueId": dialogue_id}]
+		if not private_dialogue.is_empty():
+			steps[0]["dialogueId"] = str(private_dialogue.id)
+	if goal_handover and not reminder and not after_completion:
+		event_step["rewards"] = rewards.duplicate()
+	elif not handover_costs.is_empty() or not rewards.is_empty():
+		steps.insert(1, {"type": "exchange_items", "costs": handover_costs.duplicate(), "rewards": rewards.duplicate()})
+	var old_routes: Dictionary = interact.get("objective_scripts").duplicate(true)
+	var existing := ActionScriptStore.document(str(interact.get("completed_script_id")) if after_completion else str(old_routes.get(objective_id, "")))
+	# Reuse an identical route; changed conversations get a private chain so other
+	# scene consumers and authored exchange/reward actions are never overwritten.
+	var script_id := str(existing.get("id", "")) if existing.get("steps", []) == steps else ""
+	if script_id.is_empty():
+		script_id = _available_action_id(ActionScriptStore.suggested_id(
+			"%s_%s" % [_quest_binding_source_id(target), objective_id]
+		))
+	var document := ActionScriptStore.normalized_document({
+		"id": script_id, "nameRu": "Разговор · %s" % _quest_binding_label(target), "steps": steps,
+	})
+	var pending_dialogues: Array[String] = []
+	if not private_dialogue.is_empty():
+		pending_dialogues.append(str(private_dialogue.id))
+	if not ActionScriptStore.validation_errors(document, pending_dialogues, quest).is_empty():
+		return false
+	var next_routes := old_routes.duplicate(true)
+	next_routes[objective_id] = script_id
+	var previous_chain := ActionScriptStore.snapshot(script_id)
+	var previous_quest := QuestStore.snapshot(quest_id)
+	_create_action("Создать собеседника цели" if creating else "Назначить разговор цели задания", root)
+	if creating:
+		_add_do_method("_attach_quest_npc", [root, created_npc, created_position])
+		_add_do_reference(created_npc)
+	_add_do_method("_write_quest", [QuestStore.normalized_document(quest)])
+	if not private_dialogue.is_empty():
+		_add_do_method("_write_dialogue_graph", [private_dialogue])
+	_add_do_method("_write_chain", [document])
+	_add_do_property(interact, "quest_id", quest_id)
+	if after_completion:
+		_add_do_property(interact, "completed_script_id", script_id)
+		_add_undo_property(interact, "completed_script_id", interact.get("completed_script_id"))
+	else:
+		_add_do_property(interact, "objective_scripts", next_routes)
+		_add_undo_property(interact, "objective_scripts", old_routes)
+	_add_undo_property(interact, "quest_id", interact.quest_id)
+	_add_undo_method("_restore_chain", [previous_chain])
+	if not previous_dialogue.is_empty():
+		_add_undo_method("_restore_dialogue", [previous_dialogue])
+	_add_undo_method("_restore_quest", [previous_quest])
+	_add_do_method("_refresh_quest_interact", [interact])
+	_add_undo_method("_refresh_quest_interact", [interact])
+	if creating:
+		_add_undo_method("_detach_quest_npc", [created_npc])
+	_commit_action()
+	return true
+
+
+func create_quest_conversation(
+	root: Node, world_position: Vector3, display_name: String,
+	event_token: String, dialogue_id: String, quest_document: Dictionary,
+	handover_costs: Dictionary = {},
+	choice_outcome: Dictionary = {},
+	conversation_options: Dictionary = {},
+) -> Node3D:
+	if root == null or _undo_redo == null or display_name.strip_edges().is_empty():
+		return null
+	var packed := load("res://prefabs/items/shore_keeper.tscn") as PackedScene
+	if packed == null:
+		return null
+	# A local copy of the existing placeholder. No fields on the original keeper
+	# or his accepted mission are changed; new routes belong to this scene node.
+	var npc := packed.instantiate() as Node3D
+	var giver := EmberObjectInspectorModel.quest_conversation_target(npc)
+	if giver == null:
+		npc.free()
+		return null
+	var serial := 1
+	while root.has_node("QuestNPC_%d" % serial):
+		serial += 1
+	npc.name = "QuestNPC_%d" % serial
+	npc.scene_file_path = ""
+	giver.quest_id = ""
+	giver.script_id = ""
+	giver.set("objective_scripts", {})
+	giver.set("completed_script_id", "")
+	giver.set("display_name", display_name.strip_edges())
+	if not bind_quest_conversation(npc, event_token, dialogue_id, root, quest_document, npc, world_position, handover_costs, choice_outcome, conversation_options):
+		npc.free()
+		return null
+	return npc
+
+
+func _attach_quest_npc(root: Node, npc: Node3D, world_position: Vector3) -> void:
+	root.add_child(npc)
+	if npc.is_inside_tree():
+		npc.global_position = world_position
+	else:
+		npc.position = (root as Node3D).transform.affine_inverse() * world_position if root is Node3D else world_position
+	# Preserve nested visual PackedScene ownership; only authored nodes are local.
+	for child in npc.get_children():
+		_own_quest_npc_branch(root, child)
+	npc.owner = root
+
+func create_quest_reach_zone(root: Node, world_position: Vector3, objective_id: String, quest_document: Dictionary) -> EmberInteract:
+	if root == null or _undo_redo == null or not QuestStore.validation_errors(quest_document).is_empty():
+		return null
+	var quest := QuestStore.normalized_document(quest_document)
+	var objective: Dictionary = {}
+	for candidate in quest.objectives:
+		if str(candidate.id) == objective_id and str(candidate.get("progressMode", "flag")) == "flag":
+			objective = candidate
+	if objective.is_empty() or EmberObjectInspectorModel.quest_reach_zone(root, str(objective.flagId)) != null:
+		return null
+	if str(objective.textRu) in ["Выполнить цель", "Новая цель"]:
+		objective.textRu = "Дойти до отмеченного места"
+	var script_id := _available_action_id(ActionScriptStore.suggested_id("%s_%s_reach" % [quest.id, objective_id]))
+	var steps: Array = []
+	if (objective.get("requiresObjectiveIds", []) as Array).is_empty():
+		steps.append(QuestStore.action_for_event_in_document(QuestStore.event_token(str(quest.id), "start"), quest))
+	steps.append(QuestStore.action_for_event_in_document(QuestStore.event_token(str(quest.id), "objective", objective_id), quest))
+	var chain := {"id": script_id, "nameRu": "Место · %s" % objective.textRu, "steps": steps}
+	if not ActionScriptStore.validation_errors(chain).is_empty():
+		return null
+	var map := root as EmberMapLoader if root is EmberMapLoader else root.find_child("Map", true, false) as EmberMapLoader
+	var tile_size := map.imported_tile_size if map != null and map.imported_tile_size > 0.0 else 16.0
+	var parent := root.get_node_or_null(EmberSceneAuthoring.STANDALONE_TRIGGER_CONTAINER) as Node3D
+	var created_parent := parent == null
+	if parent == null:
+		parent = Node3D.new()
+		parent.name = EmberSceneAuthoring.STANDALONE_TRIGGER_CONTAINER
+	var zone := EmberSceneAuthoring.make_standalone_trigger(tile_size)
+	zone.name = EmberSceneAuthoring.next_standalone_trigger_name(root)
+	zone.activation_mode = "enter"
+	zone.script_id = script_id
+	zone.condition_flag_id = str(objective.flagId)
+	zone.condition_value = false
+	zone.condition_expected = false
+	zone.note = "Дойти до места · %s" % objective.textRu
+	_create_action("Создать место цели квеста", root)
+	_add_do_method("_write_quest", [quest])
+	_add_do_method("_write_chain", [chain])
+	_add_do_method("_attach_standalone", [root, parent, zone, world_position])
+	if created_parent:
+		_add_do_reference(parent)
+	_add_do_reference(zone)
+	_add_undo_method("_detach_standalone", [root, parent, zone, created_parent])
+	_add_undo_method("_restore_chain", [ActionScriptStore.snapshot(script_id)])
+	_add_undo_method("_restore_quest", [QuestStore.snapshot(str(quest.id))])
+	_commit_action()
+	return zone
+
+
+func assign_mechanism_role(scene: Node3D, target: Node3D, kind: String, circuit: Node3D = null) -> Dictionary:
+	var failure := {"ok": false, "error": "Выдели один объект открытой сцены.", "circuit": null, "id": ""}
+	if _undo_redo == null or not is_instance_valid(scene) or not is_instance_valid(target) or target == scene or not scene.is_ancestor_of(target): return failure
+	if kind not in ["lever", "lamp", "door", "plate"]: return failure
+	var geometry := preload("res://scripts/ember_mechanism_role_geometry.gd")
+	if kind in ["door", "plate"]:
+		if target.owner == null:
+			failure.error = "Выбери исходный сохраняемый объект сцены, а не автоматически построенную часть."; return failure
+		var ancestor := target.get_parent()
+		while ancestor != null and ancestor != scene:
+			if ancestor is PhysicsBody3D or ancestor.has_meta("mechanism_role_id"):
+				failure.error = "Выбери исходный объект целиком, вне чужого физического тела или служебной зоны."; return failure
+			ancestor = ancestor.get_parent()
+		var box: AABB = geometry.bounds(target)
+		if box.size.x < 0.1 or box.size.y < 0.1 or box.size.z < 0.1:
+			failure.error = "У объекта нет объёмной mesh-геометрии для расчёта зон."; return failure
+		var bodies: Array[Node] = [target]; bodies.append_array(target.find_children("*", "PhysicsBody3D", true, false))
+		for body in bodies:
+			if body is RigidBody3D or body is CharacterBody3D or body is AnimatableBody3D:
+				failure.error = "Выбери обычный неподвижный объект; подвижным телом уже управляет другая физика."; return failure
+	if kind == "lamp" and not (target is MeshInstance3D or target is Light3D):
+		failure.error = "Для лампы выдели MeshInstance3D или источник света."; return failure
+	if target.has_method("toggle_lever"):
+		failure.error = "Выбери сам предмет, а не корень механизма."; return failure
+	if circuit != null and (not scene.is_ancestor_of(circuit) or circuit.binding_scene() != scene): return failure
+	for other in scene.find_children("*", "Node3D", true, false):
+		if not other.has_method("toggle_lever") or not other.has_method("snapshot"): continue
+		for row in other.snapshot().nodes:
+			if str(row.get("target", "")).is_empty(): continue
+			if geometry.object_for(other.get_node_or_null(NodePath(str(row.target))) as Node3D) == target:
+				if other != circuit:
+					failure.error = "Объект уже назначен другому механизму. Выбери его в списке."; return failure
+				failure.error = "У объекта уже есть роль. Изменить или снять её можно в свойствах компонента."; return failure
+	var script := preload("res://scripts/ember_mechanism_circuit.gd")
+	var created := circuit == null
+	if created:
+		circuit = script.new()
+		var serial := 1
+		while scene.has_node("Mechanism_%d" % serial): serial += 1
+		circuit.name = "Mechanism_%d" % serial
+		circuit.circuit_id = "circuit_" + Crypto.new().generate_random_bytes(8).hex_encode()
+		# A new controller references the existing sibling; it never adopts the object.
+	var path := "../" + str(scene.get_path_to(target)) if created else str(circuit.get_path_to(target))
+	var id := "node_" + Crypto.new().generate_random_bytes(8).hex_encode()
+	var document: Dictionary = circuit.snapshot()
+	var row := {"id": id, "kind": kind, "label": str(target.name), "target": path, "crate": "", "clearance": "", "position": Vector2(40 + document.nodes.size() * 310, 40), "offset": Vector3(0, 40, 0), "seconds": 0.6, "settle": 0.35}
+	document.nodes.append(row)
+	if kind in ["door", "plate"]:
+		var parent := target.get_parent()
+		while parent != null and parent != scene:
+			if parent.has_method("toggle_lever") and parent != circuit:
+				if created: circuit.free()
+				failure.error = "Предмет находится внутри другого механизма."; return failure
+			parent = parent.get_parent()
+		if not created and not circuit.document_errors(circuit.snapshot()).is_empty():
+			failure.error = "Сначала исправь ошибки существующей схемы."; return failure
+		var helper: Node3D = geometry.build(target, kind, id)
+		if kind == "plate": row.target = path + "/" + str(helper.name) + "/PlateZone"
+		else:
+			row.clearance = path + "/" + str(helper.name) + "/Clearance"
+			row.offset = Vector3(0, geometry.bounds(target).size.y + 4, 0)
+		document.nodes[document.nodes.size() - 1] = row
+		var child: Node = script.make_component(row)
+		child.authored_helper = helper; child.authored_parent = target
+		var before: Array = circuit.components(); var after := before.duplicate(); after.append(child)
+		_create_action("Назначить роль с автоматическими зонами", scene if created else circuit)
+		_add_do_method("_assign_generated_role", [scene, circuit, created, after, document.links, str(circuit.circuit_id)])
+		_add_do_reference(child); _add_do_reference(helper)
+		if created: _add_do_reference(circuit)
+		_add_undo_method("_unassign_generated_role", [circuit, created, before, circuit.links.duplicate(true), str(circuit.circuit_id)])
+		_commit_action()
+		return {"ok": true, "error": "", "circuit": circuit, "id": id}
+	if created:
+		# Structural/type/scope checks above happen before the first scene mutation.
+		var parent := target.get_parent()
+		while parent != null and parent != scene:
+			if parent.has_method("toggle_lever"):
+				circuit.free(); failure.error = "Предмет находится внутри другого набора механизма."; return failure
+			parent = parent.get_parent()
+		circuit.add_child(script.make_component(row))
+		_create_action("Назначить роль и создать механизм", scene)
+		_add_do_method("_attach_quest_placement", [scene, circuit, Vector3.ZERO])
+		_add_do_reference(circuit)
+		_add_undo_method("_detach_quest_npc", [circuit])
+		_commit_action()
+	else:
+		var answer := apply_mechanism_document(circuit, document)
+		if not answer.ok: failure.error = answer.error; return failure
+	return {"ok": true, "error": "", "circuit": circuit, "id": id}
+
+func _assign_generated_role(scene: Node3D, circuit: Node3D, created: bool, children: Array, links_value: Array, id: String) -> void:
+	if created: _attach_quest_placement(scene, circuit, Vector3.ZERO)
+	_replace_mechanism(circuit, circuit.get_script(), children, links_value, id, {})
+
+func _unassign_generated_role(circuit: Node3D, created: bool, children: Array, links_value: Array, id: String) -> void:
+	_replace_mechanism(circuit, circuit.get_script(), children, links_value, id, {})
+	if created: _detach_quest_npc(circuit)
+
+func apply_mechanism_document(circuit: Node3D, document: Dictionary) -> Dictionary:
+	var errors: Array[String] = circuit.document_errors(document)
+	if not errors.is_empty(): return {"ok": false, "error": errors[0]}
+	var old_document: Dictionary = circuit.snapshot()
+	var previous_logic := old_document.duplicate(true)
+	var next_logic := document.duplicate(true)
+	var old_positions := {}; var next_positions := {}
+	var old_world := {}; var next_world := {}
+	for row in previous_logic.nodes:
+		old_positions[str(row.id)] = row.get("position", Vector2.ZERO)
+		row.erase("position")
+		if row.has("world_position"): old_world[str(row.id)] = row.world_position; row.erase("world_position")
+	for row in next_logic.nodes:
+		next_positions[str(row.id)] = row.get("position", Vector2.ZERO)
+		row.erase("position")
+		if row.has("world_position"): next_world[str(row.id)] = row.world_position; row.erase("world_position")
+	if previous_logic == next_logic and not circuit.has_method("_legacy_document"):
+		_create_action("Расположить карточки механизма", circuit)
+		_add_do_method("_set_mechanism_positions", [circuit, next_positions, next_world])
+		_add_undo_method("_set_mechanism_positions", [circuit, old_positions, old_world])
+		_commit_action()
+		return {"ok": true, "error": ""}
+	var script := preload("res://scripts/ember_mechanism_circuit.gd")
+	var before: Array[Node] = circuit.components()
+	var after: Array[Node] = []
+	for row in document.nodes: after.append(script.make_component(row))
+	var legacy := {}
+	if circuit.has_method("_legacy_document"):
+		for key in ["crate_path", "plate_path", "gate_path", "clearance_path", "open_offset", "settle_seconds", "move_seconds"]: legacy[key] = circuit.get(key)
+	var old_script := circuit.get_script()
+	var old_links: Array = circuit.links.duplicate(true)
+	var circuit_id := str(circuit.circuit_id)
+	if circuit_id.is_empty(): circuit_id = "circuit_" + Crypto.new().generate_random_bytes(8).hex_encode()
+	_create_action("Изменить схему механизма", circuit)
+	_add_do_method("_replace_mechanism", [circuit, script, after, document.links.duplicate(true), circuit_id, {}])
+	for child in after: _add_do_reference(child)
+	_add_undo_method("_replace_mechanism", [circuit, old_script, before, old_links, str(circuit.circuit_id), legacy])
+	for child in before: _undo_redo.add_undo_reference(child)
+	for child in before:
+		var helper: Node3D = preload("res://scripts/ember_mechanism_role_geometry.gd").helper_for(child.binding(child.target_path), str(child.component_id))
+		if helper != null: _undo_redo.add_undo_reference(helper)
+	_commit_action()
+	return {"ok": true, "error": ""}
+
+func _set_mechanism_positions(circuit: Node3D, positions: Dictionary, world_positions: Dictionary = {}) -> void:
+	for child in circuit.components():
+		child.set_meta("graph_position", positions.get(child.component_id, Vector2.ZERO))
+		if world_positions.has(child.component_id): child.set_meta("mechanism_world_position", world_positions[child.component_id])
+		elif child.has_meta("mechanism_world_position"): child.remove_meta("mechanism_world_position")
+	_notify_scene_binding_changed()
+
+func _replace_mechanism(circuit: Node3D, script: Script, children: Array, links_value: Array, id: String, legacy: Dictionary) -> void:
+	var state: EmberExploreState = circuit.progress_state
+	for previous in circuit.components():
+		for next in children:
+			if next.component_id == previous.component_id and next.kind == previous.kind and next.target_path == previous.target_path:
+				next._disabled_shapes = previous._disabled_shapes.duplicate()
+	if not Engine.is_editor_hint(): circuit.release_runtime()
+	for previous in circuit.components():
+		var helper: Node3D = preload("res://scripts/ember_mechanism_role_geometry.gd").helper_for(previous.binding(previous.target_path), str(previous.component_id))
+		if helper == null: continue
+		previous.authored_helper = helper; previous.authored_parent = helper.get_parent()
+		var retained := false
+		for next in children:
+			if next.component_id == previous.component_id and next.kind == previous.kind and next.target_path == previous.target_path:
+				next.authored_helper = helper; next.authored_parent = helper.get_parent(); retained = true
+		if not retained: helper.get_parent().remove_child(helper)
+	for child in circuit.components(): circuit.remove_child(child)
+	if circuit.get_script() != script: circuit.set_script(script)
+	circuit.progress_state = state
+	circuit.circuit_id = id
+	circuit.links.assign(links_value)
+	for key in legacy: circuit.set(key, legacy[key])
+	var owner := circuit.owner if circuit.owner != null else circuit
+	for child in children:
+		if is_instance_valid(child.authored_helper) and child.authored_helper.get_parent() == null and is_instance_valid(child.authored_parent):
+			child.authored_parent.add_child(child.authored_helper)
+			child.authored_helper.owner = owner
+			for node in child.authored_helper.find_children("*", "Node", true, false): node.owner = owner
+		circuit.add_child(child)
+		child.owner = owner
+	if not Engine.is_editor_hint(): circuit.rebuild()
+	_notify_scene_binding_changed()
+
+func create_pressure_gate(root: Node3D, at: Vector3, workshop := false) -> Node3D:
+	if root == null or _undo_redo == null: return null
+	var map := root as EmberMapLoader if root is EmberMapLoader else root.find_child("Map", true, false) as EmberMapLoader
+	var builder := preload("res://addons/ember_import/ember_pressure_gate_builder.gd")
+	var map_id := map.map_id if map != null else "landscape_compact"
+	var kit := builder.build_workshop(map_id) if workshop else builder.build(map_id)
+	var serial := 1
+	while root.has_node("PressureGate_%d" % serial): serial += 1
+	kit.name = "PressureGate_%d" % serial
+	_create_action("Создать ящик, плиту и проход", root)
+	_add_do_method("_attach_quest_placement", [root, kit, at])
+	_add_do_reference(kit)
+	_add_undo_method("_detach_quest_npc", [kit])
+	_commit_action()
+	return kit
+
+
+func create_quest_object_placement(root: Node, crate_at: Vector3, zone_at: Vector3, objective_id: String, quest_document: Dictionary) -> Node3D:
+	if root == null or _undo_redo == null or not QuestStore.validation_errors(quest_document).is_empty():
+		return null
+	var quest := QuestStore.normalized_document(quest_document)
+	var quest_id := str(quest.id)
+	if EmberObjectInspectorModel.quest_object_zone(root, quest_id, objective_id) != null:
+		return null
+	var found := false
+	var first_goal := false
+	for objective in quest.objectives:
+		if str(objective.id) == objective_id and str(objective.get("progressMode", "flag")) == "flag":
+			found = true
+			first_goal = (objective.get("requiresObjectiveIds", []) as Array).is_empty()
+			if str(objective.get("textRu", "")) in ["Выполнить цель", "Новая цель"]:
+				objective["textRu"] = "Поставить ящик в отмеченную зону"
+	if not found:
+		return null
+	var compound := Node3D.new()
+	var serial := 1
+	while root.has_node("QuestPlacement_%d" % serial):
+		serial += 1
+	compound.name = "QuestPlacement_%d" % serial
+	var crate := load("res://scripts/ember_world_item_3d.gd").new() as RigidBody3D
+	crate.name = "Crate"
+	crate.set("pickup_id", "%s_%s_%s" % [quest_id, objective_id, Crypto.new().generate_random_bytes(6).hex_encode()])
+	crate.set("item_id", "quest_crate")
+	crate.set("carryable", true)
+	crate.set("pushable", true)
+	crate.set("return_radius", 320.0)
+	crate.set("start_quest_id", quest_id if first_goal else "")
+	var map := root as EmberMapLoader if root is EmberMapLoader else root.find_child("Map", true, false) as EmberMapLoader
+	crate.set("map_id", map.map_id if map != null else "landscape_compact")
+	var visual := (load("res://prefabs/items/quest_crate.tscn") as PackedScene).instantiate() as Node3D
+	visual.name = "ItemVisual"
+	visual.scale = Vector3.ONE * 16.0
+	crate.add_child(visual)
+	var body_shape := CollisionShape3D.new()
+	body_shape.name = "BodyShape"
+	body_shape.shape = BoxShape3D.new()
+	(body_shape.shape as BoxShape3D).size = Vector3(16, 16, 16)
+	body_shape.position.y = 8.0
+	crate.add_child(body_shape)
+	compound.add_child(crate)
+	var zone := load("res://scripts/ember_quest_object_zone.gd").new() as Area3D
+	zone.name = "TargetZone"
+	zone.set("quest_id", quest_id)
+	zone.set("objective_id", objective_id)
+	zone.set("target_pickup_id", crate.get("pickup_id"))
+	zone.position = zone_at - crate_at
+	var shape := CollisionShape3D.new()
+	shape.name = "Shape"
+	shape.shape = BoxShape3D.new()
+	(shape.shape as BoxShape3D).size = Vector3(40, 28, 40)
+	shape.position.y = 14.0
+	zone.add_child(shape)
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.albedo_color = Color(1.0, 0.78, 0.24)
+	for side in 4:
+		var bar := MeshInstance3D.new()
+		bar.name = "Edge%d" % side
+		bar.mesh = BoxMesh.new()
+		(bar.mesh as BoxMesh).size = Vector3(40, 0.2, 0.5) if side < 2 else Vector3(0.5, 0.2, 40)
+		bar.position = Vector3(0, 0.2, -20 if side == 0 else 20) if side < 2 else Vector3(-20 if side == 2 else 20, 0.2, 0)
+		bar.material_override = material
+		zone.add_child(bar)
+	compound.add_child(zone)
+	var previous := QuestStore.snapshot(quest_id)
+	_create_action("Создать ящик и зону цели", root)
+	_add_do_method("_write_quest", [quest])
+	_add_do_method("_attach_quest_placement", [root, compound, crate_at])
+	_add_do_reference(compound)
+	_add_undo_method("_detach_quest_npc", [compound])
+	_add_undo_method("_restore_quest", [previous])
+	_commit_action()
+	return compound
+
+func _attach_quest_placement(root: Node, compound: Node3D, position: Vector3) -> void:
+	var authored: Array[Node] = [compound]
+	for node in compound.find_children("*", "Node", true, false):
+		var path := compound.get_path_to(node)
+		if path.get_name_count() > 1 and path.get_name(0) in ["Crate", "Find"] and path.get_name(1) == "Pickup":
+			continue
+		if node.owner == null or node.owner == compound:
+			authored.append(node)
+	compound.transform = root.global_transform.affine_inverse() * Transform3D(Basis.IDENTITY, position) if root is Node3D and root.is_inside_tree() else Transform3D(Basis.IDENTITY, position)
+	root.add_child(compound)
+	for node in authored:
+		node.owner = root
+
+
+func _own_quest_npc_branch(root: Node, node: Node) -> void:
+	node.owner = root
+	if not node.scene_file_path.is_empty():
+		return
+	for child in node.get_children():
+		_own_quest_npc_branch(root, child)
+
+
+func _detach_quest_npc(npc: Node3D) -> void:
+	if npc.get_parent() != null:
+		npc.get_parent().remove_child(npc)
+
+
 func unbind_quest_event(
 	target: Node,
 	event_entry: Dictionary,
@@ -202,6 +786,23 @@ func unbind_quest_event(
 			false,
 			"Событие записано внутри диалога. Откройте его фиолетовую ноду и измените ветку в Dialogue Graph.",
 		)
+	var conversation := EmberObjectInspectorModel.quest_conversation_target(target)
+	if conversation != null:
+		if not root.is_ancestor_of(conversation):
+			return _unbind_result(false, "Собеседник не принадлежит открытой сцене.")
+		var objective_id := str(event_entry.get("targetId", ""))
+		var routes: Dictionary = conversation.get("objective_scripts").duplicate(true)
+		if not routes.has(objective_id) or str(routes[objective_id]) != str(event_entry.get("documentId", "")):
+			return _unbind_result(false, "Этот разговор больше не назначен цели.")
+		var remaining := routes.duplicate(true)
+		remaining.erase(objective_id)
+		_create_action("Отвязать разговор цели", root)
+		_add_do_property(conversation, "objective_scripts", remaining)
+		_add_undo_property(conversation, "objective_scripts", routes)
+		_add_do_method("_refresh_quest_interact", [conversation])
+		_add_undo_method("_refresh_quest_interact", [conversation])
+		_commit_action()
+		return _unbind_result(true, "Разговор цели отвязан; сама цепочка сохранена.")
 	var prop := target as EmberVoxelProp
 	var interact := target as EmberInteract
 	if prop == null and interact != null:
@@ -996,6 +1597,12 @@ func _action_scene_reference_count(root: Node, script_id: String) -> int:
 	var count := 0
 	if root is EmberInteract and (root as EmberInteract).resolved_action_script_id() == script_id:
 		count += 1
+	if root is EmberInteract and EmberObjectInspectorModel.quest_conversation_target(root) != null:
+		for routed_id in (root.get("objective_scripts") as Dictionary).values():
+			if str(routed_id) == script_id:
+				count += 1
+		if str(root.get("completed_script_id")) == script_id:
+			count += 1
 	for child in root.get_children():
 		count += _action_scene_reference_count(child, script_id)
 	return count

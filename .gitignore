@@ -24,3 +24,6 @@ tools/godot/*.exe
 
 # Obsidian settings if docs/ is opened as a vault.
 .obsidian/
+
+# Private local avatar derived from the user's Hoshi VRM, never source Git.
+/assets/local_characters/

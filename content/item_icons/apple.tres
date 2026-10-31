@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="EmberItemIconResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_item_icon_resource.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+icon_id = "apple"
+definition = {
+"id": "apple", "nameRu": "Яблоко", "size": 16,
+"palette": {".": "", "R": "#c84a3a", "L": "#dd7154", "D": "#9b382e", "G": "#659347", "B": "#71503a"},
+"rows": [
+"................",
+"........B.......",
+"........B.GG....",
+".......BBGG.....",
+"....RRRBBRRR....",
+"...RLLRRRRRRR...",
+"..RLLLRRRRRRRD..",
+"..RLLRRRRRRRRD..",
+"..RRRRRRRRRRRD..",
+"..RRRRRRRRRRRD..",
+"...RRRRRRRRRD...",
+"...RRRRRRRRRD...",
+"....RRRDDRRD....",
+".....DD..DD.....",
+"................",
+"................"
+]}

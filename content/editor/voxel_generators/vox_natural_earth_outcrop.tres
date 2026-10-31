@@ -1,0 +1,25 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://addons/ember_import/ember_voxel_generator_recipe.gd" id="1_q4iqh"]
+
+[resource]
+resource_name = "Природный выступ"
+script = ExtResource("1_q4iqh")
+generator_id = "cliff"
+seed = 47
+parameters = {
+"density": 16,
+"depth_m": 3.5,
+"edge_breakup": 35,
+"form_strength": 85,
+"grass_color": Color(0.4509804, 0.56078434, 0.28235295, 1),
+"height_m": 1.75,
+"shape": 3,
+"soil_color": Color(0.5294118, 0.3882353, 0.28235295, 1),
+"soil_depth_m": 1.5,
+"stone_color": Color(0.4862745, 0.5137255, 0.5372549, 1),
+"width_m": 4.5
+}
+family_id = "earth_landforms"
+family_title = "Природные земляные формы"
+variation_name = "Земляной выступ"

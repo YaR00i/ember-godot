@@ -1,10 +1,13 @@
+@tool
 extends RefCounted
-## Disposable runtime geometry. Authored Resources remain authoritative; only
-## CPU arrays, exact collision faces and LOD indices enter the bounded files.
+## Disposable geometry. Authored Resources remain authoritative. Runtime meshes
+## and editor CPU surfaces use distinct content keys in the same bounded store.
 const Terrain = preload("res://scripts/prototypes/ember_terrain_pilot_resource.gd")
 const Storage = preload("res://scripts/prototypes/ember_derived_data_cache.gd")
+const Mesher = preload("res://scripts/prototypes/ember_terrain_pilot_mesh.gd")
+const Surface = preload("res://scripts/prototypes/ember_terrain_smooth_surface.gd")
 const ROOT := "user://ember-terrain-geometry-cache"
-const VERSION := 1 # Bump for mesher, topology or LOD algorithm changes.
+const VERSION := 2 # Bump for mesher, topology or LOD algorithm changes.
 const TILE_SIZE := 64
 const BUDGET_BYTES := 512 * 1024 * 1024
 const PREPARE_TILES := 32
@@ -13,6 +16,111 @@ var directory := ROOT
 var _fingerprints := {}
 var _revision := -1
 var disk := Storage.new()
+static var _editor_trim_mutex := Mutex.new()
+static var _editor_trim_at: Dictionary = {}
+
+## The editor caches CPU inputs before mesh packing. Re-uploading decoded GPU
+## normals changes their quantization, and runtime entries lack brush layouts.
+func editor_job(snapshot: Terrain, tile: Vector2i, blend: bool, water_options:Dictionary={}) -> EditorSurfaceJob:
+	return EditorSurfaceJob.new(self,snapshot,tile,blend,water_options)
+
+class EditorSurfaceJob extends RefCounted:
+	var result: Dictionary = {}
+	var tile_data:Dictionary={}
+	var _water_options:Dictionary
+	var cache_hit := false
+	var elapsed_us := 0
+	var invalid := 0
+	var _cache: RefCounted
+	var _source: Terrain
+	var _tile: Vector2i
+	var _blend: bool
+	func _init(cache:RefCounted,snapshot:Terrain,tile:Vector2i,blend:bool,water_options:Dictionary)->void:
+		_cache=cache;_source=snapshot;_tile=tile;_blend=blend;_water_options=water_options
+	func run(cancelled:Callable)->void:
+		var started:=Time.get_ticks_usec()
+		if cancelled.call():return
+		var input:=Mesher.editor_surface_input(_source,_tile.x*64,_tile.y*64,64)
+		var stride:int=int(_water_options.get("far_stride",1))
+		var policy:Array=["editor-top-native-lod-v1",_blend]
+		var key: String = "" if _cache.directory.is_empty() else _cache.tile_key(_source,_tile,0,policy,PackedVector4Array(),{})
+		if cancelled.call():return
+		result=_cache.read_editor_surface(key,input.bounds)
+		cache_hit=not result.is_empty()
+		if not cache_hit:
+			result=Surface.build_arrays(input.source,input.bounds,_blend,true,{},true,cancelled,stride)
+			if result.is_empty() or cancelled.call():result={};return
+			_cache.write_editor_surface(key,input.bounds,result,cancelled)
+		if cancelled.call():result={};return
+		if not _water_options.is_empty():
+			tile_data=Mesher.prepare_editor_tile(input,result,_water_options,_source.is_sectioned(),cancelled)
+			if cancelled.call():result={};tile_data={};return
+		invalid=_cache.disk.invalid
+		elapsed_us=Time.get_ticks_usec()-started
+		_source=null
+
+func read_editor_surface(key:String,bounds:Rect2i)->Dictionary:
+	if key.is_empty():return {}
+	disk.directory=directory
+	var data:=disk.read(key)
+	if data.is_empty():return {}
+	if not _valid_editor_surface(data,bounds):disk.invalid+=1;return {}
+	var layout:Dictionary=data.layout.duplicate()
+	layout.arrays=data.arrays
+	return {"arrays":data.arrays,"collision_faces":data.get("collision_faces",data.arrays[Mesh.ARRAY_VERTEX]),"smooth_field":data.field,"layout":layout,"separate_collision":data.editor_version==2,"render_detail":data.get("render_detail",{})}
+
+static func _valid_editor_surface(data:Dictionary,bounds:Rect2i)->bool:
+	if data.get("editor_version") not in [1,2,3] or data.get("bounds")!=bounds:return false
+	var arrays:Variant=data.get("arrays")
+	if not arrays is Array or arrays.size()!=Mesh.ARRAY_MAX or not arrays[Mesh.ARRAY_VERTEX] is PackedVector3Array:return false
+	var count:int=arrays[Mesh.ARRAY_VERTEX].size()
+	if count>65536 or count%3!=0:return false
+	if data.editor_version==2:
+		var faces:Variant=data.get("collision_faces")
+		if not faces is PackedVector3Array or faces.size()>65536 or faces.size()%3!=0:return false
+		for point in faces:
+			if not point.is_finite():return false
+	if not arrays[Mesh.ARRAY_NORMAL] is PackedVector3Array or not arrays[Mesh.ARRAY_COLOR] is PackedColorArray or not arrays[Mesh.ARRAY_TEX_UV] is PackedVector2Array or not arrays[Mesh.ARRAY_TEX_UV2] is PackedVector2Array:return false
+	for channel in range(Mesh.ARRAY_MAX):
+		if channel in [Mesh.ARRAY_VERTEX,Mesh.ARRAY_NORMAL,Mesh.ARRAY_COLOR,Mesh.ARRAY_TEX_UV,Mesh.ARRAY_TEX_UV2]:
+			if arrays[channel].size()!=count:return false
+		else:
+			if arrays[channel]!=null:return false
+	for channel in [Mesh.ARRAY_VERTEX,Mesh.ARRAY_NORMAL,Mesh.ARRAY_TEX_UV,Mesh.ARRAY_TEX_UV2]:
+		for value in arrays[channel]:
+			if not value.is_finite():return false
+	for color:Color in arrays[Mesh.ARRAY_COLOR]:
+		if not is_finite(color.r) or not is_finite(color.g) or not is_finite(color.b) or not is_finite(color.a):return false
+	if data.editor_version==3 and not _valid_render_detail(data.get("render_detail"),count):return false
+	var field:Variant=data.get("field")
+	var border:=Vector2i.ONE*Surface.FIELD_BORDER
+	if not field is Dictionary or field.get("start")!=bounds.position-border or field.get("size")!=bounds.size+border*2+Vector2i.ONE:return false
+	if not field.get("heights") is PackedFloat32Array or field.heights.size()!=field.size.x*field.size.y:return false
+	for height in field.heights:
+		if not is_finite(height):return false
+	var layout:Variant=data.get("layout")
+	if not layout is Dictionary or not layout.get("key") is PackedByteArray or layout.key.size()!=32 or not layout.get("kinds") is PackedByteArray or layout.kinds.size()!=count:return false
+	for kind in layout.kinds:
+		if kind>2:return false
+	return true
+
+func write_editor_surface(key:String,bounds:Rect2i,data:Dictionary,cancelled:Callable)->void:
+	if key.is_empty():return
+	disk.directory=directory
+	var layout:Dictionary=data.layout.duplicate();layout.erase("arrays")
+	var record:Dictionary={"editor_version":3,"bounds":bounds,"arrays":data.arrays,"field":data.smooth_field,"layout":layout,"render_detail":data.get("render_detail",{"indices":PackedInt32Array(),"lods":{}})}
+	if data.get("separate_collision",false):
+		record.editor_version=2;record.collision_faces=data.collision_faces
+	disk.write(key,record,cancelled)
+	# Rate-limit shared-directory maintenance across the private workers.
+	var now:=Time.get_ticks_msec()
+	_editor_trim_mutex.lock()
+	var due:bool=now-int(_editor_trim_at.get(directory,-10000))>=10000
+	if due:
+		if _editor_trim_at.size()>32:_editor_trim_at.clear()
+		_editor_trim_at[directory]=now
+	_editor_trim_mutex.unlock()
+	if due and not cancelled.call():disk.trim(BUDGET_BYTES)
 
 func _init() -> void:
 	disk.max_bytes = 16 * 1024 * 1024
@@ -37,10 +145,20 @@ func tile_key(source: Terrain, tile: Vector2i, revision: int, policy: Array, swa
 					var values: Array=[bounds.size, part.heights, part.top_materials,
 						part.base_materials, part.cap_depths, part.water_levels, part.water_materials, part.column_material_overrides]
 					if not part.surface_rules.is_empty():values.append(part.surface_rules)
+					if not part.column_material_overrides.is_empty():values.append("side-paint-2")
 					_fingerprints[key] = Storage.digest(values)
 			dependencies.append([key, _fingerprints[key]])
-	return Storage.digest([VERSION, Engine.get_version_info().hex, source.is_sectioned(), tile,
-		source.origin_y, source.palette, policy, dependencies, swash, sheet])
+	var inputs := [VERSION, Engine.get_version_info().hex, source.is_sectioned(), tile,
+		source.origin_y, source.palette, policy, dependencies, swash, sheet]
+	# Only the formerly nonadaptive smooth consumer changed. Preserve the
+	# accepted blended cache identity, including its exact native LOD indices.
+	var nonblend_editor:bool=policy.size()>=2 and policy[0] is String and policy[0]=="editor-top-native-lod-v1" and policy[1]==false
+	var nonblend_runtime:bool=policy.size()>=6 and policy[5] is int and policy[5]==1 and not policy.has("material-blend-v1")
+	if nonblend_editor or nonblend_runtime:inputs.append("uniform-palette-lod-v1")
+	# Only tiles containing run-up change topology. Preserve all other warm
+	# geometry/LOD entries instead of invalidating the entire landscape.
+	if not swash.is_empty(): inputs.append("shore-grid-1")
+	return Storage.digest(inputs)
 
 static func lod_key(geometry_key: String, kind: String) -> String:
 	return Storage.digest([VERSION, geometry_key, kind, "lod"])
@@ -52,6 +170,14 @@ static func _valid_indices(indices: Variant, count: int) -> bool:
 	if not indices is PackedInt32Array or indices.size() % 3 != 0: return false
 	for index in indices:
 		if index < 0 or index >= count: return false
+	return true
+
+static func _valid_render_detail(detail:Variant,count:int)->bool:
+	if not detail is Dictionary:return false
+	if detail.is_empty():return true
+	if not _valid_indices(detail.get("indices"),count) or not detail.get("lods") is Dictionary:return false
+	for error in detail.lods:
+		if not (error is float or error is int) or not is_finite(error) or error<=0 or not _valid_indices(detail.lods[error],count):return false
 	return true
 
 static func _valid_arrays(arrays: Variant) -> bool:
@@ -103,9 +229,11 @@ func read_geometry_arrays(key: String) -> Dictionary:
 			if indices.size() != faces.size(): disk.invalid += 1; return {}
 			for i in indices.size():
 				if vertices[indices[i]] != faces[i]: disk.invalid += 1; return {}
+	if data.has("render_detail") and not ground.is_empty() and not _valid_render_detail(data.render_detail,ground[Mesh.ARRAY_VERTEX].size()):
+		disk.invalid+=1;return {}
 	var validate_us := Time.get_ticks_usec() - started
 	return {"ground_arrays": ground, "water_arrays": data.water, "collision_faces": faces,
-		"water_source_vertices": int(data.get("water_source_vertices", 0)),
+		"water_source_vertices": int(data.get("water_source_vertices", 0)),"render_detail":data.get("render_detail",{}),
 		"cache_decode_us": decode_us, "cache_validate_us": validate_us}
 
 static func publish_geometry(data: Dictionary) -> Dictionary:
@@ -113,7 +241,7 @@ static func publish_geometry(data: Dictionary) -> Dictionary:
 	var started := Time.get_ticks_usec()
 	var terrain := ArrayMesh.new()
 	var water := ArrayMesh.new()
-	if not data.ground_arrays.is_empty(): terrain.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, data.ground_arrays)
+	if not data.ground_arrays.is_empty():terrain=Surface.publish_render_mesh(data.ground_arrays,data.get("render_detail",{}))
 	if not data.water_arrays.is_empty(): water.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, data.water_arrays)
 	var result := data.duplicate()
 	result.merge({"terrain": terrain, "water": water,
@@ -157,9 +285,10 @@ func prepare_batch(snapshot: Terrain, jobs: Array, revision: int, cancelled: Cal
 
 func write_geometry(key: String, generated: Dictionary) -> Dictionary:
 	disk.directory = directory
-	var ground := mesh_arrays(generated.terrain)
+	var ground:Array=generated.get("smooth_arrays",mesh_arrays(generated.terrain))
+	if not ground.is_empty() and ground[Mesh.ARRAY_VERTEX].is_empty():ground=[]
 	var water := mesh_arrays(generated.water)
-	disk.write(key, {"version": VERSION, "ground": ground, "water": water,
+	disk.write(key, {"version": VERSION, "ground": ground, "water": water,"render_detail":generated.get("render_detail",{"indices":PackedInt32Array(),"lods":{}}),
 		"collision_faces": generated.collision_faces, "smooth_ground": generated.has("smooth_field"), "water_source_vertices": generated.get("water_source_vertices", generated.get("water_vertices", 0))}, func() -> bool: return false)
 	# Cold/I-O fallback keeps the same serialized representation and can reuse
 	# the serialization readback for LOD. No CPU arrays remain in the tile cache.

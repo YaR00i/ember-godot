@@ -5,12 +5,14 @@ const Selection = preload("res://addons/ember_import/ember_voxel_selection.gd")
 const Fragment = preload("res://addons/ember_import/ember_voxel_fragment.gd")
 const Extract = preload("res://addons/ember_import/ember_voxel_fragment_extract.gd")
 const Profiles = preload("res://scripts/ember_voxel_material_profiles.gd")
+const Solid = preload("res://scripts/ember_voxel_solid_surface.gd")
 const MAX_CELLS := 524288
 
 static func plan(inputs: Array[Dictionary], align_grid := false, bake_orientation := false) -> Dictionary:
 	if inputs.size() < 2 or inputs.size() > 32:
 		return {"error":"Выберите от 2 до 32 деталей."}
 	var density := 16
+	var solid_count := 0
 	for item in inputs:
 		var source: EmberVoxelModelResource = item.source
 		if source == null or not source.validation_errors().is_empty():
@@ -18,6 +20,12 @@ static func plan(inputs: Array[Dictionary], align_grid := false, bake_orientatio
 		if source.emissive_casts_light or not source.emissive_lights.is_empty() or not source.surface_fill_levels.is_empty():
 			return {"error":"Склейка пока предназначена для твёрдых деталей без воды и отдельных источников света."}
 		density = maxi(density,source.normalized_density())
+		if not source.solid_surface.is_empty():
+			solid_count+=1
+			if not Solid.active(EmberVoxelPrefab.model_of(source.to_definition(true))):
+				return {"error":"У объёмной детали есть воксели без части. Назначьте им часть в Canvas перед склейкой."}
+	if solid_count>0 and solid_count!=inputs.size():
+		return {"error":"Пока объединяйте объёмные детали с объёмными: смешанная склейка потеряла бы оформление поверхности."}
 	var first: EmberVoxelModelResource = inputs[0].source
 	var base: Transform3D = inputs[0].frame
 	if absf(base.basis.determinant()) < 0.000001:
@@ -40,6 +48,9 @@ static func plan(inputs: Array[Dictionary], align_grid := false, bake_orientatio
 	var palette := PackedColorArray([Color.TRANSPARENT])
 	var surface_material := Profiles.base_material(first.material)
 	var names := PackedStringArray()
+	var solid_parts: Array = []
+	var solid_roles := PackedStringArray([""])
+	var solid_material_ids := PackedStringArray([""])
 	for item in inputs:
 		var source: EmberVoxelModelResource = item.source
 		for property in ["material","physical","emissive_strength","emissive_suppress_host_shadow"]:
@@ -74,8 +85,10 @@ static func plan(inputs: Array[Dictionary], align_grid := false, bake_orientatio
 		colors.resize(source.palette.size())
 		for i in range(1,source.palette.size()):
 			var mapped := -1
+			var identity:=Profiles.palette_identity(source.palette,source.material,i,source.solid_surface)
 			for candidate in range(1,palette.size()):
-				if palette[candidate] == source.palette[i] and Profiles.palette_role(surface_material,candidate) == Profiles.palette_role(source.material,i):
+				var merged_solid:Dictionary={"roles":solid_roles,"material_ids":solid_material_ids} if solid_count>0 else {}
+				if Profiles.palette_identity(palette,surface_material,candidate,merged_solid)==identity:
 					mapped = candidate
 					break
 			if mapped < 0:
@@ -83,6 +96,9 @@ static func plan(inputs: Array[Dictionary], align_grid := false, bake_orientatio
 					return {"error":"Общая палитра превышает 255 цветов. Склейка остановлена без потери цветов."}
 				mapped = palette.size()
 				palette.append(source.palette[i])
+				if solid_count>0:
+					solid_roles.append(source.solid_surface.roles[i])
+					solid_material_ids.append(source.solid_surface.material_ids[i])
 				Profiles.set_palette_role(surface_material,mapped,Profiles.palette_role(source.material,i))
 			colors[i] = mapped
 		var part_offset := names.size()
@@ -92,6 +108,11 @@ static func plan(inputs: Array[Dictionary], align_grid := false, bake_orientatio
 			names.append_array(source.merge_parts)
 		if names.size() > 32:
 			return {"error":"В склейке получится больше 32 исходных частей. Склейте меньший участок."}
+		if solid_count>0:
+			for guide:PackedVector3Array in source.solid_surface.parts:
+				var transformed := PackedVector3Array()
+				for normal in guide:transformed.append(grid_basis*normal)
+				solid_parts.append(transformed)
 		slots.append({"source":source,"basis":grid_basis,"origin":origin,"ratio":ratio,"colors":colors,"part_offset":part_offset})
 	var size := high-low
 	size.x = ceili(float(size.x)/density)*density
@@ -168,6 +189,14 @@ static func plan(inputs: Array[Dictionary], align_grid := false, bake_orientatio
 			result.collision_voxels = PackedByteArray()
 		else:
 			result.set(channel,channels[channel])
+	if solid_count>0:
+		# Union has no single original convex hull reference. Persist its volume
+		# topology explicitly in the existing profile, rather than a fake hash.
+		result.solid_surface={"version":1,"topology":"volume","parts":solid_parts,
+			"roles":solid_roles,"material_ids":solid_material_ids,"occupancy":Solid.occupancy_hash(result.voxels)}
+		result.tree_surface={}
+		var errors:=result.validation_errors()
+		if not errors.is_empty():return {"error":"Объединённый объём не прошёл проверку: "+errors[0]}
 	return {"source":result,"frame":output_base*Transform3D(Basis.IDENTITY,Vector3(low)/density),"overlap":PackedInt32Array(overlap.keys()),"adjustments":adjustments}
 
 static func separate(source: EmberVoxelModelResource) -> Dictionary:
@@ -191,5 +220,15 @@ static func separate(source: EmberVoxelModelResource) -> Dictionary:
 		piece.display_name = "Добавленное" if owner == 0 else source.merge_parts[owner-1]
 		piece.merge_parts = PackedStringArray()
 		piece.voxel_part_ids = PackedInt32Array()
+		if not source.solid_surface.is_empty():
+			# Separating the current union must not resurrect removed matter or
+			# copy the entire assembly's guide/owner table onto a cropped part.
+			piece.merge_parts=PackedStringArray([piece.display_name])
+			piece.voxel_part_ids.resize(piece.voxels.size())
+			for index in piece.voxels.size():piece.voxel_part_ids[index]=1 if piece.voxels[index]>0 else 0
+			piece.solid_surface=source.solid_surface.duplicate(true)
+			piece.solid_surface.parts=[source.solid_surface.parts[owner-1] if owner>0 else PackedVector3Array([Vector3.RIGHT,Vector3.LEFT,Vector3.UP,Vector3.DOWN,Vector3.FORWARD,Vector3.BACK])]
+			piece.solid_surface.topology="volume"
+			piece.solid_surface.occupancy=Solid.occupancy_hash(piece.voxels)
 		pieces.append({"source":piece,"origin":extracted.origin})
 	return {"pieces":pieces}

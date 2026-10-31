@@ -8,7 +8,9 @@ var _catalog := {}
 
 func make_tree(id: String, color: Color) -> PackedScene:
 	var prop := EmberVoxelProp.new(); prop.name = id; prop.model_id = id
-	var visual := MeshInstance3D.new(); visual.name = "Mesh"; visual.mesh = BoxMesh.new(); visual.mesh.size = Vector3(8,32,8); visual.position.y = 16
+	var visual := MeshInstance3D.new(); visual.name = "Mesh"; visual.position.y = 16
+	var shape_mesh:=BoxMesh.new();shape_mesh.size=Vector3(8,32,8)
+	var baked:=ArrayMesh.new();baked.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,shape_mesh.get_mesh_arrays());visual.mesh=baked
 	var material := StandardMaterial3D.new(); material.albedo_color = color; visual.material_override = material
 	prop.add_child(visual); visual.owner = prop
 	var body := StaticBody3D.new(); body.name = "Collision"; prop.add_child(body); body.owner = prop
@@ -75,7 +77,7 @@ func _run() -> void:
 	var dense: Resource = input.working_copy(); dense.regions[0].bounds = Rect2i(0,0,48,48); dense.regions[0].parameters.spacing_m = 2.0
 	var dense_job := Grove.new(); check(dense_job.begin(source,_map,_scene,dense,_catalog),"dense setup")
 	while not dense_job.finished: dense_job.step()
-	check(not dense_job.error.is_empty(),"tree cap silently exceeded")
+	check(dense_job.error.is_empty() and dense_job.placements.size()>64 and dense_job.placements.size()<=256,"48m region uses the accepted area budget instead of the retired 64-tree cap")
 	var cancelled_job := Grove.new(); check(cancelled_job.begin(source,_map,_scene,input,_catalog),"cancel setup"); cancelled_job.cancel(); cancelled_job.step()
 	check(cancelled_job.placements.is_empty(),"cancel created points")
 	var blocker := MeshInstance3D.new(); blocker.name = "ManualBlocker"; blocker.mesh = BoxMesh.new(); blocker.mesh.size = Vector3(32,32,32)

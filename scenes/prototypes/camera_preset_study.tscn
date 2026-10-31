@@ -1,0 +1,292 @@
+[gd_scene load_steps=21 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_camera_preset_study.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/prototypes/ember_camera_preset_rig.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/prototypes/ember_story_preview.gd" id="3"]
+[ext_resource type="Script" path="res://scripts/ember_interaction_ui.gd" id="4"]
+[ext_resource type="Resource" path="res://content/dialogues/camera_story_exchange.tres" id="5"]
+[ext_resource type="Script" path="res://scripts/ember_quest_giver_interact.gd" id="6"]
+
+[sub_resource type="Environment" id="Environment"]
+background_mode = 1
+background_color = Color(0.12, 0.18, 0.23, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.68, 0.79, 0.95, 1)
+ambient_light_energy = 0.65
+tonemap_mode = 2
+
+[sub_resource type="StandardMaterial3D" id="FloorMaterial"]
+albedo_color = Color(0.22, 0.28, 0.3, 1)
+roughness = 0.95
+[sub_resource type="PlaneMesh" id="Floor"]
+material = SubResource("FloorMaterial")
+size = Vector2(18, 18)
+[sub_resource type="StandardMaterial3D" id="Blue"]
+albedo_color = Color(0.14, 0.44, 0.65, 1)
+[sub_resource type="StandardMaterial3D" id="Gold"]
+albedo_color = Color(0.7, 0.3, 0.12, 1)
+[sub_resource type="StandardMaterial3D" id="Skin"]
+albedo_color = Color(0.85, 0.7, 0.55, 1)
+[sub_resource type="CapsuleMesh" id="Body"]
+radius = 0.23
+height = 0.85
+[sub_resource type="SphereMesh" id="Head"]
+material = SubResource("Skin")
+radius = 0.18
+height = 0.36
+[sub_resource type="CapsuleMesh" id="Limb"]
+radius = 0.075
+height = 0.65
+[sub_resource type="BoxMesh" id="Nose"]
+material = SubResource("Skin")
+size = Vector3(0.09, 0.08, 0.14)
+[sub_resource type="BoxMesh" id="Parcel"]
+material = SubResource("Gold")
+size = Vector3(0.35, 0.25, 0.3)
+
+[sub_resource type="Animation" id="StoryExample"]
+resource_name = "story_example"
+length = 8.0
+tracks/0/type = "value"
+tracks/0/path = NodePath("ActorB:position")
+tracks/0/interp = 1
+tracks/0/keys = {"times": PackedFloat32Array(0, 2), "transitions": PackedFloat32Array(1, 1), "update": 0, "values": [Vector3(1.2, 0, 0), Vector3(0.5, 0, 0)]}
+tracks/1/type = "value"
+tracks/1/path = NodePath("ActorB:rotation")
+tracks/1/interp = 1
+tracks/1/keys = {"times": PackedFloat32Array(0, 2, 2.8), "transitions": PackedFloat32Array(1, 1, 1), "update": 0, "values": [Vector3(0, 1.570796, 0), Vector3(0, 1.570796, 0), Vector3(0, 2.65, 0)]}
+tracks/2/type = "value"
+tracks/2/path = NodePath("Item:position")
+tracks/2/interp = 1
+tracks/2/keys = {"times": PackedFloat32Array(0, 3, 3.65, 4.3), "transitions": PackedFloat32Array(1, 1, 1, 1), "update": 0, "values": [Vector3(0, 0.88, 0.9), Vector3(0, 0.88, 0.9), Vector3(0.4, 1.25, 0.9), Vector3(0.8, 0.88, 0.9)]}
+tracks/3/type = "value"
+tracks/3/path = NodePath("Item:rotation")
+tracks/3/interp = 1
+tracks/3/keys = {"times": PackedFloat32Array(0, 3, 4.3), "transitions": PackedFloat32Array(1, 1, 1), "update": 0, "values": [Vector3(0, 0, 0), Vector3(0, 0, 0), Vector3(0, 1.570796, 0)]}
+tracks/4/type = "value"
+tracks/4/path = NodePath("ShotRig:shot")
+tracks/4/keys = {"times": PackedFloat32Array(0, 2.2, 3, 5, 7.2), "transitions": PackedFloat32Array(1, 1, 1, 1, 1), "update": 1, "values": [0, 4, 5, 4, 0]}
+tracks/5/type = "value"
+tracks/5/path = NodePath("ShotRig:lens_fov")
+tracks/5/interp = 1
+tracks/5/keys = {"times": PackedFloat32Array(0, 5, 7.2), "transitions": PackedFloat32Array(1, 1, 1), "update": 0, "values": [38.0, 36.0, 38.0]}
+tracks/6/type = "value"
+tracks/6/path = NodePath("StoryText/Caption:text")
+tracks/6/keys = {"times": PackedFloat32Array(0, 2, 3, 5, 7.2), "transitions": PackedFloat32Array(1, 1, 1, 1, 1), "update": 1, "values": ["Подход персонажа · дорожка ActorB → position", "Б: Я принёс посылку.", "Перемещение и поворот предмета · Item → position / rotation", "А: Отлично, оставь её здесь.", "Конец примера · P повторить · Esc вернуть исходное"]}
+
+[sub_resource type="Animation" id="StoryReset"]
+resource_name = "RESET"
+length = 0.001
+tracks/0/type = "value"
+tracks/0/path = NodePath("ActorB:position")
+tracks/0/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [Vector3(1.2, 0, 0)]}
+tracks/1/type = "value"
+tracks/1/path = NodePath("ActorB:rotation")
+tracks/1/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [Vector3(0, 1.570796, 0)]}
+tracks/2/type = "value"
+tracks/2/path = NodePath("Item:position")
+tracks/2/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [Vector3(0, 0.88, 0.9)]}
+tracks/3/type = "value"
+tracks/3/path = NodePath("Item:rotation")
+tracks/3/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [Vector3(0, 0, 0)]}
+tracks/4/type = "value"
+tracks/4/path = NodePath("ShotRig:shot")
+tracks/4/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 1, "values": [0]}
+tracks/5/type = "value"
+tracks/5/path = NodePath("ShotRig:lens_fov")
+tracks/5/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [38.0]}
+tracks/6/type = "value"
+tracks/6/path = NodePath("StoryText/Caption:text")
+tracks/6/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 1, "values": [""]}
+
+[sub_resource type="AnimationLibrary" id="StoryLibrary"]
+_data = {&"RESET": SubResource("StoryReset"), &"story_example": SubResource("StoryExample")}
+
+[node name="CameraPresetStudy" type="Node3D"]
+script = ExtResource("1")
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment")
+[node name="Sun" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-50, -35, 0)
+light_color = Color(1, 0.95, 0.87, 1)
+light_energy = 1.3
+shadow_enabled = true
+[node name="Floor" type="MeshInstance3D" parent="."]
+mesh = SubResource("Floor")
+
+[node name="ActorA" type="Node3D" parent="."]
+position = Vector3(-1.2, 0, 0)
+rotation_degrees = Vector3(0, -90, 0)
+[node name="Body" type="MeshInstance3D" parent="ActorA"]
+position = Vector3(0, 1, 0)
+mesh = SubResource("Body")
+material_override = SubResource("Blue")
+[node name="Head" type="MeshInstance3D" parent="ActorA"]
+position = Vector3(0, 1.61, 0)
+mesh = SubResource("Head")
+[node name="Nose" type="MeshInstance3D" parent="ActorA"]
+position = Vector3(0, 1.6, -0.18)
+mesh = SubResource("Nose")
+[node name="LegL" type="MeshInstance3D" parent="ActorA"]
+position = Vector3(-0.12, 0.35, 0)
+mesh = SubResource("Limb")
+material_override = SubResource("Blue")
+[node name="LegR" type="MeshInstance3D" parent="ActorA"]
+position = Vector3(0.12, 0.35, 0)
+mesh = SubResource("Limb")
+material_override = SubResource("Blue")
+[node name="ArmL" type="MeshInstance3D" parent="ActorA"]
+position = Vector3(-0.32, 1, 0)
+rotation_degrees = Vector3(0, 0, -10)
+mesh = SubResource("Limb")
+material_override = SubResource("Blue")
+[node name="ArmR" type="MeshInstance3D" parent="ActorA"]
+position = Vector3(0.32, 1, 0)
+rotation_degrees = Vector3(0, 0, 10)
+mesh = SubResource("Limb")
+material_override = SubResource("Blue")
+[node name="Anchor" type="Marker3D" parent="ActorA"]
+position = Vector3(0, 1.38, 0)
+[node name="Name" type="Label3D" parent="ActorA"]
+position = Vector3(0, 2.02, 0)
+billboard = 1
+text = "А · собеседник"
+font_size = 38
+pixel_size = 0.001
+
+[node name="ActorB" type="Node3D" parent="."]
+position = Vector3(1.2, 0, 0)
+rotation_degrees = Vector3(0, 90, 0)
+[node name="Body" type="MeshInstance3D" parent="ActorB"]
+position = Vector3(0, 1, 0)
+mesh = SubResource("Body")
+material_override = SubResource("Gold")
+[node name="Head" type="MeshInstance3D" parent="ActorB"]
+position = Vector3(0, 1.61, 0)
+mesh = SubResource("Head")
+[node name="Nose" type="MeshInstance3D" parent="ActorB"]
+position = Vector3(0, 1.6, -0.18)
+mesh = SubResource("Nose")
+[node name="LegL" type="MeshInstance3D" parent="ActorB"]
+position = Vector3(-0.12, 0.35, 0)
+mesh = SubResource("Limb")
+material_override = SubResource("Gold")
+[node name="LegR" type="MeshInstance3D" parent="ActorB"]
+position = Vector3(0.12, 0.35, 0)
+mesh = SubResource("Limb")
+material_override = SubResource("Gold")
+[node name="ArmL" type="MeshInstance3D" parent="ActorB"]
+position = Vector3(-0.32, 1, 0)
+rotation_degrees = Vector3(0, 0, -10)
+mesh = SubResource("Limb")
+material_override = SubResource("Gold")
+[node name="ArmR" type="MeshInstance3D" parent="ActorB"]
+position = Vector3(0.32, 1, 0)
+rotation_degrees = Vector3(0, 0, 10)
+mesh = SubResource("Limb")
+material_override = SubResource("Gold")
+[node name="Anchor" type="Marker3D" parent="ActorB"]
+position = Vector3(0, 1.38, 0)
+[node name="Name" type="Label3D" parent="ActorB"]
+position = Vector3(0, 2.02, 0)
+billboard = 1
+text = "Б · собеседник"
+font_size = 38
+pixel_size = 0.001
+
+[node name="Item" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.88, 0.9)
+mesh = SubResource("Parcel")
+[node name="Anchor" type="Marker3D" parent="Item"]
+[node name="Pedestal" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.38, 0.9)
+scale = Vector3(1.5, 3, 1.5)
+mesh = SubResource("Parcel")
+material_override = SubResource("FloorMaterial")
+
+[node name="ShotRig" type="Node3D" parent="."]
+script = ExtResource("2")
+primary_anchor = NodePath("../ActorA/Anchor")
+secondary_anchor = NodePath("../ActorB/Anchor")
+detail_anchor = NodePath("../Item/Anchor")
+[node name="Camera3D" type="Camera3D" parent="ShotRig"]
+current = true
+near = 0.03
+far = 80.0
+
+[node name="SecondPedestal" type="MeshInstance3D" parent="."]
+position = Vector3(0.8, 0.38, 0.9)
+scale = Vector3(1.5, 3, 1.5)
+mesh = SubResource("Parcel")
+material_override = SubResource("FloorMaterial")
+[node name="StoryText" type="CanvasLayer" parent="."]
+layer = 2
+[node name="Caption" type="Label" parent="StoryText"]
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -100.0
+offset_right = -24.0
+offset_bottom = -40.0
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 1)
+theme_override_constants/shadow_offset_x = 2
+theme_override_constants/shadow_offset_y = 2
+theme_override_font_sizes/font_size = 22
+horizontal_alignment = 1
+autowrap_mode = 2
+[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+libraries = {&"": SubResource("StoryLibrary")}
+[node name="StoryPreview" type="Node" parent="."]
+script = ExtResource("3")
+dialogue = ExtResource("5")
+enable_preview_shortcuts = true
+[node name="DialogueLayer" type="CanvasLayer" parent="."]
+layer = 30
+[node name="InteractionUi" type="Control" parent="DialogueLayer"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("4")
+[node name="QuestLayer" type="CanvasLayer" parent="."]
+layer = 20
+[node name="InteractionUi" type="Control" parent="QuestLayer"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("4")
+[node name="QuestGiver" type="Area3D" parent="."]
+collision_layer = 0
+collision_mask = 0
+monitoring = false
+script = ExtResource("6")
+kind = "talk"
+quest_id = "harbor_cargo"
+display_name = "Смотритель · проба"
+objective_scripts = {"reward": "harbor_cargo_story_trial"}
+completed_script_id = "harbor_cargo_complete"
+
+[node name="TeaGiver" type="Area3D" parent="."]
+collision_layer = 0
+collision_mask = 0
+monitoring = false
+script = ExtResource("6")
+kind = "talk"
+quest_id = "story_tea_errand"
+display_name = "Смотритель · чай"
+objective_scripts = {"meet": "story_tea_start", "buy": "story_tea_reminder", "reward": "story_tea_reward"}
+completed_script_id = "story_tea_complete"
+
+[node name="ShellGiver" type="Area3D" parent="."]
+collision_layer = 0
+collision_mask = 0
+monitoring = false
+script = ExtResource("6")
+kind = "talk"
+quest_id = "story_shell_handover"
+display_name = "Смотритель · ракушки"
+objective_scripts = {"meet": "story_shell_start", "deliver": "story_shell_deliver"}
+completed_script_id = "story_shell_complete"

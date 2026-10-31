@@ -102,6 +102,8 @@ static func build(
 	model_id := "generated_bush",
 ) -> Dictionary:
 	var settings := normalize(parameters)
+	if int(settings.get("generation_version",1))==7:
+		return _build_branch_shrub(settings,seed,material,title,model_id)
 	if int(settings.get("generation_version", 1)) >= 2:
 		return _build_object(settings, seed, material, title, model_id)
 	var height := int(settings.height)
@@ -208,7 +210,7 @@ static func _normalize_object(parameters: Dictionary) -> Dictionary:
 	# Missing version still routes to the frozen compact stamp algorithm above.
 	var result := normalize({})
 	result.merge(parameters, true)
-	result.generation_version = clampi(int(result.generation_version), 2, 6)
+	result.generation_version = clampi(int(result.generation_version), 2, 7)
 	result.height = clampi(int(result.height), 8, 96)
 	result.spread_radius = clampi(int(result.spread_radius), 4, 30)
 	result.stem_count = clampi(int(result.stem_count), 3, 12)
@@ -234,7 +236,91 @@ static func _normalize_object(parameters: Dictionary) -> Dictionary:
 		var fallback: Color = result.foliage_color.lightened(0.24) if key == "foliage_highlight_color" else result.foliage_color.darkened(0.24)
 		var value: Variant = result.get(key, fallback)
 		result[key] = _opaque_color(value, fallback)
+	if result.generation_version==7:
+		result.height=clampi(result.height,16,48)
+		result.spread_radius=clampi(result.spread_radius,4,24)
+		result.stem_count=clampi(result.stem_count,3,7)
+		result.density=16;result.bush_type=0
 	return result
+
+
+## One opt-in shrub form. Same published branch Source and leaf-card projection
+## as accepted trees; older voxel/cloud recipes retain their exact algorithms.
+static func _build_branch_shrub(settings: Dictionary,seed: int,material: Dictionary,title: String,model_id: String) -> Dictionary:
+	var tree:=preload("res://addons/ember_import/ember_voxel_large_tree_generator.gd")
+	var layout_builder:=preload("res://addons/ember_import/ember_tree_branch_layout.gd")
+	var species:=load("res://scripts/ember_tree_species.gd")
+	var p: Dictionary=species.accepted_parameters(1)
+	p.merge({"height":64,"branch_levels":3,"main_branch_count":5,"branch_splits":2,
+		"trunk_width":3,"foliage_amount":0,"bark_color":settings.stem_color,
+		"foliage_color":settings.foliage_color,"tree_leaf_density":settings.foliage_density,
+		"tree_leaf_palette_strength":100,"tree_leaf_secondary_color":settings.foliage_color.darkened(0.20)},true)
+	p=tree.normalize(p)
+	var h:=float(settings.height);var reach:=float(settings.spread_radius)*0.72
+	var rng:=RandomNumberGenerator.new();rng.seed=maxi(seed,0)+24611
+	var phase:=rng.randf()*TAU
+	var branches: Array=[]
+	layout_builder._append(branches,-1,0,0,Vector3.ZERO,Vector3(0,1.8,0),Vector3(0.15,0,0),1.05,0.90,2)
+	for i in int(settings.stem_count):
+		var a:=phase+float(i)*TAU/float(settings.stem_count)+rng.randf_range(-0.15,0.15)
+		var radial:=Vector3(cos(a),0,sin(a));var side:=Vector3(-radial.z,0,radial.x)
+		var at:=0.08+float(i%3)*0.08
+		var start: Vector3=layout_builder.sample(branches[0].path,at)
+		var end:=radial*reach*rng.randf_range(0.70,1.0)*(0.28 if i==int(settings.stem_count)-1 else 1.0)+Vector3.UP*h*rng.randf_range(0.70,0.93)
+		var primary:=branches.size()
+		layout_builder._append(branches,0,at,1,start,end,radial*reach*0.16+side*reach*0.10,0.62,0.08,5)
+		for j in 4:
+			var t:=0.32+float(j)*0.20
+			var origin: Vector3=layout_builder.sample(branches[primary].path,t)
+			var heading:=radial.rotated(Vector3.UP,(-0.9 if j%2==0 else 0.9)+rng.randf_range(-0.15,0.15))
+			var extent:=reach*rng.randf_range(0.50,0.75)
+			var tip:=origin+heading*extent+Vector3.UP*h*rng.randf_range(0.08,0.16)
+			var r:=layout_builder.radius(branches[primary],t)*0.62
+			var secondary:=branches.size()
+			layout_builder._append(branches,primary,t,2,origin,tip,side*extent*0.12,r,r*0.12,3)
+			for k in 2:
+				var u:=0.48+float(k)*0.36
+				var root: Vector3=layout_builder.sample(branches[secondary].path,u)
+				var direction:=heading.rotated(Vector3.UP,-0.7 if k==0 else 0.7)
+				var twig_end:=root+direction*extent*0.48+Vector3.UP*extent*0.22
+				var radius:=layout_builder.radius(branches[secondary],u)*0.65
+				layout_builder._append(branches,secondary,u,3,root,twig_end,Vector3.UP*extent*0.04,radius,radius*0.12,2)
+		# Inward upper shoots close the crown over its centre. These are real
+		# branches, so the existing leaf-card projection stays attached to wood.
+		for cap in 2:
+			var t:=0.51+float(cap)*0.26
+			var origin: Vector3=layout_builder.sample(branches[primary].path,t)
+			var tip:=radial*reach*(0.34-float(cap)*0.18)+side*reach*rng.randf_range(-0.20,0.20)
+			tip.y=h*(0.74+float(cap)*0.20)+rng.randf_range(-0.7,0.7)
+			var r:=layout_builder.radius(branches[primary],t)*0.57
+			var upper:=branches.size()
+			layout_builder._append(branches,primary,t,2,origin,tip,side*reach*0.09,r,r*0.10,3)
+			for twig in 2:
+				var u:=0.60+float(twig)*0.32
+				var root: Vector3=layout_builder.sample(branches[upper].path,u)
+				var direction:=radial.rotated(Vector3.UP,-0.9 if twig==0 else 0.9)
+				var end_point:=root+direction*reach*0.30+Vector3.UP*reach*0.07
+				var radius:=layout_builder.radius(branches[upper],u)*0.62
+				layout_builder._append(branches,upper,u,3,root,end_point,Vector3.UP*reach*0.025,radius,radius*0.12,2)
+	var lines: Array=[];var groups: Array=[]
+	for branch: Dictionary in branches:
+		for j in branch.path.size()-1:
+			var t0:=float(j)/float(branch.path.size()-1);var t1:=float(j+1)/float(branch.path.size()-1)
+			lines.append({"start":branch.path[j],"finish":branch.path[j+1],"r0":layout_builder.radius(branch,t0),"r1":layout_builder.radius(branch,t1),
+				"t0":t0,"t1":t1,"branch":branch.id!=0,"physical":true,"branch_id":branch.id,"parent_id":branch.parent,"parent_t":branch.attachment,"order":branch.order})
+		if branch.order==1:
+			var center: Vector3=layout_builder.sample(branch.path,0.68)
+			groups.append({"branch_id":branch.id,"center":center,"radii":Vector3(reach*0.75,h*0.34,reach*0.75),"radius":reach*0.75,"top":true,"along":false})
+	var structure:={"version":1,"parameters":p.duplicate(true),"pivot_bias":Vector2i.ZERO,"grid":Vector3i(64,64,64),"branch_seed":maxi(seed,0),"noise_radius":4.0,"lines":lines,"groups":groups}
+	var errors: Array=tree.structure_errors(structure)
+	if not errors.is_empty():return {"error":str(errors)}
+	var built: Dictionary=tree.build_on_structure(p,structure,maxi(seed,0),material,title,model_id)
+	if built.has("error"):return built
+	p["plant_kind"]="shrub";p["shrub_leaf_scale"]=clampf(h/64.0*0.72,0.15,0.65)
+	load("res://scripts/ember_tree_surface.gd").publish(built,p,maxi(seed,0))
+	built.geometry.tags=PackedStringArray(["stamp","generated","bush"])
+	built["parameters"]=settings
+	return built
 
 
 static func _opaque_color(value: Variant, fallback: Color) -> Color:

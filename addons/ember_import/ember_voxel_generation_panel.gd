@@ -6,7 +6,7 @@ const Session = preload("res://addons/ember_import/ember_voxel_generation_sessio
 const Presets = preload("res://addons/ember_import/ember_voxel_generator_presets.gd")
 const VectorField = preload("res://addons/ember_import/ember_voxel_vector_field.gd")
 const TreePartField=preload("res://addons/ember_import/ember_tree_part_density_field.gd")
-const PROVIDERS := [Generator.LARGE_TREE, Generator.ROCK, Generator.BUSH]
+const PROVIDERS := [Generator.LARGE_TREE, Generator.ROCK, Generator.BUSH, Generator.BUILDING, Generator.CLIFF]
 var _provider: OptionButton
 var _creation_fields: VBoxContainer
 var _fields_provider := ""
@@ -91,6 +91,8 @@ func _ready() -> void:
 	_provider.add_item("Деревья")
 	_provider.add_item("Камни")
 	_provider.add_item("Кусты")
+	_provider.add_item("Здания")
+	_provider.add_item("Уступы")
 	_provider.item_selected.connect(_select_provider)
 	_fields.add_child(_provider)
 	_preset = OptionButton.new()
@@ -252,7 +254,7 @@ func _make_field(parent: Node, field: Dictionary, candidate_field := false) -> v
 		var heading := Label.new()
 		heading.text = str(field.section).to_upper()
 		parent.add_child(heading)
-	if field.has("section") and field.has("options"):
+	if (field.has("section") and field.has("options")) or (recipe.generator_id == Generator.CLIFF and field.get("type", "") == "color"):
 		var label := Label.new()
 		label.text = str(field.title)
 		parent.add_child(label)
@@ -289,7 +291,10 @@ func _make_field(parent: Node, field: Dictionary, candidate_field := false) -> v
 		control = color
 	else:
 		var spin := _number(parent, str(field.title), field.min, field.max, 0)
-		spin.value_changed.connect(func(value: float): _field_changed(key, int(value), candidate_field))
+		spin.step = float(field.get("step",1.0))
+		if field.get("type","")=="float":
+			spin.custom_arrow_step=spin.step;spin.step=0.001
+		spin.value_changed.connect(func(value: float): _field_changed(key, value if field.get("type","")=="float" else int(value), candidate_field))
 		control = spin
 	if cluster_wrapper != null: control.set_meta("rock_cluster_wrapper", cluster_wrapper)
 	if candidate_field: candidate_controls[key] = control
@@ -347,7 +352,7 @@ func _change_recipe(next: Resource) -> void:
 
 func _apply_recipe(next: Resource) -> void:
 	recipe = next.duplicate(true)
-	if _fields_provider != recipe.generator_id and _title.text in ["Дерево", "Камень", "Куст"]:
+	if _fields_provider != recipe.generator_id and _title.text in ["Дерево", "Камень", "Куст", "Прибрежный дом"]:
 		_title.text = _provider_title(recipe.generator_id)
 	_sync_controls()
 	_status.text = "Настройки для следующего прохода. Уже собранные варианты не меняются."
@@ -383,7 +388,7 @@ func _sync_controls() -> void:
 		elif control is ColorPickerButton: control.color = value
 		elif control is CheckButton: control.button_pressed = bool(value)
 		elif control is OptionButton: control.select(field.values.find(value) if field.has("values") else int(value) - int(field.get("offset", 0)))
-		if field.key == "stone_color":
+		if recipe.generator_id == Generator.ROCK and field.key == "stone_color":
 			control.disabled = int(recipe.parameters.generation_version) == 1
 			control.tooltip_text = "Цвет прежнего штампа задавался кистью. Выберите форму камня для нового алгоритма." if control.disabled else "Цвет камня сохраняется вместе с рецептом."
 		if recipe.generator_id == Generator.ROCK and field.has("section"):
@@ -422,6 +427,8 @@ func _sync_controls() -> void:
 
 
 func _provider_title(id: String) -> String:
+	if id == Generator.CLIFF: return "Травяной уступ"
+	if id == Generator.BUILDING: return "Прибрежный дом"
 	return "Куст" if id == Generator.BUSH else ("Камень" if id == Generator.ROCK else "Дерево")
 
 

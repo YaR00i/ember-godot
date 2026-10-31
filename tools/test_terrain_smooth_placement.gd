@@ -20,6 +20,7 @@ func model(id: String,rock: bool) -> PackedScene:
 	var prop:=EmberVoxelProp.new();prop.name=id;prop.model_id=id
 	var mesh:=MeshInstance3D.new();mesh.name="Mesh";mesh.mesh=BoxMesh.new()
 	mesh.mesh.size=Vector3(8,8 if rock else 32,8);mesh.position.y=0 if rock else 16
+	var native_mesh:=ArrayMesh.new();native_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,mesh.mesh.get_mesh_arrays());mesh.mesh=native_mesh
 	prop.add_child(mesh);mesh.owner=prop
 	var packed:=PackedScene.new();check(packed.pack(prop)==OK,"pack object");prop.free()
 	var path:=DIR.path_join(id+".tscn");check(ResourceSaver.save(packed,path)==OK,"save object")
@@ -61,6 +62,28 @@ func run() -> void:
 	var oversized:=source.working_copy();oversized.width=4096
 	var invalid:=Grove.new()
 	check(not invalid.begin(oversized,map,scene,recipe("grove"),catalog) and not invalid.error.is_empty(),"smooth map limit enforced by planner")
+	# A map may explicitly raise its retained detailed budget after adding sections.
+	var wide:=Fixture.base();wide.width=768;wide.depth=400
+	for channel: String in wide.Sections.CHANNELS:
+		var values=PackedInt32Array() if channel in ["heights","water_levels"] else PackedByteArray()
+		values.resize(wide.width*wide.depth)
+		values.fill(24 if channel=="heights" else 2 if channel=="top_materials" else 1 if channel=="base_materials" else 3 if channel=="cap_depths" else 0)
+		wide.set(channel,values)
+	check(wide.validation_errors().is_empty(),"expanded fixture validates")
+	map.compact_smooth_study_column_limit=524288
+	var wide_job:=Grove.new();var accepts:bool=wide_job.begin(wide,map,scene,recipe("placement"),catalog)
+	check(accepts,"placement honors expanded map budget: "+wide_job.error)
+	if accepts:
+		while not wide_job.finished:wide_job.step(4000)
+		check(wide_job.error.is_empty() and not wide_job.placements.is_empty(),"expanded map produces supported objects")
+		for spec:Dictionary in wide_job.placements:
+			check(absf(spec.transform.origin.y/16.0+wide_job._template_bounds[spec.model_id].position.y/16.0-1.5)<0.00001,"expanded detailed support")
+	var seam_plan:=recipe("placement");seam_plan.regions[0].bounds=Rect2i(22,1,6,6)
+	var seam_dense=prepare(wide,map,scene,seam_plan,catalog)
+	var seam_sections=prepare(wide.sectioned_copy(),map,scene,seam_plan,catalog,800)
+	check(not seam_dense.placements.is_empty() and seam_dense.placements==seam_sections.placements,"lazy support across section seam preserves exact positions at different frame budgets")
+	map.compact_smooth_study_column_limit=0
+	var capped:=Grove.new();check(not capped.begin(wide,map,scene,recipe("placement"),catalog),"default budget remains enforced")
 	var placements_checked:=0
 	for kind: String in ["grove","placement"]:
 		var plan:=recipe(kind)
@@ -121,6 +144,11 @@ func run() -> void:
 	check(map.get_node("Props").get_child_count()==job.placements.size(),"Apply matches preview")
 	history.undo();check(map.get_node("Props").get_child_count()==0,"atomic Undo")
 	history.redo();check(map.get_node("Props").get_child_count()==job.placements.size(),"Redo")
+	var mixed:Resource=delta.plan.working_copy()
+	var first:Dictionary=mixed.object_layers.values()[0][0]
+	first.expected=Grove.fingerprint(delta.added[0],map,job._frame,"",{},true)
+	var compatible=prepare(source,map,scene,mixed,catalog)
+	check(compatible.protected_members.is_empty(),"legacy and v2 fingerprints coexist without discarding protection")
 	var prop:=delta.added[0] as EmberVoxelProp;prop.position.x+=3;var manual:=prop.transform
 	var updated=prepare(source,map,scene,delta.plan,catalog)
 	check(prop in updated.protected_nodes and prop not in updated.removals,"manual object protected")

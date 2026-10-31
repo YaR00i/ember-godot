@@ -1,0 +1,10 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+
+[ext_resource type="Shader" path="res://shaders/ember_compact_grass.gdshader" id="1_shader"]
+
+[resource]
+shader = ExtResource("1_shader")
+shader_parameter/painterly_enabled = true
+shader_parameter/painterly_grass_masses = true
+shader_parameter/painterly_grass_color = true
+shader_parameter/painterly_blades = true

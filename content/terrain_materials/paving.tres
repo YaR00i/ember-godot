@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="EmberCompactTerrainPattern" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_compact_terrain_pattern.gd" id="1"]
+[ext_resource type="Texture2D" path="res://content/terrain_materials/textures/material_depth_study/stone_color.png" id="2"]
+[ext_resource type="Texture2D" path="res://content/terrain_materials/textures/material_depth_study/stone_height.png" id="3"]
+
+[resource]
+script = ExtResource("1")
+role_id = "stone"
+base_color = Color(0.592, 0.569, 0.518, 1)
+light_color = Color(0.72, 0.70, 0.64, 1)
+shadow_color = Color(0.38, 0.37, 0.33, 1)
+pixels = PackedByteArray("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==")
+albedo_texture = ExtResource("2")
+depth_texture = ExtResource("3")
+albedo_relief_enabled = false
+albedo_periodic = true
+pattern_size_m = 0.9
+depth_mm = 30.0
+style_rim_custom = true
+style_rim_enabled = true
+style_rim_strength = 0.3

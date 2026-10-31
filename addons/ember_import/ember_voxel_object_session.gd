@@ -30,6 +30,16 @@ var _context_size := Vector3i.ONE
 var _refresh_compatibility := false
 var _refresh_adapters := {}
 
+## A new Canvas form already has a detached canonical draft, but no file yet.
+## The same Save preflight/publication path creates its first native asset.
+func open_created(prop: EmberVoxelProp, source: EmberVoxelModelResource, scene_root: Node, undo_redo: Object) -> bool:
+	if source==null or not source.validation_errors().is_empty():return _fail("Некорректная новая форма.")
+	_target=weakref(prop);_root=weakref(scene_root);_undo=undo_redo
+	_expected_id=source.model_id;_source_path="";_source_hash="";shared=false
+	_source=source.duplicate_model();_baseline=source.duplicate_model();draft=source.duplicate_model()
+	_context_mesh_frame=prop.get_node("Mesh").transform;_context_size=source.size_blocks
+	return true
+
 
 func open(prop: EmberVoxelProp, scene_root: Node, undo_redo: Object, edit_shared := false, refresh_compatibility := false) -> bool:
 	error = ""
@@ -156,6 +166,26 @@ func context_projection(resource: EmberVoxelModelResource) -> Dictionary:
 	return {"scene": scene, "target": prop, "frame": frame}
 
 
+func can_replace_geometry()->bool:
+	if _target==null or not is_instance_valid(_target.get_ref()):error="Объект удалён или исходная сцена закрыта.";return false
+	var prop:=_target.get_ref() as EmberVoxelProp
+	var template_scene:=EmberVoxelPrefab.prepare_resource(_baseline)
+	if template_scene==null:error="Не удалось построить проверочную модель.";return false
+	var template:=template_scene.instantiate() as EmberVoxelProp
+	template.configure_voxel_scale(_baseline.normalized_density(),prop.block_world_size)
+	var original:Dictionary=_capture(prop).nodes;var defaults:Dictionary=_capture(template).nodes
+	var compatible:=original.keys()==defaults.keys()
+	for path in original:
+		for key in original[path]:
+			if key not in ["mesh","shape","position","scale","ember_block_position"] and original[path][key]!=defaults.get(path,{}).get(key):compatible=false
+		var node:=prop.get_node(NodePath(path))
+		if node is CollisionShape3D and not node.global_transform.is_equal_approx(prop.get_node("Mesh").global_transform):compatible=false
+		if node is StaticBody3D and (node.physics_material_override!=null or node.constant_linear_velocity!=Vector3.ZERO or node.constant_angular_velocity!=Vector3.ZERO or not node.get_collision_exceptions().is_empty()):compatible=false
+		if node is MeshInstance3D and (node.transparency!=0 or node.material_overlay!=null or node.skin!=null):compatible=false
+	template.free()
+	if not compatible:error="У детали нестандартная геометрия, материал или коллизия. Операция не будет терять эти настройки."
+	return compatible
+
 func save(resource: EmberVoxelModelResource, prepare_only := false, fresh_asset := false) -> Dictionary:
 	error = ""
 	var prop := _target.get_ref() as EmberVoxelProp if _target != null else null
@@ -164,14 +194,14 @@ func save(resource: EmberVoxelModelResource, prepare_only := false, fresh_asset 
 		return _result_error("Объект удалён или сцена закрыта. Черновик сохранён в Canvas.")
 	if shared and Engine.is_editor_hint() and EditorInterface.get_open_scenes().size() > 1:
 		return _result_error("Для общей модели сначала сохраните и закройте другие вкладки сцен. Их несохранённые экземпляры нельзя безопасно обновить из текущего Canvas.")
-	if prop.model_id != _expected_id or FileAccess.get_sha256(_source_path) != _source_hash or not _same_data(_source, _baseline):
+	if prop.model_id != _expected_id or (not _source_path.is_empty() and FileAccess.get_sha256(_source_path) != _source_hash) or not _same_data(_source, _baseline):
 		return _result_error("Source изменён вне этой сессии. Откройте объект заново; чужие правки не перезаписаны.")
 	# One detached baseline per transaction. Never cache across saves: external
 	# mesh edits must still be compared with independently built source geometry.
 	var baseline_packed := EmberVoxelPrefab.prepare_resource(_baseline, _projection_cache)
 	if baseline_packed == null or not _projection_errors(prop, _baseline, baseline_packed).is_empty():
 		return _result_error("Геометрия или коллизия объекта изменены вне Canvas. Черновик не опубликован.")
-	if _same_data(resource, _baseline):
+	if not _source_path.is_empty() and _same_data(resource, _baseline):
 		return {"ok": true, "path": _source_path}
 	if resource.surface_fill_levels != _baseline.surface_fill_levels or resource.surface_fill_materials != _baseline.surface_fill_materials or resource.surface_fill_palette != _baseline.surface_fill_palette:
 		return _result_error("Заливка водой доступна для Surface. Для обычных объектов этот режим появится на этапе воды; source не изменён.")
@@ -344,6 +374,9 @@ func _apply(states: Array[Dictionary], asset: Dictionary) -> void:
 		if prop == null:
 			continue
 		prop.model_id = state.id
+		prop.authoring_source=null
+		if source_directory!=EmberVoxelCatalog.NATIVE_DIR:
+			prop.authoring_source=load(source_directory.path_join(state.id+".tres")) as EmberVoxelModelResource
 		prop.scene_file_path = state.scene_path
 		prop.voxels_per_block = state.density
 		prop.set_meta(EmberVoxelPrefab.SOURCE_SIGNATURE_META, state.signature)
@@ -369,7 +402,7 @@ func _apply(states: Array[Dictionary], asset: Dictionary) -> void:
 					node.set_meta(key, values[key])
 				else:
 					node.set(key, values[key])
-		prop.refresh_solid_material()
+		prop.refresh_authoring_projection()
 		prop.notify_property_list_changed()
 	if Engine.is_editor_hint():
 		if not states.is_empty(): EditorInterface.mark_scene_as_unsaved()
@@ -452,8 +485,9 @@ func _capture(prop: EmberVoxelProp) -> Dictionary:
 		if node is MeshInstance3D:
 			for field in ["mesh", "material_override", "cast_shadow", "layers"]:
 				values[field] = node.get(field)
+			if path == "Mesh": values.merge(prop.authoring_visual_state(),true)
 		if node is CollisionShape3D:
-			values.shape = node.shape
+			values.shape = prop.authoring_collision_shape() if path=="Collision/Shape" else node.shape
 			values.disabled = node.disabled
 		if node is StaticBody3D:
 			values.collision_layer = node.collision_layer
@@ -482,7 +516,9 @@ func _projection_errors(prop: EmberVoxelProp, source: EmberVoxelModelResource, p
 		return ["source не создаёт поддерживаемый prefab"]
 	var expected := prepared.instantiate() as EmberVoxelProp
 	problems = _compare_projection(prop, expected)
-	if not problems.is_empty():
+	var prepared_mesh := expected.get_node("Mesh") as MeshInstance3D
+	var solid: bool = prepared_mesh.mesh.get_surface_count()>0 and prepared_mesh.mesh.surface_get_name(0)=="solid_surface"
+	if not problems.is_empty() and not solid:
 		# Accept only the exact previous mesher output, never arbitrary geometry.
 		# Opening does not rewrite authored assets; the next explicit rebuild/save
 		# publishes the corrected clockwise bottom faces.
@@ -588,19 +624,21 @@ static func _compare_projection(prop: EmberVoxelProp, expected: EmberVoxelProp) 
 	else:
 		var checks: Array[String] = []
 		var expected_mesh: ArrayMesh = expected.get_node("Mesh").mesh
-		if visual.mesh.get_surface_count() > 0 or expected_mesh.get_surface_count() > 0:
-			Parity._compare_meshes(visual.mesh, expected_mesh, problems, checks)
+		var published: ArrayMesh=prop.authoring_visual_state().mesh
+		if published.get_surface_count() > 0 or expected_mesh.get_surface_count() > 0:
+			Parity._compare_meshes(published, expected_mesh, problems, checks)
 	var collision := prop.get_node_or_null("Collision/Shape") as CollisionShape3D
 	var expected_collision := expected.get_node_or_null("Collision/Shape") as CollisionShape3D
 	if (collision == null) != (expected_collision == null):
 		problems.append("изменена структура коллизии")
 	elif collision != null:
-		if collision.shape == null and expected_collision.shape == null:
+		var published_shape:=prop.authoring_collision_shape()
+		if published_shape == null and expected_collision.shape == null:
 			pass
-		elif not collision.shape is ConcavePolygonShape3D or not expected_collision.shape is ConcavePolygonShape3D:
+		elif not published_shape is ConcavePolygonShape3D or not expected_collision.shape is ConcavePolygonShape3D:
 			problems.append("коллизия задана вручную")
 		else:
-			Parity._compare_vectors(collision.shape.get_faces(), expected_collision.shape.get_faces(), "collision", problems)
+			Parity._compare_vectors(published_shape.get_faces(), expected_collision.shape.get_faces(), "collision", problems)
 	return problems
 
 

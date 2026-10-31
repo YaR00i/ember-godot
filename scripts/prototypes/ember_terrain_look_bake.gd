@@ -1,7 +1,102 @@
 extends RefCounted
-## LAB visual shells only. Source, physics and material channels stay owned by
+## Derived visual shells only. Source, physics and material channels stay owned by
 ## the terrain projection. Retain fine material vertices on broad planar faces.
 const Smooth=preload("res://scripts/prototypes/ember_terrain_smooth_surface.gd")
+const ANOMALY_CACHE_VERSION := 2 # Bump when changing carrier topology/math.
+
+## Common topology for a moving field. Internal voxel risers are present from
+## preparation onward, collapsed exactly onto the detailed/low-poly top. They
+## unfold with the same weight as both neighbouring tops; no cut can open.
+class AnomalyJob extends RefCounted:
+	var work: Callable
+	var cancellation := preload("res://scripts/prototypes/ember_terrain_mesh_lod.gd").Cancellation.new()
+	var result: Dictionary = {}
+	func run() -> void: result = work.call(cancellation.is_cancelled)
+
+static func anomaly_carrier(base: ArrayMesh, low: ArrayMesh, source, field: Dictionary, bounds: Rect2i, host: Node) -> Dictionary:
+	# CPU arrays use the same immutable terrain snapshot as ordinary preparation.
+	# Waiting per tiny inner loop used a full rendered frame for ~3 ms of work.
+	var tree := host.get_tree()
+	var job := AnomalyJob.new()
+	job.work = _anomaly_arrays.bind(base.surface_get_arrays(0),low.surface_get_arrays(0),source.working_copy(),field,bounds)
+	var task := WorkerThreadPool.add_task(job.run,false,"Ember anomaly terrain")
+	if task < 0: return {}
+	while not WorkerThreadPool.is_task_completed(task):
+		await tree.process_frame
+		if not is_instance_valid(host) or not host.is_inside_tree() or not host.anomaly_preparation_valid():
+			job.cancellation.set_cancelled(true)
+			WorkerThreadPool.wait_for_task_completion(task)
+			return {}
+	WorkerThreadPool.wait_for_task_completion(task)
+	if not is_instance_valid(host) or not host.is_inside_tree() or not host.anomaly_preparation_valid(): return {}
+	var result: Dictionary = {}
+	for look in job.result:
+		var mesh := ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,job.result[look])
+		result[look] = mesh
+	return result
+
+static func _anomaly_arrays(cancelled: Callable, input: Array, low_arrays: Array, source, field: Dictionary, bounds: Rect2i) -> Dictionary:
+	var arrays := _unindexed(input)
+	low_arrays = _unindexed(low_arrays)
+	var points: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+	var colours: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
+	var uv: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV]
+	var uv2: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV2]
+	var low_points: PackedVector3Array = low_arrays[Mesh.ARRAY_VERTEX]
+	var low_normals: PackedVector3Array = low_arrays[Mesh.ARRAY_NORMAL]
+	var voxel_points := points.duplicate()
+	var voxel_normals := normals.duplicate()
+	for triangle in range(0, points.size(), 3):
+		if triangle%768 == 0 and cancelled.call(): return {}
+		var centre := (points[triangle]+points[triangle+1]+points[triangle+2])/3.0
+		var cell := Vector2i(clampi(floori(centre.x),0,source.width-1),clampi(floori(centre.z),0,source.depth-1))
+		var height := float(source.origin_y+source.column_value("heights",source.column_index(cell.x,cell.y)))
+		for k in 3:
+			var i := triangle+k
+			if normals[i].y > 0.0 or points[i].y > source.origin_y:
+				voxel_points[i].y = height
+			if normals[i].y > 0.0: voxel_normals[i] = Vector3.UP
+	var mesher = load("res://scripts/prototypes/ember_terrain_pilot_mesh.gd")
+	var risers = mesher.Triangles.new()
+	for z in range(bounds.position.y,bounds.end.y):
+		if cancelled.call(): return {}
+		for x in range(bounds.position.x,bounds.end.x):
+			var height: int = source.column_value("heights",source.column_index(x,z))
+			if height <= 0: continue
+			for side in 4:
+				var next: Vector2i = Vector2i(x,z)+[Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP,Vector2i.DOWN][side]
+				if not source.has_column(next.x,next.y): continue
+				var other: int = source.column_value("heights",source.column_index(next.x,next.y))
+				if other <= 0 or other >= height: continue
+				mesher._add_side(source,risers,x,z,height,other,side)
+	var material_cache: Dictionary = {}
+	for triangle in range(0, risers.vertices.size(), 3):
+		if triangle%192 == 0 and cancelled.call(): return {}
+		var ps: Array = []; var ns: Array = []; var masks: Array = []
+		for k in 3:
+			var p: Vector3 = risers.vertices[triangle+k]
+			var x := roundi(p.x); var z := roundi(p.z)
+			ps.append(Vector3(p.x,Smooth.corner(field,x,z),p.z))
+			ns.append(Smooth.normal(field,x,z))
+			masks.append(Smooth.material_weights(source,Vector2i(x,z),material_cache))
+			var flat := plane(field,Vector2(p.x,p.z))
+			low_points.append(Vector3(p.x,flat.height,p.z)); low_normals.append(flat.normal)
+			voxel_points.append(p); voxel_normals.append(risers.normals[triangle+k])
+		Smooth._emit_blended(ps,ns,masks,1,points,normals,colours,uv,uv2)
+	arrays[Mesh.ARRAY_VERTEX] = points; arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_COLOR] = colours; arrays[Mesh.ARRAY_TEX_UV] = uv; arrays[Mesh.ARRAY_TEX_UV2] = uv2
+	# Imported/rendered surfaces can carry generated tangents for the original
+	# vertex count. The bank uses its own projection frame, including on risers.
+	arrays[Mesh.ARRAY_TANGENT] = null
+	var result: Dictionary = {}
+	for look in 3:
+		var geometry := arrays.duplicate()
+		geometry[Mesh.ARRAY_VERTEX] = [points,low_points,voxel_points][look]
+		geometry[Mesh.ARRAY_NORMAL] = [normals,low_normals,voxel_normals][look]
+		result[look] = geometry
+	return result
 
 static func plane(field: Dictionary,p: Vector2,step:=8) -> Dictionary:
 	var a:=Vector2(floor(p.x/step)*step,floor(p.y/step)*step)
@@ -15,24 +110,51 @@ static func plane(field: Dictionary,p: Vector2,step:=8) -> Dictionary:
 	var h:=h00+(h10-h00)*t.x+(h01-h00)*t.y if t.x+t.y<=1.0 else h11+(h01-h11)*(1.0-t.x)+(h10-h11)*(1.0-t.y)
 	return {"height":h,"normal":Vector3(-dx,1,-dz).normalized()}
 
-static func faceted(mesh: ArrayMesh,field: Dictionary,step:=8) -> Dictionary:
-	var arrays:=mesh.surface_get_arrays(0).duplicate(true)
-	# SmoothSurface emits unindexed triangles, retaining its palette/blend data.
-	assert((arrays[Mesh.ARRAY_INDEX] as PackedInt32Array).is_empty() if arrays[Mesh.ARRAY_INDEX]!=null else true)
+## Expand only the base topology; native render LOD indices are presentation.
+static func _unindexed(input:Array)->Array:
+	var indices:Variant=input[Mesh.ARRAY_INDEX]
+	if indices==null or indices.is_empty():return input.duplicate()
+	var arrays:=input.duplicate()
+	for channel in [Mesh.ARRAY_VERTEX,Mesh.ARRAY_NORMAL,Mesh.ARRAY_COLOR,Mesh.ARRAY_TEX_UV,Mesh.ARRAY_TEX_UV2]:
+		if input[channel]==null:continue
+		arrays[channel]=input[channel].slice(0,0)
+		for i in indices:arrays[channel].append(input[channel][i])
+	if input[Mesh.ARRAY_TANGENT]!=null:
+		var tangents:=PackedFloat32Array()
+		for index in indices:
+			for component in 4:tangents.append(input[Mesh.ARRAY_TANGENT][index*4+component])
+		arrays[Mesh.ARRAY_TANGENT]=tangents
+	arrays[Mesh.ARRAY_INDEX]=null
+	return arrays
+
+static func faceted(mesh: ArrayMesh,field: Dictionary,step:=8,source=null) -> Dictionary:
+	var original:=_unindexed(mesh.surface_get_arrays(0))
+	var arrays:=original.duplicate(true)
 	var vertices: PackedVector3Array=arrays[Mesh.ARRAY_VERTEX]
 	var normals: PackedVector3Array=arrays[Mesh.ARRAY_NORMAL]
 	var max_delta:=0.0
+	var heights: Dictionary={}
+	var plane_normals: Dictionary={}
 	for i in range(0,vertices.size(),3):
 		var top:=normals[i].y>0.0
 		var centre:=(vertices[i]+vertices[i+1]+vertices[i+2])/3.0
-		var flat:=plane(field,Vector2(centre.x,centre.z),step).normal as Vector3 if top else normals[i]
+		var flat:=normals[i]
+		if top:
+			var a:=Vector2(floor(centre.x/step)*step,floor(centre.z/step)*step)
+			var t:=(Vector2(centre.x,centre.z)-a)/step
+			var key:=Vector3i(int(a.x),int(a.y),0 if t.x+t.y<=1.0 else 1)
+			if not plane_normals.has(key):plane_normals[key]=plane(field,Vector2(centre.x,centre.z),step).normal
+			flat=plane_normals[key]
 		for j in 3:
 			var p:=vertices[i+j]
 			if top or is_equal_approx(p.y,Smooth.corner(field,roundi(p.x),roundi(p.z))):
-				var h: float=plane(field,Vector2(p.x,p.z),step).height
+				var key:=Vector2(p.x,p.z)
+				if not heights.has(key):heights[key]=plane(field,key,step).height
+				var h: float=heights[key]
 				max_delta=maxf(max_delta,absf(p.y-h));p.y=h
 			vertices[i+j]=p;normals[i+j]=flat
 	arrays[Mesh.ARRAY_VERTEX]=vertices;arrays[Mesh.ARRAY_NORMAL]=normals
+	if source!=null:arrays=Smooth.faceted_side_arrays(source,original,arrays)
 	var result:=ArrayMesh.new();result.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
 	return {"mesh":result,"max_delta_m":max_delta/16.0}
 

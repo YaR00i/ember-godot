@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="EmberCompactTerrainPattern" format=4]
 
-[ext_resource type="Texture2D" path="res://content/terrain_materials/textures/grass-painted-base-runtime.png" id="1_p83j7"]
+[ext_resource type="Texture2D" path="res://content/terrain_materials/textures/grass-painted-calm-v1.png" id="1_p83j7"]
 [ext_resource type="Script" path="res://scripts/ember_compact_terrain_pattern.gd" id="2_fpy6g"]
 
 [resource]
@@ -25,4 +25,7 @@ relief_pixels = PackedByteArray()
 side_relief_pixels = PackedByteArray()
 roughness_pixels = PackedByteArray()
 side_roughness_pixels = PackedByteArray()
-pattern_size_m = 2.0
+pattern_size_m = 4.0
+depth_mm = 2.0
+depth_softness = 4.0
+depth_sharpness = 0.02

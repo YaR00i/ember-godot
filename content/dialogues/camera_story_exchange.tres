@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="EmberDialogueResource" load_steps=2 format=3]
+[ext_resource type="Script" path="res://scripts/ember_dialogue_resource.gd" id="1"]
+[resource]
+script = ExtResource("1")
+dialogue_id = "camera_story_exchange"
+document = {
+"id": "camera_story_exchange",
+"nameRu": "Посылка",
+"use": "talk",
+"startStepId": "arrival",
+"steps": [
+{"id": "arrival", "type": "dialogue", "nameRu": "Б", "textRu": "Я принёс посылку. Давай поставим её на свободную подставку.", "next": "reply"},
+{"id": "reply", "type": "choice", "promptRu": "Что ответишь?", "options": [
+{"id": "inspect", "labelRu": "Покажи, что принёс.", "next": "details"},
+{"id": "leave", "labelRu": "Хорошо, оставь её здесь.", "next": "leave_reply"}]},
+{"id": "details", "type": "dialogue", "nameRu": "Б", "textRu": "Небольшая посылка с берега. Сейчас передвину её поближе — посмотришь.", "next": "end"},
+{"id": "leave_reply", "type": "dialogue", "nameRu": "Б", "textRu": "Хорошо. Ставлю сюда, чтобы не мешала разговору.", "next": "end"},
+{"id": "end", "type": "end"}]
+}

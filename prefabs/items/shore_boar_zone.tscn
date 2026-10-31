@@ -1,0 +1,31 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_field_encounter.gd" id="1_cve5d"]
+[ext_resource type="PackedScene" path="res://prefabs/items/shore_boar_visual.tscn" id="2_eoutp"]
+[ext_resource type="Script" path="res://scripts/ember_shore_boar.gd" id="3_ar8xb"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_0e18t"]
+size = Vector3(10, 12, 20)
+
+[node name="ShoreBoarZone" type="Node3D" unique_id=1534450886]
+script = ExtResource("1_cve5d")
+unit_visual_scenes = {
+"shore_boar": ExtResource("2_eoutp")
+}
+
+[node name="Boar" type="CharacterBody3D" parent="." unique_id=1239954808]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -248, 16, 312)
+script = ExtResource("3_ar8xb")
+
+[node name="Visual" type="Node3D" parent="Boar" unique_id=2067838755 instance=ExtResource("2_eoutp")]
+transform = Transform3D(16, 0, 0, 0, 16, 0, 0, 0, 16, 0, 0, 0)
+
+[node name="Shape" type="CollisionShape3D" parent="Boar" unique_id=769762707]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6, 0)
+shape = SubResource("BoxShape3D_0e18t")
+
+[node name="Prompt" type="Label3D" parent="Boar" unique_id=1834737751]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 22, 0)
+pixel_size = 0.035
+billboard = 1
+text = "Кабан"

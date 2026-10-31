@@ -2,11 +2,21 @@ extends SceneTree
 ## G1 ownership gate: legacy is imported once; save/reopen, catalog and prefab
 ## then work exclusively from the Godot Resource.
 
-const MODEL_ID := "vox_fan_anvil"
-const TEMP_PATH := "user://vox_fan_anvil_native_test.tres"
+const Fixture = preload("res://tools/fixtures/ember_voxel_native_test_fixture.gd")
+const MODEL_ID := "qa_native_block"
+const TEMP_PATH := "user://qa_native_import_test.tres"
 
 
 func _init() -> void:
+	var state := Fixture.prepare(self)
+	if state.refused:quit(2);return
+	var pack: String = state.directory.path_join("synthetic-import")
+	var path := pack.path_join("voxels/models/"+MODEL_ID+".json")
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var file := FileAccess.open(path,FileAccess.WRITE)
+	file.store_string(JSON.stringify({"id":MODEL_ID,"nameRu":"Synthetic import","model":Fixture.source(MODEL_ID).to_definition().model}))
+	file.close()
+	ProjectSettings.set_setting("ember/pack_path",ProjectSettings.globalize_path(pack))
 	quit(_run())
 
 

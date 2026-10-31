@@ -2,7 +2,7 @@
 class_name EmberTerrainPilotMesh
 extends RefCounted
 ## The same tile geometry is used in the pilot editor and play scene. Its
-## collision faces are copied from the terrain triangles, never from a preview.
+## collision faces come from the exact surface, never the distance render mesh.
 
 const TerrainResource = preload("res://scripts/prototypes/ember_terrain_pilot_resource.gd")
 const BrushMath = preload("res://scripts/prototypes/ember_terrain_pilot_brush_math.gd")
@@ -10,6 +10,116 @@ const GROUP_SIZE: int = BrushMath.COARSE_CELL_SIZE
 const SmoothSurface = preload("res://scripts/prototypes/ember_terrain_smooth_surface.gd")
 const SmoothWater = preload("res://scripts/prototypes/ember_terrain_smooth_water.gd")
 
+class OverviewJob extends RefCounted:
+	# One coarse section through the same terrain arrays/material contract.
+	# No fine field, collision, Mesh or GPU allocation on this worker.
+	var result:Dictionary={}
+	var _source:TerrainResource
+	var _bounds:Rect2i
+	var _heights:Dictionary={}
+	func _init(source:TerrainResource,bounds:Rect2i)->void:
+		_source=source;_bounds=bounds
+	func height(p:Vector2i)->float:
+		if _heights.has(p):return _heights[p]
+		var value:=0.0
+		for dz in [-1,0]:
+			for dx in [-1,0]:
+				var x:=clampi(p.x+dx,0,_source.width-1);var z:=clampi(p.y+dz,0,_source.depth-1)
+				value+=_source.column_value("heights",_source.column_index(x,z))
+		value=value*0.25+_source.origin_y;_heights[p]=value
+		return value
+	func run(cancelled:Callable)->void:
+		var points:=PackedVector3Array();var normals:=PackedVector3Array();var colors:=PackedColorArray()
+		var uv:=PackedVector2Array();var uv2:=PackedVector2Array();var patches:Dictionary={}
+		var water:=Triangles.new();var water_patches:Dictionary={}
+		for tz in range(_bounds.position.y,_bounds.end.y,64):
+			if cancelled.call():return
+			for tx in range(_bounds.position.x,_bounds.end.x,64):
+				var key:=Vector2i(tx/64,tz/64);var first:=points.size();var water_first:=water.vertices.size()
+				for z in range(tz,mini(tz+64,_bounds.end.y),16):
+					for x in range(tx,mini(tx+64,_bounds.end.x),16):
+						var end_x:=mini(x+16,_bounds.end.x);var end_z:=mini(z+16,_bounds.end.y)
+						var grid:Array[Vector2i]=[Vector2i(x,z),Vector2i(end_x,z),Vector2i(x,end_z),Vector2i(end_x,end_z)]
+						var ps:Array=[];var ns:Array=[];var masks:Array=[]
+						for p:Vector2i in grid:
+							ps.append(Vector3(p.x,height(p),p.y))
+							ns.append(Vector3(height(p-Vector2i(16,0))-height(p+Vector2i(16,0)),32,height(p-Vector2i(0,16))-height(p+Vector2i(0,16))).normalized())
+							var px:=clampi(p.x,0,_source.width-1);var pz:=clampi(p.y,0,_source.depth-1)
+							masks.append({_source.column_value("top_materials",_source.column_index(px,pz)):1.0})
+						var index:=_source.column_index(x,z)
+						if _source.column_value("heights",index)>0:
+							for tri in [[0,1,2],[1,3,2]]:SmoothSurface._emit_blended([ps[tri[0]],ps[tri[1]],ps[tri[2]]],[ns[tri[0]],ns[tri[1]],ns[tri[2]]],[masks[tri[0]],masks[tri[1]],masks[tri[2]]],1,points,normals,colors,uv,uv2)
+						var level:=_source.column_value("water_levels",index)
+						if level>_source.column_value("heights",index):
+							var y:=float(_source.origin_y+level)
+							var slot:=_source.column_value("water_materials",index)
+							water.quad(Vector3(x,y,z),Vector3(x,y,end_z),Vector3(end_x,y,end_z),Vector3(end_x,y,z),_source.palette[slot],Vector3.UP,Vector2(level-_source.column_value("heights",index),0))
+				patches[key]=Vector2i(first,points.size()-first);water_patches[key]=Vector2i(water_first,water.vertices.size()-water_first)
+		var arrays:Array=[];arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX]=points;arrays[Mesh.ARRAY_NORMAL]=normals;arrays[Mesh.ARRAY_COLOR]=colors;arrays[Mesh.ARRAY_TEX_UV]=uv;arrays[Mesh.ARRAY_TEX_UV2]=uv2
+		var grid_size:=Vector2i(ceili(float(_bounds.size.x)/16)+1,ceili(float(_bounds.size.y)/16)+1)
+		var grid:=PackedFloat32Array()
+		for z in grid_size.y:
+			for x in grid_size.x:grid.append(height((_bounds.position+Vector2i(x,z)*16).min(_bounds.end)))
+		result={"arrays":arrays,"patches":patches,"water_arrays":water.arrays(),"water_patches":water_patches,"grid":grid,"grid_size":grid_size,"bounds":_bounds}
+		_source=null;_heights.clear()
+
+static func overview_edge(source:TerrainResource,data:Dictionary,covered:Dictionary)->ArrayMesh:
+	var points:=PackedVector3Array();var normals:=PackedVector3Array();var colors:=PackedColorArray();var uv:=PackedVector2Array();var uv2:=PackedVector2Array()
+	var bounds:Rect2i=data.bounds;var size:Vector2i=data.grid_size;var grid:PackedFloat32Array=data.grid
+	for key:Vector2i in data.patches:
+		if covered.has(key):continue
+		var tile:=Rect2i(key*64,Vector2i.ONE*64).intersection(bounds)
+		for edge in 4:
+			var neighbour:Vector2i=key+[Vector2i.UP,Vector2i.DOWN,Vector2i.LEFT,Vector2i.RIGHT][edge]
+			if not covered.has(neighbour):continue
+			var length:=tile.size.x if edge<2 else tile.size.y
+			for i in range(0,length,16):
+				var a:=tile.position+Vector2i(i,0 if edge==0 else tile.size.y) if edge<2 else tile.position+Vector2i(0 if edge==2 else tile.size.x,i)
+				var b:=a+(Vector2i.RIGHT if edge<2 else Vector2i.DOWN)*mini(16,length-i)
+				var ga:=Vector2i(ceili(float(a.x-bounds.position.x)/16),ceili(float(a.y-bounds.position.y)/16))
+				var gb:=Vector2i(ceili(float(b.x-bounds.position.x)/16),ceili(float(b.y-bounds.position.y)/16))
+				var pa:=Vector3(a.x,grid[ga.x+ga.y*size.x],a.y);var pb:=Vector3(b.x,grid[gb.x+gb.y*size.x],b.y)
+				var ba:=Vector3(a.x,source.origin_y-1,a.y);var bb:=Vector3(b.x,source.origin_y-1,b.y)
+				var normal:Vector3=[Vector3.FORWARD,Vector3.BACK,Vector3.LEFT,Vector3.RIGHT][edge]
+				var p:=Vector2i(clampi(a.x,0,source.width-1),clampi(a.y,0,source.depth-1))
+				var slot:=source.column_value("top_materials",source.column_index(p.x,p.y))
+				for tri in [[pa,ba,pb],[pb,ba,bb]] if edge in [0,3] else [[pa,pb,ba],[pb,bb,ba]]:SmoothSurface._emit_uniform(tri,[normal,normal,normal],slot,points,normals,colors,uv,uv2)
+	var mesh:=ArrayMesh.new()
+	if points.is_empty():return mesh
+	var arrays:Array=[];arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX]=points;arrays[Mesh.ARRAY_NORMAL]=normals;arrays[Mesh.ARRAY_COLOR]=colors;arrays[Mesh.ARRAY_TEX_UV]=uv;arrays[Mesh.ARRAY_TEX_UV2]=uv2
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
+	return mesh
+
+
+static func residency_edge(source:TerrainResource,bounds:Rect2i,field:Dictionary)->ArrayMesh:
+	return publish_residency_edge(residency_edge_arrays(source,bounds,field))
+
+static func publish_residency_edge(arrays:Array)->ArrayMesh:
+	var mesh:=ArrayMesh.new()
+	if not arrays.is_empty():mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
+	return mesh
+
+static func residency_edge_arrays(source:TerrainResource,bounds:Rect2i,field:Dictionary)->Array:
+	var arrays:Array=[];arrays.resize(Mesh.ARRAY_MAX)
+	var points:=PackedVector3Array();var normals:=PackedVector3Array();var colors:=PackedColorArray();var uv:=PackedVector2Array();var uv2:=PackedVector2Array()
+	if field.is_empty():return []
+	# A downward seam closure on the fine side joins the coarse approximation.
+	# It is visual only; the canonical fine collision/field is never changed.
+	for edge in 4:
+		var length:=bounds.size.x if edge<2 else bounds.size.y
+		for i in length:
+			var a:=bounds.position+Vector2i(i,0 if edge==0 else bounds.size.y) if edge<2 else bounds.position+Vector2i(0 if edge==2 else bounds.size.x,i)
+			var b:=a+(Vector2i.RIGHT if edge<2 else Vector2i.DOWN)
+			var pa:=Vector3(a.x,SmoothSurface.corner(field,a.x,a.y),a.y);var pb:=Vector3(b.x,SmoothSurface.corner(field,b.x,b.y),b.y)
+			var ba:=Vector3(a.x,source.origin_y-1,a.y);var bb:=Vector3(b.x,source.origin_y-1,b.y)
+			var normal:Vector3=[Vector3.FORWARD,Vector3.BACK,Vector3.LEFT,Vector3.RIGHT][edge]
+			var at:=Vector2i(clampi(a.x,0,source.width-1),clampi(a.y,0,source.depth-1))
+			var slot:=source.column_value("base_materials",source.column_index(at.x,at.y))
+			for tri in [[pa,ba,pb],[pb,ba,bb]] if edge in [0,3] else [[pa,pb,ba],[pb,bb,ba]]:SmoothSurface._emit_uniform(tri,[normal,normal,normal],slot,points,normals,colors,uv,uv2)
+	arrays[Mesh.ARRAY_VERTEX]=points;arrays[Mesh.ARRAY_NORMAL]=normals;arrays[Mesh.ARRAY_COLOR]=colors;arrays[Mesh.ARRAY_TEX_UV]=uv;arrays[Mesh.ARRAY_TEX_UV2]=uv2
+	return arrays
 
 class Triangles:
 	extends RefCounted
@@ -92,11 +202,9 @@ class Triangles:
 			colors.append(vertex_color)
 			uvs.append(Vector2(0.0, 1.0 if is_equal_approx(point.y, a.y) else 2.0))
 
-	func mesh(indexed := false) -> ArrayMesh:
+	func arrays(indexed := false) -> Array:
 		if coalesce_sides: _flush_sides()
-		var result := ArrayMesh.new()
-		if vertices.is_empty():
-			return result
+		if vertices.is_empty(): return []
 		var arrays := []
 		arrays.resize(Mesh.ARRAY_MAX)
 		arrays[Mesh.ARRAY_VERTEX] = vertices
@@ -110,16 +218,22 @@ class Triangles:
 			arrays = surface.commit_to_arrays()
 			# Preserve triangle order: this transparent surface also contains
 			# walls and the falling sheet. Do not reorder for a vertex cache.
-		result.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		return arrays
+
+
+	func mesh(indexed := false) -> ArrayMesh:
+		var result := ArrayMesh.new()
+		var data := arrays(indexed)
+		if not data.is_empty(): result.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, data)
 		return result
 
 
 ## Immediate side quads are the editable default; the gameplay projection opts
 ## into coalescing explicitly. Both modes keep the same authored surface.
 static func build_tile(source: TerrainResource, min_x: int, min_z: int, tile_size: int,
-		water_step := 0, water_volume_sides := false, swash_cells := PackedVector4Array(), waterfall_sheet := {}, coalesce_ground_sides := false, optimize_water_mesh := false, smooth_ground := false, blend_materials := false) -> Dictionary:
+	water_step := 0, water_volume_sides := false, swash_cells := PackedVector4Array(), waterfall_sheet := {}, coalesce_ground_sides := false, optimize_water_mesh := false, smooth_ground := false, blend_materials := false, prepared_smooth: Dictionary = {}) -> Dictionary:
 	if source.is_sectioned():
-		return _build_section_tile(source, min_x, min_z, tile_size, water_step, water_volume_sides, swash_cells, waterfall_sheet, coalesce_ground_sides, optimize_water_mesh, smooth_ground, blend_materials)
+		return _build_section_tile(source, min_x, min_z, tile_size, water_step, water_volume_sides, swash_cells, waterfall_sheet, coalesce_ground_sides, optimize_water_mesh, smooth_ground, blend_materials, prepared_smooth)
 	var geometry_started := Time.get_ticks_usec()
 	var end_x := mini(source.width, min_x + tile_size)
 	var end_z := mini(source.depth, min_z + tile_size)
@@ -135,7 +249,7 @@ static func build_tile(source: TerrainResource, min_x: int, min_z: int, tile_siz
 	var water := Triangles.new()
 	if optimize_water_mesh: water.water_depth_cache = {}
 	var pass_started := Time.get_ticks_usec()
-	var smooth := SmoothSurface.build(source, Rect2i(min_x,min_z,end_x-min_x,end_z-min_z), blend_materials) if smooth_ground else {}
+	var smooth := (SmoothSurface.build(source, Rect2i(min_x,min_z,end_x-min_x,end_z-min_z), blend_materials,true,{},Engine.is_editor_hint()) if prepared_smooth.is_empty() else prepared_smooth) if smooth_ground else {}
 	var skip_sides := PackedByteArray() if smooth_ground else _build_top_rectangles(source, ground, min_x, min_z, end_x, end_z)
 	var top_us := Time.get_ticks_usec() - pass_started
 	var side_us := 0
@@ -163,32 +277,7 @@ static func build_tile(source: TerrainResource, min_x: int, min_z: int, tile_siz
 				_add_side(source, ground, cell_x, z, height, back, 3)
 		side_us += Time.get_ticks_usec() - pass_started
 	pass_started = Time.get_ticks_usec()
-	# First smooth shoreline slice: flat water. Volume walls, waterfall sheets
-	# and animated swash retain their existing geometry contract.
-	var smooth_shore := smooth_ground and not water_volume_sides and waterfall_sheet.is_empty() and swash_cells.is_empty()
-	if smooth_shore:
-		SmoothWater.append(source, Rect2i(min_x,min_z,end_x-min_x,end_z-min_z), smooth.smooth_field, water)
-	else:
-		_build_water_rectangles(source, water, min_x, min_z, end_x, end_z, water_step)
-	for cell in swash_cells:
-		var y := cell.z + 0.025
-		# Existing Water mesh/material: UV.y=-1 marks temporary dry-bank coverage.
-		water.quad(Vector3(cell.x, y, cell.y), Vector3(cell.x + 1.0, y, cell.y),
-			Vector3(cell.x + 1.0, y, cell.y + 1.0), Vector3(cell.x, y, cell.y + 1.0),
-			Color(0.1, 0.7, 0.8, 0.0), Vector3.UP, Vector2(cell.x + 0.5, -cell.y - 1.5))
-	if not smooth_shore and (water_step > 0 or water_volume_sides):
-		_stitch_water_edges(source, water, min_x, min_z, end_x, end_z, water_volume_sides)
-	if water_volume_sides:
-		_build_water_walls(source, water, min_x, min_z, end_x, end_z, waterfall_sheet.get("spill", {}))
-	# The falling sheet has its own parameterised edges. Surface stitching must
-	# not reinterpret it as flat water, and a farther water wall must not paint
-	# over it in this material's existing depth_draw_never pass.
-	if not waterfall_sheet.is_empty():
-		water.vertices.append_array(waterfall_sheet.vertices)
-		water.uvs.append_array(waterfall_sheet.uvs)
-		for point in waterfall_sheet.vertices:
-			water.normals.append(Vector3.UP)
-			water.colors.append(Color(0.1, 0.7, 0.8, 0.1875))
+	_append_tile_water(source,min_x,min_z,end_x,end_z,water_step,water_volume_sides,swash_cells,waterfall_sheet,smooth_ground,smooth,water)
 	var water_us := Time.get_ticks_usec() - pass_started
 	var geometry_us := Time.get_ticks_usec() - geometry_started
 	var resource_started := Time.get_ticks_usec()
@@ -199,14 +288,19 @@ static func build_tile(source: TerrainResource, min_x: int, min_z: int, tile_siz
 		"water_source_vertices": water.vertices.size(), "water_indices": water_mesh.surface_get_array_index_len(0) if water_mesh.get_surface_count() > 0 else 0, "uniform_dry": false,
 		"geometry_us": geometry_us, "top_us": top_us, "side_us": side_us, "water_us": water_us, "uniform_us": 0,
 		"mesh_resource_us": Time.get_ticks_usec() - resource_started}
-	if smooth_ground: result.smooth_field = smooth.smooth_field
+	if smooth_ground:
+		result.smooth_field = smooth.smooth_field
+		result.render_detail = smooth.get("render_detail",{})
+		result.smooth_arrays = smooth.arrays
+	if smooth.has("layout"):result.smooth_layout=smooth.layout
 	return result
 
 
-static func _build_section_tile(source: TerrainResource, x: int, z: int, size: int, step: int, sides: bool, swash: PackedVector4Array, sheet: Dictionary, coalesce: bool, optimize_water: bool, smooth_ground: bool, blend_materials: bool) -> Dictionary:
-	# Only this tile and an eight-column halo enter the existing mesher. The
-	# halo keeps its grouped neighbour tests and shared water corners identical.
-	var started := Time.get_ticks_usec()
+static func editor_surface_input(source:TerrainResource,x:int,z:int,size:int)->Dictionary:
+	if not source.is_sectioned():return {"source":source,"start":Vector2i.ZERO,"bounds":Rect2i(x,z,mini(size,source.width-x),mini(size,source.depth-z))}
+	return _section_input(source,x,z,size,true)
+
+static func _section_input(source:TerrainResource,x:int,z:int,size:int,smooth_ground:bool)->Dictionary:
 	var halo: int = SmoothSurface.HALO if smooth_ground else GROUP_SIZE
 	var start := Vector2i(maxi(0, x - halo), maxi(0, z - halo))
 	var end := Vector2i(mini(source.width, x + size + halo), mini(source.depth, z + size + halo))
@@ -225,6 +319,13 @@ static func _build_section_tile(source: TerrainResource, x: int, z: int, size: i
 		view.surface_rules=source.SurfaceRules.window(source.surface_rules,Rect2i(start,Vector2i(view.width,view.depth)))
 	else:
 		view = source.dense_window(Rect2i(start, end - start))
+	return {"source":view,"start":start,"bounds":Rect2i(x-start.x,z-start.y,mini(size,source.width-x),mini(size,source.depth-z))}
+
+static func _build_section_tile(source: TerrainResource, x: int, z: int, size: int, step: int, sides: bool, swash: PackedVector4Array, sheet: Dictionary, coalesce: bool, optimize_water: bool, smooth_ground: bool, blend_materials: bool, prepared_smooth:Dictionary={}) -> Dictionary:
+	var started:=Time.get_ticks_usec()
+	var input:=_section_input(source,x,z,size,smooth_ground)
+	var start:Vector2i=input.start
+	var view:TerrainResource=input.source
 	var bank := PackedVector4Array()
 	for cell in swash: bank.append(Vector4(cell.x - start.x, cell.y - start.y, cell.z, cell.w))
 	var falling := sheet.duplicate()
@@ -235,26 +336,17 @@ static func _build_section_tile(source: TerrainResource, x: int, z: int, size: i
 		if sheet.has("spill"):
 			falling.spill = sheet.spill.duplicate()
 			falling.spill.center -= Vector2(start)
-	var generated := build_tile(view, x - start.x, z - start.y, size, step, sides, bank, falling, coalesce, optimize_water, smooth_ground, blend_materials)
+	var generated := build_tile(view, x - start.x, z - start.y, size, step, sides, bank, falling, coalesce, optimize_water, smooth_ground, blend_materials, prepared_smooth)
 	var shift := Vector3(start.x, 0, start.y)
+	var section_transform:=Transform3D(Basis.IDENTITY,shift)
 	for channel in ["terrain", "water"]:
-		var old_mesh := generated[channel] as ArrayMesh
-		var mesh := ArrayMesh.new()
-		if old_mesh.get_surface_count() > 0:
-			var arrays := old_mesh.surface_get_arrays(0)
-			var points: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-			for i in points.size(): points[i] += shift
-			arrays[Mesh.ARRAY_VERTEX] = points
-			if channel == "water":
-				var uvs: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV]
-				for i in uvs.size():
-					if uvs[i].y < 0: uvs[i] += Vector2(start.x, -start.y)
-				arrays[Mesh.ARRAY_TEX_UV] = uvs
-			mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-		generated[channel] = mesh
+		generated[channel]=EditorTilePublication._section_mesh(generated[channel],start,channel=="water",generated.get("render_detail",{}).get("lods",{}) if channel=="terrain" else {})
 	var faces: PackedVector3Array = generated.collision_faces
-	for i in faces.size(): faces[i] += shift
+	faces=section_transform*faces
 	generated.collision_faces = faces
+	if generated.has("smooth_arrays"):
+		generated.smooth_arrays=generated.smooth_arrays.duplicate()
+		generated.smooth_arrays[Mesh.ARRAY_VERTEX]=section_transform*(generated.smooth_arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array)
 	if generated.has("smooth_field"): generated.smooth_field.start += start
 	generated.section_window_columns = view.width * view.depth
 	generated.geometry_us = Time.get_ticks_usec() - started
@@ -499,7 +591,7 @@ static func _build_top_rectangles(source: TerrainResource, triangles: Triangles,
 	return skip_sides
 
 
-static func _build_water_rectangles(source: TerrainResource, triangles: Triangles, min_x: int, min_z: int, end_x: int, end_z: int, water_step: int) -> void:
+static func _build_water_rectangles(source: TerrainResource, triangles: Triangles, min_x: int, min_z: int, end_x: int, end_z: int, water_step: int, shore_bounds := Rect2i()) -> void:
 	var tile_width := end_x - min_x
 	var used := PackedByteArray()
 	used.resize(tile_width * (end_z - min_z))
@@ -540,26 +632,32 @@ static func _build_water_rectangles(source: TerrainResource, triangles: Triangle
 			var y := float(source.origin_y + level) + 0.02
 			var depth := (float(depth_band) - 0.5) / 4.0
 			_append_water_rectangle(source, triangles, x, z, right, back, y,
-				_color(source, material), Vector2(depth, 0), water_step, level)
+				_color(source, material), Vector2(depth, 0), water_step, level, shore_bounds)
 
 
 static func _append_water_rectangle(source: TerrainResource, triangles: Triangles, x: int, z: int, right: int, back: int,
-		y: float, color: Color, uv: Vector2, step: int, level: int) -> void:
-	if step <= 0:
+		y: float, color: Color, uv: Vector2, step: int, level: int, shore_bounds := Rect2i()) -> void:
+	if step <= 0 and not shore_bounds.intersects(Rect2i(x,z,right-x,back-z)):
 		triangles.quad(Vector3(x, y, z), Vector3(x, y, back),
 			Vector3(right, y, back), Vector3(right, y, z), color, Vector3.UP, uv)
 		return
 	# Alpha is visual depth metadata only on the opt-in refined water mesh.
-	for cell_z in range(z, back, step):
-		var next_z := mini(cell_z + step, back)
-		for cell_x in range(x, right, step):
-			var next_x := mini(cell_x + step, right)
-			triangles.water_quad(Vector3(cell_x, y, cell_z), Vector3(cell_x, y, next_z),
-				Vector3(next_x, y, next_z), Vector3(next_x, y, cell_z), color, uv.x,
-				[_water_corner_depth(source, cell_x, cell_z, level, triangles.water_depth_cache),
-				_water_corner_depth(source, cell_x, next_z, level, triangles.water_depth_cache),
-				_water_corner_depth(source, next_x, next_z, level, triangles.water_depth_cache),
-				_water_corner_depth(source, next_x, cell_z, level, triangles.water_depth_cache)])
+	var spacing := step if step > 0 else 8
+	for patch_z in range(z, back, spacing):
+		var end_z := mini(patch_z + spacing, back)
+		for patch_x in range(x, right, spacing):
+			var end_x := mini(patch_x + spacing, right)
+			var stride := 1 if shore_bounds.intersects(Rect2i(patch_x,patch_z,end_x-patch_x,end_z-patch_z)) else spacing
+			for cell_z in range(patch_z, end_z, stride):
+				var next_z := mini(cell_z + stride, end_z)
+				for cell_x in range(patch_x, end_x, stride):
+					var next_x := mini(cell_x + stride, end_x)
+					triangles.water_quad(Vector3(cell_x, y, cell_z), Vector3(cell_x, y, next_z),
+						Vector3(next_x, y, next_z), Vector3(next_x, y, cell_z), color, uv.x,
+						[_water_corner_depth(source, cell_x, cell_z, level, triangles.water_depth_cache),
+						_water_corner_depth(source, cell_x, next_z, level, triangles.water_depth_cache),
+						_water_corner_depth(source, next_x, next_z, level, triangles.water_depth_cache),
+						_water_corner_depth(source, next_x, cell_z, level, triangles.water_depth_cache)])
 
 
 static func _water_corner_depth(source: TerrainResource, x: int, z: int, level: int, cache: Variant = null) -> float:
@@ -787,22 +885,29 @@ static func _ground_color(source: TerrainResource, index: int) -> Color:
 static func _add_side(source: TerrainResource, triangles: Triangles, x: int, z: int, high: int, low: int, direction: int) -> void:
 	if high <= low:
 		return
-	var index := source.column_index(x, z)
-	var cap_start := maxi(0, high - int(source.cap_depths[index]))
-	if source.column_material_overrides.has(index):
-		var exceptions: Dictionary = source.column_material_overrides[index]
+	var data: TerrainResource = source
+	var local_x := x; var local_z := z
+	if source.is_sectioned():
+		var key := Vector2i(x/TerrainResource.Sections.CELLS,z/TerrainResource.Sections.CELLS)
+		data=source.sections.get(key)
+		if data==null:return
+		local_x-=key.x*TerrainResource.Sections.CELLS;local_z-=key.y*TerrainResource.Sections.CELLS
+	var index := data.column_index(local_x, local_z)
+	var cap_start := maxi(0, high - int(data.cap_depths[index]))
+	if data.column_material_overrides.has(index):
+		var exceptions: Dictionary = data.column_material_overrides[index]
 		var at := low
 		while at < high:
-			var palette: int = int(exceptions.get(at, source.top_materials[index] if at >= cap_start else source.base_materials[index]))
+			var palette: int = int(exceptions.get(at, data.top_materials[index] if at >= cap_start else data.base_materials[index]))
 			var end := at + 1
-			while end < high and int(exceptions.get(end, source.top_materials[index] if end >= cap_start else source.base_materials[index])) == palette:
+			while end < high and int(exceptions.get(end, data.top_materials[index] if end >= cap_start else data.base_materials[index])) == palette:
 				end += 1
 			_side_quad(triangles, x, z, at + source.origin_y, end + source.origin_y, direction, _ground_color(source, palette))
 			at = end
 		return
 	if low < cap_start:
-		_side_quad(triangles, x, z, low + source.origin_y, cap_start + source.origin_y, direction, _ground_color(source, int(source.base_materials[index])))
-	_side_quad(triangles, x, z, maxi(low, cap_start) + source.origin_y, high + source.origin_y, direction, _ground_color(source, int(source.top_materials[index])))
+		_side_quad(triangles, x, z, low + source.origin_y, cap_start + source.origin_y, direction, _ground_color(source, int(data.base_materials[index])))
+	_side_quad(triangles, x, z, maxi(low, cap_start) + source.origin_y, high + source.origin_y, direction, _ground_color(source, int(data.top_materials[index])))
 
 
 static func _side_quad(triangles: Triangles, x: int, z: int, low: int, high: int, direction: int, color: Color) -> void:
@@ -817,3 +922,155 @@ static func _side_quad(triangles: Triangles, x: int, z: int, low: int, high: int
 		1: triangles.quad(Vector3(x + 1, low, z), Vector3(x + 1, high, z), Vector3(x + 1, high, z + 1), Vector3(x + 1, low, z + 1), color, Vector3.RIGHT)
 		2: triangles.quad(Vector3(x, low, z), Vector3(x, high, z), Vector3(x + 1, high, z), Vector3(x + 1, low, z), color, Vector3.FORWARD)
 		3: triangles.quad(Vector3(x, low, z + 1), Vector3(x + 1, low, z + 1), Vector3(x + 1, high, z + 1), Vector3(x, high, z + 1), color, Vector3.BACK)
+
+
+static func _append_tile_water(source:TerrainResource,min_x:int,min_z:int,end_x:int,end_z:int,water_step:int,water_volume_sides:bool,swash_cells:PackedVector4Array,waterfall_sheet:Dictionary,smooth_ground:bool,smooth:Dictionary,water:Triangles)->void:
+	# First smooth shoreline slice: flat water. Volume walls, waterfall sheets
+	# and animated swash retain their existing geometry contract.
+	var smooth_shore := smooth_ground and not water_volume_sides and waterfall_sheet.is_empty() and swash_cells.is_empty()
+	if smooth_shore:
+		SmoothWater.append(source, Rect2i(min_x,min_z,end_x-min_x,end_z-min_z), smooth.smooth_field, water)
+	else:
+		var shore_bounds := Rect2i()
+		if smooth_ground and not swash_cells.is_empty():
+			var low := Vector2i(swash_cells[0].x, swash_cells[0].y)
+			var high := low
+			for cell in swash_cells:
+				var p := Vector2i(cell.x, cell.y)
+				low = low.min(p); high = high.max(p)
+			# One preparation only. Keep the open sea's existing spacing; the
+			# wet side of the run-up must sample the same wave as its fine film.
+			shore_bounds = Rect2i(low, high - low + Vector2i.ONE).grow(8)
+		_build_water_rectangles(source, water, min_x, min_z, end_x, end_z, water_step, shore_bounds)
+	for cell in swash_cells:
+		var y := cell.z + 0.025
+		# Existing Water mesh/material: UV.y=-1 marks temporary dry-bank coverage.
+		water.quad(Vector3(cell.x, y, cell.y), Vector3(cell.x + 1.0, y, cell.y),
+			Vector3(cell.x + 1.0, y, cell.y + 1.0), Vector3(cell.x, y, cell.y + 1.0),
+			Color(0.1, 0.7, 0.8, 0.0), Vector3.UP, Vector2(cell.x + 0.5, -cell.y - 1.5))
+	if not smooth_shore and (water_step > 0 or water_volume_sides):
+		_stitch_water_edges(source, water, min_x, min_z, end_x, end_z, water_volume_sides)
+	if water_volume_sides:
+		_build_water_walls(source, water, min_x, min_z, end_x, end_z, waterfall_sheet.get("spill", {}))
+	# The falling sheet has its own parameterised edges. Surface stitching must
+	# not reinterpret it as flat water, and a farther water wall must not paint
+	# over it in this material's existing depth_draw_never pass.
+	if not waterfall_sheet.is_empty():
+		water.vertices.append_array(waterfall_sheet.vertices)
+		water.uvs.append_array(waterfall_sheet.uvs)
+		for point in waterfall_sheet.vertices:
+			water.normals.append(Vector3.UP)
+			water.colors.append(Color(0.1, 0.7, 0.8, 0.1875))
+
+
+static func prepare_heightmap_collision(smooth:Dictionary,bounds:Rect2i)->Dictionary:
+	# The canonical generator emits two top triangles per occupied cell.
+	# Layout kinds distinguish a complete height field from holes/base walls.
+	# Keep arbitrary geometry on the existing exact triangle path.
+	var faces:PackedVector3Array=smooth.collision_faces
+	var kinds:PackedByteArray=smooth.get("layout",{}).get("kinds",PackedByteArray())
+	if bounds.get_area()<=0 or faces.size()!=bounds.get_area()*6:return {}
+	if kinds.size()!=faces.size() or kinds.count(1)!=kinds.size():return {}
+	var field:Dictionary=smooth.smooth_field
+	var width:=bounds.size.x+1
+	var depth:=bounds.size.y+1
+	var heights:=PackedFloat32Array()
+	for z in depth:
+		var first:int=(bounds.position.y+z-field.start.y)*field.size.x+bounds.position.x-field.start.x
+		heights.append_array((field.heights as PackedFloat32Array).slice(first,first+width))
+	return {"width":width,"depth":depth,"heights":heights,"position":Vector3(bounds.position.x+bounds.size.x*0.5,0,bounds.position.y+bounds.size.y*0.5)}
+
+static func prepare_editor_tile(input:Dictionary,smooth:Dictionary,options:Dictionary,sectioned:bool,cancelled:=Callable())->Dictionary:
+	# Same water calculation as build_tile, with CPU arrays only. The caller owns
+	# an immutable Source and shoreline snapshot; no Rendering/Physics API here.
+	var began:=Time.get_ticks_usec()
+	var start:Vector2i=input.start
+	var bounds:Rect2i=input.bounds
+	var swash:PackedVector4Array=options.get("swash",PackedVector4Array())
+	var sheet:Dictionary=options.get("sheet",{}).duplicate()
+	if sectioned:
+		var local_swash:=PackedVector4Array()
+		for cell in swash:local_swash.append(Vector4(cell.x-start.x,cell.y-start.y,cell.z,cell.w))
+		swash=local_swash
+		if not sheet.is_empty():
+			var points:PackedVector3Array=sheet.vertices.duplicate()
+			for i in points.size():points[i]-=Vector3(start.x,0,start.y)
+			sheet.vertices=points
+			if sheet.has("spill"):
+				sheet.spill=sheet.spill.duplicate();sheet.spill.center-=Vector2(start)
+	var water:=Triangles.new()
+	_append_tile_water(input.source,bounds.position.x,bounds.position.y,bounds.end.x,bounds.end.y,int(options.get("step",0)),bool(options.get("sides",false)),swash,sheet,true,smooth,water)
+	var faces:PackedVector3Array=smooth.collision_faces
+	var heightmap:=prepare_heightmap_collision(smooth,bounds)
+	var top_arrays:Array=smooth.arrays.duplicate()
+	var water_arrays:Array=water.arrays()
+	var field:Dictionary=smooth.smooth_field.duplicate()
+	var edge_arrays:=residency_edge_arrays(input.source,bounds,smooth.smooth_field) if sectioned and options.get("residency_edges",false) else []
+	if sectioned:
+		if not heightmap.is_empty():heightmap.position+=Vector3(start.x,0,start.y)
+		faces=Transform3D(Basis.IDENTITY,Vector3(start.x,0,start.y))*faces
+		field.start+=start
+		top_arrays[Mesh.ARRAY_VERTEX]=Transform3D(Basis.IDENTITY,Vector3(start.x,0,start.y))*(top_arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array)
+		if not edge_arrays.is_empty():edge_arrays[Mesh.ARRAY_VERTEX]=Transform3D(Basis.IDENTITY,Vector3(start.x,0,start.y))*(edge_arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array)
+		if not water_arrays.is_empty():
+			water_arrays[Mesh.ARRAY_VERTEX]=Transform3D(Basis.IDENTITY,Vector3(start.x,0,start.y))*(water_arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array)
+			var uv:PackedVector2Array=water_arrays[Mesh.ARRAY_TEX_UV]
+			for i in uv.size():
+				if uv[i].y<0:uv[i]+=Vector2(start.x,-start.y)
+			water_arrays[Mesh.ARRAY_TEX_UV]=uv
+	var render_upload:=SmoothSurface.prepare_render_upload(top_arrays,smooth.get("render_detail",{}),cancelled)
+	if cancelled.is_valid() and cancelled.call():return {}
+	var edge_upload:=SmoothSurface.prepare_render_upload(edge_arrays,{},cancelled) if not edge_arrays.is_empty() else {}
+	if cancelled.is_valid() and cancelled.call():return {}
+	return {"top_arrays":top_arrays,"render_upload":render_upload,"residency_edge_upload":edge_upload,"water_arrays":water_arrays,"collision_faces":faces,"heightmap_collision":heightmap,"residency_edge_arrays":edge_arrays,
+		"smooth_field":field,"smooth_layout":smooth.get("layout",{}),"render_detail":smooth.get("render_detail",{}),
+		"water_vertices":water.vertices.size(),"water_source_vertices":water.vertices.size(),"water_indices":0,
+		"water_prepare_us":Time.get_ticks_usec()-began}
+
+
+class EditorTilePublication extends RefCounted:
+	# CPU positions already use world coordinates, so each mesh is uploaded
+	# once. Nothing is attached until all resources are ready.
+	var result:Dictionary
+	var ready:=false
+	var phase:=0
+	var last_phase:=""
+	func _init(data:Dictionary)->void:result=data.duplicate()
+	func advance()->void:
+		match phase:
+			0:
+				last_phase="ground_upload"
+				var upload:Dictionary=result.get("render_upload",{})
+				result.terrain=SmoothSurface.publish_render_mesh(upload.get("arrays",result.top_arrays),upload.get("detail",result.get("render_detail",{})))
+			1:
+				last_phase="water_upload"
+				result.water=ArrayMesh.new()
+				if not result.water_arrays.is_empty():result.water.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,result.water_arrays)
+			2:
+				last_phase="collision_prepare"
+				var heightmap:Dictionary=result.get("heightmap_collision",{})
+				if not heightmap.is_empty():
+					var collision:=HeightMapShape3D.new()
+					collision.map_width=heightmap.width;collision.map_depth=heightmap.depth
+					collision.map_data=heightmap.heights
+					result.collision=collision;result.collision_position=heightmap.position
+				else:
+					var collision:=ConcavePolygonShape3D.new()
+					collision.set_faces(result.collision_faces)
+					result.collision=collision
+				result.erase("heightmap_collision")
+				for key in ["top_arrays","water_arrays","render_upload"]:result.erase(key)
+				ready=true
+		phase+=1
+	static func _section_mesh(original:ArrayMesh,start:Vector2i,water:bool,lods:Dictionary={})->ArrayMesh:
+		var mesh:=ArrayMesh.new()
+		if original.get_surface_count()==0:return mesh
+		var arrays:=original.surface_get_arrays(0)
+		arrays[Mesh.ARRAY_VERTEX]=Transform3D(Basis.IDENTITY,Vector3(start.x,0,start.y))*(arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array)
+		if water:
+			var uv:PackedVector2Array=arrays[Mesh.ARRAY_TEX_UV]
+			for i in uv.size():
+				if uv[i].y<0:uv[i]+=Vector2(start.x,-start.y)
+			arrays[Mesh.ARRAY_TEX_UV]=uv
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays,[],lods)
+		return mesh

@@ -149,6 +149,10 @@ func _run() -> void:
 	pilot.set_wave_obstacles(null)
 	assert(is_equal_approx(pilot.water_surface_sample(point).position.y,before.position.y))
 	print("OBSTACLE sea correction/query/removal PASS")
+	# A resized/reprepared field can supply a new patch between live ticks.
+	field.advance(2.0,2,1.0);field.patches[0].erase("time");field._live_time=2.0
+	field.advance(2.1,2,1.0)
+	assert(field.patches[0].has("time") and is_finite(float(field.patches[0].time)),"reprepared patch clock")
 	if DisplayServer.get_name() != "headless": await _gpu(field)
 	pilot.queue_free()
 	print("COMPACT_WAVE_OBSTACLES PASS")

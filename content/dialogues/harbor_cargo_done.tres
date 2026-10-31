@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EmberDialogueResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_dialogue_resource.gd" id="1_rl60y"]
+
+[resource]
+script = ExtResource("1_rl60y")
+dialogue_id = "harbor_cargo_done"
+document = {
+"id": "harbor_cargo_done",
+"nameRu": "Груз у берега · после завершения",
+"startStepId": "line",
+"steps": [{
+"id": "line",
+"next": "end",
+"textRu": "Спасибо! С грузом мы уже разобрались.",
+"type": "dialogue"
+}, {
+"id": "end",
+"type": "end"
+}]
+}

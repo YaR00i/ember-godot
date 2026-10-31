@@ -145,6 +145,10 @@ static func normalize(parameters: Dictionary) -> Dictionary:
 		result["branch_count_variation"] = clampi(int(parameters.get("branch_count_variation",40)),0,100)
 	if bool(parameters.get("painted_tree",false)) and version in [21,22,23,24,25]:
 		result["painted_tree"]=true
+		var secondary: Variant=parameters.get("tree_leaf_secondary_color",result.foliage_color.darkened(0.35))
+		if not secondary is Color or not Vector4(secondary.r,secondary.g,secondary.b,secondary.a).is_finite():secondary=result.foliage_color.darkened(0.35)
+		result["tree_leaf_secondary_color"]=Color(clampf(secondary.r,0.0,1.0),clampf(secondary.g,0.0,1.0),clampf(secondary.b,0.0,1.0),1.0)
+		result["tree_leaf_palette_strength"]=clampi(int(parameters.get("tree_leaf_palette_strength",0)),0,100)
 		for key in ["tree_leaf_density","tree_leaf_depth","tree_leaf_receive","tree_wood_rim","tree_leaf_rim"]:
 			result[key]=clampi(int(parameters.get(key,{"tree_leaf_density":60,"tree_leaf_depth":100,"tree_leaf_receive":40,"tree_wood_rim":45,"tree_leaf_rim":18}[key])),0,100)
 		result["tree_rim_enabled"]=bool(parameters.get("tree_rim_enabled",true))
@@ -363,6 +367,11 @@ static func _emit(
 		source.palette[4] = settings.foliage_color.darkened(0.42 * strength)
 		source.palette[6] = settings.foliage_color.lightened(0.18 * strength)
 	var bark_marks := BarkPattern.marks(wood, lines, seed, settings)
+	if bool(settings.get("painted_tree",false)) and int(settings.get("tree_leaf_palette_strength",0))>0:
+		var blend := float(settings.tree_leaf_palette_strength)/100.0
+		var secondary: Color=settings.tree_leaf_secondary_color
+		for index in range(4,7):
+			source.palette[index]=source.palette[index].lerp(secondary.lerp(settings.foliage_color,float(index-4)/2.0),blend)
 	if not bark_marks.is_empty(): source.palette.append(settings.bark_pattern_color)
 	source.material = material.duplicate(true)
 	preload("res://scripts/ember_voxel_material_profiles.gd").assign(source.material, "bark", {"4": "foliage", "5": "foliage", "6": "foliage"})

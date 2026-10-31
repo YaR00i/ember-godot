@@ -25,9 +25,57 @@ const RELIEF_SHORE := "shore"
 const PAINT_PLAIN := "plain"
 const PAINT_SAND := "sand"
 
+const MAX_RADIUS_VOXELS:=256
 const DEFAULT_RADIUS := 4
 const DEFAULT_DEPTH := 1
 const DIRECTION_BEHAVIOR_VERSION := 2
+const TOOLS := {
+	Model.TOOL_ADD:{"title":"Лепка · объём","mask":MASK_COLUMNS},
+	Model.TOOL_GRAB:{"title":"Тянуть","mask":MASK_NONE},
+	Model.TOOL_PAINT:{"title":"Покраска","mask":MASK_VOXELS},
+	Model.TOOL_MATERIAL:{"title":"Материал / вода","mask":MASK_VOXELS},
+	Model.TOOL_SURFACE_FILL:{"title":"Заливка уровня","mask":MASK_NONE},
+	Model.TOOL_RAISE:{"title":"Рельеф","mask":MASK_COLUMNS},
+	Model.TOOL_LEVEL:{"title":"Площадка","mask":MASK_COLUMNS},
+	Model.TOOL_SMOOTH:{"title":"Сгладить","mask":MASK_COLUMNS},
+	Model.TOOL_RAMP:{"title":"Склон A → B","mask":MASK_COLUMNS},
+}
+const WORLD_TOOLS := {
+	"raise":Model.TOOL_RAISE,"lower":Model.TOOL_LOWER,"add":Model.TOOL_ADD,
+	"remove":Model.TOOL_REMOVE,"smooth":Model.TOOL_SMOOTH,"level":Model.TOOL_LEVEL,
+	"grab":Model.TOOL_GRAB,"paint":Model.TOOL_PAINT,
+}
+
+static func title(tool_id:int,volume_smooth:=false)->String:
+	var label:=str(TOOLS.get(base_tool(tool_id),{}).get("title",""))
+	return label+(" · объём" if volume_smooth else " · высоты") if tool_id==Model.TOOL_SMOOTH else label
+
+static func world_modes(category:int,heightfield:bool)->Array:
+	return ([
+		["raise","lower","smooth","level","generator"],["paint"],["water","dry"],["objects"],
+	] if heightfield else [
+		["raise","lower","add","remove","smooth","level","shore","generator","grab"],["paint","sand"],["water","dry"],["objects"],
+	])[category]
+
+static func world_title(mode:String,volume_smooth:=false)->String:
+	if mode.begins_with("canvas:"):return title(int(mode.trim_prefix("canvas:")))+" → Canvas"
+	if mode in ["raise","lower"]:return title(Model.TOOL_RAISE)+(" · поднять" if mode=="raise" else " · опустить")
+	if mode in ["add","remove"]:return "Лепка · добавить" if mode=="add" else "Лепка · убрать"
+	return title(WORLD_TOOLS[mode],volume_smooth) if WORLD_TOOLS.has(mode) else {"shore":"Берег и дно","generator":"Неровности","sand":"Песок · пятна","water":"Вода · уровень","dry":"Убрать воду","objects":"Объекты"}.get(mode,mode)
+
+static func world_mode_for_tool(tool_id:int)->String:
+	for mode in WORLD_TOOLS:
+		if WORLD_TOOLS[mode]==tool_id:return mode
+	return "canvas:%d"%tool_id
+
+static func is_relief(tool_id:int)->bool:
+	return base_tool(tool_id)==Model.TOOL_RAISE
+
+static func is_oriented(tool_id:int)->bool:
+	return tool_id in [Model.TOOL_ADD,Model.TOOL_REMOVE,Model.TOOL_PAINT,Model.TOOL_MATERIAL]
+
+static func mask_help(kind:String)->String:
+	return {MASK_NONE:"Этот инструмент не ограничивается выделением. Маска сохранена, но не действует.",MASK_VOXELS:"Только выбранные объёмные ячейки; маска сохраняется после мазка.",MASK_COLUMNS:"Отпечаток выбранной грани, включая глубину. Направление кисти фиксируется этой гранью."}.get(kind,"")
 
 
 static func normalize_profile(profile: Dictionary) -> Dictionary:
@@ -53,9 +101,12 @@ static func normalize_profile(profile: Dictionary) -> Dictionary:
 	if int(profile.get("direction_behavior_version", 0)) < DIRECTION_BEHAVIOR_VERSION:
 		follow_surface = true
 	return {
-		"radius": clampi(int(profile.get("radius", DEFAULT_RADIUS)), 1, 32),
+		"radius": clampi(int(profile.get("radius", DEFAULT_RADIUS)), 1, MAX_RADIUS_VOXELS),
+		"smooth_strength":clampi(int(profile.get("smooth_strength",2)),1,8),
 		"grab_softness": clampf(float(profile.get("grab_softness", 75)), 0, 100),
 		"depth": clampi(int(profile.get("depth", DEFAULT_DEPTH)), 1, 32),
+		"surface_plane_mode":clampi(int(profile.get("surface_plane_mode",1)),0,2),
+		"surface_plane_offset":clampf(float(profile.get("surface_plane_offset",0)),-32,32),
 		"coarse": bool(profile.get("coarse", false)),
 		"follow_surface": follow_surface,
 		"direction_behavior_version": DIRECTION_BEHAVIOR_VERSION,
@@ -131,14 +182,6 @@ static func base_tool(tool_id: int) -> int:
 	return tool_id
 
 
-static func mask_kind(tool_id: int) -> String:
-	if tool_id in [Model.TOOL_PAINT, Model.TOOL_MATERIAL]:
-		return MASK_VOXELS
-	if tool_id in [
-		Model.TOOL_ADD, Model.TOOL_REMOVE,
-		Model.TOOL_RAISE, Model.TOOL_LOWER,
-		Model.TOOL_SHELL_RAISE, Model.TOOL_SHELL_LOWER,
-		Model.TOOL_LEVEL, Model.TOOL_SMOOTH, Model.TOOL_RAMP,
-	]:
-		return MASK_COLUMNS
-	return MASK_NONE
+static func mask_kind(tool_id: int, volume_smooth:=false) -> String:
+	if tool_id in [Model.TOOL_SMOOTH,Model.TOOL_LEVEL] and volume_smooth:return MASK_VOXELS
+	return str(TOOLS.get(base_tool(tool_id),{}).get("mask",MASK_NONE))

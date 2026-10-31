@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="EmberQuestResource" format=3]
+[ext_resource type="Script" path="res://scripts/ember_quest_resource.gd" id="1"]
+[resource]
+script = ExtResource("1")
+quest_id = "story_tea_errand"
+definition = {
+  "id": "story_tea_errand",
+  "titleRu": "Чай для смотрителя · проба",
+  "statusFlagId": "story_tea_status",
+  "summaryRu": "Возьми поручение, купи два флакона чая в лавке у причала и вернись к смотрителю.",
+  "objectives": [
+    {
+      "id": "meet",
+      "textRu": "Взять поручение у смотрителя",
+      "flagId": "story_tea_meet"
+    },
+    {
+      "id": "buy",
+      "textRu": "Купить два флакона чая в лавке у причала",
+      "flagId": "story_tea_bought",
+      "progressMode": "purchase",
+      "purchaseShopId": "story_tea_shop",
+      "purchaseItemId": "qingxin_tea",
+      "requiredCount": 2,
+      "requiresObjectiveIds": [
+        "meet"
+      ]
+    },
+    {
+      "id": "reward",
+      "textRu": "Вернуться к смотрителю",
+      "flagId": "story_tea_reward",
+      "requiresObjectiveIds": [
+        "buy"
+      ]
+    }
+  ]
+}

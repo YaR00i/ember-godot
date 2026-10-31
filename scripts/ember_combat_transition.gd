@@ -24,6 +24,7 @@ static var _active_strategy_snapshot: Array[String] = []
 static var _result_applied := false
 static var _party_ids_snapshot: Array[String] = []
 static var _locked_progress: WeakRef
+static var _in_place_host: WeakRef
 static var last_start_error := ""
 
 
@@ -71,6 +72,7 @@ static func change_scene(
 	tree: SceneTree,
 	encounter_id: String,
 	progress: EmberExploreState = null,
+	world_host: Node = null,
 ) -> Error:
 	last_start_error = ""
 	if isolated_editor_process_requested(): return ERR_UNAVAILABLE
@@ -108,7 +110,8 @@ static func change_scene(
 	_return_scene_path = tree.current_scene.scene_file_path
 	_result_applied = false
 	_return_steps.clear()
-	var error := tree.change_scene_to_file(COMBAT_SCENE)
+	_in_place_host = weakref(world_host) if world_host != null else null
+	var error: Error = world_host.begin_in_place(encounter) if world_host != null else tree.change_scene_to_file(COMBAT_SCENE)
 	if error != OK:
 		clear_for_test()
 	return error
@@ -178,6 +181,9 @@ static func finish(
 	_result_applied = true
 	var flag_id := encounter.flag_for_outcome(outcome).strip_edges()
 	var report := CombatResult.build(encounter, combat_state, outcome)
+	var host: Node = _in_place_host.get_ref() if _in_place_host != null else null
+	if is_instance_valid(host): host.prepare_return(combat_state)
+	_return_steps.clear()
 	if progress != null:
 		progress.apply_combat_result(
 			combat_state,
@@ -188,13 +194,17 @@ static func finish(
 		if not flag_id.is_empty():
 			progress.set_flag(flag_id, true, false)
 		progress.apply_combat_counters(report.get("counterDeltas", {}), false)
+		# Loot and the victory flag share one save boundary. The return queue only
+		# presents the receipt; closing it or loading immediately cannot lose loot.
+		for raw_step in report.get("lootSteps", []):
+			var item_id := str(raw_step.get("itemId", ""))
+			var before := int(progress.inventory.get(item_id, 0))
+			var granted := progress.grant_item(item_id, int(raw_step.get("count", 1)), false)
+			if granted.get("ok", false):
+				_return_steps.append({"type": "show_item_reward", "itemId": item_id, "before": before, "after": int(progress.inventory.get(item_id, before))})
 		progress.save_autosave()
-		progress.arm_saved_spawn_restore()
+		if not is_instance_valid(host): progress.arm_saved_spawn_restore()
 	_return_action_id = encounter.action_for_outcome(outcome).strip_edges()
-	_return_steps.clear()
-	for raw_step in report.get("lootSteps", []):
-		if typeof(raw_step) == TYPE_DICTIONARY:
-			_return_steps.append((raw_step as Dictionary).duplicate(true))
 	var return_path := _return_scene_path
 	_active_encounter_id = ""
 	_active_party_snapshot = {}
@@ -202,6 +212,10 @@ static func finish(
 	_active_inventory_snapshot = {}
 	_active_strategy_snapshot = []
 	_return_scene_path = ""
+	_in_place_host = null
+	if is_instance_valid(host):
+		host.call_deferred("finish_in_place")
+		return OK
 	if return_path.get_file().get_basename() in EmberMapTransition.RETIRED_MAP_IDS or return_path.is_empty() or not ResourceLoader.exists(return_path):
 		return_path = progress.resume_scene_path() if progress != null else EmberMapTransition.scene_path(EmberMapTransition.DEFAULT_MAP_ID)
 	if return_path.is_empty() or not ResourceLoader.exists(return_path):
@@ -263,6 +277,7 @@ static func load_save(
 
 
 static func abandon_active_encounter() -> void:
+	_in_place_host = null
 	_unlock_party()
 	_pending_encounter_id = ""
 	_active_encounter_id = ""

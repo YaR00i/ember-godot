@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_action_resource.gd" id="1_ny6nk"]
+
+[resource]
+script = ExtResource("1_ny6nk")
+action_id = "shore_keeper_complete"
+document = {
+"id": "shore_keeper_complete",
+"nameRu": "Хранитель: после выполнения поручений",
+"steps": [{
+"dialogueId": "shore_complete_text",
+"type": "talk"
+}]
+}

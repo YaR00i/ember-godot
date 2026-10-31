@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EmberDialogueResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_dialogue_resource.gd" id="1_pl5on"]
+
+[resource]
+script = ExtResource("1_pl5on")
+dialogue_id = "shore_shells_thanks"
+document = {
+"id": "shore_shells_thanks",
+"nameRu": "Хранитель берега",
+"startStepId": "line",
+"steps": [{
+"id": "line",
+"next": "end",
+"textRu": "Все три ракушки на месте, спасибо. Теперь добудь кожу кабана: он бродит на поляне дальше за домом, налево от меня. Подойди и ударь левой кнопкой мыши. Удар со спины даст большее преимущество. После победы возвращайся за наградой.",
+"type": "dialogue"
+}, {
+"id": "end",
+"type": "end"
+}]
+}

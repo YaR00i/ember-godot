@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3]
+[ext_resource type="Script" path="res://scripts/ember_action_resource.gd" id="1"]
+[resource]
+script = ExtResource("1")
+action_id = "story_tea_reward"
+document = {
+  "id": "story_tea_reward",
+  "nameRu": "Чай: сценка и награда",
+  "steps": [
+    {
+      "type": "play_cutscene",
+      "presentationId": "cargo_delivery"
+    },
+    {
+      "type": "exchange_items",
+      "costs": {},
+      "rewards": {
+        "coin": 3
+      }
+    },
+    {
+      "type": "set_flag",
+      "flag": "story_tea_reward",
+      "value": true
+    },
+    {
+      "type": "set_flag",
+      "flag": "story_tea_status",
+      "value": "done"
+    }
+  ]
+}

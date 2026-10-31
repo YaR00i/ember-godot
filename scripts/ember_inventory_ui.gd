@@ -6,6 +6,8 @@ extends Control
 const MODE_BAG := "bag"
 const MODE_EQUIPMENT := "equipment"
 const PartyState := preload("res://scripts/ember_party_state.gd")
+signal script_requested(script_id: String)
+signal drop_requested(item_id: String)
 
 var progress_state: EmberExploreState
 var _mode := MODE_BAG
@@ -30,6 +32,8 @@ var _help: Label
 var _hero_buttons: Array[Button] = []
 var _strategy_rows: VBoxContainer
 var _strategy_save: Button
+var _item_use_button: Button
+var _item_drop_button: Button
 
 
 func _ready() -> void:
@@ -97,6 +101,20 @@ func confirm() -> void:
 			_refresh()
 			return
 		var row: Dictionary = rows[_bag_index]
+		var definition: Dictionary = _item_definitions.get(str(row.itemId),{})
+		if not definition.get("openContents",{}).is_empty():
+			var opened := progress_state.open_container(str(row.itemId))
+			if opened.ok:
+				var received: Array[String] = []
+				for id in opened.contents: received.append("%s ×%d" % [str(_item_definitions.get(id,{}).get("nameRu",id)),int(opened.contents[id])])
+				_feedback = "Получено: "+", ".join(received)
+			else:
+				_feedback = "Для содержимого нет места — предмет сохранён." if opened.reason == "stack_full" else "Не удалось открыть. Предмет остался в сумке."
+			_refresh()
+			return
+		if not str(definition.get("useScriptId","")).is_empty():
+			script_requested.emit(str(definition.useScriptId))
+			return
 		if bool(row.get("canUse", false)):
 			result = progress_state.use_item_on_member(_hero_id(), str(row.get("itemId", "")))
 			if bool(result.get("ok", false)):
@@ -132,6 +150,19 @@ func select_item(item_id: String) -> bool:
 			_refresh()
 			return true
 	return false
+
+
+func drop_selected_item() -> void:
+	var rows := _bag_rows()
+	if not is_open() or _mode != MODE_BAG or rows.is_empty(): return
+	var id := str(rows[_bag_index].itemId)
+	if str(_item_definitions.get(id,{}).get("worldScene","")).is_empty(): return
+	drop_requested.emit(id)
+
+
+func show_item_feedback(text: String) -> void:
+	_feedback = text
+	_refresh()
 
 
 func view_state() -> Dictionary:
@@ -306,6 +337,12 @@ func _refresh_bag(rows: Array) -> void:
 
 
 func _refresh_detail(rows: Array) -> void:
+	var selected: Dictionary = _item_definitions.get(str(rows[_bag_index].itemId),{}) if _mode == MODE_BAG and not rows.is_empty() else {}
+	_item_use_button.visible = not selected.is_empty()
+	_item_use_button.text = str(selected.get("useLabelRu","Использовать / надеть"))
+	_item_use_button.disabled = selected.get("openContents",{}).is_empty() and str(selected.get("useScriptId","")).is_empty() and not bool(rows[_bag_index].get("canUse",false)) and not bool(rows[_bag_index].get("canEquip",false)) if not selected.is_empty() else true
+	_item_use_button.visible = not _item_use_button.disabled
+	_item_drop_button.visible = not str(selected.get("worldScene","")).is_empty()
 	var text := _feedback
 	_accessory_target.visible = false
 	if _mode == MODE_EQUIPMENT:
@@ -330,6 +367,8 @@ func _refresh_detail(rows: Array) -> void:
 		if int(row.get("reviveHp", 0)) > 0:
 			stats.append("воскрешение: %d HP" % int(row.get("reviveHp", 0)))
 		text = str(row.get("nameRu", ""))
+		var notes := str(selected.get("notesRu",""))
+		if not notes.is_empty(): text += "\n"+notes
 		if not stats.is_empty():
 			text += "  ·  %s" % "  ·  ".join(stats)
 		if not _feedback.is_empty():
@@ -501,6 +540,17 @@ func _build_panel() -> void:
 	_detail.add_theme_color_override("font_color", Color(0.88, 0.91, 1.0))
 	_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(_detail)
+	var item_actions := HBoxContainer.new()
+	column.add_child(item_actions)
+	_item_use_button = Button.new()
+	_item_use_button.name = "InventoryUseItem"
+	_item_use_button.pressed.connect(confirm)
+	item_actions.add_child(_item_use_button)
+	_item_drop_button = Button.new()
+	_item_drop_button.name = "InventoryDropItem"
+	_item_drop_button.text = "Выбросить одну вещь"
+	_item_drop_button.pressed.connect(drop_selected_item)
+	item_actions.add_child(_item_drop_button)
 	_accessory_target = OptionButton.new()
 	_accessory_target.name = "InventoryAccessoryTarget"
 	_accessory_target.tooltip_text = "Автоматически: первый свободный слот, а если оба заняты — замена аксессуара 1. Можно явно выбрать замену первого или второго."

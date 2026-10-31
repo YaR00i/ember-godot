@@ -73,6 +73,9 @@ static func marker_projection(
 		if typeof(raw_step) != TYPE_DICTIONARY:
 			continue
 		var step: Dictionary = raw_step
+		if str(step.get("type", "")) == "handover_quest_items" and str(step.get("questId", "")) == str(quest.get("id", "")):
+			roles.append({"role": "objective", "objectiveId": str(step.get("objectiveId", ""))})
+			continue
 		if str(step.get("type", "")) != "set_flag":
 			continue
 		var flag_id := str(step.get("flag", "")).strip_edges()

@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Placement = preload("res://addons/ember_import/ember_voxel_placement_session.gd")
+const Mechanics = preload("res://tools/fixtures/ember_editor_mechanics_fixture.gd")
 const Dialog = preload("res://addons/ember_import/ember_voxel_placement_dialog.gd")
 var errors: Array[String] = []
 
@@ -19,7 +20,7 @@ func _run() -> void:
 	root.size = Vector2i(1280,720)
 	for frame in 3:
 		await process_frame
-	var scene := (load("res://scenes/test_pier.tscn") as PackedScene).instantiate()
+	var scene := Mechanics.make_scene()
 	scene.set_script(null)
 	scene.get_node("Map").set_script(null)
 	root.add_child(scene)

@@ -1,42 +1,98 @@
-[gd_scene format=3]
+[gd_scene format=4 uid="uid://b6281acs1elhv"]
 
 [ext_resource type="Script" uid="uid://b174h8hlywqpb" path="res://scripts/world_canvas.gd" id="1_root"]
 [ext_resource type="Script" uid="uid://ctwn2o6mocfe2" path="res://scripts/ember_map_loader.gd" id="2_map"]
-[ext_resource type="Resource" path="res://content/world_terrains/landscape_compact.res" id="3_terrain"]
+[ext_resource type="Resource" uid="uid://xbnc6o65n273" path="res://content/world_terrains/landscape_compact.res" id="3_terrain"]
 [ext_resource type="Script" uid="uid://4lkb6w8l82y0" path="res://scripts/ember_region.gd" id="4_region"]
-[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_painted_rock_group.tscn" id="5_rock"]
-[ext_resource type="Script" path="res://scripts/ember_voxel_prop.gd" id="6_prop"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_external_coastal_rock.tscn" id="external_coastal_rock"]
+[ext_resource type="PackedScene" uid="uid://b0ui1ocllqv42" path="res://prefabs/voxels/vox_painted_rock_group.tscn" id="5_rock"]
+[ext_resource type="Material" path="res://materials/ember_compact_sky_reflection_study.tres" id="7_water"]
+[ext_resource type="PackedScene" uid="uid://be70eijjij0p0" path="res://prefabs/voxels/vox_painted_birch.tscn" id="8_qkvj8"]
+[ext_resource type="Script" uid="uid://twob01f2glr7" path="res://scripts/prototypes/ember_compact_planar_reflection_study.gd" id="8_water_settings"]
+[ext_resource type="Script" uid="uid://dhvpuxmblt7nk" path="res://scripts/ember_grass_patch.gd" id="9_grass"]
+[ext_resource type="PackedScene" uid="uid://dfi12k4wo8brh" path="res://prefabs/voxels/vox_painted_oak.tscn" id="10_oak"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_painted_maple_autumn.tscn" id="autumn_maple"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_painted_maple_autumn_palette.tscn" id="autumn_maple_palette"]
+[ext_resource type="PackedScene" path="res://prefabs/items/cuttable_grass.scn" id="cuttable_grass"]
+[ext_resource type="PackedScene" path="res://prefabs/items/fruit_tree.scn" id="fruit_tree"]
+[ext_resource type="PackedScene" path="res://prefabs/items/berry_bush.scn" id="berry_bush"]
+[ext_resource type="Script" uid="uid://c7dfkrxxg3tlu" path="res://scripts/ember_world_anomaly_3d.gd" id="11_anomaly"]
+[ext_resource type="Resource" uid="uid://bnh6y5q76xjmj" path="res://content/editor/voxel_stamps/vox_stamp_104392975.tres" id="12_detail_rock"]
+[ext_resource type="Resource" path="res://content/editor/voxel_stamps/vox_detail_wheat.tres" id="15_detail_wheat"]
+[ext_resource type="Resource" path="res://content/editor/voxel_stamps/vox_detail_shell.tres" id="16_detail_shell"]
+[ext_resource type="Resource" path="res://content/terrain_materials/meadow_daisy_cover.tres" id="17_flower_cover"]
+[ext_resource type="PackedScene" uid="uid://b20peeycw6wyy" path="res://prefabs/voxels/vox_earth_cliff_corner_canvas_154811845.tscn" id="18_3d0o2"]
+[ext_resource type="Resource" uid="uid://cehlh1uabjgmd" path="res://scenes/landscape_compact_Map_plan.res" id="coast_plan_binary"]
+[ext_resource type="PackedScene" uid="uid://gnvmemx0ufn0" path="res://prefabs/voxels/vox_merge_20548286_0.tscn" id="earth_cliff_0"]
+[ext_resource type="PackedScene" uid="uid://bc1u6bv8lkdoc" path="res://prefabs/voxels/vox_earth_cliff_straight.tscn" id="earth_cliff_1"]
+[ext_resource type="Resource" path="res://content/terrain_materials/meadow_buttercup_cover.tres" id="flower_set_18"]
+[ext_resource type="Resource" path="res://content/terrain_materials/meadow_lilac_cover.tres" id="flower_set_19"]
+[ext_resource type="PackedScene" uid="uid://ckqnk33k7upul" path="res://prefabs/voxels/vox_coastal_house.tscn" id="house_coastal"]
+[ext_resource type="PackedScene" uid="uid://co7x8h8y38d2c" path="res://prefabs/voxels/vox_natural_earth_outcrop.tscn" id="natural_outcrop"]
+[ext_resource type="PackedScene" path="res://prefabs/items/shore_boar_zone.tscn" id="shore_boar"]
+[ext_resource type="PackedScene" path="res://prefabs/items/shore_bottle_pickup.tscn" id="shore_bottle"]
+[ext_resource type="PackedScene" path="res://prefabs/items/shore_keeper.tscn" id="shore_keeper"]
+[ext_resource type="PackedScene" path="res://prefabs/items/shore_shell_pickup.tscn" id="shore_shell"]
+[ext_resource type="PackedScene" path="res://prefabs/items/harbor_cargo_quest.tscn" id="harbor_cargo"]
+[ext_resource type="PackedScene" path="res://prefabs/items/physical_crates.tscn" id="physical_crates"]
+[ext_resource type="PackedScene" path="res://prefabs/items/autumn_leaf_pile.scn" id="autumn_leaf_pile"]
+
+[sub_resource type="ProceduralSkyMaterial" id="sky_material"]
+sky_top_color = Color(0.24, 0.32, 0.48, 1)
+sky_horizon_color = Color(1, 0.6, 0.35, 1)
+ground_bottom_color = Color(0.32156864, 0.34901962, 0.4, 1)
+ground_horizon_color = Color(0.68, 0.42, 0.33, 1)
+sun_angle_max = 10.0
+
+[sub_resource type="Sky" id="reflection_sky"]
+sky_material = SubResource("sky_material")
 
 [sub_resource type="Environment" id="environment"]
-background_mode = 1
-background_color = Color(0.35, 0.47, 0.54, 1)
+background_mode = 2
+background_color = Color(0.22, 0.27, 0.25, 1)
+sky = SubResource("reflection_sky")
 ambient_light_source = 2
-ambient_light_color = Color(0.72, 0.82, 1, 1)
+ambient_light_color = Color(0.5, 0.59, 0.78, 1)
+ambient_light_sky_contribution = 0.25
 ambient_light_energy = 0.55
+reflected_light_source = 2
 tonemap_mode = 2
+tonemap_exposure = 1.01
 ssao_enabled = true
 ssao_radius = 10.4
 ssao_intensity = 0.8
+adjustment_enabled = true
+adjustment_saturation = 0.99
 
 [node name="LandscapeCompact" type="Node3D" unique_id=805765972]
 script = ExtResource("1_root")
-map_id = "landscape_compact"
 sandbox_storage_root = "user://ember-landscape-compact"
+hoshi_test_character = true
 
 [node name="Map" type="Node3D" parent="." unique_id=123186039]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -768, 0, 0)
 script = ExtResource("2_map")
-map_id = "landscape_compact"
-hydrate_legacy_regions = false
+world_look = 0
+compact_smooth_study_column_limit = 1572864
 compact_terrain = ExtResource("3_terrain")
 compact_ground_style = 1
 compact_smooth_material_blend = true
+compact_water_visual_material = ExtResource("7_water")
+compact_water_mesh_step = 8
+compact_water_volume_sides = true
 compact_material_light_mode = 1
-authored_size_blocks = Vector2i(24, 25)
+compact_depth_fade_near_m = 16.0
+compact_depth_fade_far_m = 28.0
+authored_size_blocks = Vector2i(72, 72)
+directional_shadow_filter = 2
 camera_distance = 200.0
 camera_polar = 0.88
 camera_yaw = 0.35
 camera_look_height = 3.0
 camera_far = 2400.0
+msaa_3d = 0
+use_taa = true
+metadata/_ember_terrain_plan = ExtResource("coast_plan_binary")
 
 [node name="Look" type="Node3D" parent="Map" unique_id=902133210]
 
@@ -44,26 +100,1956 @@ camera_far = 2400.0
 environment = SubResource("environment")
 
 [node name="Sun" type="DirectionalLight3D" parent="Map/Look" unique_id=786158174]
-transform = Transform3D(0.8480481, 0.44939703, -0.28081444, 0, 0.52991927, 0.8480481, 0.52991927, -0.7191856, 0.44939703, 0, 0, 0)
-light_color = Color(1, 0.98, 0.94, 1)
-light_energy = 1.15
-light_angular_distance = 1.0
+rotation_degrees = Vector3(-18, -55, 0)
+light_color = Color(1, 0.69, 0.42, 1)
+light_energy = 1.1
+light_angular_distance = 0.0
 shadow_enabled = true
-directional_shadow_max_distance = 560.0
+directional_shadow_mode = 1
+directional_shadow_split_1 = 0.3
+directional_shadow_blend_splits = true
+directional_shadow_max_distance = 1600.0
 
 [node name="Terrain" type="Node3D" parent="Map" unique_id=1185499313]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 768, 0, 0)
 
 [node name="Props" type="Node3D" parent="Map" unique_id=2083195552]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 768, 0, 0)
 
-[node name="PaintedRockGroup" type="Node3D" parent="Map/Props" instance=ExtResource("5_rock")]
+[node name="PaintedRockGroup" parent="Map/Props" unique_id=1941894026 instance=ExtResource("5_rock")]
 transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 112, -3, 200)
-script = ExtResource("6_prop")
-model_id = "vox_painted_rock_group"
-block_world_size = 16.0
-metadata/ember_solid_source = true
-metadata/ember_source_signature = "efb1afb93ce2621a98c3382ecab6b20cde15e72c244e333f1ccc62c8a5943603"
+
+[node name="WaterInteractionRock" parent="Map/Props" unique_id=1433375113 instance=ExtResource("5_rock")]
+transform = Transform3D(0.45, 0, 0, 0, 0.45, 0, 0, 0, 0.45, 218, -11.5, 220)
+water_contact_enabled = true
+water_contact_radius_blocks = 1.1
+
+[node name="PaintedOak" parent="Map/Props" unique_id=39061687 instance=ExtResource("10_oak")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 118, 5, 130)
+
+[node name="PaintedOak2" parent="Map/Props" unique_id=279391832 instance=ExtResource("10_oak")]
+transform = Transform3D(-0.14768133, 0, 0.6330009, 0, 0.65, 0, -0.6330009, 0, -0.14768133, 40, -1, 150)
+
+[node name="GrassPatch" type="Node3D" parent="Map/Props" unique_id=815467809]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 108, 0, 216)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+density_mask = PackedByteArray()
+size_blocks = Vector2(14, 18)
+
+[node name="placed_painted_birch" parent="Map/Props" unique_id=1874465274 instance=ExtResource("8_qkvj8")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 46.15059, 1.8393478, 301.529)
+placement_id = "placed_painted_birch"
+
+[node name="DetailGrass_0_3" type="Node3D" parent="Map/Props" unique_id=1125407578]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 192)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMUAOAAAotS/9YEANVQkAMk4oIJAp6f//////KPS8ih0f9oRVc0V1zRKy994kSSmlTFIGVYUcaQAYAYYAakAJJZSAEEoQ6SRQOqYUTzbTMaV4ssZHwTGl+Bmu8IUjPHnyhxv84AYfOHLkiZfv7u7u7u7u7qqqqqqqqqqqZmZmZmZmZmYiIiIiIiIiIt7d3d3d3d3d2bZt27Ztm5mZmZmZmdlhoGNK8dXEszlUlUurKqKqCAKA6ahAetoMkIOCJGkMEUAELSMgkggJEfoBn4T/VRa0i+DTEsQ9BjVDs39ARoXVfle41+tYpN0yxd0IfQIMRMXMsAvAcGmIg8BJi+9bj4i+L1KxqGUi+MqMH5n4UzO+ZeJfP/3Lv/zHf/qnf/mX//hP//Qv//IvZ4c2GmS3ch34kjr9HrJQKQ==")
+
+[node name="DetailPebbles_2_3" type="Node3D" parent="Map/Props" unique_id=1430536955]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 128, 0, 192)
+script = ExtResource("9_grass")
+detail_kind = 1
+painted_only = true
+density_mask = PackedByteArray("RURNMUwCAAAotS/9YEwBRQQAJAMbAAAAHQAAAAYADQAAAAIAAAABDgwHDgEODwsODgMDAwMDBAQEBAUCBQUFBAcHDQAAADIggKPGOEY43wLF+gAQBoAgwPINCcV5AJNL2CTLNxlGzGASUXIbE5bI5BImkXQykwmCAwERAmi+k2IC2Nk3W6GfYYxovk8hgOVbKPlbFjq7Rg6hCw==")
+
+[node name="DetailPebbles_2_4" type="Node3D" parent="Map/Props" unique_id=1908176251]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 128, 0, 256)
+script = ExtResource("9_grass")
+detail_kind = 1
+painted_only = true
+density_mask = PackedByteArray("RURNMdAAAAAotS/9INBlAgAEAhsAAAAKAAAABgAAAAIAAQMJBA4BBwUOAQ0GCwcCAAAAFQCAAMABmAOZARkIYql0IDOQAixAvikYBrKAfMAwYATkA4bdTFmxwACU")
+
+[node name="DetailPattern_vox_stamp_104392975_Mix0_2_4" type="Node3D" parent="Map/Props" unique_id=550217839]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 128, 0, 256)
+script = ExtResource("9_grass")
+detail_kind = 2
+detail_preset = ExtResource("12_detail_rock")
+painted_only = true
+density_mask = PackedByteArray("RURNMTwDAAAotS/9YDwC7QMAgkQKDHC3efxXA4K+WVn9U79mI8lRIws6hrKpG52qkig4martB3794uc//EJHqJH5/e+Ag4LEAxGwhCAUahSJpQfz3lYDRvdZEHyvRwDCCbAvhuuCdSYa/Z10d2Du8Lss7+3AQCJknfqd/Uufxcp5BOpOzUPnWCPkIbsGVQE=")
+tuft_size = 0.35
+
+[node name="DetailPattern_vox_stamp_104392975_Mix1_2_4" type="Node3D" parent="Map/Props" unique_id=1118766014]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 128, 0, 256)
+script = ExtResource("9_grass")
+detail_kind = 2
+detail_preset = ExtResource("12_detail_rock")
+detail_variant = 1
+painted_only = true
+density_mask = PackedByteArray("RURNMTwDAAAotS/9YDwC7QMAgkQKDHC3efxXA4K+WVn9U79mI8lRIws6hrKpG52qkig4martB3794uc//EJHqJH5/e+Ag4LEAxGwhCAUahSJpQfz3lYDRvdZEHyvRwDCCbAvhuuCdSYa/Z10d2Du8Lss7+3AQCJknfqd/Uufxcp5BOpOzUPnWCPkIbsGVQE=")
+tuft_size = 0.35
+
+[node name="DetailPattern_vox_stamp_104392975_Mix2_2_4" type="Node3D" parent="Map/Props" unique_id=1465722789]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 128, 0, 256)
+script = ExtResource("9_grass")
+detail_kind = 2
+detail_preset = ExtResource("12_detail_rock")
+detail_variant = 2
+painted_only = true
+density_mask = PackedByteArray("RURNMTwDAAAotS/9YDwC7QMAgkQKDHC3efxXA4K+WVn9U79mI8lRIws6hrKpG52qkig4martB3794uc//EJHqJH5/e+Ag4LEAxGwhCAUahSJpQfz3lYDRvdZEHyvRwDCCbAvhuuCdSYa/Z10d2Du8Lss7+3AQCJknfqd/Uufxcp5BOpOzUPnWCPkIbsGVQE=")
+tuft_size = 0.35
+
+[node name="DetailPattern_vox_stamp_104392975_Mix3_2_4" type="Node3D" parent="Map/Props" unique_id=1546308264]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 128, 0, 256)
+script = ExtResource("9_grass")
+detail_kind = 2
+detail_preset = ExtResource("12_detail_rock")
+detail_variant = 3
+painted_only = true
+density_mask = PackedByteArray("RURNMTwDAAAotS/9YDwC7QMAgkQKDHC3efxXA4K+WVn9U79mI8lRIws6hrKpG52qkig4martB3794uc//EJHqJH5/e+Ag4LEAxGwhCAUahSJpQfz3lYDRvdZEHyvRwDCCbAvhuuCdSYa/Z10d2Du8Lss7+3AQCJknfqd/Uufxcp5BOpOzUPnWCPkIbsGVQE=")
+tuft_size = 0.35
+
+[node name="DetailPattern_vox_stamp_104392975_Mix4_2_4" type="Node3D" parent="Map/Props" unique_id=2077081469]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 128, 0, 256)
+script = ExtResource("9_grass")
+detail_kind = 2
+detail_preset = ExtResource("12_detail_rock")
+detail_variant = 4
+painted_only = true
+density_mask = PackedByteArray("RURNMTwDAAAotS/9YDwC7QMAgkQKDHC3efxXA4K+WVn9U79mI8lRIws6hrKpG52qkig4martB3794uc//EJHqJH5/e+Ag4LEAxGwhCAUahSJpQfz3lYDRvdZEHyvRwDCCbAvhuuCdSYa/Z10d2Du8Lss7+3AQCJknfqd/Uufxcp5BOpOzUPnWCPkIbsGVQE=")
+tuft_size = 0.35
+
+[node name="DetailPattern_vox_detail_wheat_Mix0_0_3" type="Node3D" parent="Map/Props" unique_id=1749590374]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 192)
+script = ExtResource("9_grass")
+detail_kind = 2
+detail_preset = ExtResource("15_detail_wheat")
+painted_only = true
+density_mask = PackedByteArray("RURNMUgBAAAotS/9YEgArQIAJAIbAAAAEAAAAAYAAAADAgAAAAEHCAkBBAcJBwUGAQcBAAAAIiDglcYEcCAIkI8igHwGowWBEACCANJlJowHQYB8KAKUfJNhWbJLjCwEyfek0ZbtLw==")
+
+[node name="DetailPattern_vox_detail_shell_Mix0_2_3" type="Node3D" parent="Map/Props" unique_id=510756761]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 128, 0, 192)
+script = ExtResource("9_grass")
+detail_kind = 2
+detail_preset = ExtResource("16_detail_shell")
+painted_only = true
+density_mask = PackedByteArray("RURNMUQAAAAotS/9IERVAQDgGwAAAAMAAAAGAAAABAAAAA8AAAACBQYGBAAAAAUAwAjIB4xvBvtZYQI=")
+tuft_size = 0.55
+
+[node name="DetailPattern_vox_detail_shell_Mix0_2_4" type="Node3D" parent="Map/Props" unique_id=1675782463]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 128, 0, 256)
+script = ExtResource("9_grass")
+detail_kind = 2
+detail_preset = ExtResource("16_detail_shell")
+painted_only = true
+density_mask = PackedByteArray("RURNMQwBAAAotS/9YAwAvQIAJAIbAAAADQAAAAYAAAADAAIAAAABAQQHAgQFBgYEBwEBAAAAGgCAAAQA+YBhIAsgAAEABBAASAcyAzIQBEAAAXyVDmQGMgEcAAEIAPItZTDQxU2jDUAJ")
+tuft_size = 0.55
+
+[node name="DetailFlowers_0_3" type="Node3D" parent="Map/Props" unique_id=203316682]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 192)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMcwEAAAotS/9YMwDLQUAIoUOEHAX1gH8/18lEqb3+17LrAxtJZ2UI/9/3zbohoiIMrcSHnh1QZyEGrJHJmBA5QeKC1Zksam1HbQVBHKo0HzfkIPCJB0RIIUgEhBKIrH0SEgC9d14+2Q1SaHdFK7YheA6QR2wOSd7mW8mmqwIHQ/J7RrSgzuG0BfpnBQtHnD+2Cby3Saqk98mDUnZ2a6b9rv5DcoKDKhpGG2jsgv0d9pBn3Ck")
+
+[node name="DetailFlowers_986d4a6b1d_0_3" type="Node3D" parent="Map/Props" unique_id=628339636]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 192)
+script = ExtResource("9_grass")
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMcABAAAotS/9YMAAfQMA9AIbAAAAFgAAAAYAAAAJAAAACAAAAAIAAAABCQQKCwMKBAwCCwwDAQ0CDQINAQAAACog0FOxGEbyGRazrJnLTCYIhAAQAogQIJ/BaIJACAAhAAgSwJluZplwIAgAQgAIASLf1LAs2SVmROfbGWQM")
+tuft_size = 1.1875
+scatter_seed = 11
+
+[node name="DetailFlowers_94c6f8321a_0_3" type="Node3D" parent="Map/Props" unique_id=687938023]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 192)
+script = ExtResource("9_grass")
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_19")
+painted_only = true
+density_mask = PackedByteArray("RURNMQADAAAotS/9YAACHQQA9AMbAAAAJgAAAAYAAgYBAwQFBQQGBwMICQoCCwEMAg0BAQECBwIHAQcIBAgECAQECQkJCQIKCgoKCwELCwMAAABEqJB836CDJDkRoIQuEhBNwkoPLNit0iL1aumcnDcIfVM6Mxe4PQEYPpI142ivWe6p8M38m6bCa/7/kFa3bDxp5xQ=")
+tuft_size = 2
+scatter_seed = 13
+
+[node name="grove_764ae55f3a43_2_0" parent="Map/Props" unique_id=630817789 instance=ExtResource("5_rock")]
+transform = Transform3D(-0.9544452, 0, 0.29838637, 0, 1, 0, -0.29838637, 0, -0.9544452, -175.389, 11, 92.074844)
+placement_id = "grove_764ae55f3a43_2_0"
+metadata/_ember_grove_member = {
+"region": "copse_rocks_north",
+"slot": "2_0"
+}
+
+[node name="grove_3b9ccb77f846_2_0" parent="Map/Props" unique_id=275829429 instance=ExtResource("5_rock")]
+transform = Transform3D(0.97277015, 0, -0.23177205, 0, 1, 0, 0.23177205, 0, 0.97277015, -166.23695, 8, 323.37076)
+placement_id = "grove_3b9ccb77f846_2_0"
+metadata/_ember_grove_member = {
+"region": "copse_rocks_south",
+"slot": "2_0"
+}
+
+[node name="grove_7ad7404e0e3d_0_0" parent="Map/Props" unique_id=1634073952 instance=ExtResource("8_qkvj8")]
+transform = Transform3D(0.6887758, 0, -0.72497445, 0, 1, 0, 0.72497445, 0, 0.6887758, -313.71585, 13.000518, 71.77504)
+placement_id = "grove_7ad7404e0e3d_0_0"
+metadata/_ember_grove_member = {
+"region": "copse_north",
+"slot": "0_0"
+}
+
+[node name="grove_7ad7404e0e3d_4_0" parent="Map/Props" unique_id=1210756999 instance=ExtResource("10_oak")]
+transform = Transform3D(-0.54417485, 0, 0.83897185, 0, 1, 0, -0.83897185, 0, -0.54417485, -69.924866, 15.604581, 70.1945)
+placement_id = "grove_7ad7404e0e3d_4_0"
+metadata/_ember_grove_member = {
+"region": "copse_north",
+"slot": "4_0"
+}
+
+[node name="grove_7ad7404e0e3d_1_1" parent="Map/Props" unique_id=1173461614 instance=ExtResource("10_oak")]
+transform = Transform3D(-0.27600953, 0, 0.9611549, 0, 1, 0, -0.9611549, 0, -0.27600953, -260.69754, 15.682837, 132.05063)
+placement_id = "grove_7ad7404e0e3d_1_1"
+metadata/_ember_grove_member = {
+"region": "copse_north",
+"slot": "1_1"
+}
+
+[node name="grove_71fccc1abb0b_0_0" parent="Map/Props" unique_id=1073014817 instance=ExtResource("8_qkvj8")]
+transform = Transform3D(0.9989276, 0, 0.04629912, 0, 1, 0, -0.04629912, 0, 0.9989276, -282.55402, 12, 282.87482)
+placement_id = "grove_71fccc1abb0b_0_0"
+metadata/_ember_grove_member = {
+"region": "copse_south",
+"slot": "0_0"
+}
+
+[node name="grove_71fccc1abb0b_4_0" parent="Map/Props" unique_id=145538904 instance=ExtResource("10_oak")]
+transform = Transform3D(-0.5124454, 0, 0.8587198, 0, 1, 0, -0.8587198, 0, -0.5124454, -68.67459, 13.99884, 307.85367)
+placement_id = "grove_71fccc1abb0b_4_0"
+metadata/_ember_grove_member = {
+"region": "copse_south",
+"slot": "4_0"
+}
+
+[node name="DetailGrass_0_0" type="Node3D" parent="Map/Props" unique_id=66498618]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -384, 0, 0)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMdQQAAAotS/9YNQPdQoAIg4mH5AnaQP/////////v1ar/n5lS1Rj/FBubiGbK7vf/g67u7u7u7u7qqqqqqqqqv//////hGdmZmZmZgogIiIiIiIarD5xnK3GGAd3d3d3d3cMZ9u2bdsJm5mZmZmZLVhVVVVVVRWiiIiIiIiooAGamZmZmZnErD5xnK2oYEQkoEA4rD5xnAtTMIkIwOoTxxVG2EFKRBpEhCCBFagB9WkzcQdJQZoOEZAEhCEhI0KihH6Cc7ZABBlitQEDIM8hmUEZZQEhyksdfCcQoj3Ve4hRS0ZLrUPW/kY6kGtvczXBfF4YROndwWyk4zvVHNdkkMkuzPUIjFFfNHZ90Zpj/ehBh/AtNQm9QovQazRIvkKH5M8dKsb1Dqh79cB1Kp++exOKQSzUBhwkgwhFSIQiNEIRiqAIZUdB5r6OwcSYHgLrg2UwpL2Oa+53zTCkCg==")
+
+[node name="DetailGrass_1_0" type="Node3D" parent="Map/Props" unique_id=1006932954]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -320, 0, 0)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_0_1" type="Node3D" parent="Map/Props" unique_id=585189373]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -384, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_1_1" type="Node3D" parent="Map/Props" unique_id=1097043819]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -320, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgT7QgABtMxE+BW4AGUYYEzZ4iXK2JkBjZICAoqACkALADHx8fHd3dnZmZmZiYxMzOrqqqqqqqqqvTIm49ZTTyrMimlWNFSqpRSEAG7u4bd9d3dVVVVVS2o6quqamZmZiYgMwWZmYmIiIgTRMQAIiLe3d0dI93d3Z3o7u5IdzczMzM7mJmZmZnPOeecc/ic0+ecc4wxxhhjBsaYN8YYs7sbKSVJIiROKaWUkiKllP7///D8//+/+P9HCCGEBgghhFADIYTc3d0fzu7uDnF3D4ElqCH4jTnhC8McESAEISGBiJAI/rv3fROrZasXtahDOXfFiUc+L57rF3EkRVxIQxylEBdRjIPxLCeFoqgUmz2UAfc/VMEAPwCsAFMgOzlMxd4q")
+
+[node name="DetailGrass_0_2" type="Node3D" parent="Map/Props" unique_id=1761918063]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -384, 0, 128)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_1_2" type="Node3D" parent="Map/Props" unique_id=1852603753]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -320, 0, 128)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_2_1" type="Node3D" parent="Map/Props" unique_id=259586512]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -256, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMbgTAAAotS/9YLgS5QsAdpAvJKAlSQf/////////P0q+AvJqy8oLISzr5kYs2YTIJKWUUkopZSUAIgAjAFVVVVWGqqoDnU5EREREhBDRkRSEUfR5NfFHYEXJzNTkzASYmYGZmZmZmYiIiIiIiAdExLu7u7u7O+TuzszMzMzMrJiZvaoq/5mZkY+ZmZkPmJl3d3d3d3cRdndVVVVRVVVVDVRVMzMxNQOJQiOOJCFQjpIYAIpEB9xgFBxIaUOLLI5yQwvs7u5e6O7+/zr9//+EB4FgqDH1aTPRh8K0BhGQhJIREEiExAl95hjT6Txjeg7DymHlsJRXGW2nnOQnpfM6mn/L274YVg5LvIrvEuvGMqbTyQ6R02JsvK7+colX8R2xbmzGdDrIDSaMz8ZMN53mJD/jnMK/LOcEebPOWgxv7yqiKmhCBkECGyhM0qUJv2iQQVVohAyCAjZQTKRLE0qYMEIGiihSEiRYMCEK0YQGzZVZQCQw0FyVTUOqgbIVYTDGoUGLYRKRy6nGUAU=")
+
+[node name="DetailGrass_2_2" type="Node3D" parent="Map/Props" unique_id=1744007404]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -256, 0, 128)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMawQAAAotS/9YKwPNQsAws8sILCncAzDMAzD4HwjS0gTxo1DaWxImApsSZmbMi1JSpI7/////+/u7u7up0+fPn369OnTpwc+4Qm9YIVRLEMZzOAHO7CDGdjBDVbgYowxxhhTu7u7u4uqqqqqmpmZmZmlJL4dsyDwrGjfFxqBAwwuIiIi4t3dNVzBAVy5vb27uzMzMzNr2IEJ2Nra2ppVVVVVVdWjFGVQXVtEREREREREtHhvNqtZEHhWdAghRRCEkAdCCEGBNajx9GkzsQcFlXQRcISaERBMhESJPgBIzxCkzhCkZ2hcuGyH9AxBeg5Beobihe2hxXgsMBYYGxgLjAXGAkNheZbPch4Pcuh9dD7O84A2rPNxnseD/LqkOO57ufRdLrxMvLU3thjmdwzzWwzzO/78XgukDzY/ga+N4+o4z814DO7iNpxSW85jeSY05WKr5fEsZyQX3Dosy5nEhRNCDf3742fw8UprhFZqNsZLVG6uAg==")
+
+[node name="DetailGrass_2_0" type="Node3D" parent="Map/Props" unique_id=1924168578]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -256, 0, 0)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_3_0" type="Node3D" parent="Map/Props" unique_id=2076460707]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 0)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_3_1" type="Node3D" parent="Map/Props" unique_id=1530081112]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgT3QcA9hEtEDBNesCKfHMRIDuATR52S2IrACYAJgA0MzMzM4kBzMzMiIiIiCREIJIQERnvzauJNOCtFYpGikRRFFNcUUhRFEUgiIh3d3d3d0e4uzszMzMzMxuYmVlVVVVVVaIQVVVFRERERDQgIqLMzMzMvLu7u7u7u7urqqqqqqqqqpqZmZmZmZnIzERERERExAQeAmOMMcYYY4wxxhj//////////+7u7u7u7u7u3d3d3d3d3d3MzMwcgRSoIfiNOeELwxwRIAQVIVGIkAj+udff7+/v9988WLQuLPzZA4v2hMVuSDgcEtLMfxqqXIAfAFaAfIaECfn67S71eqs=")
+
+[node name="DetailGrass_3_2" type="Node3D" parent="Map/Props" unique_id=1291044722]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 128)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_4_0" type="Node3D" parent="Map/Props" unique_id=399311530]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 0)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_4_1" type="Node3D" parent="Map/Props" unique_id=59580132]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTJQgANhIuETAv6AGAAdt+7uxLwCYPu8kIKgAlACcAREREREQ0MzMzMzMzMyMiIiIiIiIi4715NfGsaASwAAAAAzgAQAAAAGAQmZmIiIiIiIiIiHd3d3d3d3d3ZmZmZmZmZmZVVVVVVVVVVUREFN3dhCa0oBXdzMzMzMzMzMy7u7u7u7u7u6qqqqqqqqqqmZmZmZmZAWOMMcYYhrHDR2AMhmAgxvj///9/xO+/Pv7h393d3d294Ovr6wn37u7uDoEYqCH4jTnhC8McESAEGSFhiJAI/vO0bWO0bTHB2ZZuFxP2Ytq2GGOnmy0mVdPKmpqallbV1LSUGP9QRQD8ALACrEJPcoIqvFU=")
+
+[node name="DetailGrass_4_2" type="Node3D" parent="Map/Props" unique_id=599375040]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 128)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_5_1" type="Node3D" parent="Map/Props" unique_id=290936820]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTPQcAVlEqD2BH4QEAm3JlOHZ3d5c7BikAJAAkACMiIiIiIiIiEhEREUMMMURERLw3rw4pwMANrGgkhEEQBBFMEEIQBAEQd3d3Z2ZmZmZmZmZWVVVVVVVVVUVERERERERENDMzMzMzMzMBu7u7u7u7q6qqqqqqqqqamZmZmZmZmYmIiIiIiIiIeHd3d3cB///////////u7u7u7u7u7t3d3d3d3d3dzMzMzMzMzMy7G4EKqCH4jTnhC8McESAEDUHCIEIi+AOrcs61tbVzzrm2iL32tQydOFQJAD8ArAAjW9liC/vB2wVq8FYB")
+
+[node name="DetailGrass_5_2" type="Node3D" parent="Map/Props" unique_id=1699104588]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 128)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_0_4" type="Node3D" parent="Map/Props" unique_id=331218707]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -384, 0, 256)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMbARAAAotS/9YLAQrQoAkk0lH6An6f///////z9ABVvz+Wu/HTmvJ4RIKaXcOyUppQwvC4ZfGFcQYctAnOHimrjH7u7u7g2ip6kHqqqqqpQGmZmZmZmICoiIiIiISO64u7u7u7tDKADEauIVclsdEv7/////T9u2bdu2HWBmZmZmZmZmBFVVVVVVVVVVQERERERERDRQEKuJV8htRYeZqSEz0zAzAgGBQaiB9WkzwQeFSmMRwITQCAgjQiJFH4YyeExBAJOXrS0sV5aXLVsvPj/UwnILR5C8bJU+Q5RevLZ4WXmoT4MlBaEnFNOWt2QM0ovXli0XbzQryQJgXdiCHGXWeY99ScISqbHZb8tvsViZ7pNJUuNmPb1NtTytg32LseXlZdeL15ZXL1tbb3TW5HI1Rkf5dxMuC97XbYjlsVp+uris85U9XNZ5yR4X67xij0sFnF9UI8XFq7PydIFmOUTltio=")
+
+[node name="DetailGrass_1_4" type="Node3D" parent="Map/Props" unique_id=1035387839]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -320, 0, 256)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMSwTAAAotS/9YCwSnQsAIgwhHbAl6QzDMAzDMMyhxDgRAJCIuLi99957yy1TkknKOJASOqaQkSLRL6CEjilkpEjsfxI6ppCRAm+DH8VHxAkDCTILhMgB0+f//5MX/v+2bTudJti2nYzs8O7uBO7u7q61Xts227ZtzWw3M7MAMzMzS4l+hClkZA4C76sZVFULq+qgqgACgZ2oQfa0GcEHhVJjETCFUAmIIkLCRR/+25vv7Xv26a7bFgelaQptyC6MAp9e2CiJUGUqVjWEeAsHvTFpnUOmMpVJMMi1CI57Lf9+b9+z722b1QlPMz3m0sdz1jV5zvIkGR7J4yjf8yzrWh5neQonaK7lcda1XM66Fs9cJzStNPjefG/fs+/ZLUd8xPcwRS/HupanweyWEx+PcNxviwNJ/BPahmDBjyx+ueh8exkCC2TYmvHaTFYQHj6KO2aSGWdWpiZUQzmTzDijMpVlBWLYBnaYDSn7od+kX0mMGBQrQLOqIYStkLHl1eq3VQE=")
+
+[node name="DetailGrass_0_5" type="Node3D" parent="Map/Props" unique_id=2086313747]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -384, 0, 320)
+script = ExtResource("9_grass")
+painted_only = true
+density_mask = PackedByteArray("RURNMfADAAAotS/9YPAC5QMAxAIbAAAAMgAAAAYAAAAKAAIBBQIHAwQGBQQLCAYHBwEMBw0IBA4IBw8JAQAAAGSogL3fAcCDQqEDEVAFhEIROSGvA9/ynNCEJAa4CSZUHDMUoQ5cKStYXiEGIZCycKiWEfKgkWAyVVNZn1QfmO/+3lRuv/UkQx1Jd4izKQ==")
+tuft_size = 1.375
+scatter_seed = 902
+
+[node name="DetailGrass_1_5" type="Node3D" parent="Map/Props" unique_id=1806962147]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -320, 0, 320)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMfwQAAAotS/9YPwPxQkAggcYHbAnHQzDMAzDsFCHVrQUWzF2aZvsTciWcsskk5QBmxTIAW1yEscmxhbMGnQHmRC0B3EQDDWpWfCXUgABoHNFREREzP///7y7u7u7bdu208zMzMyMZsGfTavKVapqUVWCgYao4fa0GaEHSSUdEXCFDAmIIUKipgcniAwig8hSBj2Y5SCyiA4iSxnyYJaDyCI6SCxlyIM5DiKL1CCtxpMjB2Y5iCyig7QarRq44iCySA0mTpKjA9Khg8giupRx6F+ioUkOIovoG08OHYgORjmIs759IOfxLy0Dya4OVfGwCnaDXbALdsF1SilZ6dL1bzs8qP9Mh7D2eHi28kFtBlV8AFOKUooaSSiEKaXUqK5KKMSUqpSSUIhVSinFqpuEQphSSqlXuqQybahsp5SllHKT0oGqUlcB")
+
+[node name="DetailGrass_2_4" type="Node3D" parent="Map/Props" unique_id=1488007141]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -256, 0, 256)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMRQSAAAotS/9YBQRhQwAwk8pHrAl6QzDMAzDMJQDjUAKBGCt5VLs3jJJKVOSe29CdkYAoZMGB50hm5kFmTJlZmZm/v8PcISnp6enp6eno3IIRETE4wAWWMACFkiAd8PV3d3d3V3NipmZmZmZGWG2bdu2bbs1bdu2bUtaCvmQPJ65ZYpJjU4ez9wyxYRAJ49nbhkXQtDJ45lbxQylCHTyeOa6ijlAJ49nrqvMGdIYgxg1xkgYYwQEgWCoUfVpM4EHBUmSDhGghJYSEEmEhIk+YBNXpA1JBzhwgizmwCMGPU7YMFQwRN3Q7SQCMGKOlQvEQvEgIwY6TrhhFL3sTVVZqDT+/miB08Te69d7wzfM8A1jfMd48ZRI/t2Z0xu/YYbvErM45wGRApMtDIqfQBfN/hVm+vne1fx+vrfvmp7v7V/1gifOXFxynLDBKHqEg0MZtjH49X//xIbk4t3ZUGUDwXKbMBsC4fmasS3BCbQXEdDEXdL7kO39296OcEK/9gWYNxkb8xwp2+/O7xLOexxQomfvi+ruqz/xkeAhandXAQ==")
+
+[node name="DetailGrass_2_5" type="Node3D" parent="Map/Props" unique_id=30750663]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -256, 0, 320)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgT5QcA1tEtEiBPeoAKMcjA7IAQA3SD0n8SAyoAJgAmAHWoqiIiIiIiIjIQEc3MzMzMzBRmppD35tXEW1igaAw1DIMMNIwxDMMQBJmZmYvMTERERERERAUi4t3d3d3dXeLuzszMzMzMzMysqqqqqqoC3d3d3d19dDczMzMzMzMTmHl3d3d3d3cBu6uqqqqqqqquqpmZmQGllFJKKaWUUgalFEIIIYQQQgghByHk/////////9/d3d3d3d0R7t4dgRKoIfiNOeELwxwRIAQVIVGIkAj++c1BhvsPx709yNS3JzJ2w0EWv11BOCxk8TfznIYqF+AHgBUgry26iugu9Xqr")
+
+[node name="DetailGrass_3_4" type="Node3D" parent="Map/Props" unique_id=1071515131]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 256)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTnQgA5pIvESBPeiEHRBuA5bgZoBuU/pMYKwAoACgAVVVVRVS0ICIiIiIiohkbw8zMzMzMTFFyv968mnhWNMZhGAYZaBhjGIZBCJmZmZmZmYgERERERERExLvC3d3d3d3dnakNzMzMzMzMzAoLUEdVVVXu3a196O7u7u7uZmYBMzMzMzMz7y5id3d3d3d3VVVVVVVVVVU1M5AZpWgpZVBKKaWUUkohBAkhSg5CCCGEEEJe3/6/P/H/////7+ju6gp3d3d3D4EjqCH4jTnhC8McESAEISGBiJAI/h9xIkUcWy8pcea9iGXv59m9i4uLi30YexR7IfugFsrMnr3XXyg2e+xtTuJQBQP8ALACTHu/vE3WYSr2VgE=")
+
+[node name="DetailGrass_3_5" type="Node3D" parent="Map/Props" unique_id=941653493]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 320)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTVQgAZtIuEjAt7AEARTKaLXkvWm1Q+hNBASkAKAAnAITSqioiIiIiIqInIpqZmZmZmTmMznwh3ryaeFZU0wwdY9DAMWaMMQYBmVkkIDMTEREREbFAAyIi3t3d3d0d7u7uzMzMzMwKpmZmVlVVVVVVAd3d3d3dhe5mZmZmZmZmATPv7u7u7u4W27urqqqqqqqKUFXNzMzMDP////////+C/1JKKaWUUkopJVAKIYQQQgghhJCCNCHu7u7u7u6ecPfuDoEbqCH4jTnhC8McESAEGSFhiJAI/nMekS3KFjP6DNNJNTOa7YJ5obyYYt42mBes08bkjRE3ZuLFzCTDUEUA/ACwAqzWthcSnaAKbxU=")
+
+[node name="DetailGrass_4_4" type="Node3D" parent="Map/Props" unique_id=926638551]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 256)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMeATAAAotS/9YOASRQsAkoodHbAl6QzDMAzDMAwuOB5YKLiilea9CSFkyy1lSinJd5xiAowzKGwgTBhuAuUGrkhBzpkbVhA3EJQjVndZOIaG6+qqqqqqqurn7YT/////x5h92LZt227ftm3bti1pJAtIkiTJY4ziiGMoR6zuskBEJSOiAyICCIG2qJH2tBnBB4VSBxFAhU4JCCJCQkYPgVQAQkDgzFwEAoQgikBACBBgJgMAQAhECQQIAQHMZAAACEGEVj82AgRu5kIgIAQItrlnJfZdK8hEIEAICDBqgAkRAGBGBgCAEBCsitzMhUCAmRQAAEFAsBUhBATczEUgQAgIMGqAiTIRAIwIBAQBAWlpKLUluopAL1QYuIrKkJoQgq8JhcxeIbj3wgd8kE9qqBypS3iZYtFVhHykhsr40utohL7RgdzHleYyUkPNSBmxn5uRGiojaUix3EeIT2qojDY99CfFSizzEAsMjtJIDZVv8Fer31YF")
+
+[node name="DetailGrass_4_5" type="Node3D" parent="Map/Props" unique_id=1651936863]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 320)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTPQgARpIuESBPegEsDCRNHYBRoBuU/pMYKgAnACcAVXWoKiIiIiIiIiIlmpmZmZmZmQFMIe/Nq4lndZBgDDUMgww0jDEMwxgEmZlHIjITERERERFxgY+Id3d3d3d3htO7MzMzMzMzs4CZVVVVVVUF3d3d3d2CZmZmZmZmZj74eXd3d3d3dzexq6qqqqqqqocOVDMzMzMDpZRSSimllFJKOQohhBBCCCGEEEIU5P////////8L7+7u7u7u7u4E7+7ugRmoIfiNOeELwxwRIAQZIWGIkAj+82OQTppZSS9MJ/WMGX4G82KSeVshb0z4GRNtptQLJs/Ea2D5UEUA/ACwAqx6i1cQnaAKbxU=")
+
+[node name="DetailGrass_5_4" type="Node3D" parent="Map/Props" unique_id=1169829407]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 256)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMeATAAAotS/9YOASnQoA4kcaIbAnHQzDMAzDMAy+pZGJRkS6l26FQiNn77333nJvsmVKKc81tlRK9FxjS6VERzF4K+cBlsCAcEAYEgtF42Gea2yplImMBYwg/v////h2xv/btm3bzhDbfq6xpVKiPA7F4C1p+562k7aCgcSoAfe0GcEHhVIHEXCFSgmIMULCpgcXKBbpIB00g6cO1EV0SAfa4EkHdSIdooM28NSBukgO6UAbPOmgLqRDdNAGnjpIF+kgHWSDpxzUhXRIDdrAUwfpIh2kg2rw1IG6iA7pQBtaP5QqBCkLKQtSFlIWasrX7/1ONtl000pb2mTTTSvZaUPX/uGNMy0RxrW3cVoBxrUiGNeKME4rwrhWZKM3g2VAykLKEhX8s33ki4TkilknkiykLKQsZOSKWW3StJBmIWUhZSHJSaq5ojIyDf0mvXIzgCFlIWUS1VyxtJDetF+tKlsV")
+
+[node name="DetailGrass_5_5" type="Node3D" parent="Map/Props" unique_id=819797702]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 320)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgT/QYAJpEpD2BH4QEAg5YOCgOqqiqlGCcAJAAjADMzghERERERERGRgURERERERETEe/Nq4lnRSAiDIAgimCCEIAgCIHd3d3dmZmZmZmZmZlVVVVVVVVU1FBEREREREREFaGZmZmZmAru7u7u7u6uqqqqqqqqqmpmZmZmZmZmJiIiIiIiIiHh3d3cX///////////u7u7u7u7u7t3d3d3d3d3dzMzMzMzMzMy7G4EHqCH4jTnhC8McESAECUGCIIRE8AelbK1zrrPu1qnWWa1TrWNU51DFAvwAsAIMZCZnqdZbBQ==")
+
+[node name="DetailFlowers_1_2" type="Node3D" parent="Map/Props" unique_id=566005165]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -320, 0, 128)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMTwIAAAotS/9YDwHpQUAdAMbAAAAaQAAAAYAAAAEAAIAAAAFAQQCAwMBBQYEBAUBBgYCBwcCCAgBCQQKCQILCQQMBQ0OCgEPgNKooJ32DdBToQMRkAUEKtEgIa8DeTqSURkWfMV6koSKKZlicVJHQM2UjIp60VIyKaOwL9VFloAICdGS/KlFJoERESGJWipCZVRquKmLLAEREgLikbyaEiAli4KHusgSmjO5QPZqkU47bHuJAKM8Zc38ORUJ/h8jEZUC")
+
+[node name="DetailFlowers_2_1" type="Node3D" parent="Map/Props" unique_id=820690860]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -256, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTvQYAlAMbAAAAAAEAAAYAAgAGAQMEBQYHCAkKCwwNDg8AAQIDBAUGBwgJCgsMDQ4PAgMEBQYHCAkKCwwNDg+B16iRnz0D8UtzEbAFhAiJgAiJLh17CENQCCtl3/N972twxiEIQxECcAxBGBUBgGMIhaEIAJyGIAxFAcAxBGFRBACOIRGGIgDwGIIwFAMAxxCEQxEAOIZBGIoAwGMIwlAMABxDEA5FAOAYBmEoQgsMqai9J8uJ5ERyIjkxOZG8cGr3l8oV7MJfepGcSE4kJ5InspBfmm4yjafSbhU=")
+
+[node name="DetailFlowers_2_2" type="Node3D" parent="Map/Props" unique_id=45485852]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -256, 0, 128)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMcgNAAAotS/9YMgMpQUARAMbAAAAsAAAAAYAAgYBAwQFBgcICQoBAAECAwQFBgcICQoCAgMBBAIFBgcICQoLDA0BDgIPgUeogXvf4SutARGwhYYIiIAIiZ0OGAgCwSZ5CQRCkPv2EhSEIG5eCALBJQuBILhkQhAEJ1kIAsElC4EguGRBEAQXWQgCwSULgSC4ZC8hQQhy37yEghDIzQuBIDTum+yf63l/7+/7e8KnFlhW7UBSquf9vb83crmP13eS/3ur")
+
+[node name="DetailFlowers_4_1" type="Node3D" parent="Map/Props" unique_id=1505652471]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTvQYAlAMbAAAAAAEAAAYAAgAGAQMEBQYHCAkKCwwNDg8AAQIDBAUGBwgJCgsMDQ4PAgMEBQYHCAkKCwwNDg+B16iRnz0D8UtzEbAFhAiJgAiJLh17CENQCCtl3/N972twxiEIQxECcAxBGBUBgGMIhaEIAJyGIAxFAcAxBGFRBACOIRGGIgDwGIIwFAMAxxCEQxEAOIZBGIoAwGMIwlAMABxDEA5FAOAYBmEoQgsMqai9J8uJ5ERyIjkxOZG8cGr3l8oV7MJfepGcSE4kJ5InspBfmm4yjafSbhU=")
+
+[node name="DetailFlowers_4_2" type="Node3D" parent="Map/Props" unique_id=790156216]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 128)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTvQYAlAMbAAAAAAEAAAYAAgAGAQMEBQYHCAkKCwwNDg8AAQIDBAUGBwgJCgsMDQ4PAgMEBQYHCAkKCwwNDg+B16iRnz0D8UtzEbAFhAiJgAiJLh17CENQCCtl3/N972twxiEIQxECcAxBGBUBgGMIhaEIAJyGIAxFAcAxBGFRBACOIRGGIgDwGIIwFAMAxxCEQxEAOIZBGIoAwGMIwlAMABxDEA5FAOAYBmEoQgsMqai9J8uJ5ERyIjkxOZG8cGr3l8oV7MJfepGcSE4kJ5InspBfmm4yjafSbhU=")
+
+[node name="DetailFlowers_1_4" type="Node3D" parent="Map/Props" unique_id=486265066]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -320, 0, 256)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMVgPAAAotS/9YFgODQoAUkweFrAl6QzDMAzDMJwLTVKmJPeWUm7ZiAz//////3lmZmZmZmYGiIiIiIiIaNu2bdvBbdu2bTu9u7u7u7vAjSe6N4QQIggzMzMzs7KAVVVVFREREREVBaIKT3RviAkzMyIyReGJbl0NEhbQE926MAIRCYiIkBKRABEBCIEVqIHxaTqRJ0lhOhHABIQhoSNCQ0Ufr3DBd/IcPEHpxtJhIzkQ+IasYVNETVA6tIMXXEiVZVh+08EVxTNcf93DjOHRiAmW37mf372f372d+XyiHY7bBW9OnYI+lQnkwS+VyIqCAIEHrZ+fu0P3/PumHToyeznmNXgSzHxyX9bN+/nd+/nd+z6NgBH64PQYj9yZAKCmgz3lEf7ufv7uvs/GdJOBm/sfbzTDBTwVenRALD9nwcArGo8oX8af6P4D39+hZl4V")
+
+[node name="DetailFlowers_4_4" type="Node3D" parent="Map/Props" unique_id=781801144]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 256)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTvQYAlAMbAAAAAAEAAAYAAgAGAQMEBQYHCAkKCwwNDg8AAQIDBAUGBwgJCgsMDQ4PAgMEBQYHCAkKCwwNDg+B16iRnz0D8UtzEbAFhAiJgAiJLh17CENQCCtl3/N972twxiEIQxECcAxBGBUBgGMIhaEIAJyGIAxFAcAxBGFRBACOIRGGIgDwGIIwFAMAxxCEQxEAOIZBGIoAwGMIwlAMABxDEA5FAOAYBmEoQgsMqai9J8uJ5ERyIjkxOZG8cGr3l8oV7MJfepGcSE4kJ5InspBfmm4yjafSbhU=")
+
+[node name="DetailFlowers_986d4a6b1d_2_1" type="Node3D" parent="Map/Props" unique_id=645768393]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -256, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMZwRAAAotS/9YJwQDQgAMoUQFrAlbQzDMAzDMAwLqhLZ3d29uXJTkwHdvJp4VqeRoHk18axOc9Hm1cSzOo3gBauTzIiEoHk18axOc5kQj4hARAACgZGoUXvfoQcFSaExEbAFhBAhIUIipweIZKJTTC5+8KX4x/mP4z/O/8NA0qL30GyN8x/nf5z/+Pkudy5D2eRooxnVJAfoyynFP87/OP9x/l8GmOT5tqrYTdFeVdH3qhiPTrWKaUYi0HKKUUcq2DSzjGZUq+RbM8soVjHro5ONcpLZHxvqRCeZ+bKxhrKUiRKnklHGGtqEJVfTaUY5yUSTb9pUQ1nJEts4uTD/cf7H+Y/z/4ci4fzvJ6jXVQE=")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_4_1" type="Node3D" parent="Map/Props" unique_id=1623608846]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMbQNAAAotS/9YLQM9QcAUggWFMAlHf////8PvDdJKaWUMu299yYp/////8MzM7NkBomIiAQFBry7u7thZmZmNqqqqqpKEBEREVFAMzMzMzPGtm3bDoUMIUYInnhWNC6FkLah7WhpG2gLCIELqEH2HgexRyVJBxEwBUQRIRIUMvrZmwAC4MQ8b2xrlErUmQ9nfUbSVCJHIjNkSHBGniCAAMqZRe2LgiIFQJvzR/X3yIkwADKcU6oLR06EAVVJEEcKIDZcHoABBGz8pp3NzYqdDJ8St8kPPxKPHJsldrVhs2IuwyfF1VL4VLSl8cjhCpLYrLDL8FHhNLb45bBZsZNK5/q7EyEAHBQJHUQ1iio=")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_2_4" type="Node3D" parent="Map/Props" unique_id=81969003]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -256, 0, 256)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMQANAAAotS/9YAAMTQgAsswdFbAl6QzDMAzDikpJKSUpJSF7701aCv///////7Zt27Zt223btm3btiRJkiRJsrCqqqqqqqqKEBEREREREQ2aMjMzMzMzE7jLohmEQoYI7rJoBqEUQoYITlwWzSCUcgcqWDRGDIGwjYy728Rdgm3fFthWtgVsAwiAzqih9Gm/A4CDJEkOEWCEDhIyIjRE6Aer2n5f+3vb9+u+XxV06Ka+/iY6Y8ehixzauxxJMLHtYmzX6vRy+30U9qXKhEv3+UeYJY/Ul7Cuf4h8SP9ite18U0tWAPpkZz3WFd7uwRnyz1bdljx0XO+Dp5bNCHgi+61hKbehXJ/h0FZyVkLoU20A6HZhfBdVAQ==")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_2_5" type="Node3D" parent="Map/Props" unique_id=311294879]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -256, 0, 320)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMUAEAAAotS/9YEADjQQAdAMbAAAANgAAAAYAAAABAAIGAQMBAgQFBgcECAYBBQkGAQIECgMDCwQCDAUBDQQOBgQPBgcCAAAAZahQvd8BwJOkMRFQBcQqIUIieekBP7B4FjAAHqyTuk9PCLSuSUvBQ/tyqfv0ReFzrNRdXu9pmdR/lP5IUyVgf+TEDyEfiWcoQa3KP7WB/k+KnZni8+ZsCg==")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_4_4" type="Node3D" parent="Map/Props" unique_id=885466628]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 256)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTvQYAlAMbAAAAAAEAAAYAAgAGAQMEBQYHCAkKCwwNDg8AAQIDBAUGBwgJCgsMDQ4PAgMEBQYHCAkKCwwNDg+B16iRnz0D8UtzEbAFhAiJgAiJLh17CENQCCtl3/N972twxiEIQxECcAxBGBUBgGMIhaEIAJyGIAxFAcAxBGFRBACOIRGGIgDwGIIwFAMAxxCEQxEAOIZBGIoAwGMIwlAMABxDEA5FAOAYBmEoQgsMqai9J8uJ5ERyIjkxOZG8cGr3l8oV7MJfepGcSE4kJ5InspBfmm4yjafSbhU=")
+scatter_seed = 10
+
+[node name="DetailFlowers_94c6f8321a_0_1" type="Node3D" parent="Map/Props" unique_id=1164183563]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -384, 0, 64)
+script = ExtResource("9_grass")
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_19")
+painted_only = true
+density_mask = PackedByteArray("RURNMfgAAAAotS/9IPhNAgDEAhsAAAAMAAAABgAAAA0AAAALAAAAAgAAAAEMDgAAAAoLDA0PAAAACQoLDA0ODADAEJAcSBhIBCQXJAo6BhIByQWJgs46Y+IB")
+tuft_size = 1.5625
+scatter_seed = 913
+
+[node name="DetailFlowers_94c6f8321a_1_1" type="Node3D" parent="Map/Props" unique_id=1053462945]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -320, 0, 64)
+script = ExtResource("9_grass")
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_19")
+painted_only = true
+density_mask = PackedByteArray("RURNMfgAAAAotS/9IPgNAgDAGwAAAAwAAAAGAAkAAAACAAAAAQoLDA0OEwCAAVjwFWFoAgAIIACAAAIACBDAGQhvCAB0BxIGEgHJgcRuGjmALg==")
+tuft_size = 1.5625
+scatter_seed = 913
+
+[node name="DetailFlowers_94c6f8321a_3_1" type="Node3D" parent="Map/Props" unique_id=1567424178]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 64)
+script = ExtResource("9_grass")
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_19")
+painted_only = true
+density_mask = PackedByteArray("RURNMQwBAAAotS/9YAwAbQIARAIbAAAADQAAAAYAAAABAAAADwAAAAIGDg8DDg8EBQUGDwMAAAARADeGfF9ykLCRSQQggAAAAgjgq+RAx0AigGAJ2YGO3UwC8v2sMAE=")
+tuft_size = 2
+scatter_seed = 13
+
+[node name="DetailFlowers_94c6f8321a_3_2" type="Node3D" parent="Map/Props" unique_id=681590065]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 128)
+script = ExtResource("9_grass")
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_19")
+painted_only = true
+density_mask = PackedByteArray("RURNMSQHAAAotS/9YCQGbQYAgscSEZAl6v///+BPjhjZZr9s/vZl////c163bdu2ZdkSFx1TyEBWjZvQMYUMxboJHVNIhpvQMYLhQOJsK3w0bSOsIQIhoFiwjdsC2wABgImokHraN5CTJEkHEbAEBFNCRoQKiT71du9urwAPjeGBmnN69/oAXx7MddM41ks+eB+ujMbzLuP9sSPDRAkXJNkmtfeRgxfw+3Ej9zCtiKHY+/tBwijSXwwR09Gbwnn0m8JQMJp/YvmL73LV6UV5pFgdX2X9Xw7b5cZ+y25NAQ==")
+tuft_size = 2
+scatter_seed = 13
+
+[node name="DetailFlowers_94c6f8321a_1_4" type="Node3D" parent="Map/Props" unique_id=838160586]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -320, 0, 256)
+script = ExtResource("9_grass")
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_19")
+painted_only = true
+density_mask = PackedByteArray("RURNMegBAAAotS/9YOgAfQMA5AIbAAAAGAAAAAYAAAAJAAAABwAAAAIAAAABCAoHCAkLAAAABQcICQoMDQ0NDQ4OHwDQye5KDiQMJALJDa2EARoIAiCAAAACCAAggAAAAgSwh+RAx0AiIDmQMEADQQCJgo6BREByAMXP7EBnnTHx")
+tuft_size = 1.5625
+scatter_seed = 913
+
+[node name="DetailFlowers_94c6f8321a_3_5" type="Node3D" parent="Map/Props" unique_id=869862415]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 320)
+script = ExtResource("9_grass")
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_19")
+painted_only = true
+density_mask = PackedByteArray("RURNMegBAAAotS/9YOgAbQMAtAIbAAAAGAAAAAYAAAAJAAAAAwAAAAIAAAABBAoDBAULAgMEBQYMDQ0NDQ4OHwDQye5KDiQMJALJDa2EARoIAiCAAAACCAAggAAAAgSwh+RAx0AiIDmQMJAIIJhDdqBjIBGQHEBxVHags86YeA==")
+tuft_size = 1.5625
+scatter_seed = 913
+
+[node name="EarthCliffUnion" parent="Map/Props" unique_id=990593168 instance=ExtResource("earth_cliff_0")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -528, 10.977302, 856)
+placement_id = "placed_earth_cliff_union"
+
+[node name="EarthCliffStraight" parent="Map/Props" unique_id=1675993513 instance=ExtResource("earth_cliff_1")]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, -408, 10.325496, 864)
+placement_id = "placed_earth_cliff_straight"
+
+[node name="EarthCliffCorner" parent="Map/Props" unique_id=433643003 instance=ExtResource("18_3d0o2")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -258, 11, 864)
+placement_id = "placed_earth_cliff_corner"
+metadata/ember_source_signature = "16a43ed2d37e67e5a0ae33b3f1cc279a43317487d27ca6d4d8fab46163a9c1ea"
+metadata/ember_canvas_unique_source = "vox_earth_cliff_corner_canvas_154811845"
+
+[node name="ExternalCoastalRock" parent="Map/Props" instance=ExtResource("external_coastal_rock")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 15, 862)
+placement_id = "placed_external_coastal_rock"
+
+[node name="NaturalEarthOutcrop" parent="Map/Props" unique_id=578997988 instance=ExtResource("natural_outcrop")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -120, 14.25, 862)
+placement_id = "placed_natural_earth_outcrop"
+
+[node name="MessageBottle" parent="Map/Props" unique_id=325502722 instance=ExtResource("shore_bottle")]
+transform = Transform3D(7.54979e-08, 1, 0, -1, 7.54979e-08, 0, 0, 0, 1, 148, 3, 212)
+
+[node name="HarborCargoQuest" parent="Map/Props" instance=ExtResource("harbor_cargo")]
+
+[node name="PhysicalCrates" parent="Map/Props" instance=ExtResource("physical_crates")]
+position = Vector3(-56, 15.2, 520)
+
+[node name="AutumnLeafPile" parent="Map/Props" instance=ExtResource("autumn_leaf_pile")]
+position = Vector3(-88, 15.1, 440)
+
+[node name="CuttableGrass" parent="Map/Props" instance=ExtResource("cuttable_grass")]
+position = Vector3(-88, 15.1, 488)
+
+[node name="FruitTree" parent="Map/Props" instance=ExtResource("fruit_tree")]
+position = Vector3(0, 14.5743, 520)
+
+[node name="BerryBush" parent="Map/Props" instance=ExtResource("berry_bush")]
+position = Vector3(32, 14.62764, 520)
+
+[node name="AutumnMaple" parent="Map/Props" instance=ExtResource("autumn_maple")]
+position = Vector3(-136, 14.674, 408)
+
+[node name="AutumnMaplePalette" parent="Map/Props" instance=ExtResource("autumn_maple_palette")]
+position = Vector3(-40, 15, 408)
+
+[node name="CoastalHouse" parent="Map/Props" unique_id=381772483 instance=ExtResource("house_coastal")]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, -208, 12, 208)
+
+[node name="ShoreKeeper" parent="Map/Props" unique_id=365403893 instance=ExtResource("shore_keeper")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -244, 13, 208)
+
+[node name="ShoreBoarZone" parent="Map/Props" unique_id=644165679 instance=ExtResource("shore_boar")]
+
+[node name="ShoreShell1" parent="Map/Props" unique_id=2077909283 instance=ExtResource("shore_shell")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 140, 12, 196)
+pickup_id = "shore_shell_1"
+
+[node name="ShoreShell2" parent="Map/Props" unique_id=494594808 instance=ExtResource("shore_shell")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 148, 12, 228)
+pickup_id = "shore_shell_2"
+
+[node name="ShoreShell3" parent="Map/Props" unique_id=1205871276 instance=ExtResource("shore_shell")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 140, 12, 252)
+pickup_id = "shore_shell_3"
+
+[node name="DetailGrass_11_7" type="Node3D" parent="Map/Props" unique_id=1755943040]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 448)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMbgTAAAotS/9YLgSjQgABlEtHrClkA4MwzAMwzAMxRGEVgCuNWgmZEsppZQpSSnlDiYAHwAjAERERDQzMzMzMzMzIyIiIiIiIiKDMFYTz+6iEQFCiBEXQgwQQgwEZmZmZmb2//////9v27Zt27ZdVVVVVVVVVUVEREREAaqqqqqqWqCqmZmZmZmZmZmIiIiIiIiIiHd3d3d3d3d3ZmYWgzBWE89uAGU6GAZhrCae3QRlIAzCWE08u0uAAoyxu7u7u7u7uLuqAYETqFH0aTPRh8I0BxEwBBEiIIYIieAPkhKIx1pABiu4u+vGg20F4NgWFKy8IL3AI6Oue6zJAS/Y5heUDWtt3qv77J7ta32bN+hpSB0ABWAFoC2Y62KqMFQB")
+
+[node name="DetailGrass_12_7" type="Node3D" parent="Map/Props" unique_id=546873135]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 448)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMfQTAAAotS/9YPQSPQcA5AMbAAAA/wAAAAYAAgAAADwBNQMiBDwFBgcICQoLDA0ODwE8GgMEBQYHCAkKCwwNDg8CAwQFBgcICQoLDA0OD4HdqJFf2gzhC8McEbCFhAgIIUKCpwNA3td63S9hYc/zfa+B5Pe83vcaKH7Pu32vgeL3vNf3Gih+z/t8r4Gy97yv9xood8/7dq+B8vW87/YaKD/P+z6vgfLrvO/rGii/zfu+rYHyu7zvuxoov8f7vq0sYDCUYi29SE4kJ5InkhPpkkPuPfT7k7S37vNS4XfBqj5ZTiQnkhOTEyn/6PlHzz9enn+fSr9V")
+
+[node name="DetailGrass_11_8" type="Node3D" parent="Map/Props" unique_id=2034205263]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 512)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_12_8" type="Node3D" parent="Map/Props" unique_id=1485418874]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 512)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_13_7" type="Node3D" parent="Map/Props" unique_id=925836318]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0, 448)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMcQMAAAotS/9YMQLZQcAwssfG6An6f////8zIoR1O/p5sfuwRvbeUjaZkpRJyjOTKARKQUJACBkYY4wBkAeZmZlGA0RERMREMCAOLxCXcHd3d3f3F7w88f////+2bdu2bdtmZmZmZmZmZlVVVVVVVVVVbdu2bdu2RERERERERHQoChmJhrutSgoz0/nMLMxMQIDBqFB62gygg4IkrQERUIQOERBGhMQI/YtvnE6+8mfP+Y9Edg+/HbL7m8vdxsEsvC0YARkBjAGMgIwAxgAGPATRZb2cHL53sxAf3e6qqqqqqqqqqqqqqqqq6tIcklt+YAVwpnOKH1hmIgU=")
+
+[node name="DetailGrass_13_8" type="Node3D" parent="Map/Props" unique_id=771352199]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0, 512)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMWQIAAAotS/9YGQHxQUAMggXGXDHGQP8/3/0v1QVnYBJD//N0E+NliQlZQqSDoJZMA0AxjkkBMg57rJZLvD///9f8YBt27ZtW9G2bdu2bQNIkiRJkiS3bdu2bZuhQFgGSoKc4y7XSKIOSQWSEgGAiKhgetoMsIOCSjoRYISSEhBFhETwB2Vzegi2ySkhqy2lRLk3kMtTYXch7Zp0GtA5s973+QQPyhuJXypVh9cxeahG+JJKXMIlQDK0hVjzSqCmiiffxXLDKQ==")
+
+[node name="DetailGrass_12_6" type="Node3D" parent="Map/Props" unique_id=589036172]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 384)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_13_6" type="Node3D" parent="Map/Props" unique_id=2101812313]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0, 384)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMbgTAAAotS/9YLgSrQgAdpArHLClUGwMwzAMwzAMRaEQPVAUDTQikd3dmyu7ewckACAAIgBERDQzMzMzMzMzIyIiIiIiIiKD0LyaeLeiEQARMfGICBARAwF3d3f3//////9vZmZmZmZmZlZVVVVVVVVVRUREREREAbu7u7urqqqqqqqqqpqZmZmZmZmZiYiIiIiIiIh4d3d3dwERIWBQ8GEQmlcT71YHFIBCd3d3d3d3N0E3MzMzMzMzM/Pu7u4GgRaogfRpM9GHwjQHEVCEBhEQQoTECP0CcFUEQgGhgFBAUkAoIBQQCggFhBJcFQHmOsCQF4HFCzfuN1yPQHsgLvRF1n+e8zzXea7zPOd5rvNc53kOhT6kzqHAKwDzBL64mNoOVQ==")
+
+[node name="DetailGrass_13_5" type="Node3D" parent="Map/Props" unique_id=347094366]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0, 320)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMVgPAAAotS/9YFgOHQoA4gkdHpCn6f///////7+JCdW/iuZQGMaU2URKmVImERFiZUS0HCY5uMYQquACvru7uyO4Y2ZmZmamVFVVVVXVUv////9/uG3btm0buG3btm0LUJIkSZLkABseN05yVneJHEaRQDCGk5zVXSKHoVAEEIQQ0QIRKQGBKqghfn0DkQcFKUg6ERAFhBmhIkLiRR8WwthkGCvFg9hN9jLtd1Mz77CjsLeSGT+r6kci0WHQZ+4Hqrnr+FDYUJA2mwCkaKRo2HkPABYbFhsyr5sFQh9CH4olIvQg9KBY1Dyeg3Ecj+EktsGx7S5O9ljHTGK1rkI5bkexVdc58HkY5vIcjON0DPMQ/Ety2jHYMRuO9PpOydI/078uqFzTrdLixt/AxeewHOdhmMtzMGypYzgfwzSeg3Gcl+AbideH4oaCQYebxlsO21U=")
+
+[node name="DetailGrass_14_6" type="Node3D" parent="Map/Props" unique_id=1721457075]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 128, 0, 384)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMdAAAAAotS/9INB1AgB0AhsAAAAKAAAABgAFAAAAAgAAAAsGIAcwCDkJPAoLNAwmDRMBAgAAABIAZzAC8oHMgBGQDxgGMgHpgGEgCzAHMgNGQD5gGMjipjkDQAI=")
+
+[node name="DetailGrass_12_9" type="Node3D" parent="Map/Props" unique_id=1553620225]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 576)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTlQYAJpEoDWAlPTDwEIB67u7utGMlACMAIwAzMzMjIiIiIiIiIhIRERERERER782riWdFIxECIQQJFkKEEEIQd3d3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMxO8u7u7u7u7u6uqqqqqqqqqmpmZmZmZmZmJiIiIiIiIiHh3FyEEwP////////+/u7u7u7u7u3t3d3d3d3d3NzMzMzMzMzMHgQOoIfiNOeELwxwRIAQnCEJICP5EM6tZNTMzZ3UxDVUBwA8AK4BAY3Krur5V")
+
+[node name="DetailGrass_13_9" type="Node3D" parent="Map/Props" unique_id=1260561836]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0, 576)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMXgDAAAotS/9YHgCzQMAssQOETCtY4BxX10hWOQWlP5EZUwBbd2HExeeAheWtm0jhuZFdzS2VELH3LMkEZDPNbZUQsfcZbZ1UVujLQxBqFB62gywg4JKBxFghKQREC6eD034i+tUuqPQA78VfXGw229k7XJBudQ1W9gMLLjYO18ohcgcKBGcAg==")
+
+[node name="DetailGrass_11_9" type="Node3D" parent="Map/Props" unique_id=924850160]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 576)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMaQTAAAotS/9YKQSDQoAsgkcHrAl6QzDMAzDMAylFGw6F1CdsIti770JIYSQlFJKMuiYghzomFQKDHSSCShJkQgIpkAk6KwYIIdREMNdJvT/////F/CACwawbdu2bbdt27Zt25IkSZIkSW7btm3bNnRMQQ6jIIa7XKoq1lBVB1WVBIGSqJH2tBnBB4VSBxFQhYgIiCFCYkYfJYnYSifVadSmidHoJmUrHVWnqblVR6ObmK101MmJyFZyqk5FN02YRlcyW9GpOprOrZxkMjqT2YpOVg+t0PGTm2NEdROzlZ6KflMhu/ng+cg6I1vZqTqaWt7I6Xw+smbEVjqpTru8rGWHePLkaO5zH3N6VHJfJtjB0r30QkAEIhAhTl4yOx3ZCRGIQAxEIAIREIEIREAEIhABEYhABEQgAhEQ4UEP/Um10goPjWqoRjW+Xt6sIlsV")
+
+[node name="DetailGrass_10_8" type="Node3D" parent="Map/Props" unique_id=1458440942]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 512)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_10_9" type="Node3D" parent="Map/Props" unique_id=1433175368]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 576)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_9_8" type="Node3D" parent="Map/Props" unique_id=1377879562]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 512)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_9_9" type="Node3D" parent="Map/Props" unique_id=583767803]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 576)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMbwPAAAotS/9YLwOvQgA4sUUHbAnHQzDMAzDVICCEICANlAbJoQQQvbee6eUpEwBSoIcxkIoSpCkBUkcqGAsldC5C1iM+v//htTYtu0AYtq27eHu7m5gZmamOHfPGpLHQ3JBkhCBaagRv7QZsQcFhXQRkIXKCAgxgjY9HyUisSKxIlVBVU1FSVRJ9AiZWJFYkVjRkiKioqKioqIHzESNRI1EjaMNVX8jU7Nbs1uzYw255hngZ3Z1dnV2Y3pxzDOgAG92dXZ1dqoN1zy3mgGtdrdm9Y6ed8ZLpylPU2bSS8ErdGWi/sllCY6TpvnqCfBtirr1p73t5hmgRNzVlFMtjebeSvKmpykz6UHGu1U5TblXTacpb+njB5/bTPGKcdahoqtVZa4C")
+
+[node name="DetailGrass_9_7" type="Node3D" parent="Map/Props" unique_id=241585861]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 448)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMbgTAAAotS/9YLgSpQkAZpAtIZAlSRv///////////+PRl74xQ7vuDrGoJvkyu7u7u5NAiQAIgAiAERENDMzMzMzMzMjIiIiIiIiIsTQ59XEs6KRwhhjxo0xAowxioiIiHh3d3d3d3d3Z2ZmZmZmZmZWVVVVVVVVVUVERERERAHMzMzMvLu7u7u7u7urqqqqqqqqqpqZmZmZmZmZiYiIiIgBxNCFA2ACQoDg4Y03GAqIgIHQ3d3d3d0/4cXnA/////+ZmQ+4YA6BJ6ix9Gkz0YfCNAcRYIQKERBEhEQJ/VveQ6DQtgdYC8jYANYCMm4AawEZ1hc49/HhY0D4XkANG8AtIMMGcIuQYQM46AGAu+eiF0gGK378+DhpqSVvyRprlTXNsqZaY02zrJnWWMusaaY1PpQPqRoUsLISTELj91XdoQo=")
+
+[node name="DetailGrass_10_7" type="Node3D" parent="Map/Props" unique_id=1633040638]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 448)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_12_10" type="Node3D" parent="Map/Props" unique_id=1295350333]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 640)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMdAPAAAotS/9YNAOrQcAYk4lHLAl6QzDMAzDKN0AosuItRYQ9t5kSyllklImKQMzo4WAkIIxxmAwvBACMMoQIAZWQEsaC0IIIcTu7u7uHuzu7q6qqqqqqqqqamZmZmZmZmYmIiIiIiIiIuL////////d3d3d3d3dnZmZmZmZmZlZVVVVVVVVVZVt27Zt2zYRERERERERFTIGsZr4szIhzIznM5MwM4WA4agwetoMsIOCZFgDETAEGSIgiggJEfoBa3f/x+HsFrW7wrdbTzngyuXX7jwePD4+Op480lsHV3mJcPYII4wwwggjjDDCCCOMMMIII3jgkHyAXbCyYmXEjRskhlM=")
+
+[node name="DetailGrass_11_10" type="Node3D" parent="Map/Props" unique_id=783093392]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 640)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMXwTAAAotS/9YHwSjQoAcsgbH8AlHf//////v4mBDRprCIfsutZSsCRTSimlJKWUMqWemlcTz1PzauKhYwp5C/DUvJp46JgvAgNPzauJ9+g4xkthmD9cgQwExVPz6qeBhIN4at5XRJ4BmJmZeWr+Tagl4sChYwqxrypSqKoKqqoQgbmo4fa0GcEHhUpjEXCFyggIIkLCpgdgZszMlJkZc0Xnqi5VVamqJmxm2tyMmZlyRbeqrlRVpaombGbO3EyZmXFFd6quUlWVqiZmZq7czJiZaUV3qa5KVVWqJlZmbtzMlJmZLXBIYZuUUkoppSmlZDlVLvt6rEkpSimllJKl/pmI/D0n0A31NvcejDHGGKqaafIE+TRAcV1SXdVqINnTlzORfJ/aupE2DEIIUUwU8n22h2WUe0lfFmNUNdNOj2nqqTwppRI1pILUYMYahCgmCuJpiokCBiEIMQi9WqW3Kg==")
+
+[node name="DetailGrass_11_11" type="Node3D" parent="Map/Props" unique_id=1213406446]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 704)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_12_11" type="Node3D" parent="Map/Props" unique_id=1347191570]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 704)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMSALAAAotS/9YCAKHQYA8oodG5Ap6f////+YKFylkfC1/PmktUb2llKmlJKUATMDUAjKQVEoA+QghBDiMy7h7u7uCgswBDMzMzMzV0EdVVVVVVVVZfCF//////9v27Zt27bdtm3btm1LkiRJkiRJREREREREREYCcSgKOau7JIaZ4dTMNMyMQIChqCB82gywg4JCGgMRIAQdIYGIkAj+c/Bd7vTwyi2GPczE/IU9zALe1g9fmi8faoqCIgxRUIQhClDUkCwAFgArAH0vYt0gW5wC")
+
+[node name="DetailGrass_10_10" type="Node3D" parent="Map/Props" unique_id=1701808783]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 640)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMRgOAAAotS/9YBgNrQkAgskdH5BF6f//////fxlgVr8e2gnXD5TxspOUm5C9t5RSShnqvXhJCrUeKRH+//9/9UUnxgbo7u7u7laFD5iZmZmZWaAOaUkcSAMljiFB0DGr+WR3d3cXoaqqqnoErczMzEwFLURERETG3d3dBY5ZTbxlZmjGzALMTAmBH6gRfmkzoQcFKaQDERCFEAmIIkKiRR9LH0ApbzaNBTBYAPG5AIOeLtyOc17dADe8hILQpedcd96JgjgOQsAjy+C0gATDMYDAFBXCYAEMFsCwbbtpLIDFAhgsUP6EB2BYAIsFEI+pEA0LwLAAFm3bWWMBGhaAYdnwVaZFQbyQ86uTtOVP2+xhCdUZMOFrODARQCB2wu9oCGIJGJ4QnC4WuIoECXAaIPCM0+CQERWmLlZUnOgI0lFUz6gC")
+
+[node name="DetailGrass_10_11" type="Node3D" parent="Map/Props" unique_id=1098089738]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 704)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMYgHAAAotS/9YIgGHQYAwsYUGHBrc/z/ofxELNRZkD64nzK7u4moCSVKAf//////f3Dbtm3btptr27Zt29acuMXaLMdQBMoiQZZKBzpnDGAxCRjWQSkS4mAQ4SgjiZBMJBskCwGAl6ih9fbPwINCpQMRwATEQkJoBFP0AelqaU7sbAHyJvEGuKZDU0PMXZyPOyRmnr4EXI3eCpDZILNBZoPMBpkN8vgNQR396q0KRHaI7BDZIbJj8k7zq63oCklvQwlrTAiEw4KEwYYx4EjO4VYF")
+
+[node name="DetailGrass_11_12" type="Node3D" parent="Map/Props" unique_id=730430435]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 768)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_12_12" type="Node3D" parent="Map/Props" unique_id=981090410]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 768)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMZgGAAAotS/9YJgFvQQAMscUFlBtczCzAmBaSlTQAMAQERm9/d2bkmQkl2VQgnTomKUSUiiLk0gQxHE4ggFYwApm/////7/8v23btm3bdtu2bdu2XSoh5STIccbuMkiaR7JBchBpqDB62gzQQ2EaAxFABCkiIJQIieAPJfPNOfpOrBMA4D0z0RPb2uC1SVVBnCVJkiTJ+BqSfZB1K8BGwyh+C/mGFA==")
+
+[node name="DetailGrass_10_12" type="Node3D" parent="Map/Props" unique_id=985840124]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 768)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQwGAAAotS/9YAwFFQYA8kUSFVBP8jA1i++OQZfnz57sklK2+hFKAf///79t23bjTjwrOpmpANyJZ0XHJGUxICTucOJZJcQ4BiMoeUDEIVaoQFtqa21N20dbJHyokfn9z4CDJEkbEeCElAklEY0TfWnzoewuH8Llh45DzxZ2mFrbD5WTxB4YUhXxaRxD5dSSkIiDkFFq9riZFZ+0GTNU7mV9fvH3+GnpWd4WSCg8BqxnyeWGK5kr2TPIvi90oqKT5XLF3rhxOBS7y05d99Ueh6o=")
+
+[node name="DetailGrass_10_13" type="Node3D" parent="Map/Props" unique_id=791626358]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 832)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMegBAAAotS/9YOgAjQQAhAMbAAAAGAAAAAYAAAABAAAADQAAAAIAAAAbAlAOTAMqChILLAdQCAgMOQEYDTwCHw4DGg8ECgAAADUggIPCuAGZcEgQAIQAIlQAk3SZzYQDwQAQNICfbmaZ5EAQoPMtw2bJ94YdMjkCvh2wSgFEwAkwn+HEKAJ0vmXYZLl5NjjftMlXa8/sG5EvM0bU3C5DYw==")
+
+[node name="DetailGrass_11_13" type="Node3D" parent="Map/Props" unique_id=1932738484]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 832)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMWQSAAAotS/9YGQRhQkAcg0kG7AlOQzDMAzDMORMuKgiTkQDIJmZmZmZKe3dMv///////+/u7u7u7u7d3d3d3d3NzMzMzMzMu7u7u7u7q6qqqqqqqpmZmZmZmYmIiIiIiIh3d3d3d3dnZmZmZmZmVVVVVVVVVRARERERERHhCS90QCmllOJhAVQgCSGEGN4JbKhijDEIKmQUM0PGZmZgZgYBgS+oYfVpM8EHhUIHEZCECgkIMoIo9ANk2zYVgSCFCBFlLYYUIkSktShSiBCR1sJIIUKEWgsjhQgiak2MFCKIqFUxUhAhopbFSEKEiJoWIwoRIqpaDClEiChrMQCHmPKMiPjdbGWMzyEecxHoTB1/xkTu7uTJkycf+gAQBoedhWOPiMw9Y6rNb5BgcOwsDLWhPP9Eys+VUuv+NrXYqg==")
+
+[node name="DetailGrass_12_13" type="Node3D" parent="Map/Props" unique_id=472541685]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 832)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMTAKAAAotS/9YDAJXQYAwkkaGZCn6f///5dSdc83/o5Vu0ZGjWyRLaWUkgwzc1AAqggKqVJFnYiIiBCogJIEKRxGUYoOhMEHHFDD//////+/bdu2bdt227Zt27YtSZIkSZLktm3btm1LkMJhFKWIuMsdZoZDzEzCzAgEgJmoQHraDKCDgoKkAxFABBkkIIwIieAPROx/e7zN4+vpyQ+Zq404W4r69V1oSRCzFSluLltu52er86Dpuqty8GFCH7wdXVxb3Vw729w6u0rX0F7wl1cCebId9MAyEyk=")
+
+[node name="DetailGrass_11_14" type="Node3D" parent="Map/Props" unique_id=2090049802]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 896)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMdwNAAAotS/9YNwMRQgA4kkbGbCn2AzDMAwLQAyIRhrBDpk2V3Z3b0IIERn/////7u7u7q5t27atqqqqqpqZmZmZiYiIiIh4d3d3d2dmZmZm9rXmAQNnVVVVVV8XdMkCzQZFRER0wdoKGZLk+BHAQTAQSBXKzBhzzAzNTGJmloEBqNH1ad/BR0kHEdAEhBkhQ0KCRR8BodHIaLk0rflGQAIA0VNSa3ojkACA6JWUNd8IRAAgeklqzWcEEgAIvZKa5huBBABEr0it+YZAAgCRV1LLfCOQAIDU+p1J/Tik56Xm/gcIdUuItv580dMJ4R8AVq2a4tme1ssSE9Z/AKxa0bOe9f133VNdvXv3yvdlarUWfzxEJeQq")
+
+[node name="DetailGrass_12_14" type="Node3D" parent="Map/Props" unique_id=872789516]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 896)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMcgNAAAotS/9YMgMxQYAQo0jHKAXFhv/////f964w91li0l+/46aiET25srNLQMz4yKASIaDo8AgKAyCdmANFmETdlllkwVYVVVFBRTRRVVVVVUzMzMzMzMzMxERERERERER////////7+7u7u7u7u7MzMzMzMzMzKqqqqqqqqqqbNu2bdu2iYiIiIiIiOgwCmJYTfxZmRRmxvOZWZgZJIDHqCB82gzghWEOESAEHSFxiJAI/rMHPMCzh0E4uAe89gSvPcCUAM8eAAEAAAAAAAAAAAAAAIDiGkoaYANgBeA/8jpMtjcF")
+
+[node name="DetailGrass_11_15" type="Node3D" parent="Map/Props" unique_id=1656473409]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 960)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMWARAAAotS/9YGAQvQgAwsUUHrAnjQEMwzAMwzB6qBqhCKCG4KTIvffeUkq5NyEkBbpUQifxzOhSCZ3EM1MQxUEwEl0qoZN4hjCBosju7u4a8BJ6WAU1SACkp/zHn7/x27/4BQGBrKhhe/87sQdJoQMRsIXKCA0RErsOXhFNLdPJtgfFNLVMp1quFLVEI8losdLEIpkoJvuxMpkqp2ktJ4tsopgktlh0opgkFcn9qJlkldlUy5NillQkEy0umlFkEo1kv1RWUs0039ZtPVkOgQupVFUqlUqlUqkIlAn7xFX8LpyDavzehqIavVKlUqkIlAn7xFX7Lsjfnh7Si/RgPKwX4sFMfgkWcNxUT599xfCnl3JROVyyKfvEVdIqySpp1SSpW6gq")
+
+[node name="DetailGrass_12_15" type="Node3D" parent="Map/Props" unique_id=1568315622]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 960)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMfQTAAAotS/9YPQS5QcA1lArGrCl0AYMwzAMwzAMOWFpBe6SvbK7uzdXdm8SJQAhACMAMzMzIyIiIiIiIiISEREREREREYPm1cSzF40EQQhBwkMIBSEEgGZmZmZm9v//////X1VVVVVVVVVFRERERERERDQzMzMzAaqqqqqqqqqamZmZmZmZmYmIiIiIiIiIeHd3d3d3d3dnZmYBg+bVxLMXjUB3d3d3d3d3BzQzMzMzMzMzD/Du7u7u7u7urgaBCagx9GkzsQcFqSwHESAECUKAIIiQCP5SGwBY7VoWBYDLqK4TqUL5isoCkxHs1WeuNkUkikgUkSgiUT4aD/0XwAfASsDsOTtWDeYq")
+
+[node name="DetailGrass_11_16" type="Node3D" parent="Map/Props" unique_id=253511199]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 1024)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMTwSAAAotS/9YDwRTQoAwo4nH6AlaQP/////////iKT9nzjR841G1mV3d/dOk7tRkwHMzMzMzMzMzLu7u7u7u7u7qqqqqqqqqqqZmZmZmZmZmYiIiIiIiIiId3d3d3d3d3dmZmZmZmZmZlVVVVVVVVVV////////3N1EExEREREREZEAG/TMzMzMzMwUG6AIxUgDElwPgw1UwQ+FpsMUo4mDKm5cRIaIEFIQkQQRAQiBMKgh9T0OoQcFKaQDEYAExFFCZYSECf30rdV+f9m2/9Zmv79q2/9qs39ftd1/tdW/r9nuf9rKDf0L7s7nzjt7zGqCGZpghhPM4QQzCF9PQINba3bTNfWeqn9XDh2DZ6Er76DbPHw5h4+PhaZv1cnlBDOcwAwnmOEJZstBZnz8mEbrtZ22l1fSS1foEQ3scXl46Onp6ect5X8+eelhsu19+EH9HGprVAE=")
+
+[node name="DetailGrass_12_16" type="Node3D" parent="Map/Props" unique_id=1940756655]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1024)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_11_17" type="Node3D" parent="Map/Props" unique_id=924227606]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 1088)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMZgGAAAotS/9YJgF5QUAAscVF1CL8jCziJVy6mttIfKXI0uKAO02tp8CtpmvJp4tiOL///870CQJGDhkid3dNaiqqiAzM8/BFCIiKnV3d4fGzMwqIZCEFsBROEZTitEks32MbJfthe0kgISosHraN7CjJB0RkATEY0JohCX6K8f1gBZdircsyePf++d3Z4/3cON/jnosAZ2Ulzd34FIcfaJnvsgXPNglUYhootYDCLbfRHf8Mjf/itNOHtDDf8Y3aQT63z70dVyJhRQ=")
+
+[node name="DetailGrass_12_17" type="Node3D" parent="Map/Props" unique_id=1870569874]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1088)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_13_17" type="Node3D" parent="Map/Props" unique_id=1659819601]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0, 1088)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMXAGAAAotS/9YHAFPQQAIscSE3Btxvw/7hK5a5SvHdFNhDYlJcmSduTJCTf8/PDi44MTVti27bdQRBdt27ZtW5IkSZIkyW3btm3bNhAEAIuSIIe5yzEkUUZSQ9IJZKggfNoM0ENhGgMRIAQpIbGIkAj+NOM58bPwNOdzzqnTmGd79733vSIqQ/IAEACsAMX7mHUJ6YYU")
+
+[node name="DetailGrass_11_18" type="Node3D" parent="Map/Props" unique_id=772487743]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 1152)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMTAAAAAotS/9IDAFAQCgGwAAAAIAAAAGAAAADwAkAQoAAAAEACDLTbuZIRiAEg==")
+
+[node name="DetailGrass_12_18" type="Node3D" parent="Map/Props" unique_id=529002851]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1152)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMZwHAAAotS/9YJwGJQYAwkQQFXBPG/z/r6+BCYzS6t+mkV57Wtm9U/9Zd3crzMzMkYEUi3gGQQocoFGreajdhVQ12cxciogs2x2D1/7j1f/p/xKArahQO20GoIOCJB0RYIWQCYgxwpceqRnI3p+EMzF9eNPmSITd2uRowPnoL0fA+YiiwfWjBLff3liI2d3tWIj54DwWEOtMxSOeBi7kz945gv2NRtAQOKdyEM8IKJXe7FBCanZ+oaxDgdnJP4jjHdbUPlTgOf0bvo+PyVI7tlxECg==")
+
+[node name="DetailGrass_13_18" type="Node3D" parent="Map/Props" unique_id=1486982245]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0, 1152)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMbwAAAAotS/9ILwFAgDgGwAAAAkAAAAGAAIAAAA8AQIDKQEBIQIBDgAAABAAIOWmBUDgK3MgM2AIJDcFDpzBVhZAPpAxkAhI96bRG0AC")
+
+[node name="DetailGrass_13_16" type="Node3D" parent="Map/Props" unique_id=107012092]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0, 1024)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMXQHAAAotS/9YHQGFQUAoocUFYC5xTOwngG/8giOCNXaesloaVNSptsGyYIYjoJBWGoplBRAggMw6sv///////9w27Zt27bttm3btm1bkiRJkiSZIIexVJHQMXeJ2NadbYltSnOoQHraDMCDQqkDEUAEISMgkAiJ4A+xuqx2mJaL5Wr5yh8xrJeWV0p37yWHS5LzN8nddnEjO9CYZqaZaeYjdmizaetWAnnEp36wJFYK")
+
+[node name="DetailGrass_13_15" type="Node3D" parent="Map/Props" unique_id=1553922779]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0, 960)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMbgEAAAotS/9YLgDnQQAEkUQFCBvDgeZHswKLJSBYAH47TYiaTEF/6KIHprUUEIBJEkywQIDHCCHa2yphI55TdiQwzW2VELH9FFR2F9+4/O/XxBgqNB6jwPQU+UR4ASEIiEVFCj6iZOJ0cSLWctdjrjrAmjK9IzvxgBHlS8FtI86SHg30HK2CWA4yE6wq/+2baJGI2NlNr9sPR/R4MjZ8lUp")
+
+[node name="DetailGrass_12_5" type="Node3D" parent="Map/Props" unique_id=1737390759]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 320)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMSgSAAAotS/9YCgR/QkA1tAtHbAlhQMMwzAMwzCU26DPDm5xc60xZe6kzMzMTGkHJQAjACcARERENDMzMzMzMzMjIiIiIiIiIt48lqCJZ0UjL4QYcUKIAEIIg4iIiIiIeHd3d3d3d3dnZmZmZmZmZlZVVVVVVVVVRUREREQBu7+/hR3w5rFPOGhBCmDAEaxKVVVVVVVVD1pQg2ZmZmZmZmZmIiJi7u7u7u7uhu7u/v7+/v7+JmBm5ufn5+dnAGOMMX78+PHjYHc3gReoYfRpM5EHBQVJOhFABCEjII4ICRH6AaReIuwgec1tzxEgFBBhIAI3T15z6zkKiAJGDK5L01bceo4CooA88CmVuHiGVwI0g5dp7mhlHyCKEAGOGLybFq5T3X6icrndjFauFDambZq2WbZp2mZZl2WbZV1GxA9RkUEhK5bFRljtDJXwqg==")
+
+[node name="DetailGrass_11_6" type="Node3D" parent="Map/Props" unique_id=757877854]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 384)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_10_6" type="Node3D" parent="Map/Props" unique_id=428931923]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 384)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_9_6" type="Node3D" parent="Map/Props" unique_id=960802484]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 384)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMRgTAAAotS/9YBgSfQkAIscWG8AlHf//////7z5UXMMYWGlWSiml3GRvsrdMKauJZ4g4q4mXTIAO4pihkPpq4hUWIM6wmniHGceUYpDVxEuWiFBVVfX/P+D6//9q4iVbNDBDIfVku2xsF2wXAYGvqBG/tBnBB4VSBxGghYgIiCFC4qYHsiZEYkRiQhLQmMqISIxINECVMJEYkRhRSCEiMSIxItEAVWJEYkRiQiFFiMSIxIREA1SJEYkJiQmFFCESExITEg1IJWZANBAUABBo0dCJQbdeq/m1fLqLtKq0ygByKe3mbStqWvfVPBoECiAY0IyJjW2vtJTap3dREIwi8BcABPaA9MIAghb4MLliva3pvtrpwZOabXvbett6W53XpjTbeutWGz+kDRzYWG9ruq/Gr3VYVdpU/dXqt1UB")
+
+[node name="DetailGrass_8_6" type="Node3D" parent="Map/Props" unique_id=136955656]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -256, 0, 384)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMbQNAAAotS/9YLQMJQkAUskcHZApbf//////v5LRdmWxuJJ9aXQkCSGtm+TK7u4dDcI048mAUCd0lCeB0wmdgnJQOqHlJJJuEgIpkEYPkoOZmZkZ+////092d3d3l1VVVVUVkJmZmZkCRERERFzu7u7ubmFmZmbG8FcTz5qqutqqelQVIYEcqBF+aTPBB4VKYxEghRAJiCJCokUf2CjKjGRErzGbOBuFsour2Chy5cy3ykahbMC4NopyfFZiu1EoG6Vjo3+UhvcfzzdxNhpls3CAPmpavzr7ibNRKtuDedRjWr8YtomzkSjbhW/0Fvvq/LbKRpFsC5ZRGjrt+grScqOBBLc/cVli4RaXJRZ8cVniwheXJSx8cVnEwheXSSx8cbFEkd5+ku6T/08s64perSZbFQ==")
+
+[node name="DetailGrass_7_6" type="Node3D" parent="Map/Props" unique_id=1434460883]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -320, 0, 384)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMRQIAAAotS/9YBQH3QYAIsUSGWBJ3TAMw6DAvwSjbqMjChFAqK7rNtnt/xT/EQ2dAbVGDC7jqAGnwqKniTQlHkJnCsyhRF7A8qommpkvD6S0aywuhTL/0/n/4n8ggMaoUDttBrCTJB0RUAmxSKhMJDkdFzFXYqryfSJbbLRY8L5FJXWgsdBpQesqt0kDtmKsxiqbgVyFWSox+l7SgKsoWyIf10kdaCy0C/aFVHw14FSk8zs5VmW6pBFrLtNQf8A70ukw1CG3+eWZQZ9ryaPvJc9QHGA69/8kylZMPve3E/Wr0FGp185DyyOk")
+
+[node name="DetailGrass_11_0" type="Node3D" parent="Map/Props" unique_id=1994616182]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 0)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_12_0" type="Node3D" parent="Map/Props" unique_id=2106543314]
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_12_1" type="Node3D" parent="Map/Props" unique_id=1692107392]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMewRAAAotS/9YOwQZQsA0gwmIqAn6f////////+MlOyu2Ydtk/Clmbx/45Z7bykJ2VKmJGUKBwnBYNOigzABidKisybzIA0mLSI4AqqqqqqaNoGOJDMzMzMtVpHiQBLaAQNJil1AiANgVp8MJSmllFIQERHRAROYgAtERMS7u7u7u7u7u///////f9u2bdu2bTMzMzMzMzNLi47RPIyCd1tSVa5SVQ9VVRCBYKjR9WkzsQcFlXQR8IQQCYgiQmJFHxswmTj+mCwTGQjMTCaT+jAUCpps/CssNpvNzWZvviSbXlmncu6XKGg2m53NnpxBZnplTcW5X6LQ2Ww2O1uuDQ1MNv4tFJvNzWZvHiQb923WumRlwpIzryiOMy5v2c2OKaD7PmWOGyz6Fzabzc5OXDIsyckVxQaFZrN3t2ZYsnbu3LnjnvA2piWkYCXsFGPGjAkJK8FKWBFWwpSwEqyEJWElWAkrwkqYolSG/uFvpcvs+Xf+2jWepyJzFQ==")
+
+[node name="DetailGrass_12_2" type="Node3D" parent="Map/Props" unique_id=489550095]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 128)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMfQTAAAotS/9YPQSxQcAVhEtG7AlhQMMwzAMwzAMORHkKBQKUJmZmZmZmZnSDiYAJAAlADMzMzMjIiIiIiIiIhIRERERERER782riWdFIzEIIUiwEEKAEEJAAO7u7u7u7u7MzMzMzMzMzKqqqqqqqqqqiIiIiIiIiIhmZmYmu7u7u7u7u9uqqqqqqqqqqgI5yMzMzMzMzGRMJEBERERERES8C///////////7u7u7u7u7u7d3d3d3d3d3QXMzMzMzMzMzAMbgQuoIfhpM9GHwrQGESAEDUHCIEIi+AO79eVy/7L/ctbL/mJL/fa11yq02r3vvfc6+T+kCgAUAKwApvCSy6rBUAU=")
+
+[node name="DetailGrass_11_3" type="Node3D" parent="Map/Props" unique_id=2024218724]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 192)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTxQYABpEoDXAV9I7Tfx1XVVXVWgwlACMAIwAzMzMiIiIiIiIiIhERERERERHx3ryaeFY0EiEIIUiwECKEEAABd3d3d2ZmZmZmZmZmQVVVVVVVVVVVgIiIiIiIiIhoZmZmZia7u7u7u7uqqqqqqqqqqpmZmZmZmZmZiIiIiIiIiIh3d3d3Af//////////7u7u7u7u7u7d3d3d3d3d3czMzMzMzMzMu7sBgQWoIfiNOeELwxwRIAQJQYIghETwB6VsrXOus2+dap15DpC7oYoF+AFgBRjITM5SrbcK")
+
+[node name="DetailGrass_12_4" type="Node3D" parent="Map/Props" unique_id=1312163873]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 256)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMYgMAAAotS/9YIgL7QUAAsweGrAnwwEMwzCsAGmzuLEEoaFtZJOdpExSpiRlIpLw4wg/fnDjxgs+cIIL/C9OnO/v7u7u7u7u7szMzMzMzMzMbNu2bdu2q6qqqqqqqqqIiIiIiIiIiNq2bdu2bUmSJEmSJGdmZmZmZmYmAOBQGIifuagcBRGhWEQWRMQggLKoIHzaDOCFYQ4RIAQZIXGIkAj+2+327HZ7a7u93drebmcTttbWOtc551znWtt/ZSi9gA2AFYB/pHWtFG4K")
+
+[node name="DetailGrass_13_1" type="Node3D" parent="Map/Props" unique_id=1070455928]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMdQQAAAotS/9YNQPVQoAYgkdH6A3Hf///////+N0Za8//d9/73ZM+zHtlW5CQo3IlGRm9kz//////1OOZUglyJScRDNgEmdBvEtCRERERMRH66BAgCb5UoFsIF8qysXd3d3dnW03Zti2bdtt+1TRtm3bLzVlwYGYBZUEOXcyM5tiZg8zIwSBbqiR9rQZwQeFSgcRUIXOCAgiQkJGD50z7aFkpIbqciNI8JcumkHIGIyIRAdaQAD+iiGDGCPY4nUWdIFcAhgFiiJIHE03yiDECEasZH0jFAVKQcgMjS7KQMgIhgqeLwkJ9AnEiMAULnSgEuyR3ZV9/qSGSjA+pDYTNVw7IEYwIhRRwrl0Z0AfQYwITB/cqLyV2ErdWVWUoZAREudK7EXqSuK598uHykgNlSO7Z+Z5HyojNVQKMm2aQ6VIVVIvKkhdsN/9tKnwWR4qI9VL/CkqvVUB")
+
+[node name="DetailGrass_13_2" type="Node3D" parent="Map/Props" unique_id=1560749095]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0, 128)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMSALAAAotS/9YCAKHQcAMoocHICp6TMwAzMALG2Lfha8G1SMP0hERIjcO6WUkgxEpBQGlXAYTMMXjFCBgFKoqqqqKkQN1HIOEuQwijrmLhME////////drBt27Zt20vbtm3bti2CJEmSJEly27Zt27YBKAlyGEUdc5dLEBHJENEDERUEgLWocHraDNBDYRoDEXCEEBEQR4RECf1aBl2ibMLS17Bh+/neHVzsxj3YLB8MnErOYyym4xmWyXmMxXQ8E23Mqnop1LcPfvjh9JZznxP9o6Hlqx0cHl7Yr814Qx+8IV8ckj/ErKwh/GDMv5zUQgo=")
+
+[node name="DetailGrass_13_3" type="Node3D" parent="Map/Props" unique_id=1689843865]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0, 192)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMTAAAAAotS/9IDDlAACAGwAAAAIAAAAGABMBCgAAAAQAwMjNvJk2bAAJ")
+
+[node name="DetailGrass_10_3" type="Node3D" parent="Map/Props" unique_id=1565183557]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 192)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_9_3" type="Node3D" parent="Map/Props" unique_id=1822337448]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 192)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_8_3" type="Node3D" parent="Map/Props" unique_id=1380136433]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -256, 0, 192)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMewMAAAotS/9YOwLZQkAIssfHaAn6f////8DaJakvGflh3CZlQ+yt9yEELJlSinJSUoSOsRBQA6joFgMwu4SJYakoHM+aNwdunOFQy+eEOUIMA7FYizxxYYOCAAYgZmZmZmZ2fnh///////kA9u2bdu2bdC2bdu2bUuSJEmSJJOE7iCHURi7y0RVtUxVJVSVEoD2qLB62gygg4KCpAMRoIQUEhBphMSJPoKnsfHjAz9+8OKPB378wcUfTxSJ03dwXZt1IrO3K42aXxM5vQcXf2CoXu2YCxbrATcMHjTp+hyR9yeinS1sWPQ99DMMLzYM77BwohP4OveD5AcGY15woLbCgTFn8XiETx03p1m17vcXeufSuvT3u9+nle2vv99109ffb7+//f32e22HtubjSlYrIgqB3fQk8hAp")
+
+[node name="DetailGrass_7_3" type="Node3D" parent="Map/Props" unique_id=1484231567]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -320, 0, 192)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_6_3" type="Node3D" parent="Map/Props" unique_id=496606863]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -384, 0, 192)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_5_3" type="Node3D" parent="Map/Props" unique_id=1962755408]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -448, 0, 128)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQADAAAotS/9YAAC5QMAUkQOExC1iwEAANBEAeIOqojmRAK0kwK7UaNEWFvJoRivgMSimsERmMAlCLyNmhnX6c+gP/37r1/9z98CTKjh9Wn/DdBDoTUQICFlEV455GYhE63dbm63tdvN7TbuUC257/d9u+/zfbvvs5jXwL5EiJ+rPR2dnOZf7dSuAg==")
+
+[node name="DetailGrass_5_6" type="Node3D" parent="Map/Props" unique_id=723097514]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -448, 0, 192)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMVgKAAAotS/9YFgJFQcAAsoaGnBLkgP8////h/7KhjRCTT2+zExpk9Zc5bUM///////btm3btt22bdu2LUmSJEmS27Zt27bNzMzMzMwk3OWGHAYppJBCGAgA7nJDyuFgNCAWioOBCyg8YYQmWLAOSSEpQNIhyZCEkPQgySCArqjh+P3vwINCoQMRgISSEToiJEroB+X2cyAoRyhnlUkUMMA5TYYCDOGsMokCBjinyXAdAoBjknOSyDEEHjs/Bd6hxXwjPZq/W7YzFCfopJz/Xiboy6f5DtJYBOkvj7jvQt0frY5k+7C270a+Z6nDoc4gVQ==")
+
+[node name="DetailGrass_5_7" type="Node3D" parent="Map/Props" unique_id=1195628221]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -448, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMYgCAAAotS/9YIgBVQQAVAMbAAAAIAAAAAYAAAAOAAIAAAA8ATsCNAM5BDoFNQYxBzMIMAkmCioLKAwgDSIODxwPPAAAAD4g8KU5BHAggAMBHAjgQACHBHAggAMBHAjgQAAHAnIggAMBHAjgQBADGEqXWSbpDMvSXGZG8hmWxVxmRvIxLIu5zIzkMyyLucyMzGeYyOKMNlgl")
+
+[node name="DetailGrass_5_0" type="Node3D" parent="Map/Props" unique_id=1492927761]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -448, 0, 0)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMSABAAAotS/9YCAArQIANAIbAAAADgAAAAYKAAAAAgscDCQNJw4tDzcIGAkyCjwLDA0ODxgAwBCQHEgYSASkA4aBLMAcyAwYuZk30wbIBzIDRkA+YBjIAsyBzIARkN2bXS8rRw==")
+
+[node name="DetailGrass_5_8" type="Node3D" parent="Map/Props" unique_id=1311160810]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -448, 0, 256)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMcgIAAAotS/9YMgH7QUA1AMbAAAAcAAAAAYAAAAHAAIAAAAsASoCLgM0BAUvBiMHEwg8CDMJFwkKJgoLKgsMIgwNDw0qDg4GDw4UAAAAgN+ooJ32DdBTpQMRkAXEKaFRwl4D2W08VEzJlFzNI/r4yUYAAAAAAAiWqQEAAAAAACqy0R50n3EQESERQPtAP35ZAQAAAIAonu/G2rtMiIgI1vit5E8KdkEQBAbhcjdWJZ8UMmTQkEGD1tp7lD304VTkv5r94L9Z9skxElEp")
+
+[node name="DetailGrass_6_-1" type="Node3D" parent="Map/Props" unique_id=2060604670]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -384, 0, -64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMTAAAAAotS/9IDAVAQCwGwAAAAIAAAAGAAAADgAAAA8QIAAAAAQAgAAEuJnvyeYS")
+
+[node name="DetailGrass_7_-1" type="Node3D" parent="Map/Props" unique_id=1380933595]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -320, 0, -64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMUwCAAAotS/9YEwBbQQA1AMbAAAAHQAAAAYADwAAAAIAAAArATECMAMqBCgFKQY1BwAAAA4RDzwIIAkpCi0LNwwAAAANBw4PDQwOCw8TOyDwpQMMFiAEyGcwWhAIAeYzGC0IhAAr3zdMLGNuydZmlj1aiHwGo4XIZzC0EPkMRgux8i3DsuQzLL8szWVmJJ9hWcxlZiQfN+yyHGwX")
+
+[node name="DetailGrass_8_-1" type="Node3D" parent="Map/Props" unique_id=1328193152]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -256, 0, -64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMVADAAAotS/9YFACvQMAhAMbAAAAKgAAAAYADQAAAAIAAAAZDjwPARoCFQMZBBwFGAYQBw8IDgkHCgoLCww2DA0uDQ4wDg8sD0uoAHuPA+Cl5hEgBUQLtlByOj6qsPYIJagXv/5IA8Hw4zBOGMHME054wEwHTHCAmQeY4Aof5xu0N5QbSAE=")
+
+[node name="DetailGrass_9_-1" type="Node3D" parent="Map/Props" unique_id=758508585]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, -64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMdgCAAAotS/9YNgBnQMAlAMbAAAAJAAAAAYADgAAAAIAAAAiDzwBIwIhAxkEFQUUBg4HEggZCScKLwsyDAAAAA0DDg8NDQ4QDxFJqABfmg7wpQMQSIEkiU7xAWh9RdvqMbv84xnwFLl0RdV2fqoeO3X41B0X6/hUvQS9+Lc/L7FNAQ==")
+
+[node name="DetailGrass_10_-1" type="Node3D" parent="Map/Props" unique_id=919785368]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, -64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMUAEAAAotS/9YEADHQQAlAMbAAAANgAAAAYADQAAAAIAAAAcDjwPASICAykEMAUyBi8HOQgJOQoAAAAMAg0ODwsHDAYNCQ4QDxFpqEA5TQfgpQ4RcAWEEiElkfgaqvbBP/1o8Gfyf8nYYM+JNC1yh8GW/91PlifT1ptWjQ7seeBHlhs12HCZVugfiTa83UbKIAU=")
+
+[node name="DetailGrass_11_-1" type="Node3D" parent="Map/Props" unique_id=1511095957]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, -64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMWAHAAAotS/9YGAGBQYAMsUQF4CnzQEzsFMXgFVFvUKB0NK2oXW0kZgCbdtCTRJonB3JQISgiWfpoP8cpolnlv5As5TC/kLIgFQRCtA0YP23+Q9/EYCrqGA7bQawkyStARFgBQQaIRMOnB7co3c5b5sdEAoEDTYCFBEY0AQwBGBkK4AQAO9AAEVADiknCAM5LIggHIT8CLpW8Ix/nSNlA6JAkfaBY+dlqp/tZqIDsbxZ/51nrcZo4tQjcPb5n3gMCgCOprZjuKC/pjedPEIK")
+
+[node name="DetailGrass_12_-1" type="Node3D" parent="Map/Props" unique_id=384201606]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMSALAAAotS/9YCAKRQgA8ggZGKCp2P///4OpLMCZG+PRW5E7U2S3/U9aCol3W2YSIiIiIip4d3d3d437//+/4rZt2z7YzMzMbKmqqqpSioiIiCihmZmZmcUshUkGDEHi3VYGahtwIAlA4t2LZVukbZXQ9tEWEYDQqOB4mg6wo5KkAxHgBMQhISNCYkUffNbhEYENCJvsBmiyF5GecqSbWr9nWgkXBpu01c7fmlZzf8ta2v1Na2rnS33TGhf43D6nNrOQlBs7k84KQASmCEEEpghB5MCtvImLi4uXCwfQ/ejq4Z0Wj3q8nLi6ODksb+ri5OLk0gUYdf1ZFShFiUzVY2bTZgbbmU2bGZtZgY+uP1OEmw8i35AC")
+
+[node name="DetailGrass_13_-1" type="Node3D" parent="Map/Props" unique_id=437784042]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0, -64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMdAKAAAotS/9YNAJVQcA0sYUGKApHf///5gdVen8c/ons1tKmWRKy2akpSQRp3DujnEGMzNb2KmqqirC//+N24mIiIgUtm3bi9u2bZswRkkES0BBDhicszq5DlMkEZIJDckHyUOA4qgwu8cBwKNKOhFABYQZoRIUMvopsWA4JunMlY2pKi2S/gKARldWjvSyv5RMWTMmRjZLt4LpZO35HSLe6EzN0I8b8QZ6zdRJVXeNnawZvQa3JJ5xVHEKaxjHWK8Q5SpOUY2iX4ERj/CEVjTmNlOTilVoA3jDCrUoTSlO5RZNWMViFvEo9X6T+tS2ekX1ZRwtY5sC")
+
+[node name="DetailGrass_13_0" type="Node3D" parent="Map/Props" unique_id=572245383]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0, 0)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMcwTAAAotS/9YMwSJQgA5lArGMAlY////////w30pjmyYLUpKSkpKSkpUyQAIwAjAERERDQzMzMzMzMzIyIiIiIiIiLDe/Nq4lnRiEBETFxEDETEIIiIiIiIeHd3d3d3d3dnZmZmZmZmZlZVVVVVVVVVRUREREQBzMzMzMzMzLy7u7u7u7u7q6qqqqqqqqqamZmZmZmZmYmIiAHDe/Nq4hnh//////8f4P0FX3h3d3d3d/cAd/fu7u7u7u7ubg6BC6gx9GkzsQcFqSwHESAECUKAMIiQCP6YMLCsbZ2LAta1VNaarWpPpF7z26q1JuOAF7vYxa5MsqxZm2dzrs21OtvmLvGhXwD4AFgJHPtlx6rBXAU=")
+
+[node name="DetailGrass_14_0" type="Node3D" parent="Map/Props" unique_id=190642488]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 128, 0, 0)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMaQJAAAotS/9YKQIjQcAgscWGaApHf//D+M3Yx+zKzxnQvbeUkopN0n6JAVtUyIgZDjnLJmZgkREVNzdnWJmZlaoqqqqRFktjEkSOolnhfj///8X27Zt24oPyJEkdBLPyiCMB9oC2rqmbaPtIIC6qPB6jwOwo4LkEQAFxCkhEhQr+ksTRydvbgpmDv/8YXbhuP57WvLZmEBDZ5YAgA9pt0WZD9zdX7jU1uUe2lyNCUSdJqK/0Q/0hXlK+ZC1maNloksUEqDCyUJ32wyCKBQ8zxvfxy1lXX35z3QvcZfOWO8ivnDNKQNyx2pX8YtuWucSd2mODib/rWmbUnrxeLIIKQ==")
+
+[node name="DetailGrass_14_1" type="Node3D" parent="Map/Props" unique_id=1351923238]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 128, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMRQSAAAotS/9YBQRRQoAkg4nH5AnaQP//////////8c+Ktjfa4kL7YXs7k2bdIvs7h0iAtAI3d3d3QU9+ICZmZmZmXUVdnd3d3d3TQ2qqqqqqqpKkJmZmZmZmbn//////38AEREREREREQ3jijev5nEUxFlh393d3d3d3VmbmZmZmZmZJVRVVVVVVVUJEBEREREREZ0PMzMzMzMzY7Cax1EQZ0VzEBESQkQWRCQggSeoIfVpM5EHBSloDhGQhIwREEQET+gHzub6dcz32LFrhA6S7JFr0za+WVPmvuuIMBF2R04EX4oviUy4T8Gb4LjLYdQJfxHykjucOuEvRF5yJ2GFVdmHzGj2AbcU+5BZzT7grGJ/GyJ8ogWdcFPsmwuuvv/c91fd2MjPGeKf+aRdm8Vkx26iQi/HKkA0S/dPVOj8pVyGI2xaSRt/ALGByw/2S3IfrBZeFQ==")
+
+[node name="DetailGrass_15_1" type="Node3D" parent="Map/Props" unique_id=1316215254]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 192, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMZQAAAAotS/9IJT9AQAkAhsAAAAHAAAABgABAAAAAgAAAAUCFAMdBCEFHwYYBwsAAAANACALMAcyA0ZAPmAYyALMgcyAEZDvTXMGgAQ=")
+
+[node name="DetailGrass_9_10" type="Node3D" parent="Map/Props" unique_id=1082631617]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 640)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMTgCAAAotS/9YDgB5QMAtAIbAAAAHAAAAAYAAAAJAAIAAAANCjsBEgs8AQIgDAMoDQQmDgUcDwYeAAAANyDQUw6ZcCAIAEIACAEgCAChAtjTZZYJDgQBIAQQIQCEDuBMl1kmOBAEgBBABAlgSpdZJjgQBIBQA/jTZZZJXgid7zcsSz7DphGXtUEpAQ==")
+
+[node name="DetailGrass_8_8" type="Node3D" parent="Map/Props" unique_id=1582572888]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -256, 0, 512)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTfQYA5tAnDHClB/z/67iqqqrWYiQAIwAjADMzMyIiIiIiIiIiEREREREREfHevJp4VjQSIQghSLAQIoQQgHd3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMBu7u7u7u7u6qqqqqqqqqqmZmZmZmZmZmIiIiIiIiIiHd3dwH//////////+7u7u7u7u7u3d3d3d3d3d3MzMzMzMzMzLsBgQOoIfiNOeELwxwRIAQnBAhBQvAHqru7u7u7u9fbNFRZAD8ArACBxORWdX2r")
+
+[node name="DetailGrass_8_9" type="Node3D" parent="Map/Props" unique_id=223572710]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -256, 0, 576)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMbgJAAAotS/9YLgIvQYAIsgZG3BFbQP8//9/6F3N+w6PM/AaSFITEYns7u7eKf8FKaWUkgEhhBBSnHPOOQtjjDHGKKWUUg6EEEKI0d3dLcDMzLy7u6uqqgqQmZmZWERExMHe3d0FmJmZEfSoqipE4lkd/+36f+B/IYCqqLB62gzAg0KhAxGwhM4JCCGCJfQD2jc6XIzG/07yHkZeIdlgogXyHTtfIN9hzA2SHSRWAt9x8zWMYLZjRHUYAq2NSw+QTKHpPkYQMyHfO75IkgV8VcK3ytBDcKZ7nc77ZhqPN/4H3NdJeaU=")
+
+[node name="DetailGrass_8_7" type="Node3D" parent="Map/Props" unique_id=1109874753]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -256, 0, 448)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMdAPAAAotS/9YNAOlQkA0sYXHqApHf//////P0BExF7xU/+sNT9RbrnlllLKLdJaCp0Y7dHsxGiPJp5BRAgSOjHao4lnFlMqcb0kBzcQYw0nUUQuUHEHMzBjZolVVXUJlAV0YrTLeSj/D/zP3//I/0KBdKgB9x4HsQcFhXQRkAVEEaEiQiKnA1ZETOTExEzktrN3szc3d7PLj8yJzJjIiVx3dm9262ZvdvmRmZGJE5mRa8/uzm7e7NYuHzMTMzEjE3Pt3N3czZ0dsn2tPVQnSLzOab7C6w7vOP9vlu5/s/yXNx3S0TdU8ZklDEin+Uqvc5qvoGqIoFfPJ9UMqJdUPiaIoFlB1RIVraBqRIVWUDWiohU3ryeGNaicg1NTrXgdR6DWKs/O6ph36hPBmbHMSxv9WBcjXudUaYVB5dUqMlcB")
+
+[node name="DetailGrass_6_6" type="Node3D" parent="Map/Props" unique_id=71111866]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -384, 0, 384)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMWAMAAAotS/9YGALzQcA4ssgGqAnxQH/////WaMZKcC/979+u5vsJrtJm00G////xre7u7sbjt7d3d1dNDMzMzMH8O7u7u4Wq6qqqqpKmpmZmZlpSEREREREAby7u7u7GzgzMzMzMwCrqqqqqisiIiIiOqCZmZmZYwoGgXhvXs0DDycihffm1SMJRIQQERQTkQQRMQiAv6hQeJoOoIOkkuERUAQERIRQUJDQD/L8zixTSoSrocofiNvu03RSMStBlyM4YV8kshP8r+av16S+OHtkJwjf9ytQ5nT+wqc9fXiBZGVIxi/JbmP1eABoBDQCjYFGYCPQGGik72aAzjWzQ90IJt8r2ZwC")
+
+[node name="DetailGrass_5_9" type="Node3D" parent="Map/Props" unique_id=277276541]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -448, 0, 384)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMVwBAAAotS/9YFwAZQMANAMbAAAAEQAAAAYAAAANAAAADAAAAAIAAAABDRIOHg8lCgQLIQw5DTwODwkUDzcPPA8NDg8gIJBjtQGGJJfkG4wEc5k1AvI9DLss+/KmFd1JzMh8hmVprslnrTKbdsqxIF9mRuYzLFl0hh0D")
+
+[node name="DetailGrass_5_10" type="Node3D" parent="Map/Props" unique_id=1718944402]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -448, 0, 448)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMVwBAAAotS/9YFwAzQIAVAIbAAAAEQAAAAYAAAANAAIAAAAlASACFQMFDjwEJwULDwYcAAAAIiDgpTGZcCCAA0EACAJACACBA9jTZZbFnIy5EcGBAA4EAT7fZFiW+QzLYm5lds07ACU=")
+
+[node name="DetailGrass_6_7" type="Node3D" parent="Map/Props" unique_id=904974625]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -384, 0, 448)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMTgRAAAotS/9YDgQpQkAYg0kHaAlaQP///////8PZo71x9U+/ngvu3tzy26RvWQH3d3d3d3d3c3MzMzMzMzMu7u7u7u7u6uqqqqqqqqqmZmZmZmZmfn//////w0KRERERERERHwXiru7u7u7uzsALhC6mscjBisSUDMzM7OArKqqqho4EREREQFnZmZmCK4YY4wxRgExWNGMQkRGBhE5EBFCgRioIfVpM6EHBSmkAxGQhAwSEGMETegHJEAq7VuAaLJvAZJprwVIo+PQftWYpgM4qKOSEGNCR+8mEDTLHJqZG8KOCr/wLxsNttgvEh4mycMkPJSEh0n4MInlxqARcZw8P/rcbfCn2g+3XqPzNI3zv6LQLPRTaf6Xw7yFo/JW7iuXw7yF/ecu3+Sxn/3lTUxmIO2pEUWY3ELZwJi2Y6iwUQU=")
+
+[node name="DetailGrass_7_7" type="Node3D" parent="Map/Props" unique_id=946956250]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -320, 0, 448)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMYgRAAAotS/9YIgQFQkAgk4lGsCl2v//////wAVa0xrbMmUQ2d2biOTK7t4B3d3dfdAGZmZm5gK23d3d3TXYr6qqqqoqQWZmZmZmDqQkIiIiIiKiABoAmlcTDYW7FQXc3d3d3d3d3eH+///////NzMzMzMzMzKqqqqqqqqqqiIiIiIiIiIhmZmZmZmZmZkRERERERESkeTXRULhb0QhCREw8IhIi4hCBBKix9GkzkQcFKUg6EWCEiBEQQ4QECf0CEqS7/KRumzRekcyLRdR5fslpp9C+l42k+Ll/XVny03I7aUqLB/QSvoAW0CK0gBbQArSAFtAitIAW4oZ32+BiSGJw0ESH5QO+RvXOUxqfqMZXCvynbXH87/vf97/vf9//RaYPUW/QsLIytAT7Xaa6XhU=")
+
+[node name="DetailGrass_6_8" type="Node3D" parent="Map/Props" unique_id=1645103427]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -384, 0, 512)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMfwBAAAotS/9YPwAvQMABAMbAAAAGQAAAAYAAAAJAAIKNAEHCzwBLAICDC4DAw0NDTwqDg4OBCcPDw8EBScAAAAtILCTNAeZJMcDQQDJ5YTdkuSbMTcKASSXsEnyUQSQz2AukSmdzLKYQwQHggrgT5dZluaSrUFmv5F8mTUC7K6FuHwNQQk=")
+
+[node name="DetailGrass_7_8" type="Node3D" parent="Map/Props" unique_id=556083673]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -320, 0, 512)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMYQQAAAotS/9YIQPtQkAEg0kHaAXpA3///////9zqBXhEPP/Y5+X3d2bdmsSuWQH3d3d3d3d3c3MzMzMzMzMu7u7u7u7u6uqqqqqqqqqmZmZmZmZmXlQEBEREREREfGNUP7/////B+CEcnd3d3d3d7sKRKGJP2IgVkUSQgghJADNzMyM4FVVVSVwREREZECUMcYYo2AgVjTKzNAMM7MwMwMBgRGoIfVpM5EHBUnSARGQhIwSEGMES+gHV2XJJ7cA6VS/Dg276FC+dv4Plh8k0CTIsLCjYgcImiYOzcyNErmKX8yXjQa7YoailbAxnbQ6gCMU8BAFHKIBhyjAIQrYdLDwCqs/N52nBYe/X21vAOLeo3LkaACHUMD+0t+kzLMAHEY/wmXi7NNB9Ge+Jc4+nR96lJQ1MAD7QT1QuHEKemaeoW5eFQ==")
+
+[node name="DetailGrass_7_9" type="Node3D" parent="Map/Props" unique_id=1894511805]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -320, 0, 576)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMYQBAAAotS/9YIQAJQMApAIbAAAAEwAAAAYAAAAKAAILNAEGDDwBKgIDDS8DAw4ODjwpDw8PBCgAAAAkIMCTtAGZcCAYQHIJSzIfRYB8DQYSmdJlJos5IjgkiAB+OpllMZfc2mT2jciXmZFpdyTE8zVYJQ==")
+
+[node name="DetailFlowers_9_4" type="Node3D" parent="Map/Props" unique_id=1100658821]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 256)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTvQYAlAMbAAAAAAEAAAYAAgAGAQMEBQYHCAkKCwwNDg8AAQIDBAUGBwgJCgsMDQ4PAgMEBQYHCAkKCwwNDg+B16iRnz0D8UtzEbAFhAiJgAiJLh17CENQCCtl3/N972twxiEIQxECcAxBGBUBgGMIhaEIAJyGIAxFAcAxBGFRBACOIRGGIgDwGIIwFAMAxxCEQxEAOIZBGIoAwGMIwlAMABxDEA5FAOAYBmEoQgsMqai9J8uJ5ERyIjkxOZG8cGr3l8oV7MJfepGcSE4kJ5InspBfmm4yjafSbhU=")
+
+[node name="DetailFlowers_11_4" type="Node3D" parent="Map/Props" unique_id=1686366856]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 256)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMdgRAAAotS/9YNgQRQgAgocUFsAlHf///////7fXyJRSInvvLeXeWwZEFK7u7u7uxv///1+2bdu2q23btm0FSZIkSdICG+KYKcRqiLvL4JhCrIYIdHcZHFOI1QhEECGiABEBAoF3qPH6vgHRp0prEYCFhggIERQ2egnkbvb+aF+WI3ez9+8+/3e/u5u9f/fX+7wcuZu9f/fXAz84d+tm79/9u9t/sH73AQEACACQOeJFxCXEBxIhIhIR/s+A/AAxRAQlwv+oiIgYiYiYAD3WVFXWTFWvf////////91nVGXWVFXWHOhwpqpyZqr6/Pv//////+d6aJKoa3bNrtm1JvwowReVFUOqrtk1u2bXCnlTDTFI6mlV")
+
+[node name="DetailFlowers_9_5" type="Node3D" parent="Map/Props" unique_id=2126212645]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 320)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMeQFAAAotS/9YOQE5QQAUsQMEJClbf//81+ktSX/31Z2V8okbf//v8KllJpNCKGiMYbvbhAajDByFXloyhbVhkYyQBIQgIGoML1vsJMkjQERMIVUCQgiItGiD4HkuKvKoym8QY/fBWeXD8Mw4sTvMr7nuCt/zP/Hk0F/ESX5tsXQwGW4cpQuhmiTSwOWscpZmhihXQ4NTMa5Uwmm/tpl2phqZZWe4p0Z1TgF")
+
+[node name="DetailFlowers_10_5" type="Node3D" parent="Map/Props" unique_id=1828244420]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 320)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMawQAAAotS/9YKwPjQgA8oYSFcAlHf///////3odIWSTTVKSKSW5ZQUxFIGsCEgM5f////85lMu2bdu2SwVSg0jbtm1LkiRJbtu2jQK6qxyN2V3lRtHUzARmBhCBbKjx+r4BwUeVdBFghcoICCFCokY+y9o6d8vu3Drnqazdcbe2zt1HOnbN3am7ds5rG2t31q1dc/eJjt1xd9au3QH8UMlb49zaHXdn7z4+VMSOXzKsztW1u+6ee9kJ6iZe9kyHUaNGDQXtA4U5oqPk2DFqqVGj5lEdtE2as7CjNkRbW+ewb3bzsM3/iIMeRa85d+7ck9fGnTvr3Mtr454794eXvSxX8VQdA83tzLPz3Lnp0qwRxadvOXvOVcLD5H6QKZGr")
+
+[node name="DetailFlowers_11_5" type="Node3D" parent="Map/Props" unique_id=1758006666]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 320)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMUwMAAAotS/9YEwL7QYAwgYSFMAlHf/////rdYQQQnZKScok904B20anSKRhIYWcp////49t27Ztm23btm3bsoY4pCAGISh3izhkrCAGISh3izijyGpbYBsggPuoUL1vwKNKOhFQhYoICBIUM/rXZUnxk/saAcNgJOwr7kulyel42N3eszn4pdHoqExGh9hYWeT93G7n5/zFV6ZmMjgxLBmcGErEIZMYlgxODEsGJ1QRhQ3FisKGYkWRNKwiphJWEVMJU4ETg4vCicFF4XAONfumyoVVSi7PawYveysHuywXU6m4fHzB8sOx2aY=")
+
+[node name="DetailFlowers_10_6" type="Node3D" parent="Map/Props" unique_id=798586747]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 384)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMbwAAAAotS/9ILwdAgD4GwAAAAkAAAAGAAAACgACAAAAAQsEDAYNAQEOBgECDxEAgAFYsFQ6kBlIARYg3xkMA1lAdqAy4ATEA46BKG46DQNK")
+
+[node name="DetailFlowers_11_6" type="Node3D" parent="Map/Props" unique_id=1324245768]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 384)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMZQAAAAotS/9IJTNAQDAGwAAAAcAAAAGAAIGAQIAAQEDBAQBAAAADwDACMh30+Cl0KYKAfKBzIAYMAbBQGY3s4B8MzPbQBc=")
+
+[node name="DetailFlowers_7_1" type="Node3D" parent="Map/Props" unique_id=2055810825]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -320, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMaASAAAotS/9YKARrQcA0oQPFcClDf///////w+8TiKXVnZ3d2+SAqN5hSbeaF6hiWdFI2E0b41qYlmiGRFSmnhWNBI+mnhWNMHk9j/4DwSBsahxe9/BR5V0EaCFhggIIUJCpwfylFOrLfVIls0udtQzVRqrzFnHLrvqsmYdu6yBSJt6bLGnVDWqmeWOenalZ5U76lkFklb2qGOXqapYU84t9rT7UBWVJfksyWeRfJbks2QyFkyur+mfEs+6VhmozqCm8PTn7c/bn7dvOPaZowo6LzT2mFNtMafz85Ri2aeOe37VZ6dr+rum3zUFf6mBJdWRwMNRPpfkswSoT12enbmn5So=")
+
+[node name="DetailFlowers_9_1" type="Node3D" parent="Map/Props" unique_id=1452406518]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTvQYAlAMbAAAAAAEAAAYAAgAGAQMEBQYHCAkKCwwNDg8AAQIDBAUGBwgJCgsMDQ4PAgMEBQYHCAkKCwwNDg+B16iRnz0D8UtzEbAFhAiJgAiJLh17CENQCCtl3/N972twxiEIQxECcAxBGBUBgGMIhaEIAJyGIAxFAcAxBGFRBACOIRGGIgDwGIIwFAMAxxCEQxEAOIZBGIoAwGMIwlAMABxDEA5FAOAYBmEoQgsMqai9J8uJ5ERyIjkxOZG8cGr3l8oV7MJfepGcSE4kJ5InspBfmm4yjafSbhU=")
+
+[node name="DetailFlowers_9_2" type="Node3D" parent="Map/Props" unique_id=590255339]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 128)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMRgTAAAotS/9YBgS7QYAlAMbAAAA9AAAAAYAAgYBAwQFBgcICQoCAAECAwQFBgcICQoCAg0BDg8DCwwNDg8EBQYHCAkKCwwNDg+BxqihX9/hS8sBEaCFhAgIIUKCJw8hlEJJihJ2LGVRlKWBSIqSKEoRXlQlSZSiTSBJUTRFGR2WshTK0kASRUkKpQgfqZIUSdEmiKQojaKMjkVZimJpIEmhJEVRhI8qSYqSMNpDlGrvyvT0g0RTVEDLBjXF5znpza5LWWrnvn7OG1dKT6Yn05PpVPcHXqoeM885U5dMT6Yng3Kvr8K8OfuJUAU=")
+
+[node name="DetailFlowers_11_1" type="Node3D" parent="Map/Props" unique_id=1705001828]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTvQYAlAMbAAAAAAEAAAYAAgAGAQMEBQYHCAkKCwwNDg8AAQIDBAUGBwgJCgsMDQ4PAgMEBQYHCAkKCwwNDg+B16iRnz0D8UtzEbAFhAiJgAiJLh17CENQCCtl3/N972twxiEIQxECcAxBGBUBgGMIhaEIAJyGIAxFAcAxBGFRBACOIRGGIgDwGIIwFAMAxxCEQxEAOIZBGIoAwGMIwlAMABxDEA5FAOAYBmEoQgsMqai9J8uJ5ERyIjkxOZG8cGr3l8oV7MJfepGcSE4kJ5InspBfmm4yjafSbhU=")
+
+[node name="DetailFlowers_11_2" type="Node3D" parent="Map/Props" unique_id=1295881753]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 128)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTvQYAlAMbAAAAAAEAAAYAAgAGAQMEBQYHCAkKCwwNDg8AAQIDBAUGBwgJCgsMDQ4PAgMEBQYHCAkKCwwNDg+B16iRnz0D8UtzEbAFhAiJgAiJLh17CENQCCtl3/N972twxiEIQxECcAxBGBUBgGMIhaEIAJyGIAxFAcAxBGFRBACOIRGGIgDwGIIwFAMAxxCEQxEAOIZBGIoAwGMIwlAMABxDEA5FAOAYBmEoQgsMqai9J8uJ5ERyIjkxOZG8cGr3l8oV7MJfepGcSE4kJ5InspBfmm4yjafSbhU=")
+
+[node name="DetailFlowers_7_0" type="Node3D" parent="Map/Props" unique_id=2137782852]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -320, 0, 0)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMTgMAAAotS/9YDgL7QUAEoQNFLAlLQYMwzAMw7lIdnd379aapCQpq5J4NjVoBkGCsZp4VjQikNXEs6IZfrGaeFby08If+AEBgR+oUXfaDOFLywERoAXEEKEhQkKnAxlr6jJfnz1sUTq73LKbDpRjz7Sg5545qq01t1iuzx62mLeQhzVXnAbkc8uUkgV5rFl17NnDFvMW8rDmrHqZDkS5VK7KtbyrQL38SGO/eMc9VXKl3RSBKJfKVfkQJ6gzEZx0Va7q9u+n4vTUWagC")
+
+[node name="DetailFlowers_6_0" type="Node3D" parent="Map/Props" unique_id=299676160]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -384, 0, 0)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMUwCAAAotS/9YEwBVQQAdAMbAAAAHQAAAAYAAAALAAAADQAAAAIOBA8FDAwFDQYODwoDCwwNDg8JDg4MDQ4PCA8GDw8PDw8PLyCQgwKlA50kN2GJTC6xlWUkjTtN87SsYxJJLpIvGCdxYO6SeEjj9t18LNOxRJKbmGyIfDPsfsq2QHeJGZnPsFkIAnKAYb7MZjHHzPeJfYaY")
+
+[node name="DetailFlowers_6_1" type="Node3D" parent="Map/Props" unique_id=206191379]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -384, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMVADAAAotS/9YFACvQMAFAMbAAAAKgAAAAYAAAALAAIBBQMEBAMFAQwGAw0HBQgBDgUJAQ8PDw8PDw8PDwYFAAAATagwvd8B4KXhERAFxEIhY8KVHonjjUZVIlmqBkWWRpAyJJC2W3WUIKMlKGMA8aj1SGamyOlE7NOjhGcxfLldk2swSAE=")
+
+[node name="DetailFlowers_8_0" type="Node3D" parent="Map/Props" unique_id=891040008]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -256, 0, 0)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMcALAAAotS/9YMAK7QUAksgVEsCl2P///z/wfGV3d/fOJAkRGbu7u7urqqqqKpqZmZmZiIiIiHh3d3fnMzMzM7OqqqqqIiIiIqKZmZmZ+f///23btm0RERERGYQgWE08K/oI8YgIRAQggLiooHzfwINkGQMRoATEECERFCr0A+xHYWX2bekmSbcka/0mSTcJuIWX+QiIF0G0CDoeKldZcvjCaYJXWTK0K6aAbRMXcTrqIJrCaYJXWTL4wmliL1u+mUn6httt8hYngGGl")
+
+[node name="DetailFlowers_9_0" type="Node3D" parent="Map/Props" unique_id=758184604]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 0)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMSALAAAotS/9YCAKhQUA9AMbAAAAjgAAAAYABwAAAAIAAAAECAYJCgsMDQ4PAQIDAwQFAgYDBwIIAQkCCgELDA0ODg4ODg4ODwUPDw8PDw+BAqhRd48D4UuNARGgBcQIkqDY6aXKVbkOnPiflatyqQBHlQOXZ1kbeJ5Hy22eR4ttnkdJ+o7j6G7yjuPwbvKOo/Fu8o7D8W7yjsbxbvIOx/E64DyPltk8j1J6Hcfxut5+Vnpn5aq8lPqU7qfOQhU=")
+
+[node name="DetailFlowers_10_0" type="Node3D" parent="Map/Props" unique_id=1717177655]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 0)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMQgKAAAotS/9YAgJlQQAtAIbAAAAgAAAAAYACAAAAAIJCgsMDQ4PAQUCBAMFBAQFBgcIAwkKCwwNDg8CgPGosJs2A/ClNRGgBcQQoSFCgtcB0TydME3KuI7gsp5Ot6xP0y3X03SX9Wy6ZX2abrWeJp+IUZ+mW66n6S7r6XTL+jR5IpZ6mnwiRn2aPBFTPU2eE0cKgUqlUlkZ1JOUjSdnmwI=")
+
+[node name="DetailFlowers_11_0" type="Node3D" parent="Map/Props" unique_id=535100342]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 0)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMWwKAAAotS/9YGwJVQYAgoYREtAVOgAAUBxRSilTSpLsTfbeKXd3dxfOzMzMhlVVVRUpIiIiCvT//2/btt22bUVnZmZIoBDAGEKEs6K7dJAUJIeF5ICkIIDKqCC9xwHAo0o6ETAFBBEhEhQy+laPCcYEJ97ITX3R+Aw/f4Opk3/d6r6nh8GOJNaZ9FKEj1uCusMb0Vis7I4kT22Nl/op2bYvYmFVgksJ+OEKkyJOBMZJMkYlqiLMlDAJGMZKmCSRPaZglsTIREkwUoYpCRmlpTqWczl9nTRsCg==")
+
+[node name="DetailFlowers_12_0" type="Node3D" parent="Map/Props" unique_id=224895617]
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMegBAAAotS/9YOgAtQMAlAIbAAAAGAAAAAYACQAAAAIAAAADCgYLDA0ODwEEAwwNBQ4GDwIEBAAAAC4gsKM0B0ZOvtUoRgLo17As5nTyWbOtZDEsYN7WCoQAIgSAEACEAJ7vJBT/ACAEgCAAhAAiBIAQgPPtDdZJchOWSDrDeBbHnCEgAQ==")
+
+[node name="DetailFlowers_12_1" type="Node3D" parent="Map/Props" unique_id=144915787]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMfQEAAAotS/9YPQDhQQAxAMbAAAAPwAAAAYAAgYBAwQFBgcICQoLDA0ODwABAgMEBQYHCAkKCwwNDg8CBQMCAwMEBAQEBQQEBAEAAABjqBB93+Cl6RHghEwKCEJCQ0UfAL6ZV3491shv1/jvRgoECgIBirCW9EBTkowu5EVBICAQCAgGQ4qa7Fn8aMLfvl/kVqyW4Y9mj4a5BKhZNA+k")
+
+[node name="DetailFlowers_8_4" type="Node3D" parent="Map/Props" unique_id=624887429]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -256, 0, 256)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMVQTAAAotS/9YFQSTQkAwg4jF8AV0gH///////8/8F4ppZRSSklSSq3tmZmZmZmZmZmIiIiIiIiIiHd3d3d3d3d3ZmZmZmZmZmZVVVVVVVVVVUREREREREREMzMzMzMzM+MRERERERERkUpEREREREREJJ4VjURwN/j/////37dt27Ztu27btm3bNqDBARLPikYiuIM6IAQhhIEQgkCBJajx+H0DoQcFJUkHEXAExBghIkLChH6Ajo1NNjY2mZmZZWZ5iO5q3ZKHp7lfu+jmfind/OPIoU5Pvx3Uc4ya/506E8gIdIt6ggztYkOz2bOjH2u0/dxcMfjyXazJTnayMzvZyU7sZNVOMAIjGDj8kX/omuo+qPWi5SxnuZaznOWsznKWszjLWc5ybYE3XihfMw7Pf28NoasC")
+
+[node name="DetailFlowers_6_4" type="Node3D" parent="Map/Props" unique_id=158478653]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -384, 0, 256)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMdAAAAAotS/9INBtAgBUAhsAAAAKAAAABgAAAA4AAAAMAAAAAgAAAAENAg4DDwsEDAYNDg8SAMAQkBxIDBgB+YBhIOWmha8ItgZ8IWBmAKAfMAxkAeZAZp0x8Q==")
+
+[node name="DetailFlowers_6_5" type="Node3D" parent="Map/Props" unique_id=2004621254]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -384, 0, 320)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMZQAAAAotS/9IJTNAQDYGwAAAAcAAAAGAAAADgACAQEPBgIDAwQBAAAADgAgCzAHMgYSARwAAQgA8i1lGMgC8t0kscvXAJQ=")
+
+[node name="DetailFlowers_7_5" type="Node3D" parent="Map/Props" unique_id=716668384]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -320, 0, 320)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMVwLAAAotS/9YFwKXQYAwgQOEtClAwAAwHLglAghZO8tpUxSpv///2Tbtu0aRmgAFFKjhYyzKs1Nsaoh7aCeVWlYq84Rj2RBkgiBAqgB+74BwUeFDAcRgIXMCAghQqKmB2NSk5KUtyJihVVKKXV5lohsGDEht+s3lIiZ+KabMWJEZkOVDImJkQgTIhM+MsRMZGzX7wojMUKZ5b4hF6uUkpQMY45/2BwgkTMxt+13gpnIdm+bBgmQEZl4f7RpEQAYkfn2se3Z565RL3U9qUceDNSHcbWMZlYVuQo=")
+
+[node name="DetailFlowers_8_5" type="Node3D" parent="Map/Props" unique_id=2143218160]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -256, 0, 320)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMSgIAAAotS/9YCgHtQUAcsYREaA1D////2gDrbakCGFKk5YCtqeUUgoRQgj5GGOM3d0dVVVVkZmZSYiIiHd3d2ZmZhaK/v8/BTFDVicxwbc6iVDjsh3YBgKAl6jgfN/Ao0I6EeCEEAkIEhQq+ngcohlPg8GMZ2Uy6xw5JA9dGunZU8myEUh6TfMyNq0uoxsl0mEdZDE9OhPyHGZmb25vzsSPptWl1aV13Ro7HTsdOz0blV1hcF8TPnYXbV4Qw1zYMAXqbAo=")
+
+[node name="DetailFlowers_8_3" type="Node3D" parent="Map/Props" unique_id=173839839]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -256, 0, 192)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMVgAAAAotS/9IFh1AQDwGwAAAAQAAAAGAAAADAAAAA8AAAACBgAAAA0DDgQPBgCgC8gHDANZ3DT6mWMC")
+
+[node name="DetailFlowers_9_3" type="Node3D" parent="Map/Props" unique_id=1926296241]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 192)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMZgQAAAotS/9YJgP5QYApAMbAAAA1AAAAAYADwAAAAIAAAAFAQYOAwYBAgMFBAQFBgcDCAkKAgsMDQIOAQ8GBAUGBwgJCgsMDQ4PgZqokV+PA9GnNAYRsAkxRkiMIK8DPbEaxmFsXrIMxzEdGhcuw3hMw8aF5TCO09C4YRmOYzo0LlyG8ZgmjQvLYZymoXHDMhrHbGhctAzTMS0aF1bDuExD44VlMY7V0Dha6lJLXWqpRS11qVUttdTKhzCGPtLRDkg7IMqeWqMJnLL8J3DK5T+B0wROWc595V8weUUgrtff+E7jAaaj1USrAg==")
+
+[node name="DetailFlowers_10_3" type="Node3D" parent="Map/Props" unique_id=348850311]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 192)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTvQYAlAMbAAAAAAEAAAYAAgAGAQMEBQYHCAkKCwwNDg8AAQIDBAUGBwgJCgsMDQ4PAgMEBQYHCAkKCwwNDg+B16iRnz0D8UtzEbAFhAiJgAiJLh17CENQCCtl3/N972twxiEIQxECcAxBGBUBgGMIhaEIAJyGIAxFAcAxBGFRBACOIRGGIgDwGIIwFAMAxxCEQxEAOIZBGIoAwGMIwlAMABxDEA5FAOAYBmEoQgsMqai9J8uJ5ERyIjkxOZG8cGr3l8oV7MJfepGcSE4kJ5InspBfmm4yjafSbhU=")
+
+[node name="DetailFlowers_11_3" type="Node3D" parent="Map/Props" unique_id=1055120450]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 192)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTvQYAlAMbAAAAAAEAAAYAAgAGAQMEBQYHCAkKCwwNDg8AAQIDBAUGBwgJCgsMDQ4PAgMEBQYHCAkKCwwNDg+B16iRnz0D8UtzEbAFhAiJgAiJLh17CENQCCtl3/N972twxiEIQxECcAxBGBUBgGMIhaEIAJyGIAxFAcAxBGFRBACOIRGGIgDwGIIwFAMAxxCEQxEAOIZBGIoAwGMIwlAMABxDEA5FAOAYBmEoQgsMqai9J8uJ5ERyIjkxOZG8cGr3l8oV7MJfepGcSE4kJ5InspBfmm4yjafSbhU=")
+
+[node name="DetailFlowers_12_4" type="Node3D" parent="Map/Props" unique_id=567559910]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 256)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMWwAAAAotS/9IGxlAQC4GwAAAAUAAAAGAAEAAAACAgMEBQEAAAAJACATkBxIDMhACJDvJgkrWQ8ACQ==")
+
+[node name="DetailFlowers_12_2" type="Node3D" parent="Map/Props" unique_id=476571554]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 128)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("17_flower_cover")
+painted_only = true
+density_mask = PackedByteArray("RURNMTwDAAAotS/9YDwCbQQARAMbAAAAKQAAAAYAAgYBAwQFBgcICQoLDA0ODwABAgMEBQYHCAkKCwwNBQ4PAgIBAgEBAAAAOyDQczkEcCAIIB8RHAgCyEcRIB8ROBDAgSAA5hsy2E7SGZZJchKWSHIJS0RyCUskuYRhym0AL9K3YsXuEpZIcgmTSHIJSyQ5CUskOYwI4KaLzCaLTSEB")
+
+[node name="DetailFlowers_986d4a6b1d_12_2" type="Node3D" parent="Map/Props" unique_id=2042060381]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 128)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMVgAAAAotS/9IFh1AQC4GwAAAAQAAAAGAAIGAQUCAgAAAAIAAAAKALiAowKAPGABLABzNzMDWWbmuwEk")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_10_2" type="Node3D" parent="Map/Props" unique_id=1482342542]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 128)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTvQYAlAMbAAAAAAEAAAYAAgAGAQMEBQYHCAkKCwwNDg8AAQIDBAUGBwgJCgsMDQ4PAgMEBQYHCAkKCwwNDg+B16iRnz0D8UtzEbAFhAiJgAiJLh17CENQCCtl3/N972twxiEIQxECcAxBGBUBgGMIhaEIAJyGIAxFAcAxBGFRBACOIRGGIgDwGIIwFAMAxxCEQxEAOIZBGIoAwGMIwlAMABxDEA5FAOAYBmEoQgsMqai9J8uJ5ERyIjkxOZG8cGr3l8oV7MJfepGcSE4kJ5InspBfmm4yjafSbhU=")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_9_2" type="Node3D" parent="Map/Props" unique_id=1079733080]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 128)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMbQSAAAotS/9YLQR5QgAYgoaEtDlAAAAAACwU5mZmZmZmSl3Cv/////u7u7u3d3d3czMzMy7u7u7qqqqqpmZmZmIiIiId3d3d2ZmZmZVVVVV782rlUJERET03ryiMzMzM+89HFBERETkx8+KRkKEPyuaYBIWEUFEAAGBWagx+r4B0ZcsBxEghYYICCFCIkYfzo8JwiVotkijYgnCJgg/IlOMKMIyCEumkhQjirAJwpKpIcWIIlyCsGRWSDGiSJYgLFkVUowohiUIS06FFCMaYQnCMlMhxYhFWIKwyVRIMUoRliBcMhVSTFGEJQjZuLyBlPoypK9W6I8CjLmwqgQv+mqlOEU8WST3AWWuPIyO4jrkqiU1sj3pSgT1/a2R2tkGvYZKcKPBnAbODVU=")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_11_2" type="Node3D" parent="Map/Props" unique_id=698808727]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 128)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMegQAAAotS/9YOgPvQcAAkYRFNClAwAAAAAQHVjKlPbee8st5ZYpbSszMwkFIiJi/f//k822bdt1kspYIeOEVUi8jylknLAK1MT7mELGCSu60GsbtAUCgXaoMXvf0adKaxGQhYYICBEUOT0MaYzyKENCm8OQppRqVAaJQY1SVKksy5DQ5jCkKUpRuvItQ9IbAAIA5pepLpuRmNMbCAIABIWPpM8IAAQAABczACIAQACA4g0IEAAACCC1iyAABAAAWcwAggBAAACKNyAgAAAQgNQeggAIAIBgMQMCAkAAACgOqfwWpShFKUpRiqoIjmJ5UV+ROyxFKUpRilKUFeJ6tNnMaaJVAQ==")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_9_3" type="Node3D" parent="Map/Props" unique_id=2088455756]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 192)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTvQYAlAMbAAAAAAEAAAYAAgAGAQMEBQYHCAkKCwwNDg8AAQIDBAUGBwgJCgsMDQ4PAgMEBQYHCAkKCwwNDg+B16iRnz0D8UtzEbAFhAiJgAiJLh17CENQCCtl3/N972twxiEIQxECcAxBGBUBgGMIhaEIAJyGIAxFAcAxBGFRBACOIRGGIgDwGIIwFAMAxxCEQxEAOIZBGIoAwGMIwlAMABxDEA5FAOAYBmEoQgsMqai9J8uJ5ERyIjkxOZG8cGr3l8oV7MJfepGcSE4kJ5InspBfmm4yjafSbhU=")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_10_3" type="Node3D" parent="Map/Props" unique_id=91081160]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 192)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTvQYAlAMbAAAAAAEAAAYAAgAGAQMEBQYHCAkKCwwNDg8AAQIDBAUGBwgJCgsMDQ4PAgMEBQYHCAkKCwwNDg+B16iRnz0D8UtzEbAFhAiJgAiJLh17CENQCCtl3/N972twxiEIQxECcAxBGBUBgGMIhaEIAJyGIAxFAcAxBGFRBACOIRGGIgDwGIIwFAMAxxCEQxEAOIZBGIoAwGMIwlAMABxDEA5FAOAYBmEoQgsMqai9J8uJ5ERyIjkxOZG8cGr3l8oV7MJfepGcSE4kJ5InspBfmm4yjafSbhU=")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_11_3" type="Node3D" parent="Map/Props" unique_id=1247947208]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 192)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMXAQAAAotS/9YHAP7QcAYgYSFcAlHf//////73oBIWmnvbeUSUpJUiTn9b7ve/rQW0yGOGuVpmzbtm3b5BYZ4qxFMwgvJkOctWgCDsKLyRBnLQpsaCQDJAEBgXKoEfu+AdGnSmsRkIWICIgRFDg9ilfnUf0Ur86j9lMMz/I/2gRRsV1COUJtc68SdnJA7SzxIyZHKEcoRyiXEKZv/M0jnMqoiEyUYC+WGpmInIhMkhCRGJmImohYGJWpFImKipKQNZWRFJmIsRCVVRGJFYmSKDOVIxGZEbEQK1MRExVJJSEzKyNRMhG9PORbEjELMQsxCzEbhBwl/KK2UtASMQsxCzELsQn9Sm1yEIjWqg==")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_11_4" type="Node3D" parent="Map/Props" unique_id=2081234406]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 256)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMTQQAAAotS/9YDQPLQgAQkYSFcAlHf//////D7x377T3llJKmaQkKW3ndN/36QHVmFLkQ4TEszK5kA8REs/KFJx4VqYp5EOExLMyTdBCPkRIPCtTYFNrG2gLCIFpqBH7vgGxRwVJYxGQhYgIiCFC4qYHilfnUf0UXp1Hnbw36tBn7f//fPd50lY/PCYRqlcoR1COUI5aO+2QxyQQDDELMQtiFqAcoagXCS75MtpmM3ZzdnOGvVjf7M3szeyNlDmbuZu5mzlL83a3ZvNm86Ts3u3czN7MXJq7uzmbO5uTZXdvZ2d2Z2bZ3N7N3Nzc/KKhfhALMQtjFmIWYmZ3vvDLj5WAAGchZkPMQszabqcspgPZ6aIK")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_10_5" type="Node3D" parent="Map/Props" unique_id=231068380]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 320)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMawLAAAotS/9YKwKpQYA4gYTE7AlbQzDMAyjrJTd3Ts1IpFLdgq2ZXd3d5dUVVVVMzMzMxERERFR7u7u7m7MzMzMrP7//1+BDDFFVBMeDFE0QfxgiKIRESxsB2wDAoDhqDC9b9BTZTgRMIWICAgRFDH6NcMtjeaMZYxj+9XjTtFPcSvzhlFGX5Z4ouaGe1vGyirembOqeMhvoQTCgDDGbDGCMAgKSIcYAiUQBoIxNosJhEFQCIbZLWIQFEEkGWb3iEFQBJFkIyiBMAR6WCYRq+jPHFnfNmeBZWVcE9cpa7ghqxQ=")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_11_5" type="Node3D" parent="Map/Props" unique_id=902915589]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 320)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMdwDAAAotS/9YNwCRQQA5AMbAAAAMQAAAAYAAgYBAwQFBgUAAQIDBAUGAwIBAwMEBAQEBAUFBQUFBQEGBgYGAwcHBwQICAQJCQEKAgAAAEuowHzfwKOkAxHQhJoRECYoUvQBcdeCUn6AvbdwiEMS4/NbPOggkC0LIyyImAAwoMGABuPxILZflWusfYM76m99ne1no55NAQ==")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_8_3" type="Node3D" parent="Map/Props" unique_id=187010605]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -256, 0, 192)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMdQGAAAotS/9YNQFnQUA4sYQEZBFOf//f/kHmZn8t+63RiQF///////PZdu2bdsmbdu2bRuQJEmSFL5t2zablQ8udxgFIcxAyh1BkVRIMiSNpIAkQHaoAfn9z5CDgoLkARGQhJASMiI0ROgHihFBFDjE40PcD11FBF8wBfRoKg+TmWk1xHLSG7h0Q5gMfFE8T3KSgxZ6EHCdN7Ai6Ccw5lrWaho987xxQxsOWxqBJPr52qDI769H/zcsr2ne7q+9hqo=")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_9_4" type="Node3D" parent="Map/Props" unique_id=982365849]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 256)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTvQYAlAMbAAAAAAEAAAYAAgAGAQMEBQYHCAkKCwwNDg8AAQIDBAUGBwgJCgsMDQ4PAgMEBQYHCAkKCwwNDg+B16iRnz0D8UtzEbAFhAiJgAiJLh17CENQCCtl3/N972twxiEIQxECcAxBGBUBgGMIhaEIAJyGIAxFAcAxBGFRBACOIRGGIgDwGIIwFAMAxxCEQxEAOIZBGIoAwGMIwlAMABxDEA5FAOAYBmEoQgsMqai9J8uJ5ERyIjkxOZG8cGr3l8oV7MJfepGcSE4kJ5InspBfmm4yjafSbhU=")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_9_1" type="Node3D" parent="Map/Props" unique_id=2080580937]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMTQQAAAotS/9YDQPXQYAtAMbAAAAzwAAAAYAAwAAAAIEBQYHCAkKCwwNDg8BAgUDBAUEBgMHBAgDCQIKCwwBDQ4PDw8PDw8PDw8PD4GBqIF32gzhS8sBEbAFhBAhERRdOtonv0ahp1HoaaK52rTve7ruyBmDIAjS6Z6Xux62hJUYhiBQL/tuz+t4se97uo49yZYCISjSlngTQSAIaUtYiWEIArUn2VIgBEVtiWsiCAIhne7yuuvC6Z6Xux62hJUYhiAw0R9Q0f8y9TQKPS2FnnZQ99P4TFRPqAI=")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_11_1" type="Node3D" parent="Map/Props" unique_id=1953544853]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMdwSAAAotS/9YNwRTQkAoo8lGKAlaQP//////////z/YwJXd3d2bW6ZmSbu7u7u7u15VVVVVVVUNMjMzMzMzMwOJiIiIiIiIGHh3d3d3d3d3ZmZmZmZmZhZYVVVVVVVVVbmIiIiIiIiIiGZmZmZmZmYm5v//////+yIiIiIiIiISSERERERERESwbdu2bTv81cSzormEHVhNPCsaeQQhBIeHEAJCCAABgRioofRpM7EnKWcMEVAEBGKEiAgJEvoBBsNuB23TP2jLJehld8I0nGReeyEJkld0y6OxDFcKDN32aCnDlYHC7DaUJtob2/TzEBw93qjZFqUaeQujERbhMr4F76NlfAvuo8v4FvAdA7b1lxXA9b5Dse6p51qn23/8aSJAargJONexgdakWONuInrpAHOpbFEF")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_12_1" type="Node3D" parent="Map/Props" unique_id=893929097]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMUwCAAAotS/9YEwB3QMAlAIbAAAAHQAAAAYABAAAAAIFBgYHCAkKCwwNDg8BAQMFBAECAwMCAQAAADkg0ENhOQQB8lEIkI8iQD4UAfJRBMD5RpLiOEA+CgEgBIAQQIQAEAJAEABCAAgB5KMIkI9CAJHva7CdJJewRJKTsESSS1gS5kDm28Se9aCQ")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_9_5" type="Node3D" parent="Map/Props" unique_id=879830835]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 320)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMVANAAAotS/9YFAM9QYAgokYFLAlbQzDMAzDAFbK7u7u3ik1QkQGu7u7u7tBVVVVVTUzMzMzUyAiIiIi3t3d3d2ZmZmZmY2qqqqqKiIiIiKimZmZmZng////H7Zt27awYIwSprmDIYIEmjsY4UIuIgERAQSA36jAfN/gldYRwITKCIiACIkU8geigcITigYFh2UhCF3cgmCcVBApFAqJBwQlJEqJApPTEOgFzkGgFzSHAHzpa5Q1OEhwIcFBggZYzuViDAcJDiY4SHCa5eQMUyOFBQoXKCxQfdOPjjydZI1S2CFtRIvr941GtpsC")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_7_1" type="Node3D" parent="Map/Props" unique_id=1022102001]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -320, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMZgQAAAotS/9YJgP3QkAQg4iFbAlbQzDMAzDMMzhEpHd3d29uWUTGc2riWdFH5nm1cSzoo9M82riWdFH3ryaeFb0kTevJp4VfeTNq4lnRR9pXk08K/pI82riWdFH3ryaeFb0kWleTTwr+og0ryae1f9AM82riWdF9E+Q5tXEs6IHzauJZ1Sn4BERmlcTj2wiIoiICoqIQEQAAoEYqBHxaTqRBwVJ0gERgAREOSEjQoSEfk79//OwgePo+f2vJjaQ8KHl/j9KXJyDTd//7yoxUQ4ffX+/q8UGJx512f+6JeHeZf/7nsTFvt//amIDCX+02f8HoNFLYabf/3cVMZEEv+v95a4D9PoOEO8EMVgjA7wbo33YLXGOBHAOInAOAjgOAjgHETiHYQDMwQj+v+Ju4xWeyO8oqvA3Cou13I/jtrG46B8BPL9Dbb0q")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_6_1" type="Node3D" parent="Map/Props" unique_id=2109586932]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -384, 0, 64)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMagAAAAotS/9IKj9AQAUAhsAAAAIAAAABgAAAA8CAAAAAQkDCgQLBQwNDgQPAwAAAA0AIAswBzIGEgHpgGEgCzAHMgNGQL43jfasfAE=")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_6_2" type="Node3D" parent="Map/Props" unique_id=967077354]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -384, 0, 128)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMRwAAAAotS/9IBzhAAAbAAAAAQAAAAYAAAAPAAAAAAAAAAIAAAABAAAA")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_7_2" type="Node3D" parent="Map/Props" unique_id=567063716]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -320, 0, 128)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMTwIAAAotS/9YDwH3QUAEocSD6ClA////+iyBLaW4KWEBP///+/u7u5y1t3d3XLMzMy8u7u7qqqqmpmZmYaIiIjh7u7uyEQshFBVJYGIpmZmyMRESmzCIiKICCCAlKigfN+QgyRJBxGghBYSEGQES8jPAUE2t7tqrkbp0+U3zfqMu/Ms533Nal9bx5r5l2PIhAjLCB+V6c8lkqIwky8cly9iRy4ZrkmowYrsjnK4E3qcPaFubzBwciF9Upx+MyBfsnLjTg4MV8gjBQ==")
+scatter_seed = 10
+
+[node name="DetailFlowers_986d4a6b1d_8_2" type="Node3D" parent="Map/Props" unique_id=1481946285]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -256, 0, 128)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_18")
+painted_only = true
+density_mask = PackedByteArray("RURNMQgKAAAotS/9YAgJ7QQAJAMbAAAAgAAAAAYAAgYBAwQFBgcCAAECAwQFBgcBAgIDBAUDBgcICQQKCwwFDQ4PBgAAAIDtqLDdN/ClNRGwhYgIiDBCpwcfBhMYoEOEhNAQQ0Z0D5EKDKigAgcoaIFT+sdRhEcpmAKBGklggA0RMqL3ELTAAA0qMIiCCjylf4xFA49mVGnJXtcwfrL4kbKY3NSRvcaAR7a0kxDFpg==")
+scatter_seed = 10
+
+[node name="DetailFlowers_94c6f8321a_10_1" type="Node3D" parent="Map/Props" unique_id=1990804409]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 64)
+script = ExtResource("9_grass")
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_19")
+painted_only = true
+density_mask = PackedByteArray("RURNMYwIAAAotS/9YIwHLQcAMggVEZAlef/////4H8uybDRF5E8B3d3d3U3MzMzMPLu7u1uqqqqZmZmSiIiIeHd3d2ZmZlZVVRUVwhEREc3MBP4fERGSiAiRzWFDQxMH/+P/PvwP/AcEgJSokHiaDoCjJOoRoATEKaEjQoOEfkbLo7/l7Mt5WbolQ+Fl7rDEKa/WNoTseSxe+k1aeCsa2XQZcOLeeoSY9UYR0wR7EN0l6+9+C624+JFNe/2m+vatexwu2EM4hUMjOziPsLtx6gbc12v7mUT1O8y+c9lfTA6iPJ97kHQE+up7L/iPYDbKMQovJ4eQAg==")
+tuft_size = 2
+scatter_seed = 13
+
+[node name="DetailFlowers_94c6f8321a_11_1" type="Node3D" parent="Map/Props" unique_id=1233633490]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 64)
+script = ExtResource("9_grass")
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_19")
+painted_only = true
+density_mask = PackedByteArray("RURNMZwRAAAotS/9YJwQxQkAEooZFsAlHf///////6YXpJTS3ntvKeXeRAb/////7cFt27Ztu9y2bdu2FSVJkiRJWnCEKaSGuLs8ppBxViKEuzymkHFWwu7ymELGWYlwFe7ymELGnVkFgoiCuzymkHFngYiKjogCRAQIgWCoYfa0GZEHBQVJOhEwBUQZIRIUMvr0u7ndbsczcx+43+32drs0+Q/fd3e73d123Ox2O7vdpp9J0i0fXNZy3FKuVrh0sKJMXjrYcpjWnLTY4g5Melzi2KKcrrjLzpGOlxy2lKYV/o9ZDlvK0wqXDi5fiUuLSxpbmtMUkPPFy/52e7vdpnnd498prvBuBpVbTfDb3e12ZuXVWbyRwW93t9tl3/XQDY+2OJCBW47VypUOW1yxnQMvyIlERYZ0OMw4spAViYQMCTpuQuxDNewq")
+tuft_size = 2
+scatter_seed = 13
+
+[node name="DetailFlowers_94c6f8321a_10_2" type="Node3D" parent="Map/Props" unique_id=1661655358]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 128)
+script = ExtResource("9_grass")
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_19")
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTvQYAlAMbAAAAAAEAAAYAAgAGAQMEBQYHCAkKCwwNDg8AAQIDBAUGBwgJCgsMDQ4PAgMEBQYHCAkKCwwNDg+B16iRnz0D8UtzEbAFhAiJgAiJLh17CENQCCtl3/N972twxiEIQxECcAxBGBUBgGMIhaEIAJyGIAxFAcAxBGFRBACOIRGGIgDwGIIwFAMAxxCEQxEAOIZBGIoAwGMIwlAMABxDEA5FAOAYBmEoQgsMqai9J8uJ5ERyIjkxOZG8cGr3l8oV7MJfepGcSE4kJ5InspBfmm4yjafSbhU=")
+tuft_size = 2
+scatter_seed = 13
+
+[node name="DetailFlowers_94c6f8321a_11_2" type="Node3D" parent="Map/Props" unique_id=509649197]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 128)
+script = ExtResource("9_grass")
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_19")
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTvQYAlAMbAAAAAAEAAAYAAgAGAQMEBQYHCAkKCwwNDg8AAQIDBAUGBwgJCgsMDQ4PAgMEBQYHCAkKCwwNDg+B16iRnz0D8UtzEbAFhAiJgAiJLh17CENQCCtl3/N972twxiEIQxECcAxBGBUBgGMIhaEIAJyGIAxFAcAxBGFRBACOIRGGIgDwGIIwFAMAxxCEQxEAOIZBGIoAwGMIwlAMABxDEA5FAOAYBmEoQgsMqai9J8uJ5ERyIjkxOZG8cGr3l8oV7MJfepGcSE4kJ5InspBfmm4yjafSbhU=")
+tuft_size = 2
+scatter_seed = 13
+
+[node name="DetailFlowers_94c6f8321a_12_1" type="Node3D" parent="Map/Props" unique_id=93822545]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 64)
+script = ExtResource("9_grass")
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_19")
+painted_only = true
+density_mask = PackedByteArray("RURNMQADAAAotS/9YAAC1QMAhAMbAAAAJgAAAAYABAAAAAIAAAABBQUGBgcICQoLDA0ODwMHCAkKCwwNDg8DBAoLDAUNDg8OAQAAAEOoAHuPA+ClNRFABURCIRPSRR/w3nHE4jkw1UUeXcBqarVaXYlBFAPf0sMMsY13or6kzvvi6ql27lmA3VvGIAU=")
+tuft_size = 2
+scatter_seed = 13
+
+[node name="DetailFlowers_94c6f8321a_12_2" type="Node3D" parent="Map/Props" unique_id=812830940]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 128)
+script = ExtResource("9_grass")
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_19")
+painted_only = true
+density_mask = PackedByteArray("RURNMUAEAAAotS/9YEADpQMAEoQLDnB1OvwfXHrcYLOJbFsZJO3vvf9bhb2qEjqmkHGiW+BSCR1TyDjRwxmPZEASCFCowHzf4KU5EdCElBEQJThS9AGgQEABcZgD7PZKu/KfMwQFCAogKEBQN4R30zrFUujcZi8yKw59cYVLQu5AZ0w7kAI=")
+tuft_size = 2
+scatter_seed = 13
+
+[node name="DetailFlowers_94c6f8321a_11_3" type="Node3D" parent="Map/Props" unique_id=1566958426]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 192)
+script = ExtResource("9_grass")
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_19")
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgT1QYA1AMbAAAAAAEAAAYAAgAGAQMEBQYHCAkKCwwNDg8AAQIDBAUGBwgJCgsMDQ4PAgMEBQYHCAkKCwwNDg8EAAAAgdeokZ89A/FLcxGwBYQQARFGdOkUQhGEQQThGIJhKAIAxyEIQxECcAxBGBUBgGMIhaEIAJyGIAxFAcAxBGFRBACOIRGGIgDwGIIwFAMAxxCEQxEAOIZBGIoAwGMIwlAMABxDEA5FAOAYBmEoQgsMqai9J8uJ5ERyIjkxOZG8cGr3l8oV7MJfepGcSE4kJ5InspBfmm4yjad+bhU=")
+tuft_size = 2
+scatter_seed = 13
+
+[node name="DetailFlowers_94c6f8321a_10_3" type="Node3D" parent="Map/Props" unique_id=556379206]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 192)
+script = ExtResource("9_grass")
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_19")
+painted_only = true
+density_mask = PackedByteArray("RURNMQgUAAAotS/9YAgTvQYAlAMbAAAAAAEAAAYAAgAGAQMEBQYHCAkKCwwNDg8AAQIDBAUGBwgJCgsMDQ4PAgMEBQYHCAkKCwwNDg+B16iRnz0D8UtzEbAFhAiJgAiJLh17CENQCCtl3/N972twxiEIQxECcAxBGBUBgGMIhaEIAJyGIAxFAcAxBGFRBACOIRGGIgDwGIIwFAMAxxCEQxEAOIZBGIoAwGMIwlAMABxDEA5FAOAYBmEoQgsMqai9J8uJ5ERyIjkxOZG8cGr3l8oV7MJfepGcSE4kJ5InspBfmm4yjafSbhU=")
+tuft_size = 2
+scatter_seed = 13
+
+[node name="DetailFlowers_94c6f8321a_10_4" type="Node3D" parent="Map/Props" unique_id=1965737732]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -128, 0, 256)
+script = ExtResource("9_grass")
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_19")
+painted_only = true
+density_mask = PackedByteArray("RURNMeQKAAAotS/9YOQJvQYAcggWErAlDwzDMAxFexFShJQytW0jASLy7u7u7mZmZmbmsbu7u7tCVVVVVSczMzMzERERETHc3d3dmZmZ2bCqqqoaIyIiov///6khBM0/xAQJ/xCBRkhEAhEBAoC/qMB838CTFDoRwIRQCQghQuKE/AFiydvZz9seUkT6/CfD5C3aubbtxKW9a3lRIdx+nvntYIb746i3jgqIOjf1isUGkWeVFafI94jJpt1cuebKNcfHJea1wYINFmz3YLHBHda00KB19szY045Y556bLvRkzHcXp9jySgE=")
+tuft_size = 2
+scatter_seed = 13
+
+[node name="DetailFlowers_94c6f8321a_11_4" type="Node3D" parent="Map/Props" unique_id=2139873273]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, 256)
+script = ExtResource("9_grass")
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_19")
+painted_only = true
+density_mask = PackedByteArray("RURNMfQJAAAotS/9YPQIjQYAggYSE7AlbQzDMKywuEYkcqdEJLI3SQFtJ5hSpQwxQgihzMzMQkRERLq7u7sL////J9u2bdsIYoyqyOYewoom1O4hrCiIqWgbaAsIgMmoIF/fsKMkjQERIIXOCAgSFDD6PzF6Up8TjxzsuXd0dXofY1xrw3sFxZk2ixhZPU0EuMXo5azQ4ScYrbVsnmm5TMSVrJdlmTzXiCiSc5k803KZiCtZL8syea4RUSTnMnmm5TIRV7JelmXyXGqWI3sECOFwdnDbm/XwUVOAvJMhjsPPIQU=")
+tuft_size = 2
+scatter_seed = 13
+
+[node name="DetailFlowers_94c6f8321a_9_3" type="Node3D" parent="Map/Props" unique_id=202934932]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 192)
+script = ExtResource("9_grass")
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_19")
+painted_only = true
+density_mask = PackedByteArray("RURNMTAKAAAotS/9YDAJfQUA5AIbAAAAggAAAAYAAAAHAAIBAwIDBAQFBggJAQgGCgQLAQkMAwoNDgMLDwQMDQ4PgP+owN3v0ENhORGgBUQpIUFCXgcoNVW0NKWmPVFGSxOryggVZLIymZpMLnJDtRRdjUorpar1h340GluVFJGihGoyL0Wn02eVlibVVLnxQPt1p7JHU6PKTnv+TKRppEwDYBUBawRYI8Dyy9vSlkYjNIBiRSPK4k9jpNu16TarFA==")
+tuft_size = 2
+scatter_seed = 13
+
+[node name="DetailFlowers_94c6f8321a_9_4" type="Node3D" parent="Map/Props" unique_id=1139077245]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 256)
+script = ExtResource("9_grass")
+detail_kind = 3
+cover_pattern = ExtResource("flower_set_19")
+painted_only = true
+density_mask = PackedByteArray("RURNMSABAAAotS/9YCAAtQIA6BsAAAAOAAAABgAAAAwAAgECDQIDDgMDDwQCAAAAHAAgE8ABEIAAAAIIACBAAFNIBzIDmQAOgAAEABBAAF+lA5mBTAAHQAACWCodyAxkuUlgZr4GoAQ=")
+tuft_size = 2
+scatter_seed = 13
+
+[node name="DetailGrass_9_13" type="Node3D" parent="Map/Props" unique_id=319000811]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -192, 0, 832)
+script = ExtResource("9_grass")
+tuft_size = 1.25
+painted_only = true
+density_mask = PackedByteArray("RURNMVgAAAAotS/9IFiNAQAEAhsAAAAEAAAABgAAAAwAAAALAAAAAgAAAFAMJw0gAAAABgCAAASwVDqQGciiM+YY")
 
 [node name="Regions" type="Node3D" parent="Map" unique_id=1372404067]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 768, 0, 0)
 
 [node name="PlayerStart" type="Area3D" parent="Map/Regions" unique_id=1954658759]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 6, 200)
@@ -76,6 +2062,13 @@ region_id = "landscape_compact_start"
 map_id = "landscape_compact"
 kind = "player_start"
 
+[node name="WorldAnomaly" type="Node3D" parent="Map" unique_id=1946979005]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 449.6, 32, 176)
+script = ExtResource("11_anomaly")
+enabled = false
+inner_look = 2
+radius_m = 18.0
+
 [node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1944218270]
 
 [node name="Gate" type="Label" parent="CanvasLayer" unique_id=799270627]
@@ -85,4 +2078,31 @@ theme_override_colors/font_color = Color(0.98, 0.98, 0.9, 1)
 theme_override_colors/font_shadow_color = Color(0.12, 0.19, 0.17, 1)
 theme_override_constants/shadow_offset_x = 1
 theme_override_constants/shadow_offset_y = 1
-text = "LANDSCAPE COMPACT · КОПИЯ БЕРЕГА · РЕДАКТОР МИРА"
+text = "EMBER · ЕДИНАЯ РЕДАКТИРУЕМАЯ ЛОКАЦИЯ"
+
+[node name="PlanarReflection" type="Node" parent="." unique_id=634588870]
+script = ExtResource("8_water_settings")
+study_controls = false
+shallow_color = Color(0.084228516, 0.33480832, 0.359375, 1)
+deep_color = Color(0, 0.37718743, 0.425, 1)
+water_color_start_m = 0.31
+reflection_resolution_scale = 0.95
+river_flow_speed = 3.0
+shore_foam_strength = 0.48
+shore_foam_width_voxels = 3.4
+shore_foam_sharpness = 1.0
+river_crest_whiteness = 0.35
+river_arc_opening = 0.02
+river_crest_width_voxels = 1.45
+river_crest_sharpness = 0.99
+river_foam_variation = 1.0
+ripple_cell_scale = 1.15
+ripple_morph_strength = 0.8
+water_level_offset_voxels = -0.4
+sea_foam_trail_strength = 0.52
+sea_foam_trail_lifetime = 2.9
+sea_crest_foam_strength = 0.55
+sea_crest_foam_amount = 0.35
+local_bob_strength = 0.36
+underwater_shafts = 0.41
+obstacle_wave_mode = 2

@@ -6,7 +6,7 @@ struct Record { vec4 address; vec4 coast; };
 layout(set = 0, binding = 0, std430) readonly buffer Records { Record records[]; };
 layout(set = 0, binding = 1, std430) readonly buffer Table { vec2 profiles[2600]; vec2 phases[65]; };
 layout(rgba32f, set = 0, binding = 2) uniform image2D state_image;
-layout(r32f, set = 0, binding = 3) uniform image2D foam_image;
+layout(rgba32f, set = 0, binding = 3) uniform image2D foam_image;
 layout(push_constant, std430) uniform Settings { vec4 step; vec4 grain; vec4 border; } settings;
 
 void main() {
@@ -35,5 +35,5 @@ void main() {
     age = min(age + history_step.x, 8.0);
     if (phases[phase_group].x > 0.5 && distance <= phases[phase_group].y + 0.5 && profile.x > 0.12 && foam > 0.07) age = 0.0;
     imageStore(state_image, point, vec4(distance > 0.0 ? max(surface, record.coast.y + 0.025) : surface, clamp(foam, 0.0, 1.0), wetness, coverage));
-    imageStore(foam_image, point, vec4(age));
+    imageStore(foam_image, point, vec4(age, surface, profile.y, grain));
 }

@@ -200,16 +200,7 @@ static func _build_object(settings: Dictionary, seed: int, material: Dictionary,
 	var chips := float(settings.chips) / 100.0
 	var lean := Vector2(random.randf_range(-0.13, 0.13), random.randf_range(-0.13, 0.13))
 	var width := Vector2(random.randf_range(0.90, 1.06), random.randf_range(0.90, 1.06))
-	var facets: Array[Dictionary] = []
-	if type != 0:
-		# Convex planes give actual broad faces, not a noisy ball painted like a rock.
-		var count := 7 if type == 2 else 11
-		var phase := random.randf_range(0, TAU)
-		for index in count:
-			var angle := phase + TAU * float(index) / count + random.randf_range(-0.15, 0.15)
-			facets.append({"normal": Vector3(cos(angle), random.randf_range(-0.12, 0.12) if type == 2 else random.randf_range(-0.7, 0.8), sin(angle)).normalized(), "threshold": random.randf_range(0.73, 0.97)})
-	for index in ceili(chips * 5):
-		facets.append({"normal": Vector3(random.randf_range(-1,1), random.randf_range(0.1,1), random.randf_range(-1,1)).normalized(), "threshold": lerpf(0.94, 0.57, chips) + random.randf_range(-0.05,0.05)})
+	var facets := _facets(random, type, chips)
 	for y in dimensions.y:
 		for z in dimensions.z:
 			for x in dimensions.x:
@@ -231,6 +222,62 @@ static func _build_object(settings: Dictionary, seed: int, material: Dictionary,
 	if source.voxels.count(0) == source.voxels.size(): return {"error": "Параметры создали пустой камень."}
 	Surface.apply(source, settings, origin)
 	return {"geometry": source, "parameters": settings}
+
+
+## Same seeded facet construction for rocks and groundable landform silhouettes.
+static func _facets(random: RandomNumberGenerator, type: int, chips: float) -> Array[Dictionary]:
+	var facets: Array[Dictionary] = []
+	if type != 0:
+		# Convex planes give actual broad faces, not a noisy ball painted like a rock.
+		var count := 7 if type == 2 else 11
+		var phase := random.randf_range(0, TAU)
+		for index in count:
+			var angle := phase + TAU * float(index) / count + random.randf_range(-0.15, 0.15)
+			facets.append({"normal": Vector3(cos(angle), random.randf_range(-0.12, 0.12) if type == 2 else random.randf_range(-0.7, 0.8), sin(angle)).normalized(), "threshold": random.randf_range(0.73, 0.97)})
+	for index in ceili(chips * 5):
+		facets.append({"normal": Vector3(random.randf_range(-1,1), random.randf_range(0.1,1), random.randf_range(-1,1)).normalized(), "threshold": lerpf(0.94, 0.57, chips) + random.randf_range(-0.05,0.05)})
+	return facets
+
+
+## Three adjoining masses share one irregular rock footprint. Materials do not
+## partition the geometry: each terrace remains a full, editable voxel volume.
+static func landform_parts(lo: Vector3, hi: Vector3, seed: int, strength: float, edge_breakup := 35) -> Array[Dictionary]:
+	var rng := RandomNumberGenerator.new(); rng.seed=maxi(0,seed)+104729
+	var centre := (lo+hi)*0.5
+	var radii := (hi-lo)*0.5
+	var sides: Array[Plane]=[]
+	for facet in _facets(rng,1,clampf(0.22*strength*float(edge_breakup)/35.0,0.0,1.0)):
+		var axis: Vector3=facet.normal
+		axis.y*=0.45*strength
+		axis=axis/radii
+		var distance := lerpf(0.99,float(facet.threshold),strength)+axis.dot(centre)
+		sides.append(Plane(axis.normalized(),distance/axis.length()))
+	var first := roundf(lerpf(lo.x,hi.x,rng.randf_range(0.28,0.36)))
+	var second := roundf(lerpf(lo.x,hi.x,rng.randf_range(0.65,0.74)))
+	var boundaries := [lo.x,first,second,hi.x]
+	var skew := rng.randf_range(-0.45,0.45)*strength
+	var partition := Vector3(1,0,skew)
+	var result: Array[Dictionary]=[]
+	for region in 3:
+		var top := hi.y if region==1 else hi.y-roundf((hi.y-lo.y)*rng.randf_range(0.06,0.18)*strength)
+		var planes := Geometry.bounds_planes(lo,hi)
+		planes.append_array(sides)
+		if region>0:
+			planes.append(Plane(-partition.normalized(),(-boundaries[region]-skew*centre.z)/partition.length()))
+		if region<2:
+			planes.append(Plane(partition.normalized(),(boundaries[region+1]+skew*centre.z)/partition.length()))
+		# Give neighbouring masses their own broad front, rather than three
+		# heights on one continuous wall. The middle shoulder projects beside
+		# a recessed flank; both still share the solid rear footing.
+		var setback: float = [0.12,0.0,0.28][region] * (hi.z-lo.z) * strength
+		var lean: float = [0.10,-0.06,0.16][region] * strength
+		var front_axis := Vector3(0,lean,1)
+		planes.append(Plane(front_axis.normalized(),(hi.z-setback+lean*lo.y)/front_axis.length()))
+		var slope := 0.0 if region==1 else rng.randf_range(-0.12,0.12)*strength
+		var cap_axis := Vector3(-slope,1,-slope*skew)
+		planes.append(Plane(cap_axis.normalized(),(top-slope*(centre.x+skew*centre.z))/cap_axis.length()))
+		result.append({"planes":planes,"slot":2,"title":"Природный выступ · %d"%(region+1)})
+	return result
 
 
 ## Oriented convex prisms share a solid footing. No loose specks or mesh-only shards.

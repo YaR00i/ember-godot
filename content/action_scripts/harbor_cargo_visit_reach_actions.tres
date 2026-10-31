@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_action_resource.gd" id="1_3jx6g"]
+
+[resource]
+script = ExtResource("1_3jx6g")
+action_id = "harbor_cargo_visit_reach_actions"
+document = {
+"id": "harbor_cargo_visit_reach_actions",
+"nameRu": "Место · Найти ящик дальше по берегу",
+"steps": [{
+"flag": "harbor_cargo_visit",
+"type": "set_flag",
+"value": true
+}]
+}

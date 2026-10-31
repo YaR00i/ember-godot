@@ -155,6 +155,10 @@ var _deployment_ready_edit: Button
 var _library_setup := {}
 
 
+var in_place_context: Dictionary = {}
+var entry_transition_active := false
+signal presentation_ready
+
 func _ready() -> void:
 	_library_test = not Engine.is_editor_hint() and EmberCombatTransition.library_test_requested()
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -226,7 +230,9 @@ func _ready() -> void:
 		DisplayServer.window_set_title("Ember · Тест: " + _authored_encounter.display_name)
 		print("EMBER_LIBRARY_LAB_READY ", _authored_encounter.encounter_id)
 		if not _library_setup.setup.is_empty(): print("EMBER_LIBRARY_LAB_SETUP ", JSON.stringify(_library_setup.setup))
-	call_deferred("_fade_in")
+	if in_place_context.get("continuousEntry",false): _fade_overlay.hide()
+	presentation_ready.emit()
+	if not in_place_context.get("continuousEntry",false): call_deferred("_fade_in")
 
 
 func _install_encounter_arena() -> bool:
@@ -252,6 +258,20 @@ func _install_encounter_arena() -> bool:
 	# Assign before _ready, so the arena's own preview field cannot supersede
 	# the encounter's semantic cells or physical projection.
 	arena.battlefield = _authored_encounter.battlefield
+	if not in_place_context.is_empty():
+		arena.existing_world_surface = true
+		arena.transform = in_place_context.transform
+		arena.unit_visual_scenes = in_place_context.get("unitVisuals", {})
+		arena.external_actor_ids.assign(in_place_context.get("worldActorIds",[]))
+		arena.external_label_offsets = in_place_context.get("labelOffsets",{})
+		var rig := arena.get_node("CameraRig")
+		if in_place_context.get("continuousEntry",false): rig.projection_mode = 1
+		var world_scale := arena.transform.basis.get_scale().x
+		for property in ["min_distance", "max_distance", "min_orthographic_size", "max_orthographic_size", "keyboard_pan_speed"]:
+			rig.set(property, float(rig.get(property)) * world_scale)
+		for path in ["WorldEnvironment", "CombatKeyLight"]:
+			var node := arena.get_node_or_null(path)
+			if node != null: node.free()
 	parent.add_child(arena)
 	parent.move_child(arena, position_in_parent)
 	# Picking and rendering must use the same camera, even if the authored
@@ -1085,6 +1105,9 @@ func _reset_lab(reopen_deployment: bool = true, retry_confirmed: bool = false) -
 	)
 	if _library_test:
 		_state = EmberCombatTransition.LabSetup.apply(_state, _library_setup)
+	if not in_place_context.is_empty():
+		_state = preload("res://scripts/ember_field_encounter.gd").with_initiative(_state, str(in_place_context.get("initiative", "player")))
+		_state = preload("res://scripts/ember_combat_world_items.gd").install(_state,in_place_context.get("worldItems",{}))
 	if _authored_encounter == null and _is_grid_mode():
 		_add_lab_effect_actions("mira", ["earth_raise", "earth_wall", "wind_spread"])
 	var battle_inventory := (
@@ -1154,9 +1177,16 @@ func _reset_lab(reopen_deployment: bool = true, retry_confirmed: bool = false) -
 	_manual_move_selected = false
 	_pending_cell = Vector2i(-1, -1)
 	_transition_in_progress = false
+	if not _deployment_active and not entry_transition_active: _advance_enemy_turns()
 	_refresh()
 	if _deployment_ready:
 		call_deferred("_focus_deployment_ready")
+
+
+func finish_world_entry() -> void:
+	entry_transition_active = false
+	if not _deployment_active: _advance_enemy_turns()
+	_refresh()
 
 
 func _add_lab_effect_actions(unit_id: String, action_ids: Array[String]) -> void:
@@ -1260,6 +1290,7 @@ func _reset_deployment() -> void:
 
 
 func _confirm_deployment() -> bool:
+	if entry_transition_active: return false
 	if not _deployment_active:
 		return false
 	var errors := Grid.deployment_validation_errors(
@@ -1282,6 +1313,7 @@ func _confirm_deployment() -> bool:
 	_deployment_selected_hero_id = ""
 	_deployment_selecting_cell = false
 	_hover_cell = Combat.INVALID_CELL
+	_advance_enemy_turns()
 	_refresh()
 	call_deferred("_focus_first_radial_button")
 	return true
@@ -2888,6 +2920,7 @@ func _select_target(unit_id: String) -> void:
 
 
 func _confirm_action() -> void:
+	if entry_transition_active: return
 	if _deployment_active or _lift_input_busy():
 		return
 	if _external_3d_world != null:
@@ -3691,6 +3724,7 @@ func _select_mode_metadata(value: String) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if entry_transition_active: return
 	var cancel_requested: bool = event.is_action_pressed("ui_cancel") or (
 		event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE
 	)

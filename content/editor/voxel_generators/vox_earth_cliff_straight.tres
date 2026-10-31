@@ -1,0 +1,25 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://addons/ember_import/ember_voxel_generator_recipe.gd" id="1_weq6p"]
+
+[resource]
+resource_name = "Прямой уступ"
+script = ExtResource("1_weq6p")
+generator_id = "cliff"
+seed = 28
+parameters = {
+"density": 16,
+"depth_m": 2.5,
+"edge_breakup": 35,
+"form_strength": 65,
+"grass_color": Color(0.4509804, 0.56078434, 0.28235295, 1),
+"height_m": 2.25,
+"shape": 1,
+"soil_color": Color(0.5294118, 0.3882353, 0.28235295, 1),
+"soil_depth_m": 0.625,
+"stone_color": Color(0.4862745, 0.5137255, 0.5372549, 1),
+"width_m": 5.5
+}
+family_id = "earth_cliffs"
+family_title = "Травяные уступы"
+variation_name = "Прямой уступ"

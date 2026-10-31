@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EmberDialogueResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_dialogue_resource.gd" id="1_pkutn"]
+
+[resource]
+script = ExtResource("1_pkutn")
+dialogue_id = "harbor_cargo_reminder"
+document = {
+"id": "harbor_cargo_reminder",
+"nameRu": "Груз у берега · напоминание",
+"startStepId": "line",
+"steps": [{
+"id": "line",
+"next": "end",
+"textRu": "Ящик стоит дальше по берегу. Возьми его по F и отнеси на золотую площадку. Поставь повторным F и дай ему остановиться.",
+"type": "dialogue"
+}, {
+"id": "end",
+"type": "end"
+}]
+}

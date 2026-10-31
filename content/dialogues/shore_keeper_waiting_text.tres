@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EmberDialogueResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_dialogue_resource.gd" id="1_je6kx"]
+
+[resource]
+script = ExtResource("1_je6kx")
+dialogue_id = "shore_keeper_waiting_text"
+document = {
+"id": "shore_keeper_waiting_text",
+"nameRu": "Хранитель берега",
+"startStepId": "line",
+"steps": [{
+"id": "line",
+"next": "end",
+"textRu": "На берегу можно найти бутылку с посланием. Если найдёшь письмо, прочитай его и приходи ко мне.",
+"type": "dialogue"
+}, {
+"id": "end",
+"type": "end"
+}]
+}

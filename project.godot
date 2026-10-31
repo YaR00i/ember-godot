@@ -37,6 +37,10 @@ pack_path=""
 map_id="landscape_compact"
 save_slot=0
 
+[physics]
+
+3d/physics_engine="Jolt Physics"
+
 [rendering]
 
 textures/vram_compression/import_etc2_astc=true

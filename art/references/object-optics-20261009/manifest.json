@@ -1,0 +1,78 @@
+{
+	"shots": [
+		{
+			"clarity": 0.94,
+			"file": "01_optics.png",
+			"optics": true,
+			"refraction_scale": 1.0,
+			"title": "Кристалл · лёд · стекло"
+		},
+		{
+			"clarity": 0.94,
+			"file": "02_crystal.png",
+			"optics": true,
+			"refraction_scale": 1.0,
+			"title": "Кристалл · цветное преломление и блик"
+		},
+		{
+			"clarity": 0.94,
+			"file": "03_ice.png",
+			"optics": true,
+			"refraction_scale": 1.0,
+			"title": "Лёд · мягкая прозрачность"
+		},
+		{
+			"clarity": 0.94,
+			"file": "04_glass.png",
+			"optics": true,
+			"refraction_scale": 1.0,
+			"title": "Стекло · искажение фона"
+		},
+		{
+			"clarity": 0.94,
+			"file": "05_glass_no_distortion.png",
+			"optics": true,
+			"refraction_scale": 0.0,
+			"title": "Стекло · искажение выключено"
+		},
+		{
+			"clarity": 0.35,
+			"file": "06_glass_frosted.png",
+			"optics": true,
+			"refraction_scale": 1.0,
+			"title": "Стекло · матовая прозрачность"
+		},
+		{
+			"clarity": 0.94,
+			"file": "07_opaque.png",
+			"optics": false,
+			"refraction_scale": 1.0,
+			"title": "Сравнение · оптика выключена"
+		},
+		{
+			"clarity": 0.94,
+			"file": "08_all_materials.png",
+			"optics": true,
+			"refraction_scale": 1.0,
+			"title": "Все материалы · один дневной свет"
+		}
+	],
+	"timing": {
+		"off": {
+			"cpu_ms_median": 0.254999995231628,
+			"draw_calls_median": 105.0,
+			"fps_cap": 30,
+			"gpu_ms_median": 0.345999985933304,
+			"gpu_ms_p95": 0.351999998092651,
+			"samples": 90
+		},
+		"on": {
+			"cpu_ms_median": 0.263999998569489,
+			"draw_calls_median": 102.0,
+			"fps_cap": 30,
+			"gpu_ms_median": 0.46399998664856,
+			"gpu_ms_p95": 0.467999994754791,
+			"samples": 90
+		}
+	}
+}

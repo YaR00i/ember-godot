@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="EmberItemResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_item_resource.gd" id="1_qey5x"]
+
+[resource]
+script = ExtResource("1_qey5x")
+item_id = "shore_sealed_bottle"
+definition = {
+"id": "shore_sealed_bottle",
+"kind": "key",
+"nameRu": "Бутылка с посланием",
+"notesRu": "Внутри виден свёрнутый листок. Пробку можно вынуть.",
+"openContents": {
+"shore_empty_bottle": 1,
+"shore_message_letter": 1
+},
+"rarity": "common",
+"slot": "none",
+"stackMax": 1,
+"useIn": "explore",
+"useLabelRu": "Открыть",
+"worldScene": "res://prefabs/items/sealed_bottle.tscn"
+}

@@ -103,6 +103,12 @@ func open_source(source: EmberVoxelModelResource, next_context := {}) -> bool:
 	_variation_name.text = "Новая вариация"
 	_save_button.text = "Сохранить вариацию и поставить"
 	_info.text = ("Seed сохранён. Настройки меняют форму и цвет камня." if recipe.generator_id == Generator.ROCK else "Структура закреплена. Настройки меняют её оформление.") + "\nПредпросмотр — только рецепт; ручная лепка не переносится. Исходник не изменится."
+	if recipe.generator_id == Generator.CLIFF:
+		_info.text = "Трава сверху, земля и каменное основание. Толщина земли меняет долю камня.\nПредпросмотр точный; ручная лепка защищена до сохранения."
+		if int(recipe.parameters.get("shape",0))==3:
+			_info.text = "Цельный земляной выступ с травяной площадкой. Толщина земли меняет покрытие, не форму.\nСид и природная форма меняют силуэт; дальше можно лепить и красить в Canvas или3D."
+	if recipe.generator_id == Generator.BUILDING:
+		_info.text = "Размеры, этажи и крыша меняют форму дома. Цвета задают оформление.\nСоберите предпросмотр; исходник меняется только после сохранения."
 	if recipe.generator_id==Generator.LARGE_TREE and int(recipe.parameters.generation_version) in [21,22,23,24,25]:
 		_info.text="Количество ветвей и развилок меняет каркас. Цвет меняет оформление.\nПредпросмотр — только рецепт; ручная лепка не переносится. Исходник не изменится."
 	_rebuild_fields()
@@ -154,6 +160,7 @@ func _rebuild_fields() -> void:
 			controls[field.key] = option
 		elif str(field.get("type", "number")) == "color":
 			var picker := ColorPickerButton.new()
+			picker.custom_minimum_size.y = 30
 			picker.edit_alpha = false
 			picker.color = recipe.parameters[field.key]
 			picker.color_changed.connect(func(value: Color): set_parameter(field.key, value))
@@ -163,9 +170,11 @@ func _rebuild_fields() -> void:
 			var value := SpinBox.new()
 			value.min_value = field.min
 			value.max_value = field.max
-			value.step = 1
+			value.step = float(field.get("step",1.0))
+			if field.get("type","")=="float":
+				value.custom_arrow_step=value.step;value.step=0.001
 			value.value = recipe.parameters[field.key]
-			value.value_changed.connect(func(number: float): set_parameter(field.key, int(number)))
+			value.value_changed.connect(func(number: float): set_parameter(field.key, number if field.get("type","")=="float" else int(number)))
 			_fields.add_child(value)
 			controls[field.key] = value
 	_sync_rock_fields()
@@ -217,6 +226,8 @@ func set_parameter(key: String, value: Variant) -> void:
 
 func _assign(key: String, value: Variant) -> void:
 	recipe.parameters[key] = value
+	if recipe.generator_id in [Generator.BUILDING, Generator.CLIFF]:
+		recipe.parameters=Generator.normalized_parameters(recipe.generator_id,recipe.parameters)
 	_clear_preview()
 	_info.text = "Параметры изменены. Соберите новый точный предпросмотр. Исходник не меняется."
 	_sync_controls()

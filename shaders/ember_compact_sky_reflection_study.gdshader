@@ -8,6 +8,9 @@ uniform vec3 deep_color : source_color = vec3(0.025, 0.34, 0.66);
 uniform vec3 absorption_per_block = vec3(1.55, 0.75, 0.32);
 uniform float deep_start_blocks : hint_range(0.0, 4.0) = 0.20;
 uniform float deep_end_blocks : hint_range(0.1, 4.0) = 2.35;
+uniform float water_color_softness : hint_range(0.0, 1.0) = 1.0;
+uniform float water_density : hint_range(0.0, 8.0) = 1.0;
+uniform float water_transparency : hint_range(0.0, 1.0) = 1.0;
 uniform float wave_height_voxels : hint_range(0.0, 4.0) = 1.25;
 uniform float wave_speed : hint_range(0.0, 2.0) = 0.42;
 uniform float refraction_strength : hint_range(0.0, 0.04) = 0.018;
@@ -39,6 +42,7 @@ uniform float shore_foam_motion_voxels : hint_range(0.0, 4.0) = 1.25;
 uniform float river_crest_whiteness : hint_range(0.0, 1.0) = 0.10;
 uniform sampler2D object_contact_distance_map : repeat_disable, filter_linear;
 uniform float object_contact_available = 0.0;
+uniform float object_wave_interaction = 0.0;
 uniform float object_foam_strength : hint_range(0.0, 1.0) = 0.50;
 uniform float object_foam_width_voxels = 0.55;
 uniform float object_foam_sharpness = 0.92;
@@ -89,7 +93,11 @@ uniform float sea_swash_period = 9.0;
 uniform float sea_foam_strength = 1.0;
 uniform float sea_foam_trail_strength = 0.38;
 uniform float sea_foam_trail_lifetime = 2.2;
+uniform float sea_crest_foam_strength = 0.0;
+uniform float sea_crest_foam_amount = 0.28;
 uniform sampler2D sea_foam_age : filter_linear, repeat_disable;
+// Derived from the existing world look; no authored water setting.
+uniform bool sea_smooth_shore = false;
 #include "res://shaders/ember_compact_sea_swash.gdshaderinc"
 #include "res://shaders/ember_compact_waterfall.gdshaderinc"
 
@@ -129,6 +137,20 @@ float study_foam_noise(vec2 point) {
 	weight = weight * weight * (3.0 - 2.0 * weight);
 	return mix(mix(study_foam_hash(cell), study_foam_hash(cell + vec2(1.0, 0.0)), weight.x),
 		mix(study_foam_hash(cell + vec2(0.0, 1.0)), study_foam_hash(cell + vec2(1.0, 1.0)), weight.x), weight.y);
+}
+
+float study_water_depth_mix(float depth) {
+	float end = max(deep_end_blocks, deep_start_blocks + 0.0001);
+	float midpoint = (deep_start_blocks + end) * 0.5;
+	float softness = max(water_color_softness, 0.0001);
+	return smoothstep(mix(midpoint, deep_start_blocks, softness), mix(midpoint, end, softness), depth);
+}
+
+vec3 study_water_transmission(float depth) {
+	// Keep the accepted floor/refraction path; optical controls never fade foam
+	// or change the physical water level. Defaults reproduce the original body.
+	return exp(-absorption_per_block * max(water_density, 0.0) * max(depth, 0.0))
+		* clamp(water_transparency, 0.0, 1.0);
 }
 
 vec3 study_waterfall_threads(float lateral, float phase) {
@@ -206,10 +228,29 @@ vec4 study_coastal_normal_sample(ivec2 cell) {
 	if (any(lessThan(cell, ivec2(0))) || any(greaterThanEqual(cell, ivec2(sea_swash_extent)))) {
 		return vec4(0.0);
 	}
+	if (sea_smooth_shore) {
+		return vec4(texelFetch(sea_foam_age, cell, 0).g, 0.0, 0.0,
+			texelFetch(sea_swash_info, cell, 0).a);
+	}
 	return texelFetch(sea_swash_state, cell, 0);
 }
 
+vec2 study_sea_surface_slope(vec2 point) {
+		// The derivative of one bilinear cell is discontinuous at its edge:
+		// it lit the detailed foam/wave as a row of voxel-sized facets.
+		// Interpolate centred slopes instead; height/contact remain unchanged.
+		vec2 uv = (point - sea_swash_origin) / sea_swash_extent;
+		vec2 texel = vec2(1.0) / sea_swash_extent;
+		float centre = textureLod(sea_foam_age, uv, 0.0).g;
+		float left = coastal_info(point - vec2(1.0, 0.0)).a > 0.5 ? textureLod(sea_foam_age, uv - vec2(texel.x, 0.0), 0.0).g : centre;
+		float right = coastal_info(point + vec2(1.0, 0.0)).a > 0.5 ? textureLod(sea_foam_age, uv + vec2(texel.x, 0.0), 0.0).g : centre;
+		float front = coastal_info(point - vec2(0.0, 1.0)).a > 0.5 ? textureLod(sea_foam_age, uv - vec2(0.0, texel.y), 0.0).g : centre;
+		float back = coastal_info(point + vec2(0.0, 1.0)).a > 0.5 ? textureLod(sea_foam_age, uv + vec2(0.0, texel.y), 0.0).g : centre;
+		return vec2(right-left, back-front) * 0.5;
+	}
+
 vec2 study_coastal_slope(vec2 point) {
+	if (sea_smooth_shore) { return study_sea_surface_slope(point); }
 	// Differentiate the same bilinear surface, excluding uncovered/missing
 	// cells. Zero in the sparse field is absence of water, not a height-zero
 	// water cliff at the river guard, film edge or field boundary.
@@ -220,7 +261,9 @@ vec2 study_coastal_slope(vec2 point) {
 	vec4 b = study_coastal_normal_sample(cell + ivec2(1, 0));
 	vec4 c = study_coastal_normal_sample(cell + ivec2(0, 1));
 	vec4 d = study_coastal_normal_sample(cell + ivec2(1, 1));
-	float reference = coastal_state(point).r;
+	float reference = sea_smooth_shore
+		? textureLod(sea_foam_age, (point - sea_swash_origin) / sea_swash_extent, 0.0).g
+		: coastal_state(point).r;
 	float h_a = a.a > 0.05 ? a.r : reference;
 	float h_b = b.a > 0.05 ? b.r : reference;
 	float h_c = c.a > 0.05 ? c.r : reference;
@@ -273,7 +316,7 @@ float study_sea_foam_trails(vec2 point) {
 	if (sea_foam_trail_strength <= 0.001 || sea_swash_strength <= 0.001 || sea_swash_available < 0.5) { return 0.0; }
 	vec2 cells = point * 16.0;
 	vec4 coast = coastal_info(cells);
-	if (coast.a < 0.5 || coastal_state(cells).a <= 0.05) { return 0.0; }
+	if (coast.a < 0.5 || (!sea_smooth_shore && coastal_state(cells).a <= 0.05)) { return 0.0; }
 	float age = texture(sea_foam_age, (cells - sea_swash_origin) / sea_swash_extent).r;
 	float lifetime = min(max(sea_foam_trail_lifetime, 0.3), sea_swash_period * 0.75);
 	if (age >= lifetime) { return 0.0; }
@@ -286,6 +329,52 @@ float study_sea_foam_trails(vec2 point) {
 	// an entire cell to full white at the first age-map write.
 	float birth = smoothstep(0.0, min(0.25, lifetime * 0.2), age);
 	return study_foam_trail_pattern(texture_point, age, lifetime) * attachment * birth * sea_foam_trail_strength;
+}
+
+float study_sea_crest_event(vec2 point, float seconds, float crest_phase, float amplitude, float cycle) {
+	float age = -(crest_phase - 1.5707963 - cycle * 6.2831853) / wave_speed;
+	float lifetime = min(max(sea_foam_trail_lifetime, 0.3), 6.2831853 / wave_speed * 0.85);
+	float rise_seconds = min(0.9, lifetime * 0.35);
+	if (age <= -rise_seconds || age >= lifetime) { return 0.0; }
+	float pick = study_foam_noise(point * 0.75 + vec2(cycle * 7.3, cycle * 3.1));
+	float threshold = mix(0.86, 0.30, sea_crest_foam_amount);
+	float footprint = max(fwidth(pick) * 0.7, 0.025);
+	float patch = smoothstep(threshold - footprint, threshold + footprint, pick);
+	if (patch <= 0.001) { return 0.0; }
+	float envelope = smoothstep(-rise_seconds, 0.0, age)
+		* (1.0 - smoothstep(0.0, lifetime, max(age, 0.0)));
+	// Reconstruct the source at birth: a falling surface must not erase foam
+	// already left behind. This is an analytic wake, not an advected fluid field.
+	float birth_height = wave_state(point, seconds - age).z * amplitude;
+	float prominence = smoothstep(0.12, 0.50, birth_height / max(wave_height_voxels, 0.001));
+	vec2 along = normalize(vec2(0.78, 0.63));
+	vec2 texture_point = vec2(dot(point, along) * 2.0, dot(point, vec2(-along.y, along.x)) * 3.4)
+		+ vec2(sin(seconds * 0.23 + point.y * 0.7), cos(seconds * 0.19 + point.x * 0.6)) * 0.13;
+	vec2 warp = vec2(study_foam_noise(texture_point * 0.7),
+		study_foam_noise(texture_point * 0.7 + vec2(7.3, 2.1))) - vec2(0.5);
+	vec2 fibres = texture_point + warp * 1.8;
+	float grain = study_foam_noise(fibres * 1.4) * 0.7
+		+ study_foam_noise(mat2(vec2(0.8, 0.6), vec2(-0.6, 0.8)) * fibres * 3.1) * 0.3;
+	float cap = smoothstep(0.30, 0.68, grain);
+	// Curved noise contours avoid the straight Voronoi cell borders used by
+	// the existing shoreline lace. Break up and dissolve the remaining ribbons.
+	float life = 1.0 - smoothstep(lifetime * 0.20, lifetime, max(age, 0.0));
+	float trail = (1.0 - smoothstep(0.025, 0.085, abs(grain - 0.5)))
+		* smoothstep(0.25 + (1.0 - life) * 0.35, 0.72,
+			study_foam_noise(fibres * 0.73 + vec2(5.7, 12.1))) * life;
+	float shape = mix(cap, trail, smoothstep(0.0, lifetime * 0.40, max(age, 0.0)));
+	return shape
+		* patch * envelope * prominence * sea_crest_foam_strength;
+}
+
+float study_sea_crest_foam(vec2 point, float seconds, float crest_phase, float amplitude) {
+	if (sea_crest_foam_strength <= 0.001 || sea_crest_foam_amount <= 0.001
+			|| wave_height_voxels <= 0.001 || wave_speed <= 0.001 || amplitude <= 0.05) { return 0.0; }
+	float cycle = floor((crest_phase + 1.5707963) / 6.2831853);
+	// Keep the preceding event through the trough, where the active cycle
+	// changes. Its seed and decay remain continuous until its own expiry.
+	return max(study_sea_crest_event(point, seconds, crest_phase, amplitude, cycle),
+		study_sea_crest_event(point, seconds, crest_phase, amplitude, cycle + 1.0));
 }
 
 float study_foam_trails(vec2 point, float seconds) {
@@ -367,8 +456,8 @@ vec3 study_river_wave(vec2 point, float seconds, float river_detail) {
 	return vec3(slope, height);
 }
 
-vec3 study_water_state_with_detail(vec2 point, float seconds, float river_detail) {
-	vec3 open_water = wave_state(point, seconds);
+vec3 study_water_state_with_detail(vec2 point, float seconds, float river_detail, out float crest_phase) {
+	vec3 open_water = wave_state(point, seconds, crest_phase);
 	if (river_flow_enabled < 0.5) {
 		return open_water;
 	}
@@ -381,6 +470,11 @@ vec3 study_water_state_with_detail(vec2 point, float seconds, float river_detail
 	// along both sides of the channel simply because its current is slower.
 	float channel = smoothstep(0.015, 0.18, speed);
 	return mix(open_water, study_river_wave(point, seconds, river_detail) * river_wave_mix, channel);
+}
+
+vec3 study_water_state_with_detail(vec2 point, float seconds, float river_detail) {
+	float unused_phase;
+	return study_water_state_with_detail(point, seconds, river_detail, unused_phase);
 }
 
 vec3 study_reaction_state(vec2 point) {
@@ -445,7 +539,16 @@ float study_object_distance(vec2 point) {
 		vec2 local = point - shape.xy;
 		vec2 meta = object_shape_meta[i];
 		float distance;
-		if (meta.x > 0.5) {
+		if (meta.x > 1.5) {
+			float c = cos(meta.y);
+			float s = sin(meta.y);
+			local = vec2(local.x * c + local.y * s, -local.x * s + local.y * c);
+			vec2 uv = clamp(local / (shape.zw * 2.0) + vec2(0.5), vec2(0.5 / 64.0), vec2(63.5 / 64.0));
+			distance = textureLod(object_contact_distance_map, vec2(uv.x, (float(i) + uv.y) / 8.0), 0.0).r;
+			distance += length(max(abs(local) - shape.zw, vec2(0.0))) * 16.0;
+			closest = min(closest, distance);
+			continue;
+		} else if (meta.x > 0.5) {
 			distance = length(local) - shape.z;
 		} else {
 			float c = cos(meta.y);
@@ -464,8 +567,31 @@ float study_object_foam(vec2 point, float seconds, float wave_height) {
 		return 0.0;
 	}
 	float distance_voxels = study_object_distance(point);
-	if (distance_voxels < 0.0 || distance_voxels > 8.0) {
+	float maximum_distance = object_wave_interaction > 0.5
+		? max(8.0, object_foam_width_voxels * 4.0 + 2.0) : 8.0;
+	if (distance_voxels < 0.0 || distance_voxels > maximum_distance) {
 		return 0.0;
+	}
+	if (object_wave_interaction > 0.5) {
+		if (obstacle_mode == 0 || obstacle_patch_count == 0) { return 0.0; }
+		vec4 response = obstacle_wave_sample(point * 16.0, seconds);
+		float lifetime = max(foam_trail_lifetime, 0.3);
+		if (response.a <= 0.001 || response.b >= lifetime) { return 0.0; }
+		// A local crest/scattered disturbance can make foam. The authored
+		// contact outline only limits its neighbourhood; it never draws a rim.
+		float activity = smoothstep(0.06, 0.40, response.g)
+			* smoothstep(0.01, 0.15, abs(response.r));
+		if (activity <= 0.001) { return 0.0; }
+		float reach = max(2.0, object_foam_width_voxels * 4.0);
+		float area = 1.0 - smoothstep(reach, reach + 2.0, distance_voxels);
+		float feather = mix(0.22, 0.06, object_foam_sharpness);
+		float fragments = smoothstep(0.58 - feather, 0.58 + feather,
+			study_foam_noise(point * 3.1 + vec2(13.2, 7.4)));
+		float lace = study_foam_trail_pattern(point * vec2(3.3, 2.7), response.b, lifetime);
+		// The wet-edge mask and fragment pattern already attenuate the crest.
+		// Keep it readable without drawing anything in calm/expired water.
+		return clamp(mix(0.15, 1.0, lace) * 3.0
+			* area * fragments * activity * response.a * object_foam_strength, 0.0, 1.0);
 	}
 	float wave_active = smoothstep(0.0, 0.5, wave_height_voxels);
 	float width = max(0.15, object_foam_width_voxels * study_foam_width_scale(point, seconds, wave_height));
@@ -501,12 +627,15 @@ void vertex() {
 			* study_wave_amplitude(max(clamp(COLOR.a, 0.0, 1.0) * 64.0 + water_level_offset_voxels, 0.0), water_point);
 		VERTEX.y += study_reaction(water_point, 0.0).x
 			* study_wave_amplitude(max(clamp(COLOR.a, 0.0, 1.0) * 64.0 + water_level_offset_voxels, 0.0), water_point);
-		vec2 sample_point = UV.y < -0.5 ? swash_cell_point : water_point * 16.0;
+		vec2 sample_point = UV.y < -0.5 && !sea_smooth_shore ? swash_cell_point : water_point * 16.0;
 		vec4 coast = coastal_info(sample_point);
 		vec4 state = coastal_state(sample_point);
 		float influence = coast.a * (1.0 - smoothstep(15.0, 24.0, abs(coast.r)))
 			* step(0.001, sea_swash_strength);
-		if (UV.y < -0.5) {
+		if (sea_smooth_shore && coast.a > 0.5) {
+			float surface = textureLod(sea_foam_age, (sample_point - sea_swash_origin) / sea_swash_extent, 0.0).g;
+			VERTEX.y = UV.y < -0.5 ? surface : mix(VERTEX.y, surface, influence);
+		} else if (UV.y < -0.5) {
 			VERTEX.y = max(coastal_surface(water_point * 16.0), coast.g + 0.025);
 		} else {
 			VERTEX.y = mix(VERTEX.y, state.r, influence);
@@ -521,10 +650,12 @@ void vertex() {
 
 
 void fragment() {
-	vec2 coast_point = UV.y < -0.5 ? swash_cell_point : water_point * 16.0;
+	vec2 coast_point = UV.y < -0.5 && !sea_smooth_shore ? swash_cell_point : water_point * 16.0;
 	vec4 coast = coastal_info(coast_point);
 	vec4 swash = coastal_state(coast_point);
-	if (UV.y < -0.5 && (coast.a < 0.5 || swash.a <= 0.05)) { discard; }
+	bool smooth_coast = sea_smooth_shore && coast.a > 0.5 && UV.x >= -3.0 && UV.y < 0.5;
+	if (smooth_coast) { swash = textureLod(sea_swash_state, (coast_point - sea_swash_origin) / sea_swash_extent, 0.0); }
+	if (UV.y < -0.5 && (coast.a < 0.5 || (!smooth_coast && swash.a <= 0.05))) { discard; }
 	if (UV.x < -3.0) {
 		if (waterfall_available < 0.5 || waterfall_strength < 0.001) { discard; }
 		float seconds = preview_time >= 0.0 ? preview_time : TIME;
@@ -561,7 +692,7 @@ void fragment() {
 		float descent = clamp(UV.y - 1.0, 0.0, 1.0);
 		float body_depth = clamp(COLOR.a, 0.0, 1.0) * 4.0;
 		vec3 rim = mix(shallow_color, deep_color,
-			smoothstep(deep_start_blocks, deep_end_blocks, body_depth));
+			study_water_depth_mix(body_depth));
 		vec3 body = mix(rim * 0.96, deep_color * 0.57,
 			smoothstep(0.0, 1.0, descent));
 		EMISSION = body * 0.85;
@@ -602,15 +733,34 @@ void fragment() {
 	float camera_distance_m = distance(water_world_position, INV_VIEW_MATRIX[3].xyz) / 16.0;
 	float detail_weight = 1.0 - smoothstep(detail_begin, detail_end, camera_distance_m);
 	if (UV.y < -0.5) { depth_blocks = max((swash.r - coast.g) / 16.0, 0.0); }
-	float depth_mix = smoothstep(deep_start_blocks, deep_end_blocks, depth_blocks);
+	float shore_coverage = 1.0;
+	float shore_depth = -1.0;
+	if (smooth_coast) {
+		// The depth pass contains the actual rendered/physical terrain. A true
+		// wave plane intersects it continuously; no raw-column coverage test
+		// or floor-clamped vertex can raise a separate foam tile above it.
+		float depth = textureLod(scene_depth, SCREEN_UV, 0.0).r;
+		vec4 floor_h = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, depth, 1.0);
+		vec3 floor_world = (INV_VIEW_MATRIX * vec4(floor_h.xyz / max(floor_h.w, 0.00001), 1.0)).xyz;
+		float water_depth = max(water_world_position.y - floor_world.y, 0.0);
+		if (depth > 0.00001) {
+			depth_blocks = water_depth / 16.0;
+			shore_depth = water_depth;
+			// Antialias the intersection over one pixel, not the foam's whole
+			// optical width. A broad fade erased the accepted fine trail lines.
+			shore_coverage = smoothstep(0.0, max(0.02, fwidth(water_depth) * 0.7), water_depth);
+		}
+	}
+	float depth_mix = study_water_depth_mix(depth_blocks);
 	// A current changes the travelling waves, not the optical material. The
 	// same sun/sky response continues through a river mouth into open water.
 	float glint_strength = water_glint_strength;
 	// Optical river detail only changes xy. The same base height supplies both
 	// contact bands, without resampling the wave (or adding wake displacement).
-	vec3 base_wave = study_water_state_with_detail(water_point, seconds, 1.0);
-	vec2 slope = (base_wave + study_reaction_state(water_point)).xy
-		* (study_wave_amplitude(depth_blocks * 16.0, water_point) / 16.0);
+	float open_crest_phase;
+	vec3 base_wave = study_water_state_with_detail(water_point, seconds, 1.0, open_crest_phase);
+	float base_amplitude = study_wave_amplitude(depth_blocks * 16.0, water_point);
+	vec2 slope = (base_wave + study_reaction_state(water_point)).xy * (base_amplitude / 16.0);
 	float coastal_influence = coast.a * (1.0 - smoothstep(15.0, 24.0, abs(coast.r)))
 		* step(0.001, sea_swash_strength);
 	vec2 coastal_slope = coastal_influence > 0.001 ? study_coastal_slope(water_point * 16.0) : slope;
@@ -645,12 +795,14 @@ void fragment() {
 	float channel_refraction = mix(1.0, 0.38, smoothstep(0.04, 0.65, river_speed));
 	vec2 floor_uv = clamp(SCREEN_UV + view_normal.xy * refraction_strength
 		* shallow_refraction * channel_refraction, vec2(0.001), vec2(0.999));
-	vec3 transmission = exp(-absorption_per_block * depth_blocks);
+	vec3 transmission = study_water_transmission(depth_blocks);
 	vec3 water_color = mix(shallow_color, deep_color, depth_mix);
 	// The separate camera provides a stable seabed at grazing angles.
 	vec3 floor_color = water_color;
+	float floor_coverage = 0.0;
 	if (floor_camera_available >= 0.5) {
 		vec4 floor_sample = textureLod(floor_refraction, floor_uv, 0.0);
+		floor_coverage = floor_sample.a;
 		floor_color = mix(water_color, floor_sample.rgb, floor_sample.a);
 	}
 	// The main opaque pass contains characters too. Reconstruct the sampled
@@ -679,8 +831,17 @@ void fragment() {
 		// above its column. Only a raised object replaces the floor camera.
 		bool submerged_object = behind_water && in_terrain
 			&& scene_world.y > terrain_height + 5.0;
-		floor_color = mix(floor_color, textureLod(floor_screen, floor_uv, 0.0).rgb,
-			submerged_object ? 1.0 : 0.0);
+		// The submerged-only camera clips terrain at the mean water plane.
+		// A moving coastal surface can cover that clipped strip. Fill only
+		// missing coverage from a real opaque point behind/below this surface.
+		vec3 scene_floor = textureLod(floor_screen, floor_uv, 0.0).rgb;
+		if (submerged_object) {
+			floor_color = scene_floor;
+		} else if (behind_water) {
+			// Replace only the uncovered fraction, preserving the camera's
+			// existing contribution at filtered shoreline pixels.
+			floor_color += (scene_floor - water_color) * (1.0 - floor_coverage);
+		}
 	}
 	vec3 transmitted_color = floor_color * transmission + water_color * (vec3(1.0) - transmission);
 	if (UV.y < -0.5) {
@@ -688,6 +849,15 @@ void fragment() {
 		// Its opaque terrain pixel supplies the actual sand colour here.
 		transmitted_color = textureLod(floor_screen, SCREEN_UV, 0.0).rgb * transmission
 			+ water_color * (vec3(1.0) - transmission);
+	}
+	if (smooth_coast && shore_depth >= 0.0) {
+		// The thin coastal film crosses the old wet/dry cells continuously.
+		// Switching floor cameras on that raw-cell flag painted a second,
+		// faceted contour behind the foam even after fixing the water height.
+		vec3 bank_transmission = textureLod(floor_screen, SCREEN_UV, 0.0).rgb * transmission
+			+ water_color * (vec3(1.0) - transmission);
+		transmitted_color = mix(transmitted_color, bank_transmission,
+			1.0 - smoothstep(1.0, 4.0, shore_depth));
 	}
 	// Keep the accepted clear-water body. The reflection comes from Godot's
 	// Sky radiance and an optional mirrored scene camera, never a glint mask.
@@ -743,11 +913,44 @@ void fragment() {
 	float river_web = 0.0;
 	float sea_web = 0.0;
 	float coastal_weight = coast.a * (1.0 - smoothstep(15.0, 24.0, abs(coast.r))) * step(0.001, sea_swash_strength);
+	float sea_front = swash.g;
+	if (coastal_weight > 0.001) {
+		vec2 profile_point = smooth_coast ? coast_point
+			: sea_swash_origin + floor(coast_point - sea_swash_origin) + vec2(0.5);
+		vec4 profile = textureLod(sea_foam_age, (profile_point - sea_swash_origin) / sea_swash_extent, 0.0);
+		// Shallow depth alone finds two bands: the advancing tip and the
+		// shallow bed behind the crest. Only the shore-facing wave slope can
+		// break into active edge foam. A calm sheet has no such front.
+		vec4 left = coastal_info(profile_point - vec2(1.0, 0.0));
+		vec4 right = coastal_info(profile_point + vec2(1.0, 0.0));
+		vec4 front = coastal_info(profile_point - vec2(0.0, 1.0));
+		vec4 back = coastal_info(profile_point + vec2(0.0, 1.0));
+		vec2 inland = vec2((right.a > 0.5 ? right.r : coast.r) - (left.a > 0.5 ? left.r : coast.r),
+			(back.a > 0.5 ? back.r : coast.r) - (front.a > 0.5 ? front.r : coast.r));
+		vec2 wave_slope = smooth_coast ? coastal_slope : study_sea_surface_slope(profile_point);
+		float face = length(inland) > 0.001
+			? smoothstep(0.005, 0.04, -dot(wave_slope, normalize(inland))) : 0.0;
+		float raw_depth = max(profile.g - coast.g, 0.0);
+		float edge = 1.0 - smoothstep(0.05, 0.75, raw_depth);
+		if (smooth_coast && shore_depth >= 0.0) {
+			float footprint = max(fwidth(shore_depth) * 0.7, mix(0.16, 0.015, shore_foam_sharpness));
+			float width = max(shore_foam_width_voxels * 0.25, 0.02);
+			edge = 1.0 - smoothstep(width - footprint, width + footprint, shore_depth);
+		}
+		sea_front = clamp((edge * 0.75 * face + profile.b) * profile.a, 0.0, 1.0);
+		if (!smooth_coast) { sea_front *= swash.a; }
+	}
 	// Skip the procedural web entirely beyond the transition. Multiplying a
 	// computed web by zero would still pay its per-fragment cost at a distance.
 	if (detail_weight > 0.0) {
 		if (coastal_weight < 1.0) { river_web = study_foam_trails(water_point, seconds) * detail_weight; }
 		if (coastal_weight > 0.0) { sea_web = study_sea_foam_trails(water_point) * detail_weight; }
+	}
+	float open_foam = 0.0;
+	if (detail_weight > 0.0 && coastal_weight < 0.999 && sea_crest_foam_strength > 0.001) {
+		open_foam = study_sea_crest_foam(water_point, seconds, open_crest_phase, base_amplitude)
+			* detail_weight * (1.0 - coastal_weight) * (1.0 - smoothstep(0.02, 0.20, river_speed))
+			* smoothstep(0.5, 4.0, depth_blocks * 16.0);
 	}
 	if (obstacle.a > 0.001) {
 		obstacle_crest = (1.0 - smoothstep(0.0, 0.22, obstacle.b)) * smoothstep(0.1, 0.4, obstacle.g);
@@ -768,18 +971,22 @@ void fragment() {
 	}
 	float foam = clamp(study_shore_foam(water_point, seconds, base_wave.z) * (1.0 - coastal_weight)
 		+ study_object_foam(water_point, seconds, base_wave.z) + crest + mix(river_web, obstacle_web * river_crest_whiteness, obstacle.a) * (1.0 - coastal_weight)
-		+ study_reaction(water_point, length(fwidth(water_point)) * 0.5).y
-		+ mix(swash.g * sea_foam_strength + sea_web,
+		+ study_reaction(water_point, length(fwidth(water_point)) * 0.5).y + open_foam
+		+ mix(sea_front * sea_foam_strength + sea_web,
 			obstacle_crest * 0.35 * sea_foam_strength + obstacle_sea_web, obstacle.a) * coastal_weight
 		+ fall_state.g * mix(0.55, 1.0, study_foam_noise(water_point * 6.3 - vec2(seconds * waterfall_speed * 0.25, 0.0)))
 		+ waterfall_web
 		+ smoothstep(0.56, 0.84, inlet_pattern.x) * mix(0.45, 1.0, inlet_pattern.y) * inlet_weight * 0.42,
 		0.0, 1.0);
-	EMISSION = mix(surface_color, vec3(0.70, 0.95, 1.0), foam);
+	EMISSION = mix(surface_color, vec3(1.0), foam);
+	if (smooth_coast) {
+		EMISSION = mix(textureLod(floor_screen, SCREEN_UV, 0.0).rgb, EMISSION, shore_coverage);
+	}
 	ALBEDO = vec3(0.0);
 	NORMAL = view_normal;
 	ROUGHNESS = mix(sky_reflection_roughness, max(sky_reflection_roughness, 0.22), glint_strength);
 	SPECULAR = mix(sky_reflection_strength, max(sky_reflection_strength, 0.55), glint_strength);
+	if (smooth_coast) { SPECULAR *= shore_coverage; }
 	// The shader has already composed the opaque floor and the water layer.
 	ALPHA = 1.0;
 	}

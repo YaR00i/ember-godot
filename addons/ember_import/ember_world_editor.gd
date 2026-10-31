@@ -4,6 +4,9 @@ extends Node
 signal active_changed(value: bool)
 signal compact_extension_preview_ready
 const Model = preload("res://addons/ember_import/ember_voxel_sculpt_model.gd")
+const Selection=preload("res://addons/ember_import/ember_voxel_selection.gd")
+const Groups=preload("res://addons/ember_import/ember_voxel_groups.gd")
+const VolumeSmooth=preload("res://addons/ember_import/ember_voxel_volume_smooth.gd")
 const Actions = preload("res://addons/ember_import/ember_voxel_sculpt_actions.gd")
 const Sessions = preload("res://addons/ember_import/ember_world_edit_sessions.gd")
 const Fragment = preload("res://addons/ember_import/ember_voxel_fragment.gd")
@@ -13,6 +16,7 @@ const CompactBrush = preload("res://addons/ember_import/ember_compact_terrain_br
 const CompactBrushMath = preload("res://scripts/prototypes/ember_terrain_pilot_brush_math.gd")
 const WorkshopTheme = preload("res://addons/ember_import/ember_voxel_workshop_theme.gd")
 const BrushParameters = preload("res://addons/ember_import/ember_world_brush_parameters.gd")
+const BrushProfiles = preload("res://addons/ember_import/ember_voxel_brush_profiles.gd")
 const CompactMapExtension = preload("res://addons/ember_import/ember_compact_map_extension.gd")
 const CompactExtensionPreview = preload("res://addons/ember_import/ember_compact_map_extension_preview.gd")
 const TerrainGeneration = preload("res://addons/ember_import/ember_compact_terrain_generation.gd")
@@ -38,12 +42,6 @@ const TOOL_ICONS := {
 	"smooth": &"EditorPathSmoothHandle", "level": &"PlaneMesh", "shore": &"GradientTexture1D",
 	"generator": &"Noise", "grab": &"ToolMove", "paint": &"Paint", "sand": &"NoiseTexture2D",
 	"water": &"GradientTexture2D", "dry": &"Eraser", "objects": &"MeshInstance3D",
-}
-const TOOL_LABELS := {
-	"raise": "Поднять", "lower": "Опустить", "add": "Добавить", "remove": "Убрать",
-	"smooth": "Сгладить", "level": "Площадка", "shore": "Берег и дно",
-	"generator": "Неровности", "grab": "Тянуть", "paint": "Покрасить", "sand": "Песок",
-	"water": "Вода", "dry": "Убрать воду", "objects": "Объекты",
 }
 const TOOL_HINTS := {
 	"raise": "Поднять землю плавным мазком.", "lower": "Опустить землю плавным мазком.",
@@ -83,6 +81,9 @@ var _ui_icons := {}
 var _tool_buttons: Array[Button] = []
 var enabled: Button
 var target_choice: OptionButton
+var pick_target_button:Button
+var _changing_context:=false
+var _context_pointer:=Vector2.ZERO
 var category: OptionButton
 var category_buttons: Array[Button] = []
 var tools: OptionButton
@@ -142,6 +143,7 @@ var baseline: EmberVoxelModelResource
 var delta := {}
 var queue: Array[Dictionary] = []
 var job: RefCounted
+var _smooth_retired:Array[RefCounted]=[]
 var top_cache := {}
 var amount_cache := {}
 var last_cell := Model.INVALID_CELL
@@ -150,6 +152,9 @@ var stroke_radius := 16
 var stroke_depth := 4
 var stroke_palette := 1
 var stroke_options := {}
+var _clear_shared_mask:Button
+var surface_plane_mode:OptionButton
+var surface_plane_offset:SpinBox
 var grab := {}
 var stroke_started := 0
 var last_stroke_usec := 0
@@ -193,6 +198,9 @@ var _path_hover := Vector2(-1,-1)
 var _path_draw_cache := {}
 var _plan_selected_id := ""
 var _plan_target: WeakRef
+var _plan_point_mode:="move"
+var _plan_point_index:=-1
+var _plan_drag:Dictionary={}
 var _panel_host := preload("res://addons/ember_import/ember_world_panel_host.gd").new()
 # Mode queries below are views of the single route, never separate lifecycle state.
 var _terrain_workspace: VBoxContainer
@@ -205,6 +213,7 @@ var _map_creation_mode: bool:
 	get: return _panel_host.is_active("map")
 var _material_workspace: VBoxContainer
 var _object_brush_workspace: VBoxContainer
+var _detail_brush_workspace: VBoxContainer
 var _object_brush_body: VBoxContainer
 var _object_brush_title: Label
 var _object_brush_scroll: ScrollContainer
@@ -230,8 +239,6 @@ var _shape_mode: bool:
 	get: return _panel_host.is_active("shape")
 var duplicate_panel: VBoxContainer
 var _duplicate_workspace: VBoxContainer
-var merge_panel: VBoxContainer
-var _merge_workspace: VBoxContainer
 var split_panel: VBoxContainer
 var _split_workspace: VBoxContainer
 var conversion_panel: VBoxContainer
@@ -253,10 +260,6 @@ func configure_panel_host() -> void:
 		"preview": duplicate_panel,"button": plugin._duplicate_bottom_button,
 		"pending": duplicate_panel.is_dirty,"cancel": duplicate_panel.cancel_edit,
 		"blocked": func(): duplicate_panel._status.text = "Ряд копий ещё не создан. Нажмите «Создать копии» или «Отмена» перед сменой инструмента."})
-	_panel_host.register_panel("merge",_merge_workspace,{
-		"preview": merge_panel,"button": plugin._merge_bottom_button,
-		"pending": merge_panel.is_dirty,"cancel": merge_panel.cancel_edit,
-		"blocked": func(): merge_panel._status.text = "Операция с выбранными деталями ещё не подтверждена. Нажмите «Склеить»/«Разобрать» или «Отмена» перед сменой инструмента."})
 	_panel_host.register_panel("split",_split_workspace,{
 		"preview": split_panel,"button": plugin._split_bottom_button,
 		"pending": split_panel.is_dirty,"cancel": split_panel.cancel_edit,
@@ -282,6 +285,9 @@ func configure_panel_host() -> void:
 		"closed": func():
 			object_parameters.reparent(_object_parameters_parent); _object_parameters_parent.move_child(object_parameters,_object_parameters_index)
 			object_parameters.visible = category.selected == 3})
+	_panel_host.register_panel("details",_detail_brush_workspace,{
+		"viewport_tools": true, "cancel": plugin._stop_scene_object_brush,
+		"closed": func(): if is_instance_valid(plugin._detail_brush): plugin._detail_brush.deactivate()})
 
 
 func can_leave_panel() -> bool:
@@ -327,9 +333,6 @@ func show_duplicate_panel() -> void:
 
 func _close_duplicate_workspace() -> void:
 	_panel_host.close("duplicate")
-
-func _close_merge_workspace() -> void:
-	_panel_host.close("merge")
 
 func _close_split_workspace() -> void:
 	_panel_host.close("split")
@@ -399,6 +402,7 @@ func _show_workspace(terrain: bool) -> void:
 	_workspace_tools_button.set_pressed_no_signal(not terrain)
 	_workspace_terrain_button.set_pressed_no_signal(terrain)
 	if not terrain:
+		_plan_cancel_drag()
 		cancel_section_selection()
 		if not _plan_selection.is_empty():
 			_plan_selection = ""; selecting = false; region_preview = Rect2i()
@@ -422,15 +426,18 @@ func _open_terrain_plan() -> void:
 	cancel_section_selection()
 	cancel_stroke()
 	_plan_selection = ""; selecting = false; region_preview = Rect2i()
+	_plan_drag.clear();_path_points=PackedVector2Array()
+	hover.clear()
 	clear_terrain_generation_preview()
 	if is_instance_valid(_generation_panel): _generation_panel.hide()
+	if is_instance_valid(_plan_panel):_plan_panel.set_compact(false)
 	_show_workspace(true)
 	_plan_target = weakref(map)
 	if not is_instance_valid(_plan_panel):
 		_plan_panel = TerrainPlanPanel.new()
 		_terrain_workspace.add_child(_plan_panel)
 		_plan_panel.action_requested.connect(_terrain_plan_action)
-		_plan_panel.selection_changed.connect(func(id): _plan_selected_id = id; _update_overlay())
+	if not _plan_panel.selection_changed.is_connected(_select_plan_region):_plan_panel.selection_changed.connect(_select_plan_region)
 	_refresh_terrain_plan(true)
 
 func _refresh_terrain_plan(reveal := false) -> void:
@@ -440,6 +447,9 @@ func _refresh_terrain_plan(reveal := false) -> void:
 	var plan: Resource = TerrainPlan.read(target)
 	_plan_panel.show_plan(plan if plan != null else TerrainPlan.new(), _plan_selected_id, reveal)
 	_plan_selected_id = _plan_panel.selected_id()
+	var selected_index:int=plan.index_of(_plan_selected_id) if plan!=null else -1
+	if selected_index>=0 and not TerrainPlan.Influence.plan_is_path(plan.regions[selected_index]) and _plan_point_mode in ["insert","remove"]:_plan_point_mode="move"
+	_plan_panel.set_point_mode(_plan_point_mode)
 	_update_overlay()
 
 func commit_terrain_plan(target: EmberMapLoader, plan: Resource) -> String:
@@ -470,23 +480,26 @@ func _apply_terrain_plan(draft: Dictionary, plan: Resource) -> void:
 	if is_instance_valid(_generation_panel) and _generation_panel.visible and not _generation_context.get("plan_id", "").is_empty():
 		_generation_panel.set_pending("План изменился. Откройте область снова и обновите предпросмотр.")
 	_refresh_terrain_plan()
+	_sync_plan_context()
 
 func _terrain_plan_action(action: String, id: String, value: String) -> void:
 	if _plan_target == null or _plan_target.get_ref() != map: return
+	if action=="point_mode":
+		_plan_point_mode=value;_plan_point_index=-1;_plan_drag.clear();_path_points=PackedVector2Array();_update_overlay();return
 	if action not in ["compose","groves"]: _plan_selected_id = id
 	var original: Resource = TerrainPlan.read(map)
 	var plan: Resource = original.working_copy() if original != null else TerrainPlan.new()
 	var index: int = plan.index_of(id)
-	if action in ["add", "add_plateau", "add_lake", "add_river", "add_mountain", "add_road", "add_grove", "add_placement", "bounds"]:
+	if action in ["add", "add_plateau", "add_lake", "add_coast", "add_river", "add_mountain", "add_road", "add_grove", "add_placement", "bounds"]:
 		if action == "bounds" and index < 0: return
 		clear_terrain_generation_preview(); cancel_stroke()
 		_plan_panel.set_status("Выделите область в 3D · Esc отменяет.")
 		_plan_selection = action; selecting = true; create_region = false
 		region_anchor = Vector2i(-1, -1); region_preview = Rect2i()
 		_path_points = PackedVector2Array(); _path_hover = Vector2(-1,-1)
-		if action in ["add_river","add_road"] or (action == "bounds" and plan.regions[index].get("kind") in ["river","road"]):
-			_plan_selection = action if action in ["add_river","add_road"] else "path_line"
-			var path_hint := "Кликайте точки дороги по суше." if _plan_path_kind() == "road" else "Кликайте точки от одного водоёма к другому."
+		if action in ["add_river","add_road","add_coast"] or (action == "bounds" and plan.regions[index].get("kind") in ["river","road","coast"]):
+			_plan_selection = action if action in ["add_river","add_road","add_coast"] else "path_line"
+			var path_hint := "Кликайте точки берега: море будет справа по ходу линии." if _plan_path_kind()=="coast" else "Кликайте точки дороги по суше." if _plan_path_kind() == "road" else "Кликайте точки от одного водоёма к другому."
 			_plan_panel.set_status(path_hint+" Enter — сохранить линию, Backspace — убрать точку, Esc — отменить. Камера работает как обычно.")
 			_status(path_hint+" Enter завершает · Esc отменяет.")
 			_update_overlay(); return
@@ -511,17 +524,20 @@ func _terrain_plan_action(action: String, id: String, value: String) -> void:
 		if kind in ["grove","placement"]:
 			_generation_context = {"target":weakref(map),"area":edit_region,"grove":true,"plan_id":id,"plan_version":original.data()}
 			_generation_panel.open_placement(edit_region,plan.regions[index].parameters,GrovePlanner.choices(true))
+			_plan_panel.set_compact(true);_plan_panel.show();_refresh_terrain_plan()
 			return
-		var composition: bool = kind in ["plateau","lake","river","mountain","road"]
+		var composition: bool = kind in ["plateau","lake","river","mountain","road","coast"]
 		_generation_context = {"target": weakref(map), "area": edit_region, "plan_id": id, "plan_version": original.data(), "composition": composition}
 		if composition: _generation_panel.open_influence(edit_region, plan.regions[index].parameters,kind)
 		else: _generation_panel.open_plan(edit_region, plan.regions[index].parameters)
+		_plan_panel.set_compact(true);_plan_panel.show();_refresh_terrain_plan()
 		return
 	if action == "name": plan.regions[index].name = value.strip_edges()
 	elif action == "delete": plan.regions.remove_at(index); _plan_selected_id = ""
 	elif action == "toggle": plan.regions[index].enabled = not plan.regions[index].get("enabled", true)
-	elif action == "reverse" and plan.regions[index].get("kind") == "river":
+	elif action == "reverse" and plan.regions[index].get("kind") in ["river","coast"]:
 		var points: PackedVector2Array = plan.regions[index].points_m.duplicate(); points.reverse(); plan.regions[index].points_m = points
+		if plan.regions[index].kind=="coast":plan.regions[index].bounds=_plan_path_bounds(plan.regions[index],plan.regions[index].parameters,Vector2i(entry.resource.width/16,entry.resource.depth/16))
 	var error := commit_terrain_plan(map, plan)
 	_plan_panel.set_status(error if not error.is_empty() else "План изменён · Ctrl+Z отменяет · Ctrl+S сохраняет сцену.")
 	_refresh_terrain_plan()
@@ -567,6 +583,7 @@ func _finish_terrain_plan_selection(bounds_m: Rect2i) -> void:
 	_plan_panel.set_status(error if not error.is_empty() else "Область добавлена в план. Земля не изменена.")
 
 func _plan_path_kind() -> String:
+	if _plan_selection == "add_coast":return "coast"
 	if _plan_selection == "add_road": return "road"
 	if _plan_selection == "add_river": return "river"
 	var plan: Resource = TerrainPlan.read(map)
@@ -574,6 +591,7 @@ func _plan_path_kind() -> String:
 	return plan.regions[index].get("kind","") if index >= 0 else ""
 
 func _plan_path_bounds(region: Dictionary, parameters: Dictionary, extent: Vector2i) -> Rect2i:
+	if region.kind=="coast":return TerrainPlan.Influence.coast_bounds(region.points_m,parameters,extent)
 	return TerrainPlan.Influence.path_bounds(region.points_m,parameters.width_m,parameters.edge_m if region.kind == "road" else parameters.shore_m,extent)
 
 func _finish_plan_path() -> void:
@@ -585,11 +603,13 @@ func _finish_plan_path() -> void:
 	plan.upgrade_local_layers()
 	var index: int = plan.index_of(_plan_selected_id)
 	var kind := _plan_path_kind()
-	if _plan_selection in ["add_river","add_road"]:
+	if _plan_selection in ["add_river","add_road","add_coast"]:
 		_plan_selected_id = "%s_%s_%s" % [kind,OS.get_process_id(),Time.get_ticks_usec()]
-		plan.regions.append({"id":_plan_selected_id,"name":("Дорога %d" if kind == "road" else "Река %d") % (plan.regions.size()+1),"kind":kind,"enabled":true,"parameters":(TerrainPlan.Influence.ROAD_DEFAULTS if kind == "road" else TerrainPlan.Influence.RIVER_DEFAULTS).duplicate()})
+		plan.regions.append({"id":_plan_selected_id,"name":("Море %d" if kind=="coast" else "Дорога %d" if kind == "road" else "Река %d") % (plan.regions.size()+1),"kind":kind,"enabled":true,"parameters":(TerrainPlan.Influence.COAST_DEFAULTS if kind=="coast" else TerrainPlan.Influence.ROAD_DEFAULTS if kind == "road" else TerrainPlan.Influence.RIVER_DEFAULTS).duplicate()})
 		index = plan.regions.size()-1
 		plan.regions[index].parameters.terrain_sampling="fine16"
+		if kind=="coast":
+			plan.regions[index].parameters.water_m=TerrainPlan.Influence.existing_water_level_m(entry.resource)
 	if index < 0: return
 	plan.regions[index].points_m = _path_points.duplicate()
 	plan.regions[index].bounds = _plan_path_bounds(plan.regions[index],plan.regions[index].parameters,extent)
@@ -610,9 +630,9 @@ func _save_terrain_plan_parameters(parameters: Dictionary) -> void:
 	if plan.regions[index].bounds != _generation_context.get("area"):
 		_generation_panel.set_pending("Границы изменились. Откройте область снова."); return
 	plan.regions[index].parameters = parameters.duplicate(true)
-	if parameters.has("terrain_operation") or parameters.has("terrain_sampling") or parameters.has("mountain_shape"):plan.upgrade_local_layers()
+	if parameters.has("terrain_operation") or parameters.has("terrain_sampling") or parameters.has("mountain_shape") or parameters.get("land_shape","island")=="mainland":plan.upgrade_local_layers()
 	if plan.regions[index].get("kind") == "grove" and parameters.has("clearance_m"): plan.regions[index].kind = "placement"
-	if plan.regions[index].get("kind") in ["river","road"]:
+	if plan.regions[index].get("kind") in ["river","road","coast"]:
 		plan.regions[index].bounds = _plan_path_bounds(plan.regions[index],parameters,Vector2i(entry.resource.width/16,entry.resource.depth/16))
 	var error := commit_terrain_plan(target, plan)
 	if error.is_empty(): _generation_context.plan_version = plan.data(); _generation_context.area = plan.regions[index].bounds
@@ -632,12 +652,14 @@ func _compact_active() -> bool:
 	return not entry.is_empty() and entry.get("compact", false)
 
 func _set_busy(value: bool) -> void:
-	for control in [target_choice,category,tools,palette,sand_palette,surface_role_choice,material_variant_choice,material_slot_button,material_pattern_button,clip,shore_direction,compact_direction,compact_detail_pattern,compact_shape_action,compact_shape_radius,compact_level_from_point,terrain_edit_scale,terrain_height_step,brush_shape]:
+	for control in [surface_plane_mode,target_choice,category,tools,palette,sand_palette,surface_role_choice,material_variant_choice,material_slot_button,material_pattern_button,clip,shore_direction,compact_direction,compact_detail_pattern,compact_shape_action,compact_shape_radius,compact_level_from_point,terrain_edit_scale,terrain_height_step,brush_shape]:
 		if is_instance_valid(control): control.disabled = value
-	for control in [radius,depth,coarse_depth,plane_height,water_height,shore_width,softness,compact_feature_scale,compact_detail,compact_seed]:
+	for control in [surface_plane_offset,radius,depth,coarse_depth,plane_height,water_height,shore_width,softness,compact_feature_scale,compact_detail,compact_seed]:
 		if is_instance_valid(control): control.editable = not value
 	for button in _target_buttons:
 		if is_instance_valid(button): button.disabled = value
+	for i in _tool_buttons.size():
+		_tool_buttons[i].disabled=value or tools.is_item_disabled(i)
 	for button in category_buttons:
 		if is_instance_valid(button): button.disabled = value
 	if is_instance_valid(compact_shape_strength):compact_shape_strength.editable=not value
@@ -710,6 +732,8 @@ func _ensure_generation_panel() -> void:
 		_generation_panel.plan_settings_requested.connect(_save_terrain_plan_parameters)
 		_generation_panel.return_plan_requested.connect(_open_terrain_plan)
 		_generation_panel.paint_protection_requested.connect(_set_paint_protection)
+	if is_instance_valid(_plan_panel) and _plan_panel.get_index()>_generation_panel.get_index():
+		_terrain_workspace.move_child(_plan_panel,_generation_panel.get_index())
 
 func _set_paint_protection(locked: bool) -> void:
 	var target: EmberMapLoader=(_generation_context.target as WeakRef).get_ref() if _generation_context.get("target") is WeakRef else null
@@ -752,8 +776,8 @@ func _prepare_terrain_generation(parameters: Dictionary) -> void:
 		if not context.plan_id.is_empty():
 			var index: int = input.index_of(context.plan_id)
 			input.regions[index].parameters = parameters.duplicate(true)
-			if parameters.has("terrain_sampling") or parameters.has("mountain_shape"):input.upgrade_local_layers()
-			if input.regions[index].get("kind") in ["river","road"]: input.regions[index].bounds = _plan_path_bounds(input.regions[index],parameters,Vector2i(draft.resource.width/16,draft.resource.depth/16))
+			if parameters.has("terrain_sampling") or parameters.has("mountain_shape") or parameters.get("land_shape","island")=="mainland":input.upgrade_local_layers()
+			if input.regions[index].get("kind") in ["river","road","coast"]: input.regions[index].bounds = _plan_path_bounds(input.regions[index],parameters,Vector2i(draft.resource.width/16,draft.resource.depth/16))
 		_generation_job = TerrainComposition.new()
 		prepared = _generation_job.begin(draft.resource, input)
 	else:
@@ -788,6 +812,7 @@ func clear_terrain_generation_preview() -> void:
 	_generation_context.erase("protected_blocks")
 	_generation_context.erase("validated_sections")
 	_generation_context.erase("grove_prepared")
+	_generation_context.erase("grove_applying")
 	_update_overlay()
 
 
@@ -883,6 +908,8 @@ func _prepare_grove(parameters: Dictionary) -> void:
 	_generation_panel.set_pending("Подготавливаю расстановку объектов…")
 
 func _process_grove() -> void:
+	if _generation_context.get("grove_applying",false):
+		_process_grove_publication();return
 	_generation_job.step(4000)
 	if not _generation_job.finished: return
 	var job: RefCounted = _generation_job; _generation_job = null
@@ -902,11 +929,37 @@ func _submit_grove() -> void:
 	var context := _generation_context.duplicate()
 	clear_terrain_generation_preview()
 	var target := (context.target as WeakRef).get_ref() as EmberMapLoader
-	var message := commit_grove(target,context)
+	var message := _grove_commit_error(target,context)
 	if not message.is_empty(): _generation_panel.set_pending(message); return
-	_close_generation_panel(); _status("Расстановка применена · Ctrl+Z отменяет · Ctrl+S сохраняет сцену.")
+	_generation_context=context
+	_generation_context.grove_applying=true
+	_generation_job=context.grove_prepared
+	_generation_job.begin_publication(target.get_node("Props"))
+	_generation_panel.set_pending("Подключаю объекты: 0 / %d · можно отменить."%_generation_job.placements.size())
 
-func commit_grove(target: EmberMapLoader, context: Dictionary) -> String:
+func _process_grove_publication() -> void:
+	var prepared:RefCounted=_generation_job
+	prepared.step_publication(4000)
+	if not prepared.error.is_empty():
+		var message:String=prepared.error
+		clear_terrain_generation_preview();_generation_panel.set_pending(message);return
+	var progress:Vector2i=prepared.publication_progress()
+	_generation_panel.set_pending("Подключаю объекты: %d / %d · можно отменить."%[progress.x,progress.y])
+	if not prepared.publication_finished():return
+	var context:=_generation_context.duplicate()
+	var target:EmberMapLoader=context.target.get_ref()
+	var message:=_grove_commit_error(target,context)
+	if not message.is_empty():
+		clear_terrain_generation_preview();_generation_panel.set_pending(message);return
+	var delta:Dictionary=prepared.take_publication()
+	_generation_job=null
+	_generation_context.erase("grove_applying")
+	message=_commit_grove_delta(target,context,delta)
+	if not message.is_empty():
+		clear_terrain_generation_preview();_generation_panel.set_pending(message);return
+	_close_generation_panel();_status("Расстановка применена · Ctrl+Z отменяет · Ctrl+S сохраняет сцену.")
+
+func _grove_commit_error(target: EmberMapLoader, context: Dictionary) -> String:
 	if not is_instance_valid(target): return "Карта была закрыта."
 	var draft: Dictionary = context.get("draft",{})
 	if not sessions.entries.values().has(draft) or draft.target.get_ref() != target: return "Черновик изменился."
@@ -914,8 +967,18 @@ func commit_grove(target: EmberMapLoader, context: Dictionary) -> String:
 	var plan: Resource = TerrainPlan.read(target)
 	if job == null or plan == null or plan.data() != context.plan_version or not draft.resource.same_terrain_data(context.version) or Sessions.compact_layout(target).positions != context.layout or job.stale():
 		return "Земля, объекты или источники объектов изменились. Обновите предпросмотр."
+	return ""
+
+func commit_grove(target: EmberMapLoader, context: Dictionary) -> String:
+	var message:=_grove_commit_error(target,context)
+	if not message.is_empty():return message
+	var job:RefCounted=context.grove_prepared
 	var delta: Dictionary = job.finalize(target.get_node("Props"))
 	if delta.is_empty(): return job.error
+	return _commit_grove_delta(target,context,delta)
+
+func _commit_grove_delta(target: EmberMapLoader, context: Dictionary, delta: Dictionary) -> String:
+	var plan:Resource=TerrainPlan.read(target)
 	var problems: Array[String] = delta.plan.validation_errors(Vector2i(context.version.width/16,context.version.depth/16))
 	if not problems.is_empty():
 		for prop in delta.added: prop.free()
@@ -981,6 +1044,7 @@ func _apply_composed_terrain(target: EmberMapLoader, draft: Dictionary, terrain:
 	sessions.set_plan(draft, plan)
 	_apply_generated_terrain(target, draft, terrain)
 	_refresh_terrain_plan()
+	_sync_plan_context()
 
 func commit_terrain_generation(target: EmberMapLoader, draft: Dictionary, before_version: EmberTerrainPilotResource, candidate: EmberTerrainPilotResource,expected_paint_plan: Variant=null) -> String:
 	if not is_instance_valid(target) or candidate == null: return "Карта была закрыта."
@@ -1543,13 +1607,18 @@ func build_sidebar() -> Control:
 	workspace.add_child(_shape_workspace); _shape_workspace.hide()
 	_duplicate_workspace = VBoxContainer.new(); _duplicate_workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	workspace.add_child(_duplicate_workspace); _duplicate_workspace.hide()
-	_merge_workspace = VBoxContainer.new(); _merge_workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	workspace.add_child(_merge_workspace); _merge_workspace.hide()
 	_split_workspace = VBoxContainer.new(); _split_workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	workspace.add_child(_split_workspace); _split_workspace.hide()
 	_conversion_workspace = VBoxContainer.new(); _conversion_workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	workspace.add_child(_conversion_workspace); _conversion_workspace.hide()
 	_object_brush_workspace = VBoxContainer.new(); _object_brush_workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_detail_brush_workspace = VBoxContainer.new(); _detail_brush_workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var detail_scroll := ScrollContainer.new(); detail_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	detail_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL; _detail_brush_workspace.add_child(detail_scroll)
+	detail_scroll.add_child(plugin._detail_brush.build_panel())
+	_button(plugin._detail_brush.panel,"Рисовать в 3D",func(): plugin._activate_detail_brush())
+	_button(plugin._detail_brush.panel,"Закрыть кисть",func(): _panel_host.cancel_active())
+	workspace.add_child(_detail_brush_workspace); _detail_brush_workspace.hide()
 	workspace.add_child(_object_brush_workspace); _object_brush_workspace.hide()
 	_object_brush_scroll = ScrollContainer.new()
 	_object_brush_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -1603,8 +1672,13 @@ func build_sidebar() -> Control:
 	target_choice.tooltip_text = "Что меняет кисть: землю карты или выбранный voxel-объект. Объект редактируется как уникальный экземпляр."
 	target_choice.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	target_choice.item_selected.connect(_target_changed)
-	var pick_object := _button(box,"Выбрать объект",func(): picking_object = true; _status("Нажмите на voxel-объект в сцене. Остальные экземпляры не изменятся."))
-	pick_object.icon = _editor_icon(&"ToolSelect")
+	var target_caption:=Label.new();target_caption.text="ЦЕЛЬ РЕДАКТИРОВАНИЯ";box.add_child(target_caption)
+	box.move_child(target_caption,target_choice.get_index())
+	pick_target_button = _button(box,"Выбрать цель · Alt+Q",func():picking_object=not picking_object;_refresh_context_label())
+	pick_target_button.toggle_mode=true
+	pick_target_button.icon = _editor_icon(&"ToolSelect")
+	pick_target_button.tooltip_text="Выберите землю или объект следующим щелчком. Alt+Q сразу выбирает цель под курсором; черновики сохраняются."
+	_target_buttons.append(pick_target_button)
 	open_canvas_button = _button(box,"Открыть в Canvas",open_canvas)
 	open_canvas_button.icon = _editor_icon(&"Edit")
 	create_ground_button = _button(box,"Создать землю",func():
@@ -1705,11 +1779,18 @@ func build_sidebar() -> Control:
 	settings.add_child(tool_settings_title)
 	advanced = VBoxContainer.new()
 	settings.add_child(advanced)
+	surface_plane_mode=_choice(advanced,["Площадка · по высоте","Поверхность · выровнять","Поверхность · срезать"])
+	surface_plane_mode.select(1)
+	surface_plane_mode.tooltip_text="По поверхности: направление и плоскость фиксируются при начале мазка. Срез только удаляет объём."
+	surface_plane_mode.item_selected.connect(func(_index):cancel_stroke();_tool_changed())
+	surface_plane_offset=_brush_spin(advanced,"surface_plane_offset")
+	surface_plane_offset.value_changed.connect(func(_value):cancel_stroke())
 	plane_height = _brush_spin(advanced,"plane_height")
 	water_height = _brush_spin(advanced,"water_height")
 	shore_width = _brush_slider(advanced,"shore_width")
 	shore_direction = _brush_choice(advanced,"shore_direction")
 	softness = _brush_slider(advanced,"softness")
+	softness.tooltip_text="Край кисти «Тянуть»:0% — жёсткий,100% — мягкий. То же значение используется в Canvas."
 	compact_level_from_point = CheckBox.new()
 	compact_level_from_point.text = str(BrushParameters.definition("level_from_point").title)
 	compact_level_from_point.button_pressed = true
@@ -1770,6 +1851,7 @@ func build_sidebar() -> Control:
 	hide_water.toggled.connect(_set_working_water)
 	object_parameters = VBoxContainer.new()
 	settings.add_child(object_parameters)
+	_button(settings,"Кисть деталей · трава / камушки…",func(): if plugin != null: plugin._activate_detail_brush())
 	for spec in [["Шаг · блоки","spacing_blocks",0.05,64,1,0.05],["Поворот Y · °","yaw_degrees",-180,180,0,1],["Масштаб","scale_factor",0.05,10,1,0.05],["Заглубление · vox","bury_vox",-64,64,0,0.5]]:
 		var group := VBoxContainer.new(); object_parameters.add_child(group)
 		var label := Label.new(); label.text = spec[0]; group.add_child(label)
@@ -1838,6 +1920,7 @@ func build_sidebar() -> Control:
 	inspector_layout.add_child(status)
 	var parameters := VBoxContainer.new()
 	settings.add_child(parameters)
+	_clear_shared_mask=_button(parameters,"Снять маску Canvas",func():sessions.clear_brush_mask(entry);_tool_changed())
 	settings.move_child(parameters,2)
 	var brush_title := Label.new()
 	brush_title.text = "КИСТЬ"
@@ -1856,10 +1939,13 @@ func build_sidebar() -> Control:
 	radius = _brush_slider(parameters,"radius")
 	depth = _brush_slider(parameters,"strength_detail")
 	coarse_depth = _brush_slider(parameters,"strength_steps")
+	surface_plane_mode.reparent(parameters);parameters.move_child(surface_plane_mode,0)
+	surface_plane_offset.get_parent().reparent(parameters)
 	settings.move_child(compact_detail_pattern,2)
 	settings.move_child(compact_shape_action,2)
 	settings.move_child(_shape_settings,3)
 	_brush_parameter_controls = {
+		"surface_plane_mode":surface_plane_mode,"surface_plane_offset":surface_plane_offset.get_parent(),
 		"edit_scale":terrain_edit_scale, "height_step":terrain_height_step, "shape":brush_shape,
 		"radius":_parameter_group(radius), "strength_detail":_parameter_group(depth),
 		"strength_steps":_parameter_group(coarse_depth), "palette":palette_row, "sand_palette":sand_palette,
@@ -2109,6 +2195,9 @@ func _toggle(value: bool) -> void:
 		_deactivate()
 		return
 	active = true
+	if is_instance_valid(map):
+		var anomaly := map.get_node_or_null("WorldAnomaly")
+		if anomaly != null: anomaly.set_authoring_active(true)
 	active_changed.emit(true)
 	if is_instance_valid(library_favorites_panel): library_favorites_panel.show()
 	sidebar.show()
@@ -2164,6 +2253,7 @@ func _deactivate() -> void:
 	_update_overlay()
 
 func scene_changed(root: Node) -> void:
+	_plan_drag.clear();_path_points=PackedVector2Array();_plan_point_index=-1
 	_panel_host.scene_changed()
 	cancel_section_selection()
 	clear_terrain_generation_preview()
@@ -2196,6 +2286,42 @@ func scene_changed(root: Node) -> void:
 	if _material_mode: _show_material_workspace()
 
 func _target_changed(index: int) -> void:
+	if _changing_context:return
+	var target:Node=map if index==0 else null
+	if index==1 and Engine.is_editor_hint():
+		var selected:=EditorInterface.get_selection().get_selected_nodes()
+		if selected.size()==1:target=EmberObjectInspectorModel.voxel_owner(selected[0])
+	if target==null:
+		picking_object=true;_refresh_context_label();_status("Выберите землю или объект в сцене · Alt+Q под курсором")
+	elif not activate_context(target):_refresh_context_label()
+
+func _context_busy()->bool:
+	if dragging or job!=null or not queue.is_empty() or not grab.is_empty() or _compact_brush.active() or not _plan_drag.is_empty() or _generation_job!=null:return true
+	if plugin!=null:
+		if plugin._object_brush._dragging:return true
+		var workspace:=EditorInterface.get_editor_main_screen().find_child(plugin.SURFACE_WORKSPACE_NODE,true,false) as EmberVoxelSculptWorkspace
+		if workspace!=null and workspace.is_visible_in_tree() and not workspace.can_switch_world_context():return true
+	return false
+
+func activate_context(target:Node,sync_selection:=true)->bool:
+	if _changing_context or not is_instance_valid(scene) or not is_instance_valid(target) or (target!=scene and not scene.is_ancestor_of(target)):return false
+	if target!=map and not target is EmberVoxelProp:return false
+	if _context_busy() or not can_leave_panel():
+		_status("Завершите текущий жест или предпросмотр перед сменой цели.");return false
+	if not entry.is_empty() and entry.target.get_ref()==target:
+		picking_object=false;_refresh_context_label()
+		if sync_selection:_sync_context_selection(target)
+		return true
+	var next:Dictionary=sessions.open_map(map,scene) if target==map else sessions.open_object(target,scene)
+	if next.is_empty():_status(sessions.error);return false
+	var preferred:=_mode();var brush_radius:=radius.value;var group:=category.selected
+	if plugin!=null:
+		var workspace:=EditorInterface.get_editor_main_screen().find_child(plugin.SURFACE_WORKSPACE_NODE,true,false) as EmberVoxelSculptWorkspace
+		if workspace!=null and workspace.is_visible_in_tree() and not workspace._world_entry.is_empty():
+			preferred=BrushProfiles.world_mode_for_tool(workspace._selected_tool_id())
+			brush_radius=float(workspace._radius.get_selected_metadata())/workspace._resource.normalized_density()
+			_adopt_canvas_brush_settings(workspace)
+	_changing_context=true
 	if is_instance_valid(_terrain_workspace):
 		_terrain_workspace.hide(); _tools_workspace.show()
 		if active: sidebar.show()
@@ -2210,33 +2336,57 @@ func _target_changed(index: int) -> void:
 	create_region = false
 	selecting = false
 	if not entry.is_empty(): entry.scope = edit_region
-	entry = {}
-	if scene == null or map == null:
-		_refresh_target_actions()
-		_status("Откройте сцену Ember с узлом Map.")
-		return
-	if index == 0:
-		entry = sessions.open_map(map,scene)
-	else:
-		var selection := EditorInterface.get_selection().get_selected_nodes() if Engine.is_editor_hint() else []
-		if selection.size() == 1 and selection[0] is EmberVoxelProp: entry = sessions.open_object(selection[0],scene)
-		else: picking_object = true
-	if not entry.is_empty():
-		edit_region = entry.get("scope",Rect2i())
-		actions.history_context = scene
-		sessions.preview(entry)
-		_attach_trace_projection()
-		if _compact_active(): _compact_brush.configure(entry, sessions.undo, scene)
-		_refresh_palette()
-		_category_changed(category.selected)
-		_status("%s · один мазок — одно Undo · Ctrl+S сохраняет всё" % ("Компактная земля" if _compact_active() else entry.resource.display_name))
-	else: _status(sessions.error if index == 0 else "Выберите voxel-объект кнопкой или нажмите на него в сцене.")
+	entry=next;edit_region=entry.get("scope",Rect2i());picking_object=false;hover.clear()
+	target_choice.select(1 if target is EmberVoxelProp else 0)
+	actions.history_context=scene
+	sessions.preview(entry)
+	_attach_trace_projection()
+	if _compact_active():_compact_brush.configure(entry,sessions.undo,scene)
+	for i in 4:
+		if preferred in BrushProfiles.world_modes(i,_compact_active()):group=i;break
+	_refresh_palette();_category_changed(group,true,preferred)
+	_restore_context_radius(brush_radius)
+	_changing_context=false
+	_refresh_context_label()
 	_refresh_target_actions()
 	if hide_water.button_pressed: _set_working_water(true)
 	_refresh_scope()
-	_tool_changed()
 	_refresh_experiment_gate()
 	if _material_mode: _show_material_workspace()
+	if sync_selection:_sync_context_selection(target)
+	_update_overlay()
+	return true
+
+func _restore_context_radius(value:float)->void:
+	# A target's edit stride must not quantize the physical radius of the previous target.
+	var step:=radius.step;radius.step=0.0
+	radius.value=clampf(value,radius.min_value,radius.max_value)
+	radius.step=step
+
+func _refresh_context_label()->void:
+	if not is_instance_valid(target_choice):return
+	var object:Node=entry.target.get_ref() if not entry.is_empty() else null
+	target_choice.set_item_text(1,"Объект · "+str(object.name) if object is EmberVoxelProp else "Объект")
+	target_choice.select(1 if object is EmberVoxelProp else 0)
+	target_choice.tooltip_text="Цель: "+str(scene.get_path_to(object)) if is_instance_valid(object) and is_instance_valid(scene) else "Выберите землю или объект"
+	if is_instance_valid(pick_target_button):pick_target_button.set_pressed_no_signal(picking_object)
+
+func _sync_context_selection(target:Node)->void:
+	if not Engine.is_editor_hint() or not is_instance_valid(target) or not target.is_inside_tree():return
+	_changing_context=true
+	var selection:=EditorInterface.get_selection();selection.clear();selection.add_node(target)
+	EditorInterface.inspect_object(target)
+	_changing_context=false
+
+func context_selection_changed(selected:Array)->void:
+	if not active or _changing_context or selected.size()!=1:return
+	var target:=_context_target(selected[0])
+	if target==null or (not entry.is_empty() and entry.target.get_ref()==target):return
+	var workspace:=EditorInterface.get_editor_main_screen().find_child(plugin.SURFACE_WORKSPACE_NODE,true,false) as EmberVoxelSculptWorkspace if plugin!=null else null
+	var in_canvas:=workspace!=null and workspace.is_visible_in_tree() and not workspace._world_entry.is_empty()
+	if activate_context(target,false):
+		if in_canvas:_open_canvas_entry(entry)
+	elif not entry.is_empty():_sync_context_selection(entry.target.get_ref())
 
 func _refresh_target_actions() -> void:
 	if is_instance_valid(_generation_button): _generation_button.visible = _compact_active()
@@ -2247,40 +2397,36 @@ func _refresh_target_actions() -> void:
 	if is_instance_valid(_terrain_diagnostics_button): _terrain_diagnostics_button.visible = _compact_active()
 	if is_instance_valid(_terrain_diagnostics_summary): _terrain_diagnostics_summary.visible = _compact_active() and not _terrain_diagnostics_summary.text.is_empty()
 
-func _category_changed(index: int, stop_scene_brush := true) -> void:
+func _category_changed(index: int, stop_scene_brush := true, preferred_mode := "") -> void:
 	cancel_stroke()
 	if plugin != null and stop_scene_brush: plugin._stop_scene_object_brush()
 	category.select(index)
 	for i in category_buttons.size(): category_buttons[i].set_pressed_no_signal(i == index)
 	_refresh_brush_scale_settings()
 	tools.clear()
-	var names: Array = ([
-		["Рельеф ↑","Рельеф ↓","Сгладить","Площадка","Неровности"], ["Покрасить"],
-		["Вода · открытый уровень","Убрать воду"], ["Расстановка объектов"],
-	] if _compact_active() else [
-		["Поднять","Опустить","Лепка · добавить","Лепка · убрать","Сгладить","Площадка","Берег и дно","Генератор рельефа","Тянуть · мягко"],
-		["Покрасить","Песок · крупные пятна"], ["Вода · открытый уровень","Убрать воду"], ["Расстановка объектов"],
-	])[index]
-	var modes: Array = ([
-		["raise","lower","smooth","level","generator"], ["paint"], ["water","dry"], ["objects"],
-	] if _compact_active() else [
-		["raise","lower","add","remove","smooth","level","shore","generator","grab"], ["paint","sand"], ["water","dry"], ["objects"],
-	])[index]
-	for i in names.size(): tools.add_item(names[i]); tools.set_item_metadata(i,modes[i])
+	var modes:Array=BrushProfiles.world_modes(index,_compact_active())
+	var unavailable:=not preferred_mode.is_empty() and preferred_mode not in modes
+	if unavailable:modes.append(preferred_mode)
+	var volume:bool=not entry.is_empty() and entry.target.get_ref() is EmberVoxelProp and entry.resource.tree_surface.is_empty()
+	for mode in modes:tools.add_item(BrushProfiles.world_title(mode,volume));tools.set_item_metadata(tools.item_count-1,mode)
 	if tools.item_count > 0: tools.select(0)
+	if preferred_mode in modes:tools.select(modes.find(preferred_mode))
+	if unavailable:tools.set_item_disabled(modes.size()-1,true)
 	for button in _tool_buttons: _target_buttons.erase(button); button.free()
 	_tool_buttons.clear()
-	for i in names.size():
+	for i in modes.size():
 		var tool_index := i
 		var button := Button.new()
-		button.text = TOOL_LABELS.get(str(modes[i]),names[i])
+		button.text = tools.get_item_text(i)
 		button.icon = _editor_icon(TOOL_ICONS.get(str(modes[i]),&"ToolSelect"))
 		button.toggle_mode = true
 		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		button.clip_text = true
 		button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		button.theme_type_variation = &"WorkshopToolButton"
-		button.tooltip_text = "Инструмент: %s" % names[i]
+		button.tooltip_text = "Инструмент: %s" % tools.get_item_text(i)
+		if unavailable and i==modes.size()-1:
+			button.text+=" · недоступно";button.disabled=true;button.tooltip_text="Кисть сохранена, но эта цель её не поддерживает. Выберите доступный инструмент."
 		button.pressed.connect(func():
 			tools.select(tool_index)
 			cancel_stroke()
@@ -2316,17 +2462,29 @@ func _tool_changed() -> void:
 	for i in _tool_buttons.size():
 		_tool_buttons[i].set_pressed_no_signal(i == tools.selected)
 	var coarse_profile := _compact_active() and terrain_edit_scale.selected != 2
-	var active_parameters := BrushParameters.active_for(_mode(),_compact_active(),coarse_profile,compact_level_from_point.button_pressed,compact_detail_pattern.selected==1)
-	if is_instance_valid(inspector_title): inspector_title.text = "Параметры · %s" % tools.get_item_text(tools.selected) if tools.selected >= 0 else "Параметры кисти"
+	var active_parameters := BrushParameters.active_for(_mode(),_compact_active(),coarse_profile,compact_level_from_point.button_pressed,compact_detail_pattern.selected==1,_volume_smooth_target(),_surface_plane_active())
+	if _mode()=="level" and _volume_smooth_target():active_parameters.append("surface_plane_mode")
+	if is_instance_valid(inspector_title): inspector_title.text = ("Земля · высоты" if _compact_active() else "Объект · объём" if target_choice.selected==1 else "Земля · объём")+" · "+tools.get_item_text(tools.selected) if tools.selected>=0 else "Параметры кисти"
 	if is_instance_valid(inspector_hint): inspector_hint.text = "Ступени по %s блока. Ячейки %s выравниваются." % ["¼" if terrain_height_step.selected == 0 else "½", "8×8 вокселей" if terrain_edit_scale.selected == 0 else "2×2 вокселя"] if coarse_profile and category.selected == 0 else TOOL_HINTS.get(_mode(),"")
 	if _compact_active() and _mode()=="generator" and compact_detail_pattern.selected==1:
 		inspector_hint.text="Выступы камня, гребни песка и неровности грунта. Сохраняет выбранные покрытия."
+	if target_choice.selected==1 and _mode() in ["raise","lower","level","shore","generator"]:inspector_hint.text="Работает по верхней поверхности формы. Боковая лепка — «Лепка · объём» в Canvas."
 	if is_instance_valid(inspector_icon): inspector_icon.texture = _editor_icon(TOOL_ICONS.get(_mode(),&"ToolSelect"))
 	for parameter_id: String in _brush_parameter_controls:
 		var control: Control = _brush_parameter_controls[parameter_id]
 		control.visible = parameter_id in active_parameters
+	var volume_smooth:=_mode()=="smooth" and _volume_smooth_target()
+	depth.max_value=8.0 if volume_smooth else 32.0
+	var strength_group:Control=depth.get_meta("parameter_group")
+	(strength_group.get_child(1).get_child(0) as HSlider).max_value=depth.max_value
+	(strength_group.get_child(0) as Label).text="Сила сглаживания · vox" if volume_smooth else "Глубина · vox"
+	if volume_smooth:inspector_hint.text="Сглаживает объём со всех сторон прежним расчётом Canvas. Материалы сохраняются; один Undo на мазок, Esc отменяет."
+	if _surface_plane_active():
+		(strength_group.get_child(0) as Label).text="Глубина влияния · vox"
+		inspector_hint.text="Плоскость по первому касанию; направление не меняется до конца мазка. Смещение вглубь отрицательное. Материалы сохраняются."
+
 	compact_shape_action.visible=_compact_active() and _mode()=="smooth"
-	var shape_allowed: bool=_compact_active() and entry.resource.width*entry.resource.depth<=262144
+	var shape_allowed: bool=_compact_active() and entry.resource.width*entry.resource.depth<=map.smooth_column_limit()
 	for i in [1,2,3]:compact_shape_action.set_item_disabled(i,not shape_allowed)
 	if not shape_allowed and compact_shape_action.selected>0:compact_shape_action.select(0)
 	_shape_settings.visible=_shape_rule_active() and compact_shape_action.selected!=3
@@ -2346,6 +2504,26 @@ func _tool_changed() -> void:
 		var headings := {"level":"ПЛОЩАДКА","shore":"БЕРЕГ И ДНО","generator":"НЕРОВНОСТИ","grab":"ПЕРЕМЕЩЕНИЕ","water":"ВОДА"}
 		tool_settings_title.text = headings.get(_mode(),"ДОПОЛНИТЕЛЬНО")
 		tool_settings_title.visible = advanced.get_children().any(func(control): return control.visible)
+	var protection:=sessions.brush_guard(entry,_brush_mask_kind()) if not entry.is_empty() else {}
+	_clear_shared_mask.visible=protection.get("enabled",false) or protection.get("invalid",false)
+	_clear_shared_mask.text="Обновить защиту Canvas" if protection.get("invalid",false) else "Снять маску Canvas"
+	if protection.get("enabled",false):inspector_hint.text+="\nМаска Canvas: "+("точные ячейки." if protection.kind=="voxels" else "отпечаток грани." if protection.kind=="columns" else "инструмент недоступен, пока маска включена.")
+	if protection.get("region",Rect2i()).has_area() or protection.get("height",-1)>=0:inspector_hint.text+="\nРабочая область/срез Canvas сохраняют защиту; изменить их можно в Canvas."
+	if not _context_tool_available():
+		inspector_hint.text="Кисть не поддерживает активную маску Canvas. Снимите маску перед действием." if protection.get("enabled",false) and _brush_mask_kind()==BrushProfiles.MASK_NONE else "Эта кисть недоступна для выбранной цели. Выберите доступный инструмент; прежняя кисть сохранена."
+		hover.clear();_update_overlay()
+
+func _brush_mask_kind()->String:
+	var mode:=_mode()
+	if BrushProfiles.WORLD_TOOLS.has(mode):return BrushProfiles.mask_kind(BrushProfiles.WORLD_TOOLS[mode],_volume_smooth_target() and (mode=="smooth" or _surface_plane_active()))
+	return BrushProfiles.MASK_COLUMNS if mode in ["shore","generator"] else BrushProfiles.MASK_VOXELS if mode=="sand" else BrushProfiles.MASK_NONE
+
+func _context_tool_available()->bool:
+	if entry.is_empty() or _mode() not in BrushProfiles.world_modes(category.selected,_compact_active()):return false
+	if category.selected==3:return true
+	var state:Dictionary=entry.get("canvas_guard",{})
+	return not (state.get("selection",{}).get("mask_enabled",false) and _brush_mask_kind()==BrushProfiles.MASK_NONE)
+
 
 func _parameter_group(control: SpinBox) -> Control:
 	return control.get_meta("parameter_group",control.get_parent()) as Control
@@ -2373,6 +2551,8 @@ func _refresh_brush_scale_settings() -> void:
 	var profile := CompactBrushMath.edit_profile(_compact_edit_scale()) if _compact_active() else {}
 	var steps_per_block: float = float(EmberTerrainPilotResource.CELLS_PER_BLOCK) / float(profile.cell_stride) if _compact_active() else entry.resource.normalized_density()
 	radius.min_value = 1.0 / steps_per_block
+	radius.max_value=minf(8.0,float(BrushProfiles.MAX_RADIUS_VOXELS)/entry.resource.normalized_density()) if not _compact_active() else 8.0
+	radius_slider.max_value=radius.max_value
 	radius.step = radius.min_value
 	radius_slider.min_value = radius.min_value
 	radius_slider.step = radius.step
@@ -2414,6 +2594,7 @@ func _open_material_pattern() -> void:
 			if not slot_role.is_empty() and not _material_choices.any(func(choice): return choice.id == slot_id):
 				_material_choices.append({"id": slot_id, "role": slot_role, "index": slot})
 		material_pattern_dialog.set_variant_choices(_material_choices)
+	material_pattern_dialog.cheap_ground_profile=true
 	if role.is_empty() or not material_pattern_dialog.open_variant(id, role):
 		_status("Рисунок выбранного материала не найден или повреждён."); return
 	_show_material_workspace()
@@ -2559,14 +2740,57 @@ func _refresh_favorites() -> void:
 		if id in favorite_objects:
 			_button(row,"×",func(): favorite_objects.remove_at(favorite_objects.find(id)); _save_settings(); _refresh_favorites())
 
+func open_object_canvas(prop:EmberVoxelProp)->bool:
+	if not activate_context(prop,false):return false
+	return _open_canvas_entry(entry)
+
 func open_canvas() -> void:
-	if entry.is_empty() or plugin == null: return
-	if _compact_active():
+	if entry.is_empty():return
+	if entry.get("compact",false):
 		_status("Компактная земля редактируется прямо в 3D. Canvas остаётся для voxel-объектов.")
 		return
 	cancel_stroke()
+	_open_canvas_entry(entry)
+
+func _open_canvas_entry(next:Dictionary)->bool:
+	if plugin==null:return false
 	var workspace := EditorInterface.get_editor_main_screen().find_child(plugin.SURFACE_WORKSPACE_NODE,true,false) as EmberVoxelSculptWorkspace
-	if workspace != null and workspace.open_world_draft(entry,sessions,save_all): EditorInterface.set_main_screen_editor(plugin.SURFACE_MAIN_SCREEN)
+	if workspace==null:_status("Surface Canvas отключён.");return false
+	if not workspace.world_context_return_requested.is_connected(_return_from_canvas):workspace.world_context_return_requested.connect(_return_from_canvas)
+	workspace.configure_forms(sessions,save_all)
+	if (workspace._world_entry!=next or workspace._resource!=next.resource):
+		if not workspace.open_world_draft(next,sessions,save_all):return false
+	else:workspace.restore_world_guard()
+	var tool_id:int=BrushProfiles.WORLD_TOOLS.get(_mode(),int(_mode().trim_prefix("canvas:")) if _mode().begins_with("canvas:") else -1)
+	if tool_id>=0:
+		workspace._activate_tool_id(tool_id)
+		workspace.set_world_brush_radius(radius.value)
+		workspace.set_world_brush_settings(depth.value,softness.value)
+		if tool_id==Model.TOOL_LEVEL and _volume_smooth_target():workspace.set_surface_plane_settings(surface_plane_mode.selected,surface_plane_offset.value,depth.value)
+	plugin._connect_generator_library(workspace)
+	EditorInterface.set_main_screen_editor(plugin.SURFACE_MAIN_SCREEN)
+	return true
+
+func _adopt_canvas_brush_settings(workspace:EmberVoxelSculptWorkspace)->void:
+	var settings:=workspace.world_brush_settings()
+	if settings.has("depth"):
+		depth.max_value=32.0;depth.set_value_no_signal(settings.depth)
+	if settings.has("softness"):softness.set_value_no_signal(settings.softness)
+	var config:=workspace.surface_plane_settings()
+	if config.is_empty():return
+	surface_plane_mode.select(config.mode);surface_plane_offset.set_value_no_signal(config.offset);depth.max_value=32.0;depth.set_value_no_signal(config.depth)
+
+func _return_from_canvas(target:Node3D)->void:
+	var workspace:=EditorInterface.get_editor_main_screen().find_child(plugin.SURFACE_WORKSPACE_NODE,true,false) as EmberVoxelSculptWorkspace
+	if workspace==null or not activate_context(target):return
+	_adopt_canvas_brush_settings(workspace)
+	var mode:=BrushProfiles.world_mode_for_tool(workspace._selected_tool_id())
+	var group:=category.selected
+	for i in 4:
+		if mode in BrushProfiles.world_modes(i,_compact_active()):group=i;break
+	_changing_context=true;_category_changed(group,true,mode);_changing_context=false
+	_restore_context_radius(float(workspace._radius.get_selected_metadata())/workspace._resource.normalized_density())
+	EditorInterface.set_main_screen_editor("3D")
 
 func _save_native_scene() -> int:
 	return EditorInterface.save_scene() if Engine.is_editor_hint() else OK
@@ -2589,7 +2813,7 @@ func save_all(defer_scene_save := false) -> bool:
 			workspace._set_status(message,true)
 			return false
 		if workspace != null and not workspace._world_entry.is_empty(): workspace._commit_object_name()
-	if dragging or job != null or not grab.is_empty() or (plugin != null and plugin._object_brush._dragging):
+	if dragging or job != null or not grab.is_empty() or not _plan_drag.is_empty() or (plugin != null and plugin._object_brush._dragging):
 		_status("Завершите мазок или отмените его Esc перед сохранением.")
 		return false
 	if scene == null: return false
@@ -2624,6 +2848,10 @@ func _finish_native_scene_save() -> bool:
 	return saved
 
 func _input(event: InputEvent) -> void:
+	if _generation_context.get("grove_applying",false) and event is InputEventKey and event.pressed and not event.echo and event.is_command_or_control_pressed() and event.keycode==KEY_Z:
+		clear_terrain_generation_preview()
+		_generation_panel.set_pending("Подключение отменено. Обновите предпросмотр.")
+		get_viewport().set_input_as_handled();return
 	# Global save is independent of viewport focus. Undo/Redo still belongs to
 	# Godot; this only repairs a stale input mask before Godot handles the key.
 	if Engine.is_editor_hint() and active and _compact_active() and event is InputEventKey and event.pressed and not event.echo and event.is_command_or_control_pressed() and event.keycode in [KEY_Z,KEY_Y] and not _compact_brush.active():
@@ -2659,7 +2887,7 @@ func _pick_compact(position: Vector2) -> Dictionary:
 	var projection := map._visual_surface_projection as EmberTerrainPilotProjection
 	if projection == null: return {}
 	var origin := camera.project_ray_origin(position)
-	return projection.pick_ground_top(origin,origin+camera.project_ray_normal(position)*camera.far)
+	return projection.pick_ground_top(origin,origin+camera.project_ray_normal(position)*camera.far,_mode()=="paint")
 
 func _pick(position: Vector2) -> Dictionary:
 	if entry.is_empty() or camera == null: return {}
@@ -2695,25 +2923,23 @@ func _plane_cell(position: Vector2) -> Vector2i:
 	if not _plan_selection.is_empty() and _compact_active(): footprint = Vector2i(entry.resource.width / 16, entry.resource.depth / 16)
 	return cell if cell.x >= 0 and cell.y >= 0 and cell.x < footprint.x and cell.y < footprint.y else Vector2i(-1,-1)
 
-func _pick_object(position: Vector2) -> void:
-	cancel_stroke()
+func _context_target(node:Node)->Node:
+	var object:=EmberObjectInspectorModel.voxel_owner(node)
+	if object!=null:return object
+	if not is_instance_valid(map) or not is_instance_valid(node):return null
+	if node==map:return map
+	for ground in [map.get_node_or_null("Terrain"),map._visual_surface_projection]:
+		if is_instance_valid(ground) and (ground==node or ground.is_ancestor_of(node)):return map
+	return null
+
+func _pick_context(position: Vector2) -> void:
+	if not is_instance_valid(camera):return
 	var origin := camera.project_ray_origin(position)
 	var ray := PhysicsRayQueryParameters3D.create(origin,origin+camera.project_ray_normal(position)*camera.far)
 	var hit := camera.get_world_3d().direct_space_state.intersect_ray(ray)
-	var node: Node = hit.get("collider")
-	while node != null and not node is EmberVoxelProp: node = node.get_parent()
-	if node is EmberVoxelProp and scene.is_ancestor_of(node):
-		if not entry.is_empty(): entry.scope = edit_region
-		entry = sessions.open_object(node,scene)
-		if not entry.is_empty():
-			edit_region = entry.get("scope",Rect2i())
-			target_choice.select(1)
-			picking_object = false
-			actions.history_context = scene
-			_refresh_palette()
-			_status("Правим только %s · остальные экземпляры защищены" % node.name)
-			_refresh_scope()
-	else: _status("Нужен voxel-объект. Простые 3D-формы автоматически не преобразуются.")
+	var target:=_context_target(hit.get("collider"))
+	if target!=null:activate_context(target)
+	else:_status("Под курсором нет редактируемой земли или объекта. Текущая цель сохранена.")
 
 func forward_input(next_camera: Camera3D, event: InputEvent) -> int:
 	if _panel_host.blocks_viewport_tools():
@@ -2722,7 +2948,21 @@ func forward_input(next_camera: Camera3D, event: InputEvent) -> int:
 	var received_usec := Time.get_ticks_usec() if _trace.recording and event is InputEventMouse else 0
 	var scheduled_usec := int(event.get_meta("ember_scheduled_usec",0)) if received_usec > 0 else 0
 	camera = next_camera
+	if event is InputEventMouse:_context_pointer=event.position
+	if event is InputEventKey and event.pressed and not event.echo and event.alt_pressed and not event.is_command_or_control_pressed() and event.keycode==KEY_Q:
+		var focus:=get_viewport().gui_get_focus_owner()
+		if focus is LineEdit or focus is TextEdit or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) or Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE):return EditorPlugin.AFTER_GUI_INPUT_PASS
+		if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):_status("Завершите жест перед сменой цели.");return EditorPlugin.AFTER_GUI_INPUT_STOP
+		_pick_context(_context_pointer);return EditorPlugin.AFTER_GUI_INPUT_STOP
+	if picking_object and event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT and event.pressed:
+		_pick_context(event.position);return EditorPlugin.AFTER_GUI_INPUT_STOP
 	if _section_mode: return _forward_section_selection(event)
+	# Plan gestures own their viewport input, including while coast parameters
+	# are open. The general recipe guard below must only block terrain painting.
+	if _plan_map_active(): return _forward_compact(event)
+	if not _context_tool_available() and not selecting:
+		if event is InputEventKey and event.pressed and event.is_command_or_control_pressed() and event.keycode==KEY_S:save_all();return EditorPlugin.AFTER_GUI_INPUT_STOP
+		return EditorPlugin.AFTER_GUI_INPUT_PASS
 	# A dock is nonmodal: camera input still reaches Godot, but inspecting a
 	# recipe must not paint the terrain underneath its private preview.
 	if is_instance_valid(_terrain_workspace) and _terrain_workspace.visible and not selecting:
@@ -2797,7 +3037,6 @@ func forward_input(next_camera: Camera3D, event: InputEvent) -> int:
 		if _trace.recording and dragging: _trace.stage("input_overlay_ui",Time.get_ticks_usec()-overlay_started)
 		return EditorPlugin.AFTER_GUI_INPUT_STOP
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
-		if picking_object and event.pressed: _pick_object(event.position); return EditorPlugin.AFTER_GUI_INPUT_STOP
 		if selecting:
 			var cell := _plane_cell(event.position)
 			if event.pressed: region_anchor = cell
@@ -2832,9 +3071,12 @@ func forward_input(next_camera: Camera3D, event: InputEvent) -> int:
 
 func _forward_compact(event: InputEvent) -> int:
 	var focused := get_viewport().gui_get_focus_owner()
-	if focused is LineEdit or focused is TextEdit:
+	if event is InputEventKey and (focused is LineEdit or focused is TextEdit):
 		return EditorPlugin.AFTER_GUI_INPUT_PASS
-	if _plan_selection in ["add_river","add_road","path_line"]: return _forward_plan_path(event)
+	if _plan_selection in ["add_river","add_road","add_coast","path_line"]: return _forward_plan_path(event)
+	if _plan_map_active():
+		if event is InputEventMouseButton and event.pressed and event.button_index==MOUSE_BUTTON_LEFT and is_instance_valid(focused):focused.release_focus()
+		return _forward_plan_map(event)
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.is_command_or_control_pressed() and event.keycode in [KEY_Z,KEY_Y]:
 			if _compact_brush.active():
@@ -2878,7 +3120,7 @@ func _forward_compact(event: InputEvent) -> int:
 				else: hover_pick_usec = elapsed_pick
 			if dragging and not hover.is_empty():
 				var stamp_started := Time.get_ticks_usec() if _compact_trace.recording else 0
-				_compact_brush.stamp(hover.cell,_compact_bounds())
+				_compact_brush.stamp_surface(hover,_compact_bounds())
 				if stamp_started > 0: _compact_trace_step("move", stamp_started)
 		var overlay_started := Time.get_ticks_usec() if hover_started > 0 else 0
 		_update_overlay()
@@ -2930,7 +3172,7 @@ func _forward_compact(event: InputEvent) -> int:
 					dragging = true
 					_set_busy(true)
 					var first_started := Time.get_ticks_usec() if _compact_trace.recording else 0
-					_compact_brush.stamp(hover.cell,_compact_bounds())
+					_compact_brush.stamp_surface(hover,_compact_bounds())
 					if first_started > 0: _compact_trace_step("first", first_started)
 				elif _compact_trace.recording:
 					_compact_trace.finish_brush_stroke(0, true)
@@ -2941,7 +3183,7 @@ func _forward_compact(event: InputEvent) -> int:
 				if release_pick_started > 0: _compact_trace.stage("release_pick", Time.get_ticks_usec() - release_pick_started)
 				if not final_pick.is_empty():
 					var final_started := Time.get_ticks_usec() if _compact_trace.recording else 0
-					_compact_brush.stamp(final_pick.cell,_compact_bounds())
+					_compact_brush.stamp_surface(final_pick,_compact_bounds())
 					if final_started > 0: _compact_trace_step("release", final_started)
 				var changed_columns := _compact_brush.changed_column_count() if _compact_trace.recording else 0
 				var end_started := Time.get_ticks_usec() if _compact_trace.recording else 0
@@ -2977,14 +3219,35 @@ func _repair_compact_mouse_mask() -> void:
 func _compact_bounds() -> Rect2i:
 	return Rect2i(edit_region.position * EmberTerrainPilotResource.CELLS_PER_BLOCK, edit_region.size * EmberTerrainPilotResource.CELLS_PER_BLOCK) if clip.button_pressed and edit_region.has_area() else Rect2i()
 
+func _shared_mask_normal()->Vector3i:
+	if dragging:
+		var guard:Dictionary=stroke_options.get("guard",{})
+		return Model.axis_normal(guard.normal) if guard.get("enabled",false) else Vector3i.ZERO
+	var selection:Dictionary=entry.get("canvas_guard",{}).get("selection",{})
+	return Model.axis_normal(selection.get("mask_normal",Vector3i.UP)) if selection.get("mask_enabled",false) else Vector3i.ZERO
+
 func _center(pick: Dictionary, mode := "") -> Vector3i:
 	if pick.is_empty(): return Model.INVALID_CELL
 	if mode == "": mode = stroke_mode if dragging else _mode()
-	if mode == "add": return pick.get("adjacent",Model.INVALID_CELL)
+	if mode=="add":
+		var normal:=_shared_mask_normal()
+		if normal!=Vector3i.ZERO and pick.get("hit",Model.INVALID_CELL)!=Model.INVALID_CELL:
+			var adjacent:Vector3i=pick.hit+normal
+			return adjacent if Model.contains(adjacent,entry.resource.grid_size()) else Model.INVALID_CELL
+		return pick.get("adjacent",Model.INVALID_CELL)
 	return pick.get("adjacent",Model.INVALID_CELL) if pick.get("empty_floor",false) else pick.get("hit",Model.INVALID_CELL)
+
+func _surface_plane_active()->bool:
+	return _mode()=="level" and _volume_smooth_target() and surface_plane_mode.selected>0
+
+func _volume_smooth_target()->bool:
+	return not entry.is_empty() and entry.target.get_ref() is EmberVoxelProp and entry.resource.tree_surface.is_empty() and not entry.resource.solid_surface.is_empty()
 
 func _begin_stroke(pick: Dictionary, inverse := false, input_usec := 0, input_position := Vector2.ZERO, scheduled_usec := 0, pick_usec := 0) -> void:
 	if entry.is_empty(): return
+	var protection:=sessions.brush_guard(entry,_brush_mask_kind())
+	if protection.get("invalid",false) or protection.get("enabled",false) and _brush_mask_kind()==BrushProfiles.MASK_NONE:
+		_status("Защита Canvas не позволяет этот мазок. Снимите маску или обновите область в Canvas.");return
 	stroke_mode = _mode()
 	if inverse:
 		stroke_mode = {"raise":"lower","lower":"raise","add":"remove","remove":"add","water":"dry","dry":"water"}.get(stroke_mode,stroke_mode)
@@ -3013,6 +3276,16 @@ func _begin_stroke(pick: Dictionary, inverse := false, input_usec := 0, input_po
 	stroke_depth = roundi(depth.value)
 	stroke_palette = int(palette.get_selected_metadata()) if palette.selected >= 0 else 1
 	stroke_options = {"level":level if stroke_mode in ["water","dry"] else center.y,"secondary":sand_palette.get_selected_metadata() if sand_palette.selected >= 0 else stroke_palette,"shore":{"origin":Vector2(center.x,center.z),"height":center.y,"direction":shore_direction.selected,"width":shore_width.value*density,"roughness":15}}
+	stroke_options.guard=protection
+	if stroke_mode=="smooth" and _volume_smooth_target():stroke_options.locked=Groups.locked_indices(baseline.voxel_groups)
+	if _surface_plane_active():
+		var normal:Vector3i=pick.get("normal",Vector3i.UP)
+		var n:=Model.averaged_surface_normal(baseline.voxels,baseline.grid_size(),center,normal,Model.surface_normal_radius(stroke_radius),normal)
+		stroke_options.plane_normal=n
+		stroke_options.plane_point=Vector3(center)+Vector3(normal)*0.5+n*surface_plane_offset.value
+		stroke_options.cut_only=surface_plane_mode.selected==2
+		stroke_options.locked=Groups.locked_indices(baseline.voxel_groups)
+
 	dragging = true
 	_set_busy(true)
 	released = false
@@ -3038,15 +3311,17 @@ func _queue_pick(pick: Dictionary) -> void:
 	var previous := cell if last_cell == Model.INVALID_CELL else last_cell
 	var queued_at := Time.get_ticks_usec() if _trace.recording else 0
 	var appended := 0
+	var normal:Vector3i=pick.get("normal",Vector3i.UP)
+	if stroke_mode in ["add","remove","paint"] and _shared_mask_normal()!=Vector3i.ZERO:normal=_shared_mask_normal()
 	if stroke_mode in ["add","remove","paint"]:
 		var count := clampi(ceili(Vector3(cell-previous).length()/maxf(1,stroke_radius*0.4)),1,2048)
 		for i in range(1,count+1):
-			var sample := {"from":Vector3i(Vector3(previous).lerp(Vector3(cell),float(i)/count)),"to":Vector3i(Vector3(previous).lerp(Vector3(cell),float(i)/count)),"normal":pick.get("normal",Vector3i.UP)}
+			var sample := {"from":Vector3i(Vector3(previous).lerp(Vector3(cell),float(i)/count)),"to":Vector3i(Vector3(previous).lerp(Vector3(cell),float(i)/count)),"normal":normal}
 			if _trace.recording: sample.queued_usec = queued_at
 			queue.append(sample)
 		appended = count
 	else:
-		var sample := {"from":previous,"to":cell,"normal":pick.get("normal",Vector3i.UP)}
+		var sample := {"from":previous,"to":cell,"normal":normal}
 		if _trace.recording: sample.queued_usec = queued_at
 		queue.append(sample)
 		appended = 1
@@ -3077,6 +3352,23 @@ func _create_ground() -> void:
 	_status("Создаю новую землю по выбранному прямоугольнику…")
 
 func _new_job(sample: Dictionary) -> RefCounted:
+	if stroke_options.has("plane_normal"):
+		var next:=Model.SurfacePlaneJob.new()
+		next.values=baseline.voxels;next.parts=baseline.voxel_part_ids;next.size=baseline.grid_size()
+		next.radius=stroke_radius;next.depth=stroke_depth
+		next.plane_point=stroke_options.plane_point;next.plane_normal=stroke_options.plane_normal;next.cut_only=stroke_options.cut_only
+		next.segments=[sample];next.segments.append_array(queue);queue.clear()
+		next.task_id=WorkerThreadPool.add_task(next.run,false,"World surface plane")
+		return next
+	if stroke_mode=="smooth" and _volume_smooth_target():
+		var next:=VolumeSmooth.new()
+		next.values=baseline.voxels;next.parts=baseline.voxel_part_ids;next.size=baseline.grid_size()
+		next.radius=stroke_radius;next.kernel=clampi(stroke_depth,1,8)
+		next.segments=[sample]
+		# Coalesce pending input into the same local calculation, never a whole-object pass.
+		next.segments.append_array(queue);queue.clear()
+		next.task_id=WorkerThreadPool.add_task(next.run,false,"World volume smooth")
+		return next
 	var next := Model.StrokeJob.new()
 	next.source = baseline
 	next.from = sample.from
@@ -3113,7 +3405,7 @@ func _write_values(channel: String, updates: Dictionary) -> PackedInt32Array:
 	if _trace.recording: _trace.write_event(changed.size())
 	return changed
 
-func _apply_batch(changes: Dictionary, notify_projection := true) -> void:
+func _apply_batch(changes: Dictionary, notify_projection := true, inherited:Dictionary={}) -> void:
 	if changes.is_empty(): return
 	var prepare_started := Time.get_ticks_usec() if _trace.recording else 0
 	var dirty := {}
@@ -3136,12 +3428,20 @@ func _apply_batch(changes: Dictionary, notify_projection := true) -> void:
 		if not entry.resource.collision_voxels.is_empty(): updates.collision_voxels = {}
 		if not entry.resource.voxel_part_ids.is_empty(): updates.voxel_part_ids = {}
 		for index in changes:
+			if not Selection.guard_allows(index,size,stroke_options.get("guard",{}),entry.resource.normalized_density()):continue
+			if stroke_options.get("locked",{}).has(index):continue
+			if (stroke_mode=="smooth" and _volume_smooth_target() or stroke_options.has("plane_normal")) and clip.button_pressed and edit_region.has_area():
+				var point:=Vector2i(int(index)%size.x,(int(index)/size.x)%size.z)
+				var density:int=entry.resource.normalized_density()
+				if not Rect2i(edit_region.position*density,edit_region.size*density).has_point(point):continue
 			var value: int = changes[index].after
 			updates.voxels[index] = value
 			if updates.has("collision_voxels"):
 				if value == 0: updates.collision_voxels[index] = 0
 				elif baseline.voxels[index] == 0: updates.collision_voxels[index] = 1
-			if updates.has("voxel_part_ids") and value == 0: updates.voxel_part_ids[index] = 0
+			if updates.has("voxel_part_ids"):
+				if value==0:updates.voxel_part_ids[index]=0
+				elif inherited.has(index):updates.voxel_part_ids[index]=inherited[index]
 	if _trace.recording: _trace.stage("batch_prepare",Time.get_ticks_usec()-prepare_started)
 	var write_started := Time.get_ticks_usec() if _trace.recording else 0
 	for channel in updates:
@@ -3153,6 +3453,10 @@ func _apply_batch(changes: Dictionary, notify_projection := true) -> void:
 		if _trace.recording: _trace.stage("notify_and_queue_projection",Time.get_ticks_usec()-notify_started)
 
 func _process(_elapsed: float) -> void:
+	for retired in _smooth_retired.duplicate():
+		if WorkerThreadPool.is_task_completed(retired.task_id):
+			WorkerThreadPool.wait_for_task_completion(retired.task_id);_smooth_retired.erase(retired)
+	if not _plan_drag.is_empty() and _plan_drag.get("watch_release",false) and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):_plan_finish_drag()
 	_process_terrain_generation()
 	var compact_process_started := Time.get_ticks_usec() if _compact_trace.recording else 0
 	sessions.poll_recovery()
@@ -3199,7 +3503,12 @@ func _process(_elapsed: float) -> void:
 		var setup_started := Time.get_ticks_usec() if _trace.recording else 0
 		job = _new_job(sample)
 		if _trace.recording: _trace.stage("job_initialize",Time.get_ticks_usec()-setup_started)
-	if job != null:
+	if job is VolumeSmooth or job is Model.SurfacePlaneJob:
+		if WorkerThreadPool.is_task_completed(job.task_id):
+			WorkerThreadPool.wait_for_task_completion(job.task_id)
+			if not job.cancelled:_apply_batch(job.changes,true,job.owners)
+			job=null;_job_queued_usec=0
+	elif job != null:
 		var step_started := Time.get_ticks_usec() if _trace.recording else 0
 		# Spend a little more on the current job only while later input waits.
 		# The same tiles and samples stay ordered; pointer-up still commits once.
@@ -3322,6 +3631,8 @@ func cancel_stroke() -> void:
 		var channels := delta.duplicate(true)
 		channels.erase("__sizes")
 		if not channels.is_empty(): actions._apply_delta(entry.resource,delta,false,PackedInt32Array(delta.get("voxels",delta.get("surface_fill_levels",{})).keys()))
+	if job is VolumeSmooth or job is Model.SurfacePlaneJob:
+		job.cancelled=true;_smooth_retired.append(job)
 	job = null
 	_job_queued_usec = 0
 	queue.clear()
@@ -3346,13 +3657,21 @@ func _begin_grab(position: Vector2) -> void:
 	if entry.is_empty() or entry.object_session == null:
 		_status("«Тянуть» предназначен для выбранного объекта. Землю поднимайте и сглаживайте кистями рельефа.")
 		return
+	var protection:=sessions.brush_guard(entry,BrushProfiles.MASK_NONE)
+	if protection.get("enabled",false) or protection.get("invalid",false):_status("«Тянуть»: снимите маску Canvas перед деформацией.");return
+	var region:Rect2i=protection.get("region",Rect2i())
+	if clip.button_pressed and edit_region.has_area():
+		if region.has_area():
+			region=region.intersection(edit_region)
+			if not region.has_area():_status("Рабочие области не пересекаются.");return
+		else:region=edit_region
 	if hover.is_empty() or hover.get("hit",Model.INVALID_CELL) == Model.INVALID_CELL: return
 	var frame: Transform3D = sessions.frame(entry)
 	var center := Vector3(hover.hit)+Vector3.ONE*0.5
 	var plane := Plane((frame.basis.inverse()*camera.global_basis.z).normalized(),center/entry.resource.normalized_density())
 	var anchor = plane.intersects_ray(frame.affine_inverse()*camera.project_ray_origin(position),frame.basis.inverse()*camera.project_ray_normal(position))
 	if anchor == null: return
-	grab = {"baseline":entry.resource.duplicate_model(),"frame":frame,"plane":plane,"anchor":anchor,"center":center,"position":position,"pending":false,"released":false,"displacement":Vector3.ZERO,"planned":Vector3.ZERO,"job":null,"plan":{},"radius":radius.value*entry.resource.normalized_density()}
+	grab = {"region":region,"height":protection.get("height",-1),"baseline":entry.resource.duplicate_model(),"frame":frame,"plane":plane,"anchor":anchor,"center":center,"position":position,"pending":false,"released":false,"displacement":Vector3.ZERO,"planned":Vector3.ZERO,"job":null,"plan":{},"radius":radius.value*entry.resource.normalized_density()}
 	_set_busy(true)
 
 func _process_grab() -> void:
@@ -3363,7 +3682,7 @@ func _process_grab() -> void:
 		if point != null: grab.displacement = (point-grab.anchor)*entry.resource.normalized_density()
 	if grab.job == null and not grab.displacement.is_equal_approx(grab.planned):
 		grab.planned = grab.displacement
-		grab.job = Fragment.start_grab(grab.baseline,grab.center,grab.radius,grab.planned,softness.value,edit_region if clip.button_pressed else Rect2i(),-1,clip.button_pressed)
+		grab.job = Fragment.start_grab(grab.baseline,grab.center,grab.radius,grab.planned,softness.value,grab.region,grab.height,clip.button_pressed or grab.region.has_area() or grab.height>=0)
 	if grab.job != null:
 		grab.job.step(8192,4000)
 		if not grab.job.done: return
@@ -3422,7 +3741,7 @@ func _draw_section_selection(overlay: Control) -> void:
 				if camera.is_position_behind(world_point): polygon.clear(); break
 				polygon.append(camera.unproject_position(world_point))
 			if polygon.size() != 4: continue
-			var occupied := SectionSelection.occupied(source, key)
+			var occupied := SectionSelection.complete(source, key)
 			var colour := Color(0.6, 0.65, 0.7, 0.7) if occupied else Color(0.3, 0.9, 1.0, 0.95)
 			overlay.draw_colored_polygon(polygon, Color(colour, 0.07 if occupied else 0.22))
 			polygon.append(polygon[0])
@@ -3514,27 +3833,43 @@ func _draw_terrain_plan(overlay: Control) -> void:
 			var pixel := camera.unproject_position(world)
 			overlay.draw_line(pixel + Vector2(-3, -3), pixel + Vector2(3, 3), Color(1, 0.75, 0.3), 2)
 			overlay.draw_line(pixel + Vector2(-3, 3), pixel + Vector2(3, -3), Color(1, 0.75, 0.3), 2)
-	if _plan_selection in ["add_river","add_road","path_line"]:
+	if _plan_selection in ["add_river","add_road","add_coast","path_line"]:
 		var points := _path_points.duplicate()
 		if _path_hover.x >= 0 and (points.is_empty() or _path_hover.distance_to(points[-1]) >= 1): points.append(_path_hover)
 		_draw_plan_path(overlay,points,Color(0.3,0.9,1),"draft",_plan_path_kind() == "river")
 	var plan: Resource = TerrainPlan.read(map)
 	if plan == null: return
-	for region: Dictionary in plan.regions:
-		if region.get("kind") in ["river","road"]:
-			_draw_plan_path(overlay,region.points_m,Color(1,0.75,0.3) if region.id == _plan_selected_id else Color(0.4,0.75,0.9,0.65),region.id,region.kind == "river")
-			continue
-		var rect: Rect2i = region.bounds
-		var points := PackedVector2Array()
-		for corner in [rect.position, Vector2i(rect.end.x, rect.position.y), rect.end, Vector2i(rect.position.x, rect.end.y), rect.position]:
-			var world := _region_frame() * Vector3(corner.x, _region_height(), corner.y)
-			if camera.is_position_behind(world): points.clear(); break
-			points.append(camera.unproject_position(world))
-		if points.is_empty(): continue
-		var selected: bool = region.id == _plan_selected_id
-		var color := Color(1.0, 0.75, 0.3, 0.95) if selected else Color(0.65, 0.9, 0.7, 0.6)
-		overlay.draw_polyline(points, color, 2.5 if selected else 1.5, true)
-		overlay.draw_string(ThemeDB.fallback_font, points[0] + Vector2(4, -5), region.name, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, color)
+	for saved: Dictionary in plan.regions:
+		var selected:bool=saved.id==_plan_selected_id
+		var region:Dictionary=_plan_drag.ghost if selected and not _plan_drag.is_empty() else saved
+		var path:=TerrainPlan.Influence.plan_is_path(region)
+		var color:=Color(1,0.75,0.3) if selected else Color(0.4,0.75,0.9,0.65)
+		if path:
+			_draw_plan_path(overlay,region.points_m,color,region.id,region.kind in ["river","coast"])
+		else:
+			var pixels:=PackedVector2Array()
+			for point in TerrainPlan.Influence.plan_controls(region):
+				var pixel:=_plan_point_pixel(point)
+				if not pixel.is_finite():pixels.clear();break
+				pixels.append(pixel)
+			if pixels.size()==4:
+				pixels.append(pixels[0]);overlay.draw_polyline(pixels,color,2.5 if selected else 1.5,true)
+				overlay.draw_string(ThemeDB.fallback_font,pixels[0]+Vector2(4,-7),region.name,HORIZONTAL_ALIGNMENT_LEFT,-1,14,color)
+		if not selected or not _plan_selection.is_empty():continue
+		if _plan_point_mode=="translate":
+			var centre:=_plan_point_pixel(TerrainPlan.Influence.plan_anchor(region))
+			if centre.is_finite():
+				overlay.draw_circle(centre,10,Color(0.05,0.25,0.3,0.9))
+				overlay.draw_line(centre-Vector2(7,0),centre+Vector2(7,0),Color.WHITE,2,true)
+				overlay.draw_line(centre-Vector2(0,7),centre+Vector2(0,7),Color.WHITE,2,true)
+		else:
+			var points:=TerrainPlan.Influence.plan_controls(region)
+			for i in points.size():
+				var pixel:=_plan_point_pixel(points[i])
+				if not pixel.is_finite():continue
+				if path:overlay.draw_circle(pixel,7 if i==_plan_point_index else 5,Color.WHITE)
+				else:overlay.draw_rect(Rect2(pixel-Vector2.ONE*5,Vector2.ONE*10),Color.WHITE)
+				overlay.draw_circle(pixel,3,Color(0.1,0.7,1))
 
 func draw_overlay(overlay: Control) -> void:
 	if not active or not is_instance_valid(camera): return
@@ -3651,6 +3986,7 @@ func _sync_compact_grid() -> void:
 	var fade_radius := brush_radius + float(CompactBrushMath.COARSE_CELL_SIZE) * 2.0
 	var shape := brush_shape.selected
 	var view_key := "%d:%d:%d:%d:%f:%d" % [projection.get_instance_id(), selected_x, selected_z, stride, brush_radius, shape]
+	if _mode()=="paint" and hover.get("normal",Vector3.UP).y<=0.8:view_key+="|%s|%s"%[hover.local,hover.normal]
 	if view_key == _compact_grid_view_key:
 		return
 	if _compact_trace.recording and not _compact_brush.active():
@@ -3675,6 +4011,12 @@ func _sync_compact_grid_overlay(projection: EmberTerrainPilotProjection, center:
 	_compact_grid_material.set_shader_parameter("square_brush", shape == 0)
 	_compact_grid_material.set_shader_parameter("selected_origin", selected_origin)
 	_compact_grid_material.set_shader_parameter("selected_size", float(stride))
+	var side:bool=_mode()=="paint" and hover.get("normal",Vector3.UP).y<=0.8
+	_compact_grid_material.set_shader_parameter("side_paint",side)
+	if side:
+		_compact_grid_material.set_shader_parameter("side_center",hover.local)
+		_compact_grid_material.set_shader_parameter("side_normal",hover.normal)
+		_compact_grid_material.set_shader_parameter("brush_radius",radius.value*16.0)
 	if started > 0: _compact_hover_grid_stats["material_usec"] = Time.get_ticks_usec() - started
 	var tile_size := EmberTerrainPilotProjection.TILE_SIZE
 	var cols := ceili(float(projection.document.width) / tile_size)
@@ -3734,4 +4076,217 @@ func _exit_tree() -> void:
 	cancel_stroke()
 	_clear_experiment()
 	if is_instance_valid(material_pattern_dialog) and material_pattern_dialog.get_parent() == null: material_pattern_dialog.free()
+	for retired in _smooth_retired:WorkerThreadPool.wait_for_task_completion(retired.task_id)
+	_smooth_retired.clear()
 	sessions.release()
+
+
+# Coast uses the existing plan command/history and 2D overlay. Drag only moves
+# the editor's temporary line; validation and a single Undo happen on release.
+func _plan_map_active()->bool:
+	return _plan_selection.is_empty() and is_instance_valid(_plan_panel) and _plan_panel.visible and is_instance_valid(_terrain_workspace) and _terrain_workspace.visible and _plan_target!=null and _plan_target.get_ref()==map
+
+func _plan_parameters_active()->bool:
+	return is_instance_valid(_generation_panel) and _generation_panel.visible and not _generation_context.get("plan_id","").is_empty()
+
+func _select_plan_region(id:String)->void:
+	_plan_selected_id=id;_plan_point_index=-1;_plan_cancel_drag()
+	_refresh_terrain_plan()
+	if not id.is_empty():_terrain_plan_action("generate",id,"")
+	_update_overlay()
+
+func _sync_plan_context()->void:
+	if not _plan_parameters_active():return
+	var plan:Resource=TerrainPlan.read(map)
+	var index:int=plan.index_of(_plan_selected_id) if plan!=null else -1
+	if index<0:_open_terrain_plan();return
+	if _generation_context.get("plan_id","")!=_plan_selected_id:
+		_terrain_plan_action("generate",_plan_selected_id,"");return
+	var previous:Dictionary={}
+	for region:Dictionary in _generation_context.get("plan_version",{}).get("regions",[]):
+		if region.id==_plan_selected_id:previous=region;break
+	if not previous.is_empty() and (previous.parameters!=plan.regions[index].parameters or previous.get("kind")!=plan.regions[index].get("kind")):
+		_terrain_plan_action("generate",_plan_selected_id,"");return
+	_generation_context.plan_version=plan.data();_generation_context.area=plan.regions[index].bounds
+	_generation_panel.update_plan_bounds(plan.regions[index].bounds)
+	_generation_panel.set_pending("Контур изменён. Обнови предпросмотр.")
+
+func _plan_handle_world(point:Vector2)->Vector3:
+	if entry.is_empty() or not is_instance_valid(map):return Vector3.INF
+	var source:EmberTerrainPilotResource=entry.resource
+	var cell:=Vector2i(clampi(floori(point.x*16),0,source.width-1),clampi(floori(point.y*16),0,source.depth-1))
+	if not source.has_column(cell.x,cell.y):return Vector3.INF
+	var index:=source.column_index(cell.x,cell.y)
+	var height:=maxi(source.column_value("heights",index),source.column_value("water_levels",index))+source.origin_y
+	return map._visual_surface_projection.to_global(Vector3(point.x*16.0,height+2,point.y*16.0))
+
+func _plan_point_pixel(point:Vector2)->Vector2:
+	if not is_instance_valid(camera):return Vector2.INF
+	var p:=_plan_handle_world(point)
+	return Vector2.INF if not p.is_finite() or camera.is_position_behind(p) else camera.unproject_position(p)
+
+func _plan_point_at(points:PackedVector2Array,pixel:Vector2)->int:
+	var found:=-1;var nearest:=13.0
+	for i in points.size():
+		var p:=_plan_point_pixel(points[i])
+		if p.is_finite() and p.distance_to(pixel)<nearest:nearest=p.distance_to(pixel);found=i
+	return found
+
+func _plan_region_at(pixel:Vector2)->String:
+	var plan:Resource=TerrainPlan.read(map)
+	if plan==null:return ""
+	var closest:="";var distance:=13.0
+	for region:Dictionary in plan.regions:
+		if not TerrainPlan.Influence.plan_is_path(region):continue
+		var hit:=_plan_path_hit(region,pixel)
+		if hit.distance<distance:distance=hit.distance;closest=region.id
+	if not closest.is_empty():return closest
+	var point:=_path_pick(pixel)
+	if point.x<0:return ""
+	var area:=INF
+	for region:Dictionary in plan.regions:
+		if not Rect2(region.bounds).has_point(point):continue
+		if region.get("kind")=="coast":
+			if not TerrainPlan.Influence.coast_sample(TerrainPlan.Influence.path_curve(region.points_m),point,region.parameters).is_empty():return region.id
+		elif not TerrainPlan.Influence.plan_is_path(region) and region.bounds.get_area()<area:area=region.bounds.get_area();closest=region.id
+	return closest
+
+func _plan_path_hit(region:Dictionary,pixel:Vector2)->Dictionary:
+	var result:Dictionary={"distance":INF,"point":Vector2.INF}
+	var samples:PackedVector2Array=TerrainPlan.Influence.path_curve(region.points_m).get_baked_points()
+	for i in range(1,samples.size()):
+		var a:=_plan_point_pixel(samples[i-1]);var b:=_plan_point_pixel(samples[i])
+		if not a.is_finite() or not b.is_finite():continue
+		var projected:=Geometry2D.get_closest_point_to_segment(pixel,a,b)
+		var distance:=pixel.distance_to(projected)
+		if distance>=result.distance:continue
+		var fraction:=0.0 if a.distance_squared_to(b)<0.00001 else a.distance_to(projected)/a.distance_to(b)
+		result={"distance":distance,"point":samples[i-1].lerp(samples[i],fraction)}
+	return result
+
+func commit_plan_shape(target:EmberMapLoader,id:String,shape:Dictionary)->String:
+	var plan:Resource=TerrainPlan.read(target)
+	var index:int=plan.index_of(id) if plan!=null else -1
+	if index<0:return "Область больше недоступна."
+	var draft:=sessions.open_map(target,scene)
+	if draft.is_empty():return sessions.error
+	var next:Resource=plan.working_copy()
+	if TerrainPlan.Influence.plan_is_path(plan.regions[index]):
+		var points:PackedVector2Array=shape.points_m
+		var extent:=Vector2i(draft.resource.width/16,draft.resource.depth/16)
+		var error:=TerrainPlan.Influence.path_error(points,extent)
+		if not error.is_empty():return error
+		for point in TerrainPlan.Influence.path_curve(points).get_baked_points():
+			if not Rect2(Vector2.ZERO,Vector2(extent)).has_point(point):return "Изгиб линии выходит за карту."
+		next.regions[index].points_m=points.duplicate()
+		next.regions[index].bounds=_plan_path_bounds(next.regions[index],next.regions[index].parameters,extent)
+	else:next.regions[index].bounds=shape.bounds
+	return commit_terrain_plan(target,next)
+
+func commit_plan_points(target:EmberMapLoader,id:String,points:PackedVector2Array)->String:
+	var plan:Resource=TerrainPlan.read(target)
+	var index:int=plan.index_of(id) if plan!=null else -1
+	if index<0 or not TerrainPlan.Influence.plan_is_path(plan.regions[index]):return "Выберите линию."
+	return commit_plan_shape(target,id,{"points_m":points})
+
+func _plan_cancel_drag()->void:
+	_plan_drag.clear();_update_overlay()
+
+func _plan_drag_position(pixel:Vector2)->Vector2:
+	var projection:Node3D=map._visual_surface_projection
+	var origin:=projection.to_local(camera.project_ray_origin(pixel))
+	var ray:=projection.global_basis.inverse()*camera.project_ray_normal(pixel)
+	var point:Variant=Plane(Vector3.UP,float(_plan_drag.plane_y)).intersects_ray(origin,ray)
+	return Vector2.INF if point==null else Vector2(point.x,point.z)/16.0
+
+func _plan_begin_drag(region:Dictionary,index:int,pixel:Vector2,translate:bool)->void:
+	var handle:Vector2=TerrainPlan.Influence.plan_anchor(region) if translate else TerrainPlan.Influence.plan_controls(region)[index]
+	var p:=_plan_handle_world(handle)
+	if not p.is_finite():return
+	clear_terrain_generation_preview()
+	if _plan_parameters_active():_generation_panel.set_pending("Перенос контура. Земля пока не меняется.")
+	_plan_drag={"index":index,"translate":translate,"region":region.duplicate(true),"ghost":region.duplicate(true),"version":TerrainPlan.read(map).data(),"plane_y":map._visual_surface_projection.to_local(p).y,"watch_release":Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)}
+	_plan_drag.anchor=_plan_drag_position(pixel)
+	if not _plan_drag.anchor.is_finite():_plan_cancel_drag()
+
+func _forward_plan_map(event:InputEvent)->int:
+	if event is InputEventMouse and (event.alt_pressed or event.button_mask&(MOUSE_BUTTON_MASK_RIGHT|MOUSE_BUTTON_MASK_MIDDLE)):
+		_plan_cancel_drag();return EditorPlugin.AFTER_GUI_INPUT_PASS
+	if event is InputEventMouseButton and event.button_index in [MOUSE_BUTTON_RIGHT,MOUSE_BUTTON_MIDDLE]:
+		_plan_cancel_drag();return EditorPlugin.AFTER_GUI_INPUT_PASS
+	var plan:Resource=TerrainPlan.read(map)
+	var index:int=plan.index_of(_plan_selected_id) if plan!=null else -1
+	var path:bool=index>=0 and TerrainPlan.Influence.plan_is_path(plan.regions[index])
+	if event is InputEventKey:
+		if not event.pressed or event.echo:return EditorPlugin.AFTER_GUI_INPUT_PASS
+		if event.is_command_or_control_pressed() and event.keycode in [KEY_Z,KEY_Y]:
+			if not _plan_drag.is_empty():_plan_cancel_drag();return EditorPlugin.AFTER_GUI_INPUT_STOP
+			return EditorPlugin.AFTER_GUI_INPUT_PASS
+		if event.keycode==KEY_ESCAPE:
+			if not _plan_drag.is_empty():_plan_cancel_drag()
+			else:_plan_point_mode="move";_plan_panel.set_point_mode("move")
+			return EditorPlugin.AFTER_GUI_INPUT_STOP
+		if event.keycode in [KEY_DELETE,KEY_BACKSPACE] and path and _plan_point_mode!="translate":
+			_plan_remove_point(plan.regions[index].points_m,_plan_point_index);return EditorPlugin.AFTER_GUI_INPUT_STOP
+		return EditorPlugin.AFTER_GUI_INPUT_PASS
+	if event is InputEventMouseMotion:
+		if not _plan_drag.is_empty():
+			var point:=_plan_drag_position(event.position)
+			if point.is_finite():_plan_drag.ghost=TerrainPlan.Influence.plan_edit(_plan_drag.region,_plan_drag.index,point-_plan_drag.anchor,_plan_drag.translate);_update_overlay()
+		return EditorPlugin.AFTER_GUI_INPUT_STOP
+	if not event is InputEventMouseButton or event.button_index!=MOUSE_BUTTON_LEFT:return EditorPlugin.AFTER_GUI_INPUT_PASS
+	if not event.pressed:
+		if not _plan_drag.is_empty():_plan_finish_drag()
+		return EditorPlugin.AFTER_GUI_INPUT_STOP
+	if index>=0:
+		var region:Dictionary=plan.regions[index]
+		var points:PackedVector2Array=TerrainPlan.Influence.plan_controls(region)
+		if _plan_point_mode=="translate":
+			var centre:=_plan_point_pixel(TerrainPlan.Influence.plan_anchor(region))
+			if centre.is_finite() and centre.distance_to(event.position)<14:
+				_plan_begin_drag(region,-1,event.position,true);return EditorPlugin.AFTER_GUI_INPUT_STOP
+		else:
+			var hit:=_plan_point_at(points,event.position)
+			if hit>=0:
+				_plan_point_index=hit;_plan_panel.set_point_selection(hit,points.size())
+				if path and _plan_point_mode=="remove":_plan_remove_point(points,hit)
+				elif _plan_point_mode=="move":_plan_begin_drag(region,hit,event.position,false)
+				_update_overlay();return EditorPlugin.AFTER_GUI_INPUT_STOP
+		if path and _plan_point_mode=="insert":
+			var on_line:=_plan_path_hit(region,event.position)
+			if on_line.distance<13.0:
+				var point:Vector2=on_line.point.snapped(Vector2.ONE*0.5)
+				var curve:=TerrainPlan.Influence.path_curve(points)
+				var offset:=curve.get_closest_offset(point)
+				var where:=1
+				while where<points.size()-1 and curve.get_closest_offset(points[where])<offset:where+=1
+				var changed:=points.duplicate();changed.insert(where,point)
+				var message:=commit_plan_points(map,_plan_selected_id,changed)
+				if message.is_empty():_plan_point_index=where
+				_plan_panel.set_status(message if not message.is_empty() else "Точка добавлена.");_update_overlay()
+				return EditorPlugin.AFTER_GUI_INPUT_STOP
+	var selected:=_plan_region_at(event.position)
+	if not selected.is_empty():
+		_select_plan_region(selected)
+		if _plan_point_mode=="translate":
+			plan=TerrainPlan.read(map);index=plan.index_of(selected)
+			_plan_begin_drag(plan.regions[index],-1,event.position,true)
+	return EditorPlugin.AFTER_GUI_INPUT_STOP
+
+func _plan_remove_point(points:PackedVector2Array,index:int)->void:
+	if index<0 or index>=points.size():return
+	if points.size()<=2:_plan_panel.set_status("У линии должны остаться хотя бы две точки.");return
+	var changed:=points.duplicate();changed.remove_at(index)
+	var message:=commit_plan_points(map,_plan_selected_id,changed)
+	if message.is_empty():_plan_point_index=mini(index,changed.size()-1)
+	_plan_panel.set_status(message if not message.is_empty() else "Точка удалена.");_update_overlay()
+
+func _plan_finish_drag()->void:
+	var plan:Resource=TerrainPlan.read(map)
+	var message:="План изменился во время переноса. Повтори движение."
+	var ghost:Dictionary=_plan_drag.ghost
+	var valid:bool=plan!=null and plan.data()==_plan_drag.version
+	# End the gesture before applying history; callbacks must render the saved shape.
+	_plan_cancel_drag()
+	if valid:message=commit_plan_shape(map,_plan_selected_id,ghost)
+	_plan_panel.set_status(message if not message.is_empty() else "Контур сохранён в плане. Предпросмотр → Применить.")

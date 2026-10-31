@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_action_resource.gd" id="1_2vm2i"]
+
+[resource]
+script = ExtResource("1_2vm2i")
+action_id = "harbor_cargo_wait"
+document = {
+"id": "harbor_cargo_wait",
+"nameRu": "Груз: напомнить",
+"steps": [{
+"dialogueId": "harbor_cargo_reminder",
+"type": "talk"
+}]
+}

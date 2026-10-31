@@ -14,7 +14,7 @@ import tempfile
 
 from run_voxel_migration_tests import ROOT, copy_code, hashes
 
-TESTS = ('test_talk_shop.gd', 'test_action_script.gd', 'test_interact_launch_rules.gd', 'test_quest_state.gd')
+TESTS = ('test_quest_handover.gd', 'test_quest_purchase.gd', 'test_story_authoring.gd', 'test_quest_presentation.gd', 'test_dialogue_story_history.gd', 'test_talk_shop.gd', 'test_action_script.gd', 'test_interact_launch_rules.gd', 'test_quest_state.gd')
 
 
 def prepare_project(destination):
@@ -23,6 +23,25 @@ def prepare_project(destination):
         shutil.copytree(ROOT / folder, destination / folder)
     for name in TESTS:
         shutil.copyfile(ROOT / 'tools' / name, destination / 'tools' / name)
+    shutil.copytree(ROOT / "scenes/combat/arenas", destination / "scenes/combat/arenas")
+    (destination / "prefabs/items").mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(ROOT / "prefabs/items/shore_shell.tscn", destination / "prefabs/items/shore_shell.tscn")
+    for name in ("shore_keeper.tscn", "shore_keeper_visual.tscn"):
+        shutil.copyfile(ROOT / "prefabs/items" / name, destination / "prefabs/items" / name)
+    # Presentation fixture uses the same native dialogue owner as the real game.
+    dialogue = destination / 'content/dialogues/camera_story_exchange.tres'
+    dialogue.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(ROOT / 'content/dialogues/camera_story_exchange.tres', dialogue)
+    for relative in ('content/quests/harbor_cargo.tres', 'content/action_scripts/harbor_cargo_story_trial.tres',
+                     'content/action_scripts/harbor_cargo_complete.tres', 'content/dialogues/harbor_cargo_done.tres'):
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / relative, target)
+    for folder in ('shops', 'quests', 'action_scripts', 'dialogues'):
+        for source in [*(ROOT / 'content' / folder).glob('story_tea_*.tres'), *(ROOT / 'content' / folder).glob('story_shell_*.tres')]:
+            target = destination / 'content' / folder / source.name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
     (destination / '.interaction-test-sandbox').write_text('synthetic native interaction fixtures only\n', encoding='utf-8')
     (destination / 'project.godot').write_text('''config_version=5
 [application]

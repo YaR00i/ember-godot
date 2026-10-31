@@ -1,0 +1,52 @@
+[gd_resource type="Resource" script_class="EmberQuestResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_quest_resource.gd" id="1_opg1y"]
+
+[resource]
+script = ExtResource("1_opg1y")
+quest_id = "harbor_cargo"
+definition = {
+"editorLayout": {},
+"id": "harbor_cargo",
+"objectives": [{
+"counterEventId": "",
+"flagId": "harbor_cargo_meet",
+"id": "meet",
+"optional": false,
+"progressMode": "flag",
+"requiredCount": 1,
+"requiresObjectiveIds": Array[String]([]),
+"textRu": "Поговорить со смотрителем у берега"
+}, {
+"counterEventId": "",
+"flagId": "harbor_cargo_visit",
+"id": "visit",
+"optional": false,
+"progressMode": "flag",
+"requiredCount": 1,
+"requiresObjectiveIds": Array[String](["meet"]),
+"textRu": "Найти ящик дальше по берегу"
+}, {
+"counterEventId": "",
+"flagId": "harbor_cargo_place",
+"id": "place",
+"optional": false,
+"progressMode": "flag",
+"requiredCount": 1,
+"requiresObjectiveIds": Array[String](["visit"]),
+"textRu": "Поставить ящик на золотую площадку"
+}, {
+"counterEventId": "",
+"flagId": "harbor_cargo_reward",
+"id": "reward",
+"optional": false,
+"progressMode": "flag",
+"requiredCount": 1,
+"requiresObjectiveIds": Array[String](["place"]),
+"textRu": "Вернуться к смотрителю за наградой"
+}],
+"showWhenAvailable": false,
+"statusFlagId": "harbor_cargo_status",
+"summaryRu": "Помочь смотрителю перенести ящик на отмеченную площадку.",
+"titleRu": "Груз у берега"
+}

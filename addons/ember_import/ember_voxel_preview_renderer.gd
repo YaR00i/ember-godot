@@ -41,7 +41,7 @@ func _ready() -> void:
 	set_process(not _pending.is_empty())
 
 
-func queue_preview(model_id: String, path := "") -> void:
+func queue_preview(model_id: String, path := "", cached_only := false) -> void:
 	if model_id.is_empty():
 		return
 	var resolved_path := path if not path.is_empty() and ResourceLoader.exists(path) else ""
@@ -55,6 +55,7 @@ func queue_preview(model_id: String, path := "") -> void:
 		_cache[cache_key] = disk_texture
 		preview_ready.emit(model_id, disk_texture)
 		return
+	if cached_only: return # Startup reads existing artwork; missing cards render when opened.
 	if _queued.has(cache_key):
 		return
 	_failures.erase(cache_key)

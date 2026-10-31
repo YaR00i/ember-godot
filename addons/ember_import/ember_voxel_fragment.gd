@@ -142,10 +142,20 @@ static func start_grab(source: EmberVoxelModelResource, center: Vector3, radius:
 	job.region = region
 	job.height = height
 	job.clip_bounds = clip_bounds
-	job.finish = func(removed: Dictionary, mapping: Dictionary) -> Dictionary: return _mapped_plan(source, removed, mapping, "Тянуть · мягкая деформация")
+	job.finish = func(removed: Dictionary, mapping: Dictionary) -> Dictionary: return _grab_plan(source, removed, mapping)
 	job.allowed = func(cell: Vector3i) -> bool: return _allowed(cell, source, region, height)
 	job.initialize()
 	return job
+
+static func _grab_plan(source: EmberVoxelModelResource, removed: Dictionary, mapping: Dictionary) -> Dictionary:
+	var plan := _mapped_plan(source,removed,mapping,"Тянуть · мягкая деформация")
+	if plan.has("error") or source.solid_surface.is_empty(): return plan
+	var fitted: Dictionary=preload("res://scripts/ember_voxel_solid_surface.gd").grab_profile(source,plan.properties.voxels,plan.properties.get("voxel_part_ids",source.voxel_part_ids))
+	if fitted.has("error"): return fitted
+	if fitted.has("profile"):
+		plan.before.solid_surface=source.solid_surface
+		plan.properties.solid_surface=fitted.profile
+	return plan
 
 class GrabJob extends RefCounted:
 	# Incremental pure volume warp. The moving compact field is integrated in

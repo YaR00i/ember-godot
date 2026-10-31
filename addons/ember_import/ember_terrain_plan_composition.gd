@@ -78,12 +78,16 @@ func begin(source: Terrain, plan: Resource) -> bool:
 		var key: Vector2i = patch.rect.position / TILE
 		_old[key] = patch; wanted[key] = true
 	for region: Dictionary in plan.regions:
-		if region.get("kind", "generation") not in ["plateau","lake","river","mountain","road"] or not region.get("enabled", true): continue
-		if region.get("kind") == "lake" and region.parameters.water_m-region.parameters.depth_m < float(source.origin_y+4)/16.0:
+		if region.get("kind", "generation") not in ["plateau","lake","river","mountain","road","coast"] or not region.get("enabled", true): continue
+		if region.get("kind") in ["lake","coast"] and region.parameters.water_m-region.parameters.depth_m < float(source.origin_y+4)/16.0:
 			error = "Дно озера оказалось ниже основания существующего рельефа. Измените уровень или глубину."; return false
 		var layer := region.duplicate(true)
 		_layers.append(layer)
 		var rect: Rect2i = Rect2i(region.bounds.position * 16, region.bounds.size * 16)
+		if region.get("kind") == "coast":
+			layer.curve=Math.path_curve(region.points_m)
+			for point: Vector2 in layer.curve.get_baked_points():
+				if not Rect2(0,0,source.width/16,source.depth/16).has_point(point):error="Изгиб берега выходит за карту. Измените точки.";return false
 		if region.get("kind") in ["river","road"]:
 			layer.curve = Math.path_curve(region.points_m)
 			layer.samples = layer.curve.get_baked_points()
@@ -106,7 +110,7 @@ func begin(source: Terrain, plan: Resource) -> bool:
 	_sand = source.palette_surface_roles.find("sand"); _soil = source.palette_surface_roles.find("soil"); _water = 0
 	if _soil <= 0 and _layers.any(func(layer): return layer.get("kind") == "road"):
 		error = "Назначьте грунт одному из существующих слотов материала карты для покрытия дороги."; return false
-	if _layers.any(func(layer): return layer.get("kind") in ["lake","river"]):
+	if _layers.any(func(layer): return layer.get("kind") in ["lake","river","coast"]):
 		for key in validated_sections:
 			var water_part: Terrain = source.sections.get(key) if source.is_sectioned() else source
 			if water_part == null: continue
@@ -121,7 +125,7 @@ func begin(source: Terrain, plan: Resource) -> bool:
 	var ceiling := source.height_limit
 	for region in _layers:
 		if region.get("kind") in ["river","road"]: continue # End levels are derived during the budgeted preparation.
-		var height_m: float = region.parameters.water_m+0.25 if region.get("kind") == "lake" else region.parameters.height_m
+		var height_m: float = region.parameters.water_m+0.25 if region.get("kind") in ["lake","coast"] else region.parameters.height_m
 		ceiling = maxi(ceiling, ceili(height_m * 16) - source.origin_y)
 	if ceiling > candidate.height_limit:
 		candidate.height_limit = ceiling
@@ -305,6 +309,25 @@ func _influence_at(layer: Dictionary, sample: Vector2) -> Dictionary:
 	return result
 
 func _sample_influence(layer: Dictionary, sample: Vector2) -> Dictionary:
+	if layer.get("kind") == "coast":
+		if not Rect2(layer.bounds).has_point(sample):return {}
+		var sampled:=Math.coast_sample(layer.curve,sample,layer.parameters)
+		if sampled.is_empty():return {}
+		sampled.kind="coast";sampled.parameters=layer.parameters
+		var vertical: bool=absf(layer.points_m[-1].y-layer.points_m[0].y)>=absf(layer.points_m[-1].x-layer.points_m[0].x)
+		var axis:=1 if vertical else 0
+		var edge:=2.0
+		var join:=Vector2i(sample*16.0)
+		var has_join:=false
+		if layer.bounds.position[axis]>0 and sample[axis]-layer.bounds.position[axis]<edge:
+			edge=sample[axis]-layer.bounds.position[axis];join[axis]=layer.bounds.position[axis]*16-1;has_join=true
+		if layer.bounds.end[axis]<Vector2(before.width,before.depth)[axis]/16.0 and layer.bounds.end[axis]-sample[axis]<edge:
+			edge=layer.bounds.end[axis]-sample[axis];join[axis]=layer.bounds.end[axis]*16;has_join=true
+		# Continue the actual neighbouring profile. Blending against a newly
+		# generated land ramp here would raise a second submerged ridge.
+		if has_join and before.has_column(join.x,join.y):sampled.join_height=before.column_value("heights",before.column_index(join.x,join.y))
+		sampled.weight=smoothstep(0.0,2.0,maxf(0,edge))
+		return sampled
 	if layer.get("kind") == "road":
 		var sampled := Math.path_sample(layer.curve,sample,layer.parameters.width_m,layer.parameters.edge_m)
 		if sampled.is_empty(): return {}
@@ -331,9 +354,16 @@ func _sample_influence(layer: Dictionary, sample: Vector2) -> Dictionary:
 
 func _project(state: Dictionary, influence: Dictionary) -> void:
 	var quantum: int = influence.get("quantum",4)
-	if influence.kind != "river" and state.water > state.height:
+	if influence.kind not in ["river","coast"] and state.water > state.height:
 		error = "Сухая область пересекает воду. Измените её границы или перенесите на сушу."; return
-	if influence.kind == "lake":
+	if influence.kind == "coast":
+		var sampled:=Math.coast_height(influence.distance,float(state.height+before.origin_y)/16.0,influence.parameters)
+		state.height=clampi(roundi(lerpf(float(influence.get("join_height",state.height)),sampled*16.0-before.origin_y,influence.weight)/float(quantum))*quantum,4,candidate.height_limit)
+		var level:=roundi(float(influence.parameters.water_m)*16.0-before.origin_y)
+		state.water=level if state.height<level else 0
+		state.color=_water if state.water>0 else 0;state.flow=Vector2.ZERO
+		if influence.weight>0.0:state.top=_sand;state.base=_soil;state.side={}
+	elif influence.kind == "lake":
 		if state.flow != Vector2.ZERO: error = "Озеро создаётся на земле без исходного течения. Реку добавляйте после озера в списке."; return
 		var sampled := Math.lake_height(influence.distance,float(state.height+before.origin_y)/16.0,influence.parameters)
 		state.height = clampi(roundi((sampled*16.0-before.origin_y)/float(quantum))*quantum,4,candidate.height_limit)

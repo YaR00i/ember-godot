@@ -1,0 +1,153 @@
+[
+	{
+		"file": "01_overview_front.png",
+		"gray": false,
+		"height": 1080,
+		"response": true,
+		"samples": [
+			0,
+			1,
+			2,
+			3,
+			4
+		],
+		"sun_elevation": 40.0,
+		"sun_yaw": -25.0,
+		"title": "Новые материалы · мягкий свет спереди",
+		"width": 1920
+	},
+	{
+		"file": "02_overview_legacy.png",
+		"gray": false,
+		"height": 1080,
+		"response": false,
+		"samples": [
+			0,
+			1,
+			2,
+			3,
+			4
+		],
+		"sun_elevation": 40.0,
+		"sun_yaw": -25.0,
+		"title": "Прежняя поверхность · тот же свет и ракурс",
+		"width": 1920
+	},
+	{
+		"file": "03_overview_highlights.png",
+		"gray": false,
+		"height": 1080,
+		"response": true,
+		"samples": [
+			0,
+			1,
+			2,
+			3,
+			4
+		],
+		"sun_elevation": 24.0,
+		"sun_yaw": -150.0,
+		"title": "Новые материалы · скользящий свет",
+		"width": 1920
+	},
+	{
+		"file": "04_gray_surface.png",
+		"gray": true,
+		"height": 1080,
+		"response": true,
+		"samples": [
+			0,
+			1,
+			2,
+			3,
+			4
+		],
+		"sun_elevation": 24.0,
+		"sun_yaw": -150.0,
+		"title": "Новые материалы · сравнение без цвета",
+		"width": 1920
+	},
+	{
+		"file": "05_gray_legacy.png",
+		"gray": true,
+		"height": 1080,
+		"response": false,
+		"samples": [
+			0,
+			1,
+			2,
+			3,
+			4
+		],
+		"sun_elevation": 24.0,
+		"sun_yaw": -150.0,
+		"title": "Прежняя поверхность · сравнение без цвета",
+		"width": 1920
+	},
+	{
+		"file": "06_tree_front.png",
+		"gray": false,
+		"height": 1080,
+		"response": true,
+		"samples": [
+			1
+		],
+		"sun_elevation": 40.0,
+		"sun_yaw": -25.0,
+		"title": "Кора и листва · ближний ракурс",
+		"width": 1920
+	},
+	{
+		"file": "07_tree_highlights.png",
+		"gray": false,
+		"height": 1080,
+		"response": true,
+		"samples": [
+			1
+		],
+		"sun_elevation": 24.0,
+		"sun_yaw": -150.0,
+		"title": "Кора и листва · поворот света",
+		"width": 1920
+	},
+	{
+		"file": "08_stone.png",
+		"gray": false,
+		"height": 1080,
+		"response": true,
+		"samples": [
+			0
+		],
+		"sun_elevation": 45.0,
+		"sun_yaw": -30.0,
+		"title": "Камень · матовая поверхность",
+		"width": 1920
+	},
+	{
+		"file": "09_crystal_ice.png",
+		"gray": false,
+		"height": 1080,
+		"response": true,
+		"samples": [
+			3,
+			4
+		],
+		"sun_elevation": 25.0,
+		"sun_yaw": -145.0,
+		"title": "Кристалл и лёд · свет на гранях",
+		"width": 1920
+	},
+	{
+		"file": "10_bush.png",
+		"gray": false,
+		"height": 1080,
+		"response": true,
+		"samples": [
+			2
+		],
+		"sun_elevation": 40.0,
+		"sun_yaw": -30.0,
+		"title": "Куст · кора и листва",
+		"width": 1920
+	}
+]

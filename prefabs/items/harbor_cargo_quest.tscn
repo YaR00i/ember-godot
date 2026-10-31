@@ -1,0 +1,345 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://prefabs/items/shore_keeper_visual.tscn" id="1_3e4je"]
+[ext_resource type="Script" path="res://scripts/ember_quest_giver_interact.gd" id="2_s4skv"]
+[ext_resource type="Script" path="res://scripts/ember_interact.gd" id="3_u2ewj"]
+[ext_resource type="Script" path="res://scripts/ember_world_item_3d.gd" id="4_wykob"]
+[ext_resource type="PackedScene" path="res://prefabs/items/quest_crate.tscn" id="5_expxx"]
+[ext_resource type="Script" path="res://scripts/ember_quest_object_zone.gd" id="6_my8i7"]
+
+[sub_resource type="BoxShape3D" id="body"]
+size = Vector3(8, 24, 8)
+
+[sub_resource type="SphereShape3D" id="reach"]
+radius = 8.0
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_gq2mx"]
+size = Vector3(24, 8, 24)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_iwcwt"]
+size = Vector3(16, 16, 16)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_hm0mu"]
+size = Vector3(40, 28, 40)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_mk7ag"]
+shading_mode = 0
+albedo_color = Color(1, 0.78, 0.24, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_1poec"]
+size = Vector3(8.02116, 0.3, 0.65)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_uqml3"]
+shading_mode = 0
+albedo_color = Color(1, 0.78, 0.24, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_hvm1b"]
+size = Vector3(8.044953, 0.3, 0.65)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_q4yus"]
+shading_mode = 0
+albedo_color = Color(1, 0.78, 0.24, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_a7s1a"]
+size = Vector3(8.000042, 0.3, 0.65)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_02aho"]
+shading_mode = 0
+albedo_color = Color(1, 0.78, 0.24, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_w22ko"]
+size = Vector3(8.00043, 0.3, 0.65)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_8t1bq"]
+shading_mode = 0
+albedo_color = Color(1, 0.78, 0.24, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_c0dxr"]
+size = Vector3(8.101602, 0.3, 0.65)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_u7ujq"]
+shading_mode = 0
+albedo_color = Color(1, 0.78, 0.24, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_pldki"]
+size = Vector3(8.00001, 0.3, 0.65)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_5ckcb"]
+shading_mode = 0
+albedo_color = Color(1, 0.78, 0.24, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_hq687"]
+size = Vector3(8.04295, 0.3, 0.65)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_teg5a"]
+shading_mode = 0
+albedo_color = Color(1, 0.78, 0.24, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_wtfuy"]
+size = Vector3(8.001542, 0.3, 0.65)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_rca1y"]
+shading_mode = 0
+albedo_color = Color(1, 0.78, 0.24, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_nvwa4"]
+size = Vector3(8.013978, 0.3, 0.65)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_pmxep"]
+shading_mode = 0
+albedo_color = Color(1, 0.78, 0.24, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ntj3f"]
+size = Vector3(8.017305, 0.3, 0.65)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_xgq3w"]
+shading_mode = 0
+albedo_color = Color(1, 0.78, 0.24, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ge7ha"]
+size = Vector3(8.001712, 0.3, 0.65)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_523qq"]
+shading_mode = 0
+albedo_color = Color(1, 0.78, 0.24, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_vfk3h"]
+size = Vector3(8.002398, 0.3, 0.65)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_4dqvs"]
+shading_mode = 0
+albedo_color = Color(1, 0.78, 0.24, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_kdjwk"]
+size = Vector3(8.013335, 0.3, 0.65)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_gas3g"]
+shading_mode = 0
+albedo_color = Color(1, 0.78, 0.24, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_kdn1x"]
+size = Vector3(8.022272, 0.3, 0.65)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_alb4p"]
+shading_mode = 0
+albedo_color = Color(1, 0.78, 0.24, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_6g1h1"]
+size = Vector3(8.002575, 0.3, 0.65)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_yshcp"]
+shading_mode = 0
+albedo_color = Color(1, 0.78, 0.24, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_sebni"]
+size = Vector3(8.000904, 0.3, 0.65)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_mh2eb"]
+shading_mode = 0
+albedo_color = Color(1, 0.78, 0.24, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_ifhys"]
+size = Vector3(8.008583, 0.3, 0.65)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ebs86"]
+shading_mode = 0
+albedo_color = Color(1, 0.78, 0.24, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_iapnc"]
+size = Vector3(8.015459, 0.3, 0.65)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_e5ygi"]
+shading_mode = 0
+albedo_color = Color(1, 0.78, 0.24, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_8pwpo"]
+size = Vector3(8.003914, 0.3, 0.65)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_8nih1"]
+shading_mode = 0
+albedo_color = Color(1, 0.78, 0.24, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_sml4f"]
+size = Vector3(8.000035, 0.3, 0.65)
+
+[node name="HarborCargoQuest" type="Node3D" unique_id=1088016610]
+
+[node name="CargoKeeper" type="Node3D" parent="." unique_id=2005536450]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 112, 6, 280)
+
+[node name="Visual" type="Node3D" parent="CargoKeeper" unique_id=471899769 instance=ExtResource("1_3e4je")]
+transform = Transform3D(16, 0, 0, 0, 16, 0, 0, 0, 16, 0, 0, 0)
+
+[node name="Body" type="StaticBody3D" parent="CargoKeeper" unique_id=375402778]
+
+[node name="Shape" type="CollisionShape3D" parent="CargoKeeper/Body" unique_id=1814637771]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 12, 0)
+shape = SubResource("body")
+
+[node name="Talk" type="Area3D" parent="CargoKeeper" unique_id=1615655537]
+collision_layer = 0
+collision_mask = 0
+monitoring = false
+script = ExtResource("2_s4skv")
+display_name = "Смотритель грузов"
+objective_scripts = {
+"meet": "harbor_cargo_accept",
+&"place": "harbor_cargo_wait",
+&"reward": "harbor_cargo_reward",
+&"visit": "harbor_cargo_wait"
+}
+completed_script_id = "harbor_cargo_complete"
+kind = "talk"
+quest_id = "harbor_cargo"
+
+[node name="Shape" type="CollisionShape3D" parent="CargoKeeper/Talk" unique_id=994618092]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 12, 0)
+shape = SubResource("reach")
+
+[node name="AuthoredTriggers" type="Node3D" parent="." unique_id=1456735947]
+
+[node name="trigger_1" type="Area3D" parent="AuthoredTriggers" unique_id=638011286]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 112, 11, 328)
+collision_layer = 4
+collision_mask = 2
+monitoring = false
+script = ExtResource("3_u2ewj")
+kind = "trigger"
+script_id = "harbor_cargo_visit_reach_actions"
+condition_flag_id = "harbor_cargo_visit"
+condition_expected = false
+condition_value = false
+activation_mode = "enter"
+note = "Дойти до места · Найти ящик дальше по берегу"
+
+[node name="Shape" type="CollisionShape3D" parent="AuthoredTriggers/trigger_1" unique_id=165724731]
+shape = SubResource("BoxShape3D_gq2mx")
+
+[node name="CargoPlacement" type="Node3D" parent="." unique_id=1218573287]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 112, 7.15, 328)
+
+[node name="Crate" type="RigidBody3D" parent="CargoPlacement" unique_id=52138562]
+script = ExtResource("4_wykob")
+pickup_id = "harbor_cargo_crate"
+item_id = "quest_crate"
+carryable = true
+pushable = true
+return_radius = 320.0
+
+[node name="ItemVisual" type="Node3D" parent="CargoPlacement/Crate" unique_id=2140954827 instance=ExtResource("5_expxx")]
+transform = Transform3D(16, 0, 0, 0, 16, 0, 0, 0, 16, 0, 0, 0)
+
+[node name="BodyShape" type="CollisionShape3D" parent="CargoPlacement/Crate" unique_id=1097424777]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8, 0)
+shape = SubResource("BoxShape3D_iwcwt")
+
+[node name="TargetZone" type="Area3D" parent="CargoPlacement" unique_id=22330019]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.1500001, 48)
+script = ExtResource("6_my8i7")
+quest_id = "harbor_cargo"
+objective_id = "place"
+target_pickup_id = "harbor_cargo_crate"
+
+[node name="Shape" type="CollisionShape3D" parent="CargoPlacement/TargetZone" unique_id=1154858886]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 14, 0)
+shape = SubResource("BoxShape3D_hm0mu")
+
+[node name="Edge0" type="MeshInstance3D" parent="CargoPlacement/TargetZone" unique_id=1395534484]
+transform = Transform3D(0.99736196, 0.07258855, 0, -0.07258855, 0.99736196, 0, 0, 0, 1, -16, 0.6508703, -20)
+material_override = SubResource("StandardMaterial3D_mk7ag")
+mesh = SubResource("BoxMesh_1poec")
+
+[node name="Edge1" type="MeshInstance3D" parent="CargoPlacement/TargetZone" unique_id=1496241898]
+transform = Transform3D(0.99441224, -0.105566494, 0, 0.105566494, 0.99441224, 0, 0, 0, 1, -8, 0.78438663, -20)
+material_override = SubResource("StandardMaterial3D_uqml3")
+mesh = SubResource("BoxMesh_hvm1b")
+
+[node name="Edge2" type="MeshInstance3D" parent="CargoPlacement/TargetZone" unique_id=250679148]
+transform = Transform3D(0.99999475, 0.0032297205, 0, -0.0032297203, 0.9999948, 0, 0, 0, 1, 0, 1.1961064, -20)
+material_override = SubResource("StandardMaterial3D_q4yus")
+mesh = SubResource("BoxMesh_a7s1a")
+
+[node name="Edge3" type="MeshInstance3D" parent="CargoPlacement/TargetZone" unique_id=1511158368]
+transform = Transform3D(0.99994624, -0.010373392, 0, 0.010373392, 0.99994624, 0, 0, 0, 1, 8, 1.2246833, -20)
+material_override = SubResource("StandardMaterial3D_02aho")
+mesh = SubResource("BoxMesh_w22ko")
+
+[node name="Edge4" type="MeshInstance3D" parent="CargoPlacement/TargetZone" unique_id=2018228806]
+transform = Transform3D(0.98745906, 0.15787564, 0, -0.15787564, 0.98745906, 0, 0, 0, 1, 16, 0.62665653, -20)
+material_override = SubResource("StandardMaterial3D_8t1bq")
+mesh = SubResource("BoxMesh_c0dxr")
+
+[node name="Edge5" type="MeshInstance3D" parent="CargoPlacement/TargetZone" unique_id=1552144244]
+transform = Transform3D(0.9999988, 0.0015764218, 0, -0.0015764218, 0.9999988, 0, 0, 0, 1, -16, 1.2435765, 20)
+material_override = SubResource("StandardMaterial3D_u7ujq")
+mesh = SubResource("BoxMesh_pldki")
+
+[node name="Edge6" type="MeshInstance3D" parent="CargoPlacement/TargetZone" unique_id=886310099]
+transform = Transform3D(0.99465996, 0.103205755, 0, -0.10320574, 0.9946601, 0, 0, 0, 1, -8, 0.8222313, 20)
+material_override = SubResource("StandardMaterial3D_5ckcb")
+mesh = SubResource("BoxMesh_hq687")
+
+[node name="Edge7" type="MeshInstance3D" parent="CargoPlacement/TargetZone" unique_id=1291480322]
+transform = Transform3D(0.9998073, 0.01963374, 0, -0.01963374, 0.9998073, 0, 0, 0, 1, 0, 0.3286419, 20)
+material_override = SubResource("StandardMaterial3D_teg5a")
+mesh = SubResource("BoxMesh_wtfuy")
+
+[node name="Edge8" type="MeshInstance3D" parent="CargoPlacement/TargetZone" unique_id=581281116]
+transform = Transform3D(0.9982558, -0.05903717, 0, 0.05903717, 0.9982558, 0, 0, 0, 1, 8, 0.48665333, 20)
+material_override = SubResource("StandardMaterial3D_rca1y")
+mesh = SubResource("BoxMesh_nvwa4")
+
+[node name="Edge9" type="MeshInstance3D" parent="CargoPlacement/TargetZone" unique_id=1862646477]
+transform = Transform3D(0.9978415, -0.06566928, 0, 0.06566928, 0.9978415, 0, 0, 0, 1, 16, 0.98645973, 20)
+material_override = SubResource("StandardMaterial3D_pmxep")
+mesh = SubResource("BoxMesh_ntj3f")
+
+[node name="Edge10" type="MeshInstance3D" parent="CargoPlacement/TargetZone" unique_id=1122134853]
+transform = Transform3D(0, 0, -1, 0.020684168, 0.9997861, 0, 0.9997861, -0.020684168, 0, -20, 1.0247469, -16)
+material_override = SubResource("StandardMaterial3D_xgq3w")
+mesh = SubResource("BoxMesh_ge7ha")
+
+[node name="Edge11" type="MeshInstance3D" parent="CargoPlacement/TargetZone" unique_id=1235030962]
+transform = Transform3D(0, 0, -1, -0.02447414, 0.9997005, 0, 0.9997004, 0.024474142, 0, -20, 1.0095749, -8)
+material_override = SubResource("StandardMaterial3D_523qq")
+mesh = SubResource("BoxMesh_vfk3h")
+
+[node name="Edge12" type="MeshInstance3D" parent="CargoPlacement/TargetZone" unique_id=1504596537]
+transform = Transform3D(0, 0, -1, -0.057667866, 0.9983359, 0, 0.9983359, 0.057667866, 0, -20, 0.6805935, 0)
+material_override = SubResource("StandardMaterial3D_4dqvs")
+mesh = SubResource("BoxMesh_kdjwk")
+
+[node name="Edge13" type="MeshInstance3D" parent="CargoPlacement/TargetZone" unique_id=1158221770]
+transform = Transform3D(0, 0, -1, 0.07446349, 0.9972238, 0, 0.99722373, -0.074463494, 0, -20, 0.74822044, 8)
+material_override = SubResource("StandardMaterial3D_gas3g")
+mesh = SubResource("BoxMesh_kdn1x")
+
+[node name="Edge14" type="MeshInstance3D" parent="CargoPlacement/TargetZone" unique_id=1258316257]
+transform = Transform3D(0, 0, -1, 0.025364162, 0.9996783, 0, 0.99967825, -0.025364164, 0, -20, 1.1483927, 16)
+material_override = SubResource("StandardMaterial3D_alb4p")
+mesh = SubResource("BoxMesh_6g1h1")
+
+[node name="Edge15" type="MeshInstance3D" parent="CargoPlacement/TargetZone" unique_id=1463798627]
+transform = Transform3D(0, 0, -1, 0.015033215, 0.999887, 0, 0.999887, -0.015033215, 0, 20, 0.04727316, -16)
+material_override = SubResource("StandardMaterial3D_yshcp")
+mesh = SubResource("BoxMesh_sebni")
+
+[node name="Edge16" type="MeshInstance3D" parent="CargoPlacement/TargetZone" unique_id=1166490477]
+transform = Transform3D(0, 0, -1, 0.046284728, 0.9989283, 0, 0.99892825, -0.04628473, 0, 20, 0.29275036, -8)
+material_override = SubResource("StandardMaterial3D_mh2eb")
+mesh = SubResource("BoxMesh_ifhys")
+
+[node name="Edge17" type="MeshInstance3D" parent="CargoPlacement/TargetZone" unique_id=696991880]
+transform = Transform3D(0, 0, -1, 0.06207737, 0.9980714, 0, 0.9980714, -0.06207737, 0, 20, 0.7268772, 0)
+material_override = SubResource("StandardMaterial3D_ebs86")
+mesh = SubResource("BoxMesh_iapnc")
+
+[node name="Edge18" type="MeshInstance3D" parent="CargoPlacement/TargetZone" unique_id=156303915]
+transform = Transform3D(0, 0, -1, 0.031271476, 0.999511, 0, 0.999511, -0.031271476, 0, 20, 1.1008139, 8)
+material_override = SubResource("StandardMaterial3D_e5ygi")
+mesh = SubResource("BoxMesh_8pwpo")
+
+[node name="Edge19" type="MeshInstance3D" parent="CargoPlacement/TargetZone" unique_id=278457164]
+transform = Transform3D(0, 0, -1, 0.0029680599, 0.9999956, 0, 0.9999956, -0.0029680599, 0, 20, 1.237833, 16)
+material_override = SubResource("StandardMaterial3D_8nih1")
+mesh = SubResource("BoxMesh_sml4f")

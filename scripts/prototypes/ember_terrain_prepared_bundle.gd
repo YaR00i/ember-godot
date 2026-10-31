@@ -11,8 +11,8 @@ const MAX_TOTAL_BYTES := 768 * 1024 * 1024
 
 static func _valid_name(name: String) -> bool:
 	var pieces := name.split("/")
-	if pieces.size() != 2 or pieces[0] not in ["geometry", "water"]: return false
-	var extension := ".edc" if pieces[0] == "geometry" else ".ewc"
+	if pieces.size() != 2 or pieces[0] not in ["geometry", "water", "trees", "details", "height", "solids", "anomaly"]: return false
+	var extension := ".ewc" if pieces[0] == "water" else ".edc"
 	if not pieces[1].ends_with(extension): return false
 	var key := pieces[1].trim_suffix(extension)
 	if key.length() != 64: return false

@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="EmberCombatUnitResource" load_steps=3 format=3]
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_unit_resource.gd" id="1"]
+[ext_resource type="Resource" path="res://content/combat/loot_tables/shore_boar_drops.tres" id="2"]
+[resource]
+script = ExtResource("1")
+unit_id = "shore_boar"
+display_name = "Береговой кабан"
+team = 1
+description = "Первая полевая встреча: кабан охраняет свою поляну."
+combat_level = 1
+max_hp = 28
+strength = 6
+defense = 3
+resistance = 3
+speed = 9
+accuracy = 90
+move_range = 2
+jump_height = 0
+weight_class = 2
+action_ids = PackedStringArray("enemy_strike")
+ai_profile_id = "relentless"
+loot_table = ExtResource("2")
+combat_tags = PackedStringArray("animal", "boar")
+battle_color = Color(0.42,0.27,0.17,1)
+prototype_roster_order = 3
+prototype_next_at = 18.0

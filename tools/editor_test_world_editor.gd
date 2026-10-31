@@ -1,6 +1,7 @@
 @tool
 extends EditorPlugin
 ## Enable only in a disposable Forward+ copy. Authored checkout is never saved.
+const Mechanics = preload("res://tools/fixtures/ember_editor_mechanics_fixture.gd")
 var errors: Array[String] = []
 
 func _enter_tree() -> void:
@@ -21,7 +22,8 @@ func _run() -> void:
 	if importer == null: printerr("FAIL NATIVE_WORLD importer missing"); get_tree().quit(1); return
 	var deadline := Time.get_ticks_msec()+90000
 	while importer._editor_preparation.visible and Time.get_ticks_msec() < deadline: await frames(1)
-	EditorInterface.open_scene_from_path("res://scenes/test_pier.tscn")
+	var fixture_scene := Mechanics.prepare_editor()
+	EditorInterface.open_scene_from_path(fixture_scene)
 	await frames(30)
 	EditorInterface.set_main_screen_editor("3D")
 	var scene := EditorInterface.get_edited_scene_root()
@@ -34,7 +36,7 @@ func _run() -> void:
 	while world.dragging: await frames(1)
 	print("NATIVE_WORLD_PROFILE full Pier foundation stroke+frame work=",(Time.get_ticks_usec()-stroke_start)/1000,"ms packed history=",world.last_history_bytes,"bytes")
 	var ground: EmberVoxelModelResource = world.entry.resource
-	check(ground.voxels.size() == 19660800,"full native Pier was reduced")
+	check(ground.grid_size() == Vector3i(320,64,128),"synthetic editor ground dimensions changed")
 	world.category.select(1)
 	world._category_changed(1)
 	world.palette.select(2)
@@ -67,7 +69,7 @@ func _run() -> void:
 	EditorInterface.set_main_screen_editor("3D")
 	await frames(3)
 	check(not canvas.visible,"Canvas forced Save dialog when returning to world")
-	var target: EmberVoxelProp = scene.get_node_or_null("Map/Props/placed_ember_surface_pilot")
+	var target: EmberVoxelProp = scene.get_node_or_null("Map/Props/EditableBlock")
 	if target != null:
 		var pose := target.transform
 		world.entry = world.sessions.open_object(target,scene)
@@ -85,7 +87,7 @@ func _run() -> void:
 			check(world.save_all(),"native common Save: " + world.sessions.error)
 			print("NATIVE_WORLD_PROFILE common source+prefab+native scene Save=",(Time.get_ticks_usec()-save_start)/1000,"ms")
 			print("NATIVE_WORLD_PROFILE Save breakdown ",world.sessions.last_save_profile)
-			check(target.transform == pose and target.model_id != "ember_surface_pilot","unique instance/save transform")
+			check(target.transform == pose and target.model_id != "qa_native_block","unique instance/save transform")
 	else: check(world.save_all(),"native ground Save: " + world.sessions.error)
 	await frames(30)
 	check(original_water.visible,"Save persisted hidden water")
@@ -103,12 +105,14 @@ func _run() -> void:
 	check(world.sessions.dirty_count(scene) == 0,"native menu Save did not publish draft")
 	var menu_source := ResourceLoader.load(map_entry.path,"",ResourceLoader.CACHE_MODE_IGNORE) as EmberVoxelModelResource
 	check(menu_source.voxels[paint_index] == 2,"native menu Save lost bound Canvas-style stroke")
-	var saved := ResourceLoader.load("res://scenes/test_pier.tscn","",ResourceLoader.CACHE_MODE_IGNORE) as PackedScene
-	var reopened := saved.instantiate()
-	check(reopened.get_node("Map").visual_surface != null,"native scene lost Surface reference")
-	check(reopened.get_node("Map").surface_origin == Vector3(0,-32,0),"native scene lost origin")
-	check(reopened.get_node("Map/Terrain/BayWater/Visual").visible,"native scene saved working hide state")
-	reopened.free()
+	var saved := ResourceLoader.load(Mechanics.SCENE,"",ResourceLoader.CACHE_MODE_IGNORE) as PackedScene
+	# Read fresh serialization without running a second set of @tool map nodes
+	# inside the live editor. The scene itself was already saved by the native menu.
+	var defaults := EmberMapLoader.new()
+	check(Mechanics.saved_property(saved,"Map","visual_surface") != null,"native scene lost Surface reference")
+	check(Mechanics.saved_property(saved,"Map","surface_origin",defaults.surface_origin) == Vector3(0,-32,0),"native scene lost origin")
+	check(Mechanics.saved_property(saved,"Map/Terrain/BayWater/Visual","visible",true),"native scene saved working hide state")
+	defaults.free()
 	world.entry = world.sessions.open_map(scene.get_node("Map"),scene)
 	world.target_choice.select(0)
 	world._refresh_palette()

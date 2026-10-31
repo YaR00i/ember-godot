@@ -1,0 +1,27 @@
+[gd_scene load_steps=5 format=3]
+[ext_resource type="Script" path="res://scripts/ember_quest_giver_interact.gd" id="1"]
+[ext_resource type="PackedScene" path="res://prefabs/items/shore_keeper_visual.tscn" id="2"]
+[sub_resource type="BoxShape3D" id="body"]
+size = Vector3(8,24,8)
+[sub_resource type="SphereShape3D" id="reach"]
+radius = 8.0
+[node name="ShoreKeeper" type="Node3D"]
+[node name="Visual" parent="." instance=ExtResource("2")]
+scale = Vector3(16,16,16)
+[node name="Body" type="StaticBody3D" parent="."]
+[node name="Shape" type="CollisionShape3D" parent="Body"]
+position = Vector3(0,12,0)
+shape = SubResource("body")
+[node name="Talk" type="Area3D" parent="."]
+collision_layer = 0
+collision_mask = 0
+monitoring = false
+script = ExtResource("1")
+kind = "talk"
+quest_id = "shore_message"
+display_name = "Хранитель берега"
+objective_scripts = {"read_letter":"shore_keeper_waiting", "meet_sender":"shore_keeper_meet", "deliver_shells":"shore_deliver_shells", "defeat_boar":"shore_keeper_boar", "return_for_reward":"shore_receive_reward"}
+completed_script_id = "shore_keeper_complete"
+[node name="Shape" type="CollisionShape3D" parent="Talk"]
+position = Vector3(0,12,0)
+shape = SubResource("reach")

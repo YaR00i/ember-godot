@@ -276,6 +276,7 @@ func _test_editor_and_journal(errors: Array[String]) -> void:
 	state.restore_enabled = false
 	state.reset_new_game()
 	var journal := Journal.new() as EmberQuestJournalUi
+	journal.show_debug_progress = true
 	journal.progress_state = state
 	root.add_child(journal)
 	journal.open()

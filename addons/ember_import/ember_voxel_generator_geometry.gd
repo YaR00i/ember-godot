@@ -86,3 +86,27 @@ static func keep_largest_component(source: EmberVoxelModelResource) -> void:
 	for index in source.voxels.size():
 		if source.voxels[index] != 0 and not retained.has(index):
 			source.voxels[index] = 0
+
+
+static func bounds_planes(lo: Vector3, hi: Vector3) -> Array[Plane]:
+	return [Plane(Vector3.RIGHT,hi.x),Plane(Vector3.LEFT,-lo.x),Plane(Vector3.UP,hi.y),Plane(Vector3.DOWN,-lo.y),Plane(Vector3.BACK,hi.z),Plane(Vector3.FORWARD,-lo.z)]
+
+
+static func paint_convex_part(source: EmberVoxelModelResource, grid: Vector3i, part: Dictionary, id: int) -> void:
+	# Work on local packed buffers; repeated indexed writes through Resource
+	# properties otherwise detach/copy the full house array for each voxel.
+	var voxels := source.voxels
+	var owners := source.voxel_part_ids
+	var planes: Array[Plane]=part.planes
+	var lo:=Vector3i(ceili(-planes[1].d),ceili(-planes[3].d),ceili(-planes[5].d)).clamp(Vector3i.ZERO,grid)
+	var hi:=Vector3i(floori(planes[0].d),floori(planes[2].d),floori(planes[4].d)).clamp(Vector3i.ZERO,grid)
+	for y in range(lo.y,hi.y):
+		for z in range(lo.z,hi.z):
+			for x in range(lo.x,hi.x):
+				var inside:=true
+				for i in range(6,planes.size()):
+					if planes[i].distance_to(Vector3(x+0.5,y+0.5,z+0.5))>0.0001:inside=false;break
+				if not inside:continue
+				var index:=VoxMesher.cell_index(x,y,z,grid.x,grid.z)
+				voxels[index]=part.slot;owners[index]=id
+	source.voxels=voxels;source.voxel_part_ids=owners

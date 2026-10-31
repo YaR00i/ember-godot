@@ -44,7 +44,7 @@ func _run() -> int:
 			errors.append("legacy import definition changed in metadata projection")
 	if definitions.is_empty() or entries.size() != definitions.size():
 		errors.append("visual projection does not cover the resolved model catalog")
-	var native_entry := _entry_by_id(entries, "vox_fan_anvil")
+	var native_entry := _entry_by_id(entries, Fixture.IDS[0])
 	if str(native_entry.get("owner", "")) != "godot" or not bool(native_entry.get("migrated", false)):
 		errors.append("visual library does not expose native migration ownership")
 	if str(native_entry.get("title", "")).is_empty() or str(native_entry.get("scale", "")).is_empty():

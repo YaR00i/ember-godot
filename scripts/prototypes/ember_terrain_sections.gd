@@ -4,7 +4,7 @@ extends RefCounted
 ## that same Resource's column channels; no scene, renderer or editing state.
 
 const CELLS := 384 # 24 game blocks, 16 columns per block.
-const MAX_AXIS := 22 # Bounded 528 m envelope; increase only with measured gates.
+const MAX_AXIS := 24 # 576 m data envelope. Renderer/residency budgets are separate gates.
 const CHANNELS := ["heights", "top_materials", "base_materials", "cap_depths", "water_levels", "water_materials"]
 
 
@@ -25,6 +25,20 @@ static func read(source, channel: String, index: int) -> int:
 	return part.get(channel)[x % CELLS + (z % CELLS) * int(part.width)]
 
 
+static func overlapping_sections(source,bounds:Rect2i)->Dictionary:
+	if not source.is_sectioned():return {Vector2i.ZERO:source}
+	var clipped:=bounds.intersection(Rect2i(0,0,source.width,source.depth))
+	var result:Dictionary={}
+	if not clipped.has_area():return result
+	var begin:=Vector2i(clipped.position.x/CELLS,clipped.position.y/CELLS)
+	var end:=Vector2i((clipped.end.x-1)/CELLS,(clipped.end.y-1)/CELLS)
+	for z in range(begin.y,end.y+1):
+		for x in range(begin.x,end.x+1):
+			var key:=Vector2i(x,z)
+			if source.sections.has(key):result[key]=source.sections[key]
+	return result
+
+
 static func window(source, bounds: Rect2i):
 	var view = source.get_script().new()
 	view.width = bounds.size.x
@@ -35,7 +49,7 @@ static func window(source, bounds: Rect2i):
 	view.palette_surface_roles = source.palette_surface_roles
 	view.palette_material_ids = source.palette_material_ids
 	view.surface_rules=source.SurfaceRules.window(source.surface_rules,bounds)
-	var areas: Dictionary = source.sections if source.is_sectioned() else {Vector2i.ZERO: source}
+	var areas:Dictionary=overlapping_sections(source,bounds)
 	var spans: Array = []
 	for key: Vector2i in areas:
 		var part = areas[key]
@@ -155,6 +169,7 @@ static func validation_errors(source, local_sections: Array[Vector2i] = []) -> A
 		if not source.get(channel).is_empty(): return ["sectioned terrain also contains dense columns"]
 	if not source.water_flow.is_empty() or not source.column_material_overrides.is_empty(): return ["sectioned terrain has dense auxiliary channels"]
 	var edge := Vector2i.ZERO
+	var checked_values:Dictionary={}
 	for raw_key in source.sections:
 		if typeof(raw_key) != TYPE_VECTOR2I: return ["terrain section address is invalid"]
 		var key: Vector2i = raw_key
@@ -171,6 +186,9 @@ static func validation_errors(source, local_sections: Array[Vector2i] = []) -> A
 		# Local editor operations enter through an already validated session.
 		# Keep global structural checks; inspect payload values only where affected.
 		if not local_sections.is_empty() and key not in local_sections: continue
+		# Identical immutable payloads may be referenced at several addresses.
+		# Reuse only within this validation call; edits are rechecked next time.
+		if checked_values.has(part.get_instance_id()):continue
 		var heights: PackedInt32Array = part.heights
 		var waters: PackedInt32Array = part.water_levels
 		var tops: PackedByteArray = part.top_materials
@@ -192,6 +210,7 @@ static func validation_errors(source, local_sections: Array[Vector2i] = []) -> A
 			for raw_y in part.column_material_overrides[raw_index]:
 				var color = part.column_material_overrides[raw_index][raw_y]
 				if typeof(raw_y) != TYPE_INT or typeof(color) != TYPE_INT or raw_y < 0 or raw_y >= source.height_limit or color <= 0 or color >= source.palette.size(): return ["terrain section override is out of range"]
+		checked_values[part.get_instance_id()]=true
 		edge = Vector2i(maxi(edge.x, key.x * CELLS + part.width), maxi(edge.y, key.y * CELLS + part.depth))
 	if edge != Vector2i(source.width, source.depth): errors.append("terrain extent differs from section bounds")
 	return errors

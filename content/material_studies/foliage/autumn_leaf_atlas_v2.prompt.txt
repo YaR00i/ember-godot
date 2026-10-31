@@ -1,0 +1,9 @@
+Tool: built-in image_gen, transparent_background=true
+References:
+1. content/material_studies/foliage/autumn_leaf_atlas_v1.png
+2. content/material_studies/trees/maple_v1/leaf-atlas-v2-rooted.png
+Generated source: C:/Users/novos/.codex/generated_images/01a18515-f505-7cb3-93d9-cd3c066dabb9/exec-1507fab3-9f8a-4de6-9204-190ae7427919.png
+Project artwork: content/material_studies/foliage/autumn_leaf_atlas_v2.png
+
+Exact prompt:
+Create a game texture atlas by REDRAWING image 1 in the simple stylized cartoon game foliage style of image 2. Preserve image 1's exact 2x2 layout and four ISOLATED SINGLE leaves, each centered within its own quarter with generous transparent padding (at least 12% of each quarter on every side). Top left: amber orange maple. Top right: golden yellow birch. Bottom left: warm russet oak. Bottom right: coral red maple. Single leaf in each cell, no clusters or branches. Entire canvas truly transparent, clean alpha edges. Match image 2's readable broad angular color planes, simple soft cel shading and calm matte surfaces. Remove ALL photographic veins, speckled grit, mottling, thin vein webs, crinkled realistic texture from image 1. Each leaf has 3 to 6 large softly shaded color shapes and only a subtle simple center crease, as in image 2. No black outlines. Warm moderately saturated autumn palette, no white highlights, no shadows outside silhouettes. Flat top-down artwork, no perspective. Broad leaf blades take around 64% of each quarter, stems short and fully inside their cells. This is a production alpha cutout atlas for a cartoon JRPG, not a leaf specimen photograph. No text, no borders, no visible grid.

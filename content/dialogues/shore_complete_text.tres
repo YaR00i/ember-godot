@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EmberDialogueResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_dialogue_resource.gd" id="1_3vrrf"]
+
+[resource]
+script = ExtResource("1_3vrrf")
+dialogue_id = "shore_complete_text"
+document = {
+"id": "shore_complete_text",
+"nameRu": "Хранитель берега",
+"startStepId": "line",
+"steps": [{
+"id": "line",
+"next": "end",
+"textRu": "Спасибо за помощь. С послания на берегу всё и началось.",
+"type": "dialogue"
+}, {
+"id": "end",
+"type": "end"
+}]
+}

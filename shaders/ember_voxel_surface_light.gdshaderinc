@@ -1,6 +1,7 @@
 // Optional CUSTOM0 = semantic role, perceptual roughness, dielectric F0, grain.
 // Legacy meshes have no custom attribute and retain their existing diffuse path.
 #include "res://shaders/ember_material_light.gdshaderinc"
+#include "res://shaders/ember_world_anomaly.gdshaderinc"
 uniform bool surface_response_enabled = true;
 uniform bool surface_gray_preview = false;
 uniform float surface_roughness_scale : hint_range(0.25, 2.0) = 1.0;
@@ -11,8 +12,20 @@ varying vec3 surface_local_position;
 varying flat vec3 surface_axis_x;
 varying flat vec3 surface_axis_y;
 varying flat vec3 surface_axis_z;
+#ifdef EMBER_TREE_HIT_SWAY
+// Per-instance cosmetic crown response; wood/collision and shared meshes stay fixed.
+instance uniform vec4 tree_hit_sway = vec4(0.0);
+#endif
 
 void vertex() {
+	vec3 reference_position = VERTEX;
+	ember_anomaly_vertex(VERTEX, NORMAL, MODEL_MATRIX, VERTEX_ID);
+#ifdef EMBER_TREE_HIT_SWAY
+	if (dot(tree_hit_sway.xy,tree_hit_sway.xy)>0.0) {
+		float crown=smoothstep(tree_hit_sway.z,tree_hit_sway.z+max(tree_hit_sway.w,0.001),reference_position.y);
+		VERTEX.xz+=tree_hit_sway.xy*crown*crown;
+	}
+#endif
 #ifdef EMBER_OBJECT_VOXEL_LEAVES
 	voxel_leaf_form_normal=normalize(MODELVIEW_NORMAL_MATRIX*CUSTOM2.xyz);
 #endif
@@ -20,7 +33,7 @@ void vertex() {
 	leaf_card_group_normal=normalize(MODELVIEW_NORMAL_MATRIX*CUSTOM1.xyz);
 #endif
 	surface_parameters = CUSTOM0;
-	surface_local_position = VERTEX;
+	surface_local_position = reference_position;
 	surface_axis_x = MODELVIEW_NORMAL_MATRIX[0];
 	surface_axis_y = MODELVIEW_NORMAL_MATRIX[1];
 	surface_axis_z = MODELVIEW_NORMAL_MATRIX[2];

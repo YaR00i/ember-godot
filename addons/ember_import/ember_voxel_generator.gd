@@ -4,6 +4,8 @@ extends RefCounted
 ## Creation UI descriptors share the provider's normalized parameters. Adding an
 ## object provider does not require another panel, preset format or batch owner.
 static func creation_fields(generator_id: String,recipe: Resource=null) -> Array[Dictionary]:
+	if generator_id == CLIFF: return CliffProvider.fields()
+	if generator_id == BUILDING: return BuildingProvider.fields()
 	if generator_id==LARGE_TREE and recipe!=null and bool(recipe.parameters.get("painted_tree",false)):
 		var result: Array[Dictionary]=[{"key":"tree_type","title":"Порода дерева","options":["Саванна","Дуб","Берёза","Клён","Ель"],"identity":true}]
 		for descriptor: Dictionary in editing_fields(recipe):
@@ -97,6 +99,18 @@ static func creation_description(recipe: Resource) -> String:
 
 static func creation_presets(generator_id: String, legacy := false) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
+	if generator_id == CLIFF:
+		for shape in CliffProvider.TITLES.size():
+			var recipe := default_recipe(CLIFF)
+			recipe.parameters.shape = shape
+			if shape==1: recipe.parameters.merge({"width_m":5.5,"depth_m":2.5,"height_m":2.25},true)
+			if shape==2: recipe.parameters.merge({"depth_m":4.5,"height_m":2.0},true)
+			if shape==3: recipe.parameters.merge({"soil_depth_m":1.5,"form_strength":85},true)
+			recipe.resource_name = CliffProvider.TITLES[shape]
+			result.append({"name":CliffProvider.TITLES[shape],"recipe":recipe})
+		return result
+	if generator_id == BUILDING:
+		return [{"name":"Прибрежный дом","recipe":default_recipe(BUILDING)}]
 	if generator_id == LARGE_TREE and not legacy:
 		var species=load("res://scripts/ember_tree_species.gd")
 		for kind in 5:
@@ -161,6 +175,7 @@ static func creation_presets(generator_id: String, legacy := false) -> Array[Dic
 
 
 static func candidate_limit(recipe: Resource) -> int:
+	if recipe.generator_id in [BUILDING, CLIFF]: return 1
 	# Exact meshes, not lower-detail previews. Bound simultaneous CPU/GPU memory.
 	if recipe.generator_id == LARGE_TREE:
 		return 2 if int(recipe.parameters.get("height", 96)) > 128 else 4
@@ -179,12 +194,16 @@ const TreeProvider = preload("res://addons/ember_import/ember_voxel_tree_generat
 const BushProvider = preload("res://addons/ember_import/ember_voxel_bush_generator.gd")
 const GrassProvider = preload("res://addons/ember_import/ember_voxel_grass_generator.gd")
 const LargeTreeProvider = preload("res://addons/ember_import/ember_voxel_large_tree_generator.gd")
+const CliffProvider = preload("res://addons/ember_import/ember_voxel_cliff_generator.gd")
+const BuildingProvider = preload("res://addons/ember_import/ember_voxel_building_generator.gd")
 
 const ROCK := "rock"
 const TREE := "tree"
 const BUSH := "bush"
 const GRASS := "grass"
 const LARGE_TREE := "large_tree"
+const BUILDING := "building"
+const CLIFF := "cliff"
 
 
 static func default_recipe(generator_id: String) -> Resource:
@@ -196,11 +215,16 @@ static func default_recipe(generator_id: String) -> Resource:
 	)
 	if generator_id==LARGE_TREE:
 		recipe.seed=7;recipe.parameters=load("res://scripts/ember_tree_species.gd").accepted_parameters(1)
+	if generator_id==CLIFF: recipe.parameters.form_strength=65
 	return recipe
 
 
 static func normalized_parameters(generator_id: String, parameters: Dictionary) -> Dictionary:
 	match generator_id:
+		CLIFF:
+			return CliffProvider.normalize(parameters)
+		BUILDING:
+			return BuildingProvider.normalize(parameters)
 		ROCK:
 			return Rock.normalize(parameters)
 		TREE:
@@ -219,7 +243,7 @@ static func validation_errors(recipe: Resource) -> Array[String]:
 	if not recipe is Recipe:
 		errors.append("У процедурного штампа нет корректного рецепта.")
 		return errors
-	if recipe.generator_id not in [ROCK, TREE, BUSH, GRASS, LARGE_TREE]:
+	if recipe.generator_id not in [ROCK, TREE, BUSH, GRASS, LARGE_TREE, BUILDING, CLIFF]:
 		errors.append("Неизвестный генератор: %s" % recipe.generator_id)
 	if recipe.seed < 0:
 		errors.append("Seed генератора не может быть отрицательным.")
@@ -248,6 +272,10 @@ static func build(
 	if not errors.is_empty():
 		return {"error": errors[0]}
 	match recipe.generator_id:
+		CLIFF:
+			return CliffProvider.build(recipe.parameters, recipe.seed, color, material, title, model_id)
+		BUILDING:
+			return BuildingProvider.build(recipe.parameters, recipe.seed, color, material, title, model_id)
 		ROCK:
 			return Rock.build(
 				recipe.parameters, recipe.seed, color, material, title, model_id
@@ -277,6 +305,12 @@ static func build(
 
 ## Provider capabilities and UI descriptors. The panel contains no tree math.
 static func editing_fields(recipe: Resource) -> Array:
+	if recipe.generator_id in [BUILDING, CLIFF] and validation_errors(recipe).is_empty():
+		var fields: Array=[]
+		for descriptor in (CliffProvider.fields() if recipe.generator_id == CLIFF else BuildingProvider.fields()):
+			var field: Dictionary=descriptor.duplicate(true);field.label=field.title;field.group="Форма уступа" if recipe.generator_id == CLIFF else "Форма дома"
+			fields.append(field)
+		return fields
 	if validation_errors(recipe).is_empty() and recipe.generator_id == BUSH and int(recipe.parameters.get("generation_version", 1)) >= 2:
 		var fields: Array = []
 		for descriptor in creation_fields(BUSH):
@@ -330,10 +364,13 @@ static func editing_fields(recipe: Resource) -> Array:
 				if field.key=="branch_count_variation":field.label="Неравномерность ярусов · %"
 			fields.append(field)
 	if bool(recipe.parameters.get("painted_tree",false)):
-		fields=fields.filter(func(field: Dictionary):return field.key not in ["foliage_volume_form","foliage_amount","foliage_detail","cluster_size","cluster_flatten","canopy_cohesion"])
+		fields=fields.filter(func(field: Dictionary):return field.key not in ["foliage_volume_form","foliage_amount","foliage_detail","cluster_size","cluster_flatten","canopy_cohesion","foliage_color"])
 		for descriptor in [{"key":"height","label":"Высота · vox","group":"Каркас","min":32,"max":128},{"key":"trunk_width","label":"Толщина ствола · vox","group":"Каркас","min":3,"max":24},{"key":"crown_spread","label":"Ширина кроны · %","group":"Каркас","min":25,"max":85},{"key":"branch_start","label":"Начало ветвей · % высоты","group":"Каркас","min":20,"max":80}]:
 			if not fields.any(func(field):return field.key==descriptor.key):fields.append(descriptor)
 		fields.append_array([
+			{"key":"foliage_color","label":"Листва · основной цвет","group":"Цвет листвы","type":"color"},
+			{"key":"tree_leaf_secondary_color","label":"Листва · дополнительный цвет","group":"Цвет листвы","type":"color"},
+			{"key":"tree_leaf_palette_strength","label":"Переход двух цветов · % (0 — прежняя окраска)","group":"Цвет листвы","min":0,"max":100},
 			{"key":"tree_leaf_density","label":"Количество листвы · %","group":"Листва и свет","min":0,"max":100},
 			{"key":"tree_leaf_local","label":"Листва в выбранной части","group":"Листва и свет","type":"tree_parts"},
 			{"key":"tree_leaf_depth","label":"Глубина тёмных участков · %","group":"Листва и свет","min":0,"max":100},
@@ -378,7 +415,7 @@ static func freeze_structure(recipe: Resource) -> Dictionary:
 	var errors := validation_errors(recipe)
 	if not errors.is_empty():
 		return {"error": errors[0]}
-	if recipe.generator_id in [ROCK, BUSH] and not editing_fields(recipe).is_empty():
+	if recipe.generator_id in [ROCK, BUSH, BUILDING, CLIFF] and not editing_fields(recipe).is_empty():
 		# These providers reproduce geometry from parameters + seed, without a tree frame.
 		return {"recipe": recipe.duplicate(true)}
 	if not recipe.structure.is_empty():

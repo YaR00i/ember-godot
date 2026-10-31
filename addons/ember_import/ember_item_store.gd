@@ -121,6 +121,22 @@ static func validation_errors(raw: Dictionary) -> Array[String]:
 	):
 		errors.append("Боевому расходнику нужен эффект HP, MP или воскрешения.")
 	var icon_id := str(value.get("iconId", ""))
+	var contents: Variant = raw.get("openContents",{})
+	if not contents is Dictionary:
+		errors.append("Содержимое должно быть списком предметов и количеств.")
+	else:
+		for id in contents:
+			var count: Variant = contents[id]
+			if not id is String or id == str(value.get("id","")) or Catalog.definition(str(id)).is_empty():
+				errors.append("Содержимое: выберите существующий другой предмет.")
+			if typeof(count) not in [TYPE_INT,TYPE_FLOAT] or not is_finite(float(count)) or count < 1 or count > 999 or count != floor(float(count)):
+				errors.append("Количество содержимого: целое число от1 до999.")
+	var script_id := str(raw.get("useScriptId","")).strip_edges()
+	if contents is Dictionary and not contents.is_empty() and not script_id.is_empty(): errors.append("Разделите контейнер и читаемый предмет: открытие выдаёт содержимое, событие принадлежит письму внутри.")
+	if not script_id.is_empty() and EmberActionCatalog.document(script_id).is_empty(): errors.append("Выберите существующее действие использования.")
+	var world_scene := str(raw.get("worldScene","")).strip_edges()
+	if not world_scene.is_empty() and (not world_scene.begins_with("res://") or not ResourceLoader.exists(world_scene) or not load(world_scene) is PackedScene):
+		errors.append("Для выбрасывания нужна существующая сцена предмета в проекте.")
 	if not icon_id.is_empty() and icon_id not in icon_ids():
 		errors.append("Выберите существующую пиксельную иконку.")
 	return errors

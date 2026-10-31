@@ -278,6 +278,23 @@ static func make_standalone_trigger(tile_size: float) -> EmberInteract:
 	return interact
 
 
+static func quest_npc_position(root: Node, anchor: Node3D = null) -> Dictionary:
+	if root == null:
+		return {"ok": false, "error": "Откройте игровую карту."}
+	var map := root as EmberMapLoader if root is EmberMapLoader else root.find_child("Map", true, false) as EmberMapLoader
+	if anchor == null:
+		anchor = root.find_child("player_start", true, false) as Node3D
+	if map == null or anchor == null or (anchor != root and not root.is_ancestor_of(anchor)):
+		return {"ok": false, "error": "Выберите объект на карте рядом с местом для NPC."}
+	var tile_size := map.imported_tile_size if map.imported_tile_size > 0.0 else 16.0
+	var position := anchor.global_position + Vector3(tile_size, 0.0, 0.0)
+	var floor := map.surface_floor_sample(position)
+	if not bool(floor.get("solid", false)) or bool(floor.get("submerged", false)):
+		return {"ok": false, "error": "Рядом нет сухой поверхности для NPC. Выберите другое место."}
+	position.y = (floor.get("position", position) as Vector3).y
+	return {"ok": true, "position": position}
+
+
 static func next_standalone_trigger_name(root: Node) -> String:
 	var container := root.get_node_or_null(STANDALONE_TRIGGER_CONTAINER) if root != null else null
 	var index := 1

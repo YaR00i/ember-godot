@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3]
+[ext_resource type="Script" path="res://scripts/ember_action_resource.gd" id="1"]
+[resource]
+script = ExtResource("1")
+action_id = "story_shell_start"
+document = {
+  "id": "story_shell_start",
+  "nameRu": "Ракушки · start",
+  "steps": [
+    {
+      "type": "talk",
+      "dialogueId": "story_shell_start_talk"
+    },
+    {
+      "type": "set_flag",
+      "flag": "story_shell_status",
+      "value": "active"
+    },
+    {
+      "type": "set_flag",
+      "flag": "story_shell_meet",
+      "value": true
+    }
+  ]
+}

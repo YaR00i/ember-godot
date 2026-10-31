@@ -507,6 +507,9 @@ func commit() -> void:
 		_hint.text = "Модель изменилась. Отмените и выберите фрагмент заново."
 		_apply.disabled = true
 		return
+	if _stamp!=null and not workspace._resource.solid_surface.is_empty() and int(_plan.get("active_part",0))>0:
+		workspace._actions.active_part=int(_plan.active_part)
+		workspace._refresh_groups()
 	# A stamp is an independent authoring operation. It must not silently replace
 	# a retained selection or the mask snapshot that is only suspended while the
 	# stamp owns the Canvas.

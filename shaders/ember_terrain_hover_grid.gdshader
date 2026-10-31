@@ -10,10 +10,15 @@ uniform float selected_size = 8.0;
 uniform float subblock_size = 8.0;
 uniform float block_size = 16.0;
 
+uniform bool side_paint = false;
+uniform vec3 side_center;
+uniform vec3 side_normal = vec3(1.0, 0.0, 0.0);
+varying vec3 terrain_position;
 varying vec2 terrain_xz;
 varying vec3 terrain_normal;
 
 void vertex() {
+	terrain_position = VERTEX;
 	terrain_xz = VERTEX.xz;
 	terrain_normal = NORMAL;
 }
@@ -27,6 +32,15 @@ float grid_line(vec2 position, float spacing, float width_px) {
 }
 
 void fragment() {
+	if (side_paint) {
+		vec3 offset = terrain_position - side_center;
+		vec3 tangent = offset - side_normal * dot(offset, side_normal);
+		float distance_to_brush = square_brush ? max(abs(tangent.x), max(abs(tangent.y), abs(tangent.z))) : length(tangent);
+		if (abs(dot(offset, side_normal)) > 1.5 || dot(normalize(terrain_normal), side_normal) < 0.4 || distance_to_brush > brush_radius) { discard; }
+		float width = max(fwidth(distance_to_brush) * 1.5, 0.06);
+		ALBEDO = vec3(1.0, 0.84, 0.28);
+		ALPHA = 0.12 + 0.75 * smoothstep(brush_radius - width, brush_radius, distance_to_brush);
+	} else {
 	if (terrain_normal.y < 0.9) {
 		discard;
 	}
@@ -53,4 +67,5 @@ void fragment() {
 	}
 	ALBEDO = mix(vec3(1.0), vec3(1.0, 0.84, 0.28), clamp(yellow_alpha * 1.6, 0.0, 1.0));
 	ALPHA = alpha;
+}
 }

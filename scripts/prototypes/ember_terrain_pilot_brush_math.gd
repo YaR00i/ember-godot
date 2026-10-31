@@ -94,14 +94,19 @@ static func noise_offset(noise: FastNoiseLite, x: int, z: int, influence: float,
 static func smooth_height(baseline: PackedInt32Array, width: int, depth: int, x: int, z: int, strength: int, influence: float) -> int:
 	var total := 0
 	var count := 0
-	for oz in range(-1, 2):
-		for ox in range(-1, 2):
-			var px := x + ox
-			var pz := z + oz
-			if px < 0 or pz < 0 or px >= width or pz >= depth:
-				continue
-			total += baseline[px + pz * width]
-			count += 1
+	if x>0 and z>0 and x+1<width and z+1<depth:
+		var i:=x+z*width
+		total=baseline[i-width-1]+baseline[i-width]+baseline[i-width+1]+baseline[i-1]+baseline[i]+baseline[i+1]+baseline[i+width-1]+baseline[i+width]+baseline[i+width+1]
+		count=9
+	else:
+		for oz in range(-1, 2):
+			for ox in range(-1, 2):
+				var px := x + ox
+				var pz := z + oz
+				if px < 0 or pz < 0 or px >= width or pz >= depth:
+					continue
+				total += baseline[px + pz * width]
+				count += 1
 	var original := baseline[x + z * width]
 	var average := roundi(float(total) / float(maxi(1, count)))
 	var maximum_step := maxi(1, ceili(float(strength) * influence))

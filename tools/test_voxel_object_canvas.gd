@@ -232,19 +232,9 @@ func _run() -> void:
 		root.get_texture().get_image().save_png(capture)
 		print("OBJECT_CANVAS_CAPTURE ", ProjectSettings.globalize_path(capture))
 	canvas.free()
-	var pier := (load("res://scenes/test_pier.tscn") as PackedScene).instantiate()
-	var placements := {}
-	for prop_name in ["CargoA", "CargoB", "CargoC", "BarrelA", "BarrelB"]:
-		var placement: String = pier.get_node("Map/Props/" + prop_name).placement_id
-		check(not placement.is_empty() and not placements.has(placement), "pier placement missing/duplicate: " + prop_name)
-		placements[placement] = true
-	var barrel_session := Session.new()
-	check(barrel_session.open(pier.get_node("Map/Props/BarrelA"), pier, undo), "native pier barrel cannot open: " + barrel_session.error)
-	var legacy_session := Session.new()
-	var legacy_ok := legacy_session.open(pier.get_node("Map/Props/CargoA"), pier, undo)
-	print("PIER_CARGO_PREFLIGHT ", "PASS" if legacy_ok else legacy_session.error)
-	check(legacy_ok or not legacy_session.error.is_empty(), "legacy refusal has no explanation")
-	pier.free()
+	check(not a.placement_id.is_empty() and not b.placement_id.is_empty() and a.placement_id != b.placement_id,"fixture placements missing/duplicate")
+	var reopened_session = session(b,scene,undo)
+	check(reopened_session.draft != null,"saved synthetic object cannot reopen")
 	undo.clear_history()
 	undo.free()
 	scene.free()

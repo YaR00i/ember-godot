@@ -22,7 +22,7 @@ func drain(world: Node) -> void:
 func _run() -> void:
 	DirAccess.make_dir_recursive_absolute(fixture)
 	var protected := {}
-	for path in [Layout.SOURCE_PATH, "res://scenes/world_canvas.tscn", "res://scenes/test_pier.tscn", "res://content/world_surfaces/test_pier_surface.tres"]:
+	for path in [Layout.SOURCE_PATH, "res://scenes/world_canvas.tscn", "res://scenes/landscape_compact.tscn", "res://content/world_terrains/landscape_compact.res"]:
 		protected[path] = FileAccess.get_sha256(path)
 	var source := ResourceLoader.load(Layout.SOURCE_PATH) as EmberVoxelModelResource
 	check(source != null and source.validation_errors().is_empty(), "invalid canvas Source")

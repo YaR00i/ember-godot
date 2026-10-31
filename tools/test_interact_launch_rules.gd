@@ -233,6 +233,7 @@ func _test_runtime_contract(errors: Array[String]) -> void:
 	state.flags.erase("auto_launch_used")
 	auto.activation_mode = "press"
 	auto.refresh_runtime_binding()
+	await process_frame # Monitoring changes are deferred outside Area3D signals.
 	if not auto.is_in_group("ember_interact") or auto.monitoring or auto.collision_mask != 0:
 		errors.append("switching back to F did not restore the existing interaction path")
 	ui.economy_state = null

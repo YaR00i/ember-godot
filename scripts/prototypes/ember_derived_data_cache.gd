@@ -4,6 +4,31 @@ extends RefCounted
 ## content keys, payload versions and validation. No Resources or live history.
 const HEADER_BYTES := 48
 const PACKAGED_ROOT := "res://ember-prepared"
+const SHIPPED_CACHES := {
+	"user://ember-terrain-geometry-cache": ["geometry", ".edc"],
+	"user://ember-water-region-cache": ["water", ".ewc"],
+	"user://ember-tree-look-cache": ["trees", ".edc"],
+	"user://ember-detail-scatter-cache": ["details", ".edc"],
+	"user://ember-material-height-cache": ["height", ".edc"],
+	"user://ember-solid-living-cache": ["solids", ".edc"],
+	"user://ember-anomaly-cache": ["anomaly", ".edc"],
+}
+static var diagnostics_enabled := false
+static var _diagnostics: Dictionary = {}
+static var _diagnostic_records: Dictionary = {}
+static var _diagnostics_mutex := Mutex.new()
+
+static func diagnostics_snapshot() -> Dictionary:
+	_diagnostics_mutex.lock()
+	var result := _diagnostics.duplicate(true)
+	_diagnostics_mutex.unlock()
+	return result
+
+static func diagnostic_records() -> Dictionary:
+	_diagnostics_mutex.lock()
+	var result := _diagnostic_records.duplicate(true)
+	_diagnostics_mutex.unlock()
+	return result
 
 var directory := ""
 var magic := "EDCACHE1"
@@ -38,16 +63,32 @@ func path(key: String) -> String:
 
 func read(key: String) -> Dictionary:
 	var started := Time.get_ticks_usec()
+	var shipped_before := packaged_hits
 	var result := _read(key)
-	read_us += Time.get_ticks_usec() - started
+	var elapsed := Time.get_ticks_usec() - started
+	read_us += elapsed
+	if diagnostics_enabled:
+		_diagnostics_mutex.lock()
+		var entry: Dictionary = _diagnostics.get(directory, {"local_hits":0,"packaged_hits":0,"misses":0,"read_us":0})
+		entry["misses" if result.is_empty() else "packaged_hits" if packaged_hits>shipped_before else "local_hits"] += 1
+		entry.read_us += elapsed
+		_diagnostics[directory] = entry
+		if not result.is_empty():
+			if not _diagnostic_records.has(directory):_diagnostic_records[directory]={}
+			if _diagnostic_records[directory].size()<4096:_diagnostic_records[directory][key]=true
+		_diagnostics_mutex.unlock()
 	return result
 
 
 func _read(key: String) -> Dictionary:
 	var result := _read_file(path(key), key) if not directory.is_empty() else {}
 	if not result.is_empty(): return result
-	if Engine.is_editor_hint() or directory != packaged_for_directory or packaged_directory.is_empty(): return {}
-	result = _read_file(packaged_directory.path_join(key + extension), key)
+	if Engine.is_editor_hint(): return {}
+	var shipped := packaged_directory if directory == packaged_for_directory else ""
+	if shipped.is_empty() and SHIPPED_CACHES.has(directory):
+		shipped = PACKAGED_ROOT.path_join(SHIPPED_CACHES[directory][0])
+	if shipped.is_empty(): return {}
+	result = _read_file(shipped.path_join(key + extension), key)
 	if not result.is_empty(): packaged_hits += 1
 	return result
 

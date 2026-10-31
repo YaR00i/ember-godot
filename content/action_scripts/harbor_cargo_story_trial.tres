@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="EmberActionResource" load_steps=2 format=3]
+[ext_resource type="Script" path="res://scripts/ember_action_resource.gd" id="1"]
+[resource]
+script = ExtResource("1")
+action_id = "harbor_cargo_story_trial"
+document = {
+"id": "harbor_cargo_story_trial", "nameRu": "Груз: сценка перед наградой · проба",
+"steps": [
+{"type": "play_cutscene", "presentationId": "cargo_delivery"},
+{"type": "exchange_items", "costs": {}, "rewards": {"coin": 3}},
+{"type": "set_flag", "flag": "harbor_cargo_reward", "value": true},
+{"type": "set_flag", "flag": "harbor_cargo_status", "value": "done"}]
+}

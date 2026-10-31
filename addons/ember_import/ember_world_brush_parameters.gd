@@ -2,6 +2,7 @@ extends RefCounted
 ## Editor-only catalogue: one control/value per parameter, reused by tool profiles.
 
 const DEFINITIONS := {
+	"surface_plane_offset":{"kind":"spin","title":"Смещение плоскости · vox","min":-32.0,"max":32.0,"initial":0.0},
 	"edit_scale": {"kind":"choice", "items":["Основной · 2×2 на блок", "Средне · 8×8 на блок", "Детально · 16×16 на блок"]},
 	"height_step": {"kind":"choice", "items":["Ступень · ¼ блока · 4 вокселя", "Ступень · ½ блока · 8 вокселей"]},
 	"shape": {"kind":"choice", "items":["Форма · квадрат", "Форма · круг"]},
@@ -12,7 +13,7 @@ const DEFINITIONS := {
 	"water_height": {"kind":"spin", "title":"Вода · мир", "min":-512.0, "max":512.0, "initial":-8.0},
 	"shore_width": {"kind":"slider", "title":"Длина спуска · блоки", "min":0.25, "max":16.0, "initial":6.0, "step":0.25},
 	"shore_direction": {"kind":"choice", "items":["Глубже · +X", "Глубже · −X", "Глубже · +Z", "Глубже · −Z"]},
-	"softness": {"kind":"slider", "title":"Мягкость · %", "min":0.0, "max":100.0, "initial":75.0},
+	"softness": {"kind":"slider", "title":"Мягкость края · %", "min":0.0, "max":100.0, "initial":75.0},
 	"feature_scale": {"kind":"slider", "title":"Крупность неровностей · ячейки", "min":4.0, "max":64.0, "initial":16.0},
 	"detail": {"kind":"slider", "title":"Детализация неровностей", "min":0.0, "max":5.0, "initial":0.0},
 	"detail_pattern": {"kind":"choice", "items":["Рисунок · прежний шум", "Рисунок · фактура покрытия"]},
@@ -54,7 +55,9 @@ const LEGACY_TOOLS := {
 static func definition(id: String) -> Dictionary:
 	return DEFINITIONS.get(id, {})
 
-static func active_for(mode: String, compact: bool, coarse: bool, level_from_point: bool, material_detail := false) -> Array[String]:
+static func active_for(mode: String, compact: bool, coarse: bool, level_from_point: bool, material_detail := false, volume_smooth := false, surface_plane := false) -> Array[String]:
+	if mode=="level" and surface_plane:return ["radius","strength_detail","surface_plane_offset"]
+	if mode=="smooth" and volume_smooth:return ["radius","strength_detail"]
 	var tool_definitions: Dictionary = COMPACT_TOOLS if compact else LEGACY_TOOLS
 	if not tool_definitions.has(mode): return []
 	var active: Array[String] = []

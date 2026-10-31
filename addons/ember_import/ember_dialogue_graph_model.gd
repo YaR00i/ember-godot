@@ -8,6 +8,27 @@ const ActionStore = preload("res://addons/ember_import/ember_action_script_store
 const SUPPORTED_TYPES := ["dialogue", "choice", "splash", "set_flag", "grant_cinders", "end"]
 const AUTHORING_TYPES := ["dialogue", "choice", "splash", "set_flag", "end"]
 
+static func short_reply_document(id: String, title: String, text: String) -> Dictionary:
+	return {"id": id, "nameRu": title, "startStepId": "line", "steps": [
+		{"id": "line", "type": "dialogue", "textRu": text.strip_edges(), "next": "end"},
+		{"id": "end", "type": "end"},
+	]}
+
+static func short_reply_text(document: Dictionary) -> String:
+	var steps: Array = document.get("steps", [])
+	if steps.size() != 2:
+		return ""
+	var line: Dictionary = {}
+	var end_id := ""
+	for step in steps:
+		if str(step.get("type", "")) == "dialogue":
+			line = step
+		elif str(step.get("type", "")) == "end":
+			end_id = str(step.get("id", ""))
+	if line.is_empty() or end_id.is_empty() or str(document.get("startStepId", "")) != str(line.get("id", "")) or str(line.get("next", "")) != end_id:
+		return ""
+	return str(line.get("textRu", ""))
+
 
 static func normalized_document(raw: Dictionary) -> Dictionary:
 	var result := raw.duplicate(true)
@@ -32,6 +53,41 @@ static func steps_by_id(document: Dictionary) -> Dictionary:
 			if not step_id.is_empty():
 				result[step_id] = step
 	return result
+
+static func quest_choice_options(document: Dictionary, flag: String) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for step in document.get("steps", []):
+		if str(step.get("type", "")) != "choice":
+			continue
+		var options: Array = step.get("options", [])
+		for index in options.size():
+			var option: Dictionary = options[index]
+			result.append({
+				"stepId": str(step.get("id", "")), "optionIndex": index,
+				"label": "%s · %s" % [str(option.get("labelRu", "Ответ")), str(step.get("promptRu", "Выбор"))],
+				"selected": option.get("setFlags", {}).get(flag, false) == true,
+			})
+	return result
+
+static func with_quest_choice_outcome(document: Dictionary, choice: Dictionary, flag: String) -> Dictionary:
+	var result := normalized_document(document)
+	var found := false
+	for step in result.get("steps", []):
+		# Explicit automatic writers cannot safely be removed by this preset.
+		if str(step.get("type", "")) == "set_flag" and str(step.get("flag", step.get("flagId", ""))) == flag:
+			return {}
+		if str(step.get("type", "")) != "choice":
+			continue
+		var options: Array = step.get("options", [])
+		for index in options.size():
+			var flags: Dictionary = options[index].get("setFlags", {}).duplicate(true)
+			flags.erase(flag)
+			if str(step.get("id", "")) == str(choice.get("stepId", "")):
+				flags[flag] = index == int(choice.get("optionIndex", -1))
+				if index == int(choice.get("optionIndex", -1)):
+					found = true
+			options[index]["setFlags"] = flags
+	return result if found and not flag.is_empty() else {}
 
 
 static func edges(document: Dictionary) -> Array[Dictionary]:

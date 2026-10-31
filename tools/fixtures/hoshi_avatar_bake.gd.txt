@@ -1,0 +1,81 @@
+extends SceneTree
+const Source=preload("res://scripts/vrm_source.gd")
+const Rig=preload("res://scripts/rig_driver.gd")
+const Soft=preload("res://scripts/soft_toon.gdshader")
+const DEST="__HOSHI_OUTPUT__"
+var model:Node3D
+var sk:Skeleton3D
+var rig=Rig.new()
+var height:float
+var config:=ConfigFile.new()
+
+func _initialize()->void:call_deferred("run")
+func own(node:Node)->void:
+	for child in node.get_children():child.owner=model;own(child)
+func base_idle()->Animation:
+	var anim:=Animation.new();anim.length=1.0;anim.loop_mode=Animation.LOOP_LINEAR
+	rig.tick(0,0,Vector2.ZERO,0,0,0,false)
+	for id:int in rig.bones.values():
+		var track:=anim.add_track(Animation.TYPE_ROTATION_3D)
+		anim.track_set_path(track,NodePath(str(model.get_path_to(sk))+":"+sk.get_bone_name(id)))
+		anim.rotation_track_insert_key(track,0,sk.get_bone_pose_rotation(id))
+	return anim
+func run()->void:
+	ProjectSettings.set_setting("animation/compatibility/default_parent_skeleton_in_mesh_instance_3d",false)
+	DirAccess.make_dir_recursive_absolute(DEST)
+	assert(config.load("user://companion.cfg")==OK)
+	var loaded:=Source.load_avatar("res://assets/Hoshi_v1.vrm");assert(not loaded.has("error"))
+	model=loaded.model;root.add_child(model)
+	assert(not rig.setup(model,loaded.source,loaded.state).has("error"));sk=rig.skeleton
+	var rests:=[]
+	for b in sk.get_bone_count():rests.append(sk.get_bone_rest(b))
+	var materials:Dictionary={}
+	for m in loaded.source.get("materials",[]):materials[str(m.get("name",""))]=m
+	var bounds:AABB;var have:=false
+	for mesh:MeshInstance3D in model.find_children("*","MeshInstance3D",true,false):
+		if mesh.skin!=null:mesh.skeleton=mesh.get_path_to(sk)
+		var box:AABB=(model.global_transform.affine_inverse()*mesh.global_transform)*mesh.get_aabb()
+		bounds=bounds.merge(box) if have else box;have=true
+		for surface in mesh.mesh.get_surface_count():
+			var base=mesh.mesh.surface_get_material(surface)
+			if not base is BaseMaterial3D:continue
+			var name:String=base.resource_name.to_lower()
+			if name.contains("eye") or name.contains("brow") or name.contains("mouth"):continue
+			if base.shading_mode!=BaseMaterial3D.SHADING_MODE_UNSHADED or base.albedo_texture==null:continue
+			var mtoon:Dictionary=materials.get(base.resource_name,{}).get("extensions",{}).get("VRMC_materials_mtoon",{})
+			var mat:=ShaderMaterial.new();var shader:=Shader.new()
+			shader.code=Soft.code if base.cull_mode==BaseMaterial3D.CULL_DISABLED else Soft.code.replace("cull_disabled","cull_back")
+			mat.shader=shader;mat.set_meta("hoshi_toon",true)
+			mat.set_shader_parameter("base_texture",base.albedo_texture);mat.set_shader_parameter("base_factor",base.albedo_color)
+			var shade:Array=mtoon.get("shadeColorFactor",[1,1,1]);mat.set_shader_parameter("shade_factor",Vector3(shade[0],shade[1],shade[2]))
+			mat.set_shader_parameter("shade_shift",float(mtoon.get("shadingShiftFactor",-0.3)));mat.set_shader_parameter("shade_toony",float(mtoon.get("shadingToonyFactor",0.8)))
+			mat.set_shader_parameter("extra_shade",0.25 if name.contains("hair") else 0.08 if name.contains("skin") else 0.18)
+			mat.set_shader_parameter("rim_strength",0.08 if name.contains("hair") else 0.035)
+			mat.set_shader_parameter("alpha_cutoff",base.alpha_scissor_threshold)
+			mat.set_shader_parameter("shadow_strength",config.get_value("render","shadow_strength",1.0))
+			var tint:Color=config.get_value("render","shadow_color",Color.WHITE);mat.set_shader_parameter("shadow_tint",Vector3(tint.r,tint.g,tint.b))
+			mesh.set_surface_override_material(surface,mat)
+	height=bounds.size.y
+	var player:=AnimationPlayer.new();player.name="Motion";model.add_child(player)
+	var library:=AnimationLibrary.new()
+	library.add_animation("idle",base_idle())
+	player.add_animation_library("",library)
+	for b in sk.get_bone_count():assert(sk.get_bone_rest(b)==rests[b])
+	rig.tick(0,0,Vector2.ZERO,0,0,0,false)
+	model.set_meta("hoshi_height",height);model.set_meta("hoshi_floor",bounds.position.y)
+	model.set_meta("hoshi_bones",rig.bones)
+	model.set_meta("hoshi_center",Vector3(bounds.get_center().x,0,bounds.get_center().z))
+	model.set_meta("hoshi_light_offset",config.get_value("render","light_position",Vector3(-1.2,2.2,2.4)))
+	var styling:Dictionary={}
+	for key in ["edge_strength","edge_color","edge_width","outline_strength","outline_color","outline_width"]:styling[key]=config.get_value("render",key)
+	model.set_meta("hoshi_styling",styling)
+	own(model)
+	var packed:=PackedScene.new();assert(packed.pack(model)==OK)
+	var probe=packed.instantiate();root.add_child(probe)
+	for mesh:MeshInstance3D in probe.find_children("*","MeshInstance3D",true,false):
+		if mesh.skin!=null:assert(mesh.get_node_or_null(mesh.skeleton) is Skeleton3D)
+	probe.free()
+	assert(ResourceSaver.save(packed,DEST+"/avatar.scn",ResourceSaver.FLAG_BUNDLE_RESOURCES|ResourceSaver.FLAG_COMPRESS)==OK)
+	var f:=FileAccess.open("__HOSHI_REPORT__",FileAccess.WRITE)
+	f.store_string(JSON.stringify({"source_sha256":FileAccess.get_sha256("res://assets/Hoshi_v1.vrm"),"source":"Hoshi Companion assets/Hoshi_v1.vrm","height_m":height,"bones":sk.get_bone_count(),"hair_chains":rig.hair_springs.chain_count,"rest_preserved":true,"clips":["idle"],"clip_source":"static base only; gameplay requires retargeted Quaternius motion.res"},"  "));f.close()
+	print("HOSHI_ORIGINAL_BAKE_PASS height=",height," bones=",sk.get_bone_count());quit()

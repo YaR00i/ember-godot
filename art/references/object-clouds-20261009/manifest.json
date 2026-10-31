@@ -1,0 +1,86 @@
+{
+	"shots": [
+		{
+			"clarity": 0.94,
+			"clouds": 1.0,
+			"file": "01_clouds.png",
+			"optics": true,
+			"refraction_scale": 1.0,
+			"title": "Кристалл и лёд · неоднородная прозрачность"
+		},
+		{
+			"clarity": 0.94,
+			"clouds": 1.0,
+			"file": "02_crystal.png",
+			"optics": true,
+			"refraction_scale": 1.0,
+			"title": "Кристалл · сиреневые включения"
+		},
+		{
+			"clarity": 0.94,
+			"clouds": 0.0,
+			"file": "03_crystal_clear.png",
+			"optics": true,
+			"refraction_scale": 1.0,
+			"title": "Кристалл · мутность выключена"
+		},
+		{
+			"clarity": 0.94,
+			"clouds": 1.0,
+			"file": "04_ice.png",
+			"optics": true,
+			"refraction_scale": 1.0,
+			"title": "Лёд · молочные облака"
+		},
+		{
+			"clarity": 0.94,
+			"clouds": 0.0,
+			"file": "05_ice_clear.png",
+			"optics": true,
+			"refraction_scale": 1.0,
+			"title": "Лёд · мутность выключена"
+		},
+		{
+			"clarity": 0.94,
+			"clouds": 1.0,
+			"file": "06_crystal_cyan.png",
+			"optics": true,
+			"refraction_scale": 1.0,
+			"title": "Кристалл · другие оттенки включений"
+		},
+		{
+			"clarity": 0.94,
+			"clouds": 1.0,
+			"file": "07_large_inclusions.png",
+			"optics": true,
+			"refraction_scale": 1.0,
+			"title": "Кристалл · более крупные включения"
+		},
+		{
+			"clarity": 0.94,
+			"clouds": 1.0,
+			"file": "08_all_materials.png",
+			"optics": true,
+			"refraction_scale": 1.0,
+			"title": "Все материалы · один дневной свет"
+		}
+	],
+	"timing": {
+		"clouds_off": {
+			"cpu_ms_median": 0.317999988794327,
+			"draw_calls_median": 102.0,
+			"fps_cap": 30,
+			"gpu_ms_median": 0.469999998807907,
+			"gpu_ms_p95": 0.864000022411346,
+			"samples": 90
+		},
+		"clouds_on": {
+			"cpu_ms_median": 0.433999985456467,
+			"draw_calls_median": 102.0,
+			"fps_cap": 30,
+			"gpu_ms_median": 0.472000002861023,
+			"gpu_ms_p95": 0.772000014781952,
+			"samples": 90
+		}
+	}
+}

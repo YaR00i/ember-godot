@@ -1,0 +1,57 @@
+{
+	"shots": [
+		{
+			"detail_enabled": true,
+			"file": "01_overview.png",
+			"gray": false
+		},
+		{
+			"detail_enabled": true,
+			"file": "02_gray.png",
+			"gray": true
+		},
+		{
+			"detail_enabled": true,
+			"file": "03_gray_sun.png",
+			"gray": true
+		},
+		{
+			"detail_enabled": true,
+			"file": "04_grass.png",
+			"gray": false
+		},
+		{
+			"detail_enabled": true,
+			"file": "05_soil.png",
+			"gray": false
+		},
+		{
+			"detail_enabled": true,
+			"file": "06_soil_gray.png",
+			"gray": true
+		},
+		{
+			"detail_enabled": false,
+			"file": "07_detail_off.png",
+			"gray": false
+		}
+	],
+	"timing": {
+		"off": {
+			"cap": 30,
+			"cpu_median": 0.193000003695488,
+			"draw_calls": 17.0,
+			"gpu_median": 0.328000009059906,
+			"gpu_p95": 0.34799998998642,
+			"samples": 90
+		},
+		"on": {
+			"cap": 30,
+			"cpu_median": 0.194000005722046,
+			"draw_calls": 17.0,
+			"gpu_median": 0.342000007629395,
+			"gpu_p95": 0.358000010251999,
+			"samples": 90
+		}
+	}
+}

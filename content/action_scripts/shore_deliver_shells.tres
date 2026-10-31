@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_action_resource.gd" id="1_npfwh"]
+
+[resource]
+script = ExtResource("1_npfwh")
+action_id = "shore_deliver_shells"
+document = {
+"id": "shore_deliver_shells",
+"nameRu": "Передать три ракушки",
+"steps": [{
+"costs": {
+"shore_shell": 3
+},
+"rewards": {},
+"type": "exchange_items"
+}, {
+"flag": "shore_shells_delivered",
+"type": "set_flag",
+"value": true
+}, {
+"dialogueId": "shore_shells_thanks",
+"type": "talk"
+}]
+}

@@ -15,6 +15,26 @@ const SurfaceMesher = preload("res://scripts/ember_voxel_surface_mesher.gd")
 const SurfacePhysics = preload("res://scripts/ember_voxel_surface_physics.gd")
 const NativeMesher = preload("res://scripts/ember_voxel_native_mesher.gd")
 const Heightfield = preload("res://scripts/ember_voxel_heightfield.gd")
+const Solid = preload("res://scripts/ember_voxel_solid_surface.gd")
+class ObjectLookJob extends RefCounted:
+	var source:EmberVoxelModelResource
+	var model:Dictionary
+	var pulls:PackedFloat32Array
+	var result:Dictionary
+	var revision:int
+	var task_id:int
+	var shadow:ArrayMesh
+	func run()->void:
+		result=Solid.look_geometry(model,pulls)
+		if source.emissive_casts_light and not source.emissive_suppress_host_shadow:shadow=EmberVoxelPrefab._body_mesh(source.model_id,{},model,1.0/source.normalized_density(),source.grid_size())
+static var _retired_object_tasks:Array[int]=[]
+var _object_owner:EmberVoxelProp
+var _object_visual:EmberVoxelProp
+var _object_job:ObjectLookJob
+var _object_revision:=0
+var _object_pending:=false
+var _object_supported:=true
+var object_frame:Callable
 
 var chunk_size := DEFAULT_CHUNK_SIZE
 var _surface: EmberVoxelModelResource
@@ -55,6 +75,10 @@ func _init() -> void:
 
 func _enter_tree() -> void:
 	add_to_group(&"ember_water_surface_projection")
+	if _surface!=null:
+		if not _surface.changed.is_connected(_on_surface_changed):_surface.changed.connect(_on_surface_changed)
+		if not _surface.geometry_changed.is_connected(_on_geometry_changed):_surface.geometry_changed.connect(_on_geometry_changed)
+		_begin_rebuild(true)
 
 
 func configure(
@@ -138,6 +162,8 @@ func _on_geometry_changed(indices: PackedInt32Array) -> void:
 	refresh_indices(indices)
 
 func refresh_indices(indices: PackedInt32Array) -> void:
+	if _object_owner!=null:
+		_object_supported=true;_begin_rebuild(true);return
 	if indices.is_empty():
 		_begin_rebuild(true)
 		return
@@ -182,10 +208,12 @@ func refresh_indices(indices: PackedInt32Array) -> void:
 
 
 func pending_chunk_count() -> int:
+	if _object_owner!=null and _object_supported:return int(_object_pending or _object_job!=null)
 	return _pending.size()
 
 
 func rendered_chunk_count() -> int:
+	if _object_owner!=null and _object_supported:return int(is_instance_valid(_object_visual))
 	return _chunks.size()
 
 
@@ -198,6 +226,7 @@ func collision_chunk_count() -> int:
 
 
 func physics_is_ready() -> bool:
+	if _object_owner!=null and _object_supported:return is_projection_complete() and _object_visual.has_node("Collision/Shape")
 	return (
 		_physics_enabled and _surface_is_valid() and _heightfield_task_id < 0
 		and _physics_pending.is_empty()
@@ -206,6 +235,7 @@ func physics_is_ready() -> bool:
 
 
 func is_projection_complete() -> bool:
+	if _object_owner!=null and _object_supported:return not _object_pending and _object_job==null and is_instance_valid(_object_visual)
 	return (
 		_surface_is_valid() and _pending.is_empty()
 		and (
@@ -216,6 +246,7 @@ func is_projection_complete() -> bool:
 
 
 func floor_surface_sample(global_point: Vector3) -> Dictionary:
+	if is_instance_valid(_object_visual):return _object_visual.surface_floor_sample(global_point)
 	if not _surface_is_valid():
 		return {"solid": false}
 	var local_point := to_local(global_point)
@@ -496,7 +527,14 @@ func clear_projection() -> void:
 	_set_fallback_collision_active(true)
 
 
+static func poll_retired_object_tasks()->void:
+	for id in _retired_object_tasks.duplicate():
+		if WorkerThreadPool.is_task_completed(id):WorkerThreadPool.wait_for_task_completion(id);_retired_object_tasks.erase(id)
+
 func _process(_delta: float) -> void:
+	poll_retired_object_tasks()
+	if _object_owner!=null and _object_supported:
+		_drain_object_preview();return
 	# A 24x24 map at the canonical 16-art-voxel density contains 576 small
 	# chunks. One chunk per frame left the player's area on legacy terrain for
 	# several seconds. Drain several cheap chunks, but stop at a wall-clock
@@ -516,7 +554,59 @@ func _process(_delta: float) -> void:
 		drained += 1
 
 
+func object_presentation_pending()->bool:
+	return _object_owner!=null and _object_supported and not is_instance_valid(_object_visual)
+
+func _restore_object_physics()->void:
+	if not is_instance_valid(_object_owner):return
+	if _object_owner.authoring_preview!=null and _object_owner.authoring_preview.get_ref()==_object_visual:
+		_object_owner.authoring_preview=null;_object_owner._invalidate_floor_faces()
+		var body:=_object_owner.get_node_or_null("Collision") as StaticBody3D
+		if body!=null:PhysicsServer3D.body_set_collision_layer(body.get_rid(),body.collision_layer)
+
+func _drain_object_preview()->void:
+	if is_instance_valid(_object_visual) and (_object_owner.authoring_preview==null or _object_owner.authoring_preview.get_ref()!=_object_visual):_activate_object_physics()
+	if is_instance_valid(_object_visual) and _object_visual._world_look!=_object_owner._world_look:
+		_object_visual.set_world_look(_object_owner._world_look)
+	if _object_job!=null and WorkerThreadPool.is_task_completed(_object_job.task_id):
+		WorkerThreadPool.wait_for_task_completion(_object_job.task_id)
+		var ready:=_object_job;_object_job=null
+		if ready.revision==_object_revision:
+			if ready.result.is_empty():
+				# Unowned additions use the same ordinary voxel fallback as publication.
+				_restore_object_physics()
+				if is_instance_valid(_object_visual):_object_visual.free();_object_visual=null
+				_object_supported=false;_object_pending=false;_begin_rebuild(true);return
+			var meshes:=Solid.look_meshes(ready.model,ready.result)
+			if object_frame.is_valid():global_transform=object_frame.call()
+			var next:=EmberVoxelPrefab.preview_from_looks(ready.source,meshes,_object_owner.block_world_size,ready.shadow)
+			var original:=_object_owner.get_node_or_null("Mesh") as MeshInstance3D
+			if original!=null:
+				next.get_node("Mesh").layers=original.layers;next.get_node("Mesh").cast_shadow=original.cast_shadow
+			add_child(next,false,Node.INTERNAL_MODE_BACK)
+			next.set_world_look(_object_owner._world_look)
+			if is_instance_valid(_object_visual):_object_visual.free()
+			for chunk in _chunks.values():chunk.free()
+			_chunks.clear();_pending.clear();_object_visual=next;_object_pending=false
+			_activate_object_physics()
+			_finish_if_ready()
+	if _object_job==null and _object_pending:
+		var job:=ObjectLookJob.new();job.source=_surface.duplicate_model();job.revision=_object_revision
+		job.model=job.source.to_definition(true).model
+		job.pulls=Solid.living_pulls(PackedStringArray(job.source.solid_surface.material_ids))
+		_object_job=job;job.task_id=WorkerThreadPool.add_task(job.run,false,"Canvas object looks")
+
+func _activate_object_physics()->void:
+	_object_owner.authoring_preview=weakref(_object_visual);_object_owner._invalidate_floor_faces()
+	var body:=_object_owner.get_node_or_null("Collision") as StaticBody3D
+	if body!=null:
+		var derived:=_object_visual.get_node_or_null("Collision") as StaticBody3D
+		if derived!=null:derived.collision_layer=body.collision_layer;derived.collision_mask=body.collision_mask
+		PhysicsServer3D.body_set_collision_layer(body.get_rid(),0)
+
 func _exit_tree() -> void:
+	if _object_job!=null:_retired_object_tasks.append(_object_job.task_id);_object_job=null
+	_restore_object_physics()
 	if _surface != null and _surface.changed.is_connected(_on_surface_changed):
 		_surface.changed.disconnect(_on_surface_changed)
 	if _surface != null and _surface.geometry_changed.is_connected(_on_geometry_changed):
@@ -531,6 +621,11 @@ func _on_surface_changed() -> void:
 
 
 func _begin_rebuild(preserve_existing := false) -> void:
+	if _surface!=null and not _surface.solid_surface.is_empty() and get_parent() is EmberVoxelProp:
+		_object_owner=get_parent()
+		if _object_supported:
+			_object_revision+=1;_object_pending=true;_completion_emitted=false;visible=true
+			return
 	_pending_height_columns.clear()
 	_heightfield_generation += 1
 	_heightfield_restart_requested = false

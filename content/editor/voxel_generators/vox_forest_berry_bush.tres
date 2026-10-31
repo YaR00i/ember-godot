@@ -1,0 +1,33 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://addons/ember_import/ember_voxel_generator_recipe.gd" id="1_ywumb"]
+
+[resource]
+resource_name = "Кусты · Облака листвы · пробный"
+script = ExtResource("1_ywumb")
+generator_id = "bush"
+seed = 173
+parameters = {
+"base_height": 2,
+"bush_type": 0,
+"cluster_flatten": 15,
+"density": 16,
+"foliage_color": Color(0.4117647, 0.50980395, 0.3019608, 1),
+"foliage_density": 85,
+"foliage_detail": 60,
+"foliage_highlight_color": Color(0.5058824, 0.57254905, 0.3137255, 1),
+"foliage_pattern_strength": 60,
+"foliage_shadow_color": Color(0.28235295, 0.36862746, 0.20784314, 1),
+"foliage_style": 3,
+"generation_version": 7,
+"height": 28,
+"roughness": 35,
+"size_variation": 20,
+"spread_radius": 18,
+"stem_color": Color(0.45882353, 0.3137255, 0.22352941, 1),
+"stem_count": 5,
+"structure_diversity": 60,
+"variant_count": 4
+}
+family_id = "vox_forest_berry_bush"
+family_title = "Ягодный куст"

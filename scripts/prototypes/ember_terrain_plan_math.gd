@@ -1,8 +1,43 @@
 @tool
 extends RefCounted
+const Sections=preload("res://scripts/prototypes/ember_terrain_sections.gd")
+const MAX_WORLD_M:=Sections.MAX_AXIS*Sections.CELLS/16
 ## Shared influence sampling. No scene, renderer or storage mutation.
+static func plan_is_path(region: Dictionary) -> bool:
+	return region.get("kind") in ["river","road","coast"]
+
+static func plan_controls(region: Dictionary) -> PackedVector2Array:
+	if plan_is_path(region): return region.points_m.duplicate()
+	var rect: Rect2i = region.bounds
+	return PackedVector2Array([Vector2(rect.position),Vector2(rect.end.x,rect.position.y),Vector2(rect.end),Vector2(rect.position.x,rect.end.y)])
+
+static func plan_anchor(region: Dictionary) -> Vector2:
+	if not plan_is_path(region): return Rect2(region.bounds).get_center()
+	var curve := path_curve(region.points_m)
+	return curve.sample_baked(curve.get_baked_length()*0.5)
+
+static func plan_edit(region: Dictionary, index: int, delta: Vector2, translate: bool) -> Dictionary:
+	var next := region.duplicate(true)
+	var path := plan_is_path(region)
+	delta = delta.snapped(Vector2.ONE*(0.5 if path else 1.0))
+	if path:
+		var points := plan_controls(region)
+		for i in points.size():
+			if translate or i == index: points[i] += delta
+		next.points_m = points
+	elif translate:
+		next.bounds = Rect2i(region.bounds.position+Vector2i(delta),region.bounds.size)
+	else:
+		var points := plan_controls(region)
+		var opposite := points[(index+2)%4]
+		var corner := points[index]+delta
+		var lower := Vector2i(corner.min(opposite))
+		next.bounds = Rect2i(lower,Vector2i(corner.max(opposite))-lower)
+	return next
+
 const DEFAULTS := {"height_m": 4.0, "transition_m": 4.0}
 const LAKE_DEFAULTS := {"water_m": 4.0, "depth_m": 2.0, "shore_m": 2.0}
+const COAST_DEFAULTS := {"water_m":0.0,"depth_m":1.25,"shore_m":3.0}
 const RIVER_DEFAULTS := {"width_m": 4.0, "depth_m": 1.0, "shore_m": 2.0, "flow": 0.65}
 const MOUNTAIN_DEFAULTS := {"height_m": 12.0, "summit_m": 4.0, "slope_m": 8.0}
 const ROAD_DEFAULTS := {"width_m":4.0,"edge_m":2.0,"grade_percent":25.0}
@@ -36,7 +71,7 @@ static func parameter_error(values: Dictionary, kind := "plateau") -> String:
 			if not id is String or not id.is_valid_identifier() or (kind == "grove" and not id.begins_with("vox_")) or seen.has(id): return "Некорректный или повторный объект в наборе."
 			seen[id] = true
 		return ""
-	for key in ROAD_DEFAULTS if kind == "road" else MOUNTAIN_DEFAULTS if kind == "mountain" else RIVER_DEFAULTS if kind == "river" else LAKE_DEFAULTS if kind == "lake" else DEFAULTS:
+	for key in ROAD_DEFAULTS if kind == "road" else MOUNTAIN_DEFAULTS if kind == "mountain" else RIVER_DEFAULTS if kind == "river" else COAST_DEFAULTS if kind == "coast" else LAKE_DEFAULTS if kind == "lake" else DEFAULTS:
 		var value: Variant = values.get(key)
 		if typeof(value) not in [TYPE_INT, TYPE_FLOAT] or not is_finite(float(value)):
 			return "Параметры области должны быть конечными числами."
@@ -55,6 +90,11 @@ static func parameter_error(values: Dictionary, kind := "plateau") -> String:
 		if values.depth_m < 0.25 or values.depth_m > 8: return "Глубина русла: от 0,25 до 8 м."
 		if values.shore_m < 0.5 or values.shore_m > 8: return "Ширина берега: от 0,5 до 8 м."
 		if values.flow < 0 or values.flow > 1: return "Сила течения: от 0 до 1."
+		return ""
+	if kind == "coast":
+		if values.water_m < -16 or values.water_m > 28:return "Уровень моря: от −16 до 28 м."
+		if values.depth_m < 0.25 or values.depth_m > 16:return "Глубина моря: от 0,25 до 16 м."
+		if values.shore_m < 0.5 or values.shore_m > 16:return "Ширина берега: от 0,5 до 16 м."
 		return ""
 	if kind == "lake":
 		if values.water_m < 0.5 or values.water_m > 28: return "Уровень озера: от 0,5 до 28 м."
@@ -144,7 +184,7 @@ static func path_error(points: Variant, extent := Vector2i.ZERO) -> String:
 	if not points is PackedVector2Array or points.size() < 2 or points.size() > 32: return "У линии должно быть от 2 до 32 точек."
 	var length := 0.0
 	for i in points.size():
-		if not is_finite(points[i].x) or not is_finite(points[i].y) or points[i].x < 0 or points[i].y < 0 or points[i].x >= 528 or points[i].y >= 528: return "Точки линии должны находиться внутри карты."
+		if not is_finite(points[i].x) or not is_finite(points[i].y) or points[i].x < 0 or points[i].y < 0 or points[i].x >= MAX_WORLD_M or points[i].y >= MAX_WORLD_M: return "Точки линии должны находиться внутри карты."
 		if extent != Vector2i.ZERO and not Rect2(Vector2.ZERO,Vector2(extent)).has_point(points[i]): return "Линия выходит за карту."
 		if i > 0:
 			var distance: float = points[i].distance_to(points[i-1])
@@ -222,3 +262,52 @@ static func grove_candidate(bounds: Rect2i, values: Dictionary, cell: Vector2i, 
 	if not Rect2(bounds).has_point(point) or grove_random(values.seed,cell,3) >= placement_density(point,values,group_noise): return {}
 	return {"key":"%d_%d"%[cell.x,cell.y],"point":point,"turn":grove_random(values.seed,cell,4)*TAU,
 		"variant":mini(values.model_ids.size()-1,int(grove_random(values.seed,cell,5)*values.model_ids.size()))}
+
+
+static func coast_bounds(points: PackedVector2Array, values: Dictionary, extent: Vector2i) -> Rect2i:
+	var samples:=path_curve(points).get_baked_points()
+	var lower:=samples[0];var upper:=lower
+	for p in samples:lower=lower.min(p);upper=upper.max(p)
+	var tangent: Vector2=(points[-1]-points[0]).normalized()
+	var side:=Vector2(tangent.y,-tangent.x)
+	if absf(side.x)>=absf(side.y):
+		lower.x-=values.shore_m;upper.x+=values.shore_m
+		if side.x>0:upper.x=extent.x
+		else:lower.x=0
+	else:
+		lower.y-=values.shore_m;upper.y+=values.shore_m
+		if side.y>0:upper.y=extent.y
+		else:lower.y=0
+	# Rect2i excludes its upper edge; integer control points must stay inside.
+	var start:=Vector2i(lower.floor());var end:=Vector2i(upper.floor())+Vector2i.ONE
+	return Rect2i(start,end-start).intersection(Rect2i(Vector2i.ZERO,extent))
+
+
+static func existing_water_level_m(source) -> float:
+	# A new sea starts at the dominant existing body, including negative origins.
+	var counts: Dictionary={}
+	var parts: Array=source.sections.values() if source.is_sectioned() else [source]
+	for part in parts:
+		var levels: PackedInt32Array=part.water_levels
+		var unique: Dictionary={}
+		for level in levels:
+			if level>0:unique[level]=true
+		for level in unique:counts[level]=counts.get(level,0)+levels.count(level)
+	var best:=0;var count:=0
+	for level: int in counts:
+		if counts[level]>count:best=level;count=counts[level]
+	return float(best+source.origin_y)/16.0 if count>0 else 0.0
+
+
+static func coast_sample(curve: Curve2D, point: Vector2, values: Dictionary) -> Dictionary:
+	var offset:=curve.get_closest_offset(point)
+	var centre:=curve.sample_baked(offset)
+	var tangent: Vector2=(curve.sample_baked(minf(offset+0.5,curve.get_baked_length()))-curve.sample_baked(maxf(0,offset-0.5))).normalized()
+	# The sea is to the right of the directed coastline (x/z plan view).
+	var distance: float=(point-centre).dot(Vector2(tangent.y,-tangent.x))
+	return {"distance":distance} if distance> -float(values.shore_m) else {}
+
+
+static func coast_height(distance: float, original_m: float, values: Dictionary) -> float:
+	if distance<0:return lerpf(original_m,float(values.water_m),smoothstep(-float(values.shore_m),0.0,distance))
+	return lerpf(float(values.water_m),float(values.water_m)-float(values.depth_m),smoothstep(0.0,float(values.shore_m),distance))

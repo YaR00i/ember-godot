@@ -1,5 +1,6 @@
 class_name EmberInteractionUi
 extends Control
+signal dialogue_closed(completed: bool)
 ## One runtime owner for talk/shop presentation. Reads JOI content through
 ## EmberInteractionContent; EmberExploreState owns inventory and persistence.
 
@@ -8,6 +9,8 @@ const MODE_SHOP := "shop"
 const MODE_REWARD := "reward"
 const MODE_NOTICE := "notice"
 const MODE_WAIT := "wait"
+const MODE_PRESENTATION := "presentation"
+const StoryBinding = preload("res://scripts/ember_story_binding.gd")
 const SHOP_BUY := "buy"
 const SHOP_SELL := "sell"
 
@@ -29,9 +32,18 @@ var _dialogue := EmberDialogueSession.new()
 var _shop: Dictionary = {}
 var _panel: ColorRect
 var _title: Label
-var _body: Label
+var _body: RichTextLabel
 var _choices: Label
 var _help: Label
+var _choice_buttons: VBoxContainer
+var _dialogue_controls: HBoxContainer
+var _history_panel: PanelContainer
+var _history_text: RichTextLabel
+var _standalone_dialogue := false
+var _standalone_completed := false
+var _presentation: Node
+var _presentation_callback: Callable
+var _presentation_serial := 0
 
 
 func _ready() -> void:
@@ -70,9 +82,29 @@ func activate_script(script_id: String) -> String:
 	return _start_script(script_id)
 
 
+func activate_dialogue(dialogue_id: String) -> String:
+	## Presentation may wait on the existing dialogue UI without replacing Action's queue.
+	if is_open() or _script_active:
+		return "Сначала заверши текущий разговор"
+	var error := _open_dialogue(dialogue_id)
+	if error.is_empty():
+		_standalone_dialogue = true
+		_standalone_completed = false
+	return error
+
+
+func conversation_session() -> EmberDialogueSession:
+	return _dialogue
+
+
+func set_conversation_session(session: EmberDialogueSession) -> void:
+	assert(not is_open() and session != null)
+	_dialogue = session
+
+
 func activate_script_with_steps(script_id: String, appended_steps: Array) -> String:
-	## Combat loot joins the authored outcome queue instead of mutating inventory
-	## through a second reward service. Only canonical give_item steps are accepted.
+	## The transition has already saved combat loot. Its private receipt steps
+	## display it without granting it again; authored give_item keeps its route.
 	_clear_source_interact()
 	var steps: Array[Dictionary] = []
 	if not script_id.strip_edges().is_empty():
@@ -86,11 +118,11 @@ func activate_script_with_steps(script_id: String, appended_steps: Array) -> Str
 		if typeof(raw_step) != TYPE_DICTIONARY:
 			continue
 		var step: Dictionary = raw_step
-		if str(step.get("type", "")) != "give_item":
+		if str(step.get("type", "")) not in ["give_item", "show_item_reward"]:
 			continue
 		var item_id := str(step.get("itemId", "")).strip_edges()
 		if not item_id.is_empty() and not EmberItemCatalog.definition(item_id).is_empty():
-			steps.append({"type": "give_item", "itemId": item_id, "count": maxi(1, int(step.get("count", 1)))})
+			steps.append(step.duplicate(true))
 	return _start_steps(steps)
 
 
@@ -117,6 +149,8 @@ func _start_steps(steps: Array[Dictionary]) -> String:
 
 
 func advance() -> void:
+	if is_history_open():
+		return
 	match _mode:
 		MODE_DIALOGUE:
 			if _dialogue.current_kind() == "choice":
@@ -128,6 +162,7 @@ func advance() -> void:
 				if not blocked_message.is_empty():
 					_show_notice(blocked_message)
 					return
+				_standalone_completed = _standalone_dialogue
 				if _script_active:
 					_advance_script_queue()
 				elif not _pending_shop_id.is_empty():
@@ -149,10 +184,13 @@ func advance() -> void:
 		MODE_WAIT:
 			# A wait step represents authored timing. F cannot accidentally skip it.
 			pass
+		MODE_PRESENTATION:
+			if is_instance_valid(_presentation):
+				_presentation.advance_dialogue()
 
 
 func choose(index: int) -> void:
-	if _mode != MODE_DIALOGUE or _dialogue.current_kind() != "choice":
+	if is_history_open() or _mode != MODE_DIALOGUE or _dialogue.current_kind() != "choice":
 		return
 	var labels := _dialogue.choice_labels()
 	if index < 0 or index >= labels.size():
@@ -162,6 +200,7 @@ func choose(index: int) -> void:
 
 
 func close() -> void:
+	_cancel_presentation()
 	if _mode == MODE_SHOP and _script_active:
 		_mode = ""
 		_shop.clear()
@@ -183,6 +222,14 @@ func close() -> void:
 	_shop.clear()
 	visible = false
 	_clear_source_interact()
+	if _history_panel:
+		_history_panel.hide()
+	var notify := _standalone_dialogue
+	var completed := _standalone_completed
+	_standalone_dialogue = false
+	_standalone_completed = false
+	if notify:
+		dialogue_closed.emit(completed)
 
 
 func is_open() -> bool:
@@ -208,6 +255,8 @@ func view_state() -> Dictionary:
 		"scriptActive": _script_active,
 		"scriptRemaining": _script_queue.size(),
 		"waitSeconds": _wait_seconds,
+		"historyOpen": is_history_open(),
+		"history": _dialogue.history_entries(),
 	}
 
 
@@ -216,6 +265,13 @@ func _advance_script_queue() -> String:
 	while not _script_queue.is_empty():
 		var step: Dictionary = _script_queue.pop_front()
 		match str(step.get("type", "")):
+			"play_cutscene":
+				return _begin_presentation(str(step.get("presentationId", "")))
+			"show_item_reward":
+				var item_id := str(step.get("itemId", ""))
+				var item := EmberItemCatalog.definition(item_id)
+				_show_item_reward(item, int(step.get("before", 0)), int(step.get("after", 0)))
+				return ""
 			"talk":
 				var result := _open_dialogue(str(step.get("dialogueId", "")))
 				if result.is_empty():
@@ -239,6 +295,20 @@ func _advance_script_queue() -> String:
 					return ""
 				else:
 					feedback = "Предмет не найден"
+			"exchange_items", "handover_quest_items":
+				var exchange := {"ok": false, "reason": "missing_state"}
+				if economy_state != null:
+					exchange = economy_state.handover_quest_items(str(step.get("questId", "")), str(step.get("objectiveId", "")), step.get("rewards", {}), false) if str(step.get("type", "")) == "handover_quest_items" else economy_state.exchange_items(step.get("costs", {}), step.get("rewards", {}), false)
+				if not exchange.ok:
+					_script_queue.clear()
+					_source_is_primary = false
+					var message := "Не удалось передать предметы. Содержимое сумки сохранено."
+					if exchange.reason == "missing_items":
+						var item := EmberItemCatalog.definition(str(exchange.itemId))
+						message = "%s: нужно %d, в сумке %d" % [str(item.get("nameRu",exchange.itemId)),exchange.required,exchange.owned]
+					_show_notice(message)
+					return ""
+				_script_mutated = true
 			"set_flag":
 				if economy_state:
 					var transition := economy_state.apply_authored_flag(
@@ -277,6 +347,66 @@ func _advance_script_queue() -> String:
 	_complete_source_interact()
 	close()
 	return feedback if not feedback.is_empty() else "Сценарий выполнен"
+
+
+func _begin_presentation(id: String) -> String:
+	var scene := get_tree().current_scene
+	if scene == null:
+		scene = owner if owner != null else get_tree().root
+	var resolved := StoryBinding.resolve(scene, id)
+	if not resolved.ok:
+		_abort_presentation(str(resolved.error))
+		return str(resolved.error)
+	_presentation = resolved.node
+	_presentation_serial += 1
+	_presentation_callback = _on_presentation_finished.bind(_presentation_serial)
+	_presentation.finished.connect(_presentation_callback)
+	_mode = MODE_PRESENTATION
+	visible = false
+	var error := str(_presentation.start_for_action(self))
+	if not error.is_empty():
+		_detach_presentation()
+		_abort_presentation(error)
+	return error
+
+
+func _on_presentation_finished(outcome: String, serial: int) -> void:
+	if serial != _presentation_serial or not _script_active or _mode != MODE_PRESENTATION:
+		return
+	_detach_presentation()
+	if outcome not in ["completed", "skipped"]:
+		_source_is_primary = false
+		close()
+		return
+	_mode = ""
+	_advance_script_queue()
+
+
+func _detach_presentation() -> Node:
+	var previous := _presentation
+	if is_instance_valid(previous) and previous.finished.is_connected(_presentation_callback):
+		previous.finished.disconnect(_presentation_callback)
+	_presentation = null
+	_presentation_serial += 1
+	return previous
+
+
+func _cancel_presentation() -> void:
+	var previous := _detach_presentation()
+	if is_instance_valid(previous):
+		_source_is_primary = false
+		previous.restore()
+
+
+func _abort_presentation(error: String) -> void:
+	_script_queue.clear()
+	_script_active = false
+	_source_is_primary = false
+	_show_notice(error)
+
+
+func _exit_tree() -> void:
+	_cancel_presentation()
 
 
 func _show_item_reward(granted: Dictionary, before: int, after: int) -> void:
@@ -514,6 +644,8 @@ func _transact_shop_selection() -> void:
 
 func _shop_failure_ru(reason: String) -> String:
 	match reason:
+		"stack_full":
+			return "Нет места для этого товара"
 		"broke":
 			return "Не хватает монет"
 		"out_of_stock":
@@ -549,13 +681,100 @@ func _move_shop_selection(delta: int) -> void:
 func _refresh_dialogue() -> void:
 	_title.text = _dialogue.current_title()
 	_body.text = _dialogue.current_text()
+	_body.call_deferred("scroll_to_line", 0)
 	var labels := _dialogue.choice_labels()
 	var lines: Array[String] = []
 	for index in range(labels.size()):
 		var marker := "▶" if index == _selected_choice else " "
 		lines.append("%s %d. %s" % [marker, index + 1, labels[index]])
 	_choices.text = "\n".join(lines)
-	_help.text = "W/S — выбор · F — продолжить · Esc — закрыть" if not labels.is_empty() else "F — продолжить · Esc — закрыть"
+	_dialogue_controls.get_child(0).text = "Выбрать ответ · Enter" if not labels.is_empty() else "Продолжить · Enter"
+	for child in _choice_buttons.get_children():
+		_choice_buttons.remove_child(child)
+		child.queue_free()
+	for index in labels.size():
+		var button := Button.new()
+		button.name = "DialogueChoice_%d" % index
+		button.text = ("▶ " if index == _selected_choice else "") + labels[index]
+		button.focus_mode = Control.FOCUS_NONE
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		button.pressed.connect(choose.bind(index))
+		_choice_buttons.add_child(button)
+	_help.text = "W/S — выбор · F / Enter — продолжить · H — история · Esc — закрыть" if not labels.is_empty() else "F / Enter — продолжить · H — история · Esc — закрыть"
+
+
+func history_entries() -> Array[Dictionary]:
+	return _dialogue.history_entries()
+
+
+func is_history_open() -> bool:
+	return _history_panel != null and _history_panel.visible
+
+
+func toggle_history() -> void:
+	if _mode != MODE_DIALOGUE:
+		return
+	var opening := not is_history_open()
+	if opening:
+		var lines: Array[String] = []
+		for entry in _dialogue.history_entries():
+			lines.append(str(entry.speaker) + "\n" + str(entry.text))
+		_history_text.text = "\n\n".join(lines) if not lines.is_empty() else "Пока нет реплик."
+		_history_text.call_deferred("scroll_to_line", maxi(0, _history_text.get_line_count() - 1))
+	_history_panel.visible = opening
+	_panel.visible = not opening
+
+
+func _input(event: InputEvent) -> void:
+	if _mode != MODE_DIALOGUE or not (event is InputEventKey):
+		return
+	var key := event as InputEventKey
+	if not key.pressed or key.echo:
+		return
+	if key.physical_keycode == KEY_H or (is_history_open() and key.physical_keycode == KEY_ESCAPE):
+		toggle_history()
+		get_viewport().set_input_as_handled()
+	elif is_history_open() and key.physical_keycode in [KEY_F, KEY_ENTER, KEY_KP_ENTER, KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9]:
+		get_viewport().set_input_as_handled()
+
+
+func _build_history_panel() -> void:
+	_history_panel = PanelContainer.new()
+	_history_panel.name = "DialogueHistory"
+	_history_panel.anchor_left = 0.08
+	_history_panel.anchor_top = 0.10
+	_history_panel.anchor_right = 0.92
+	_history_panel.anchor_bottom = 0.94
+	var background := StyleBoxFlat.new()
+	background.bg_color = Color(0.045, 0.03, 0.065, 0.99)
+	_history_panel.add_theme_stylebox_override("panel", background)
+	add_child(_history_panel)
+	var margin := MarginContainer.new()
+	for edge in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + edge, 20)
+	_history_panel.add_child(margin)
+	var column := VBoxContainer.new()
+	margin.add_child(column)
+	var row := HBoxContainer.new()
+	column.add_child(row)
+	var title := Label.new()
+	title.text = "История разговора"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(title)
+	var back := Button.new()
+	back.text = "Вернуться · H / Esc"
+	back.focus_mode = Control.FOCUS_NONE
+	back.pressed.connect(toggle_history)
+	row.add_child(back)
+	_history_text = RichTextLabel.new()
+	_history_text.name = "Transcript"
+	_history_text.bbcode_enabled = false
+	_history_text.selection_enabled = true
+	_history_text.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_history_text.add_theme_font_size_override("normal_font_size", 20)
+	column.add_child(_history_text)
+	_history_panel.hide()
 
 
 func _build_panel() -> void:
@@ -584,10 +803,12 @@ func _build_panel() -> void:
 	_title.add_theme_color_override("font_color", Color(1.0, 0.78, 0.34))
 	column.add_child(_title)
 
-	_body = Label.new()
+	_body = RichTextLabel.new()
 	_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_body.add_theme_font_size_override("font_size", 20)
+	_body.add_theme_font_size_override("normal_font_size", 20)
+	_body.bbcode_enabled = false
+	_body.selection_enabled = true
 	column.add_child(_body)
 
 	_choices = Label.new()
@@ -595,17 +816,36 @@ func _build_panel() -> void:
 	_choices.add_theme_font_size_override("font_size", 18)
 	_choices.add_theme_color_override("font_color", Color(0.85, 0.91, 1.0))
 	column.add_child(_choices)
+	_choice_buttons = VBoxContainer.new()
+	column.add_child(_choice_buttons)
+	_dialogue_controls = HBoxContainer.new()
+	column.add_child(_dialogue_controls)
+	for spec in [["Продолжить · Enter", advance], ["История · H", toggle_history], ["Закрыть", close]]:
+		var button := Button.new()
+		button.text = spec[0]
+		button.focus_mode = Control.FOCUS_NONE
+		button.pressed.connect(spec[1])
+		_dialogue_controls.add_child(button)
 
 	_help = Label.new()
 	_help.add_theme_font_size_override("font_size", 15)
 	_help.add_theme_color_override("font_color", Color(0.68, 0.66, 0.72))
 	column.add_child(_help)
+	_build_history_panel()
 	_set_panel_visual(MODE_DIALOGUE)
 
 
 func _set_panel_visual(mode: String) -> void:
 	if _panel == null or _title == null:
 		return
+	var talking := mode == MODE_DIALOGUE
+	_history_panel.hide()
+	_panel.show()
+	_dialogue_controls.visible = talking
+	_choice_buttons.visible = talking
+	_choices.visible = not talking
+	_panel.anchor_top = 0.50 if talking else 0.62
+	_body.scroll_to_line(0)
 	match mode:
 		MODE_REWARD:
 			_panel.color = Color(0.13, 0.075, 0.015, 0.97)
@@ -623,6 +863,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	var key := event as InputEventKey
 	if not key.pressed or key.echo:
+		return
+	if is_history_open():
+		return
+	if _mode == MODE_DIALOGUE and key.physical_keycode in [KEY_ENTER, KEY_KP_ENTER]:
+		advance()
+		get_viewport().set_input_as_handled()
 		return
 	if key.physical_keycode == KEY_ESCAPE:
 		close()

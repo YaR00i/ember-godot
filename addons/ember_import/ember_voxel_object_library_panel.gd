@@ -113,23 +113,23 @@ func open_for(anchor: Node3D, can_place: bool, placement_text: String) -> void:
 		_refresh_details()
 
 
-func refresh(preferred_id := "") -> void:
+func refresh(preferred_id := "", cached_only := false) -> void:
 	if _picker == null or defer_initial_refresh:
 		return
 	var selected_id := preferred_id if not preferred_id.is_empty() else selected_model_id()
 	_all_entries = GenerativeObjects.grouped_entries(VoxelVisuals.entries(), recipe_directory)
-	_catalog_dirty = false
+	_catalog_dirty = cached_only
 	_preferred_variation = selected_id
 	_apply_filter(selected_id)
 	if DisplayServer.get_name() != "headless":
 		for entry in _all_entries:
 			for member in entry.get("variations", [entry]):
-				_preview_renderer.queue_preview(str(member.id), str(member.get("previewPath", "")))
+				_preview_renderer.queue_preview(str(member.id), str(member.get("previewPath", "")),cached_only)
 
 
 func prepare_for_startup() -> void:
 	defer_initial_refresh = false
-	refresh()
+	refresh("",true)
 
 
 func preparation_pending_count() -> int:

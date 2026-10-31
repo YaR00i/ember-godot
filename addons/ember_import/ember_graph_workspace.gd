@@ -12,6 +12,7 @@ const DialogueEditor = preload("res://addons/ember_import/ember_dialogue_editor.
 const QuestStore = preload("res://addons/ember_import/ember_quest_store.gd")
 const QuestUsageIndex = preload("res://addons/ember_import/ember_quest_usage_index.gd")
 const QuestEditor = preload("res://addons/ember_import/ember_quest_editor.gd")
+const ItemCounts = preload("res://addons/ember_import/ember_item_counts_editor.gd")
 const CombatResult = preload("res://scripts/prototypes/ember_combat_result.gd")
 const TypedValueEditor = preload("res://addons/ember_import/ember_typed_value_editor.gd")
 const VnPreview = preload("res://addons/ember_import/ember_vn_preview.gd")
@@ -31,6 +32,8 @@ const MIN_GRAPH_SPLIT_RATIO := 0.52
 const MAX_GRAPH_SPLIT_RATIO := 0.78
 
 signal action_save_requested(document: Dictionary)
+signal pressure_gate_requested
+signal story_authoring_requested
 signal dialogue_save_requested(document: Dictionary)
 signal quest_save_requested(document: Dictionary)
 signal shop_save_requested(document: Dictionary)
@@ -44,6 +47,10 @@ signal quest_event_bind_requested(
 	quest_document: Dictionary,
 )
 signal quest_event_unbind_requested(scene_path: NodePath, event_entry: Dictionary)
+signal quest_conversation_bind_requested(scene_path: NodePath, event_token: String, dialogue_id: String, quest_document: Dictionary, handover_costs: Dictionary, choice_outcome: Dictionary, conversation_options: Dictionary)
+signal quest_conversation_create_requested(anchor_path: NodePath, display_name: String, event_token: String, dialogue_id: String, quest_document: Dictionary, handover_costs: Dictionary, choice_outcome: Dictionary, conversation_options: Dictionary)
+signal quest_object_placement_requested(anchor_path: NodePath, objective_id: String, quest_document: Dictionary)
+signal quest_reach_zone_requested(anchor_path: NodePath, objective_id: String, quest_document: Dictionary)
 signal quest_event_remove_requested(event_entry: Dictionary)
 
 var _kind: OptionButton
@@ -114,6 +121,9 @@ var _quest_cursor := -1
 var _quest_inline_before: Dictionary = {}
 var _quest_is_new := false
 var _quest_focus_target := ""
+var _quest_conversation_drafts: Dictionary = {}
+var _quest_conversation_form: Dictionary = {}
+var _quest_conversation_submission := ""
 var _current_kind := "action"
 var _current_id := ""
 var _selected_editor_index := -1
@@ -242,6 +252,9 @@ func set_scene_selection(target: Node) -> void:
 	if root != null and is_instance_valid(target) and (target == root or root.is_ancestor_of(target)):
 		next_path = root.get_path_to(target)
 		next_label = str(target.name)
+		var conversation := EmberObjectInspectorModel.quest_conversation_target(target)
+		if conversation != null:
+			next_label = str(conversation.get("display_name"))
 	if next_path == _selected_scene_path and next_label == _selected_scene_label:
 		return
 	_selected_scene_path = next_path
@@ -263,9 +276,14 @@ func refresh_quest_scene_projection(message := "") -> void:
 		_status.text = message
 
 
-func accept_quest_binding_save(message := "") -> void:
+func accept_quest_binding_save(message := "", conversation_saved := false) -> void:
 	if _current_kind != "quest" or _quest_draft.is_empty():
 		return
+	_capture_quest_conversation_inputs()
+	if conversation_saved and not _quest_conversation_submission.is_empty():
+		_quest_conversation_drafts.erase(_quest_conversation_submission)
+		_quest_conversation_submission = ""
+	_quest_conversation_form = {}
 	_current_id = str(_quest_draft.get("id", _current_id))
 	_quest_is_new = false
 	_refresh_resource_list(_current_id)
@@ -294,6 +312,16 @@ func _build() -> void:
 	systems_button.text = "Игровые системы"
 	systems_button.pressed.connect(open_resource.bind("systems", "systems_library"))
 	document_toolbar.add_child(systems_button)
+	var story_button := Button.new()
+	story_button.name = "CreateStoryScene"
+	var mechanism_button := Button.new()
+	mechanism_button.name = "CreatePressureGate"
+	mechanism_button.text = "Механизмы"
+	mechanism_button.tooltip_text = "Открыть проводную схему механизмов сцены: плиты, рычаги, условия, дверь и лампа. Сохраняется вместе со сценой."
+	mechanism_button.pressed.connect(func(): pressure_gate_requested.emit())
+	story_button.text = "Создать сценку"
+	story_button.pressed.connect(func(): story_authoring_requested.emit())
+	document_toolbar.add_child(story_button)
 	var title := Label.new()
 	title.text = "EMBER GRAPH"
 	title.modulate = Color(0.96, 0.72, 0.32)
@@ -336,6 +364,7 @@ func _build() -> void:
 	tool_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	tool_row.add_theme_constant_override("separation", 4)
 	root_box.add_child(tool_row)
+	tool_row.add_child(mechanism_button)
 	_secondary_tools_button = Button.new()
 	_secondary_tools_button.name = "GraphSecondaryTools"
 	_secondary_tools_button.text = "Ещё…"
@@ -368,6 +397,8 @@ func _build() -> void:
 		["Выдать предмет", "give_item"],
 		["Изменить флаг", "set_flag"],
 		["Пауза", "wait"],
+		["Передать по цели квеста", "handover_quest_items"],
+		["Показать сценку", "play_cutscene"],
 		["Открыть магазин", "open_shop"],
 		["Сменить карту", "change_map"],
 		["Начать бой", "start_battle"],
@@ -408,8 +439,8 @@ func _build() -> void:
 	tool_row.add_child(_quest_new_button)
 	_quest_add_objective_button = Button.new()
 	_quest_add_objective_button.name = "GraphAddQuestObjective"
-	_quest_add_objective_button.text = "+ Цель"
-	_quest_add_objective_button.tooltip_text = "Добавляет цель в локальный quest-черновик. ↶ отменяет до сохранения."
+	_quest_add_objective_button.text = "+ Отдельная цель"
+	_quest_add_objective_button.tooltip_text = "Добавляет независимую цель. Для последовательного прохождения используйте «Следующая цель» внутри карточки."
 	_quest_add_objective_button.pressed.connect(_add_quest_objective)
 	tool_row.add_child(_quest_add_objective_button)
 	_quest_overview_button = Button.new()
@@ -756,6 +787,8 @@ func _palette_options() -> Array[Dictionary]:
 			{"label": "Выдать предмет", "type": "give_item"},
 			{"label": "Изменить флаг", "type": "set_flag"},
 			{"label": "Пауза", "type": "wait"},
+			{"label": "Передать по цели квеста", "type": "handover_quest_items"},
+			{"label": "Показать сценку", "type": "play_cutscene"},
 			{"label": "Открыть магазин", "type": "open_shop"},
 			{"label": "Сменить карту", "type": "change_map"},
 			{"label": "Начать бой", "type": "start_battle"},
@@ -870,6 +903,9 @@ func _confirm_discard_navigation() -> void:
 		return
 	var pending := _pending_navigation.duplicate(true)
 	_pending_navigation = {}
+	_quest_conversation_drafts.clear()
+	_quest_conversation_form = {}
+	_quest_conversation_submission = ""
 	if _current_kind == "voxel_sculpt" and _voxel_sculpt_workspace != null:
 		_voxel_sculpt_workspace.discard_changes()
 	if _current_kind == "systems" and _game_systems_workspace != null:
@@ -968,6 +1004,9 @@ func _has_unsaved_draft() -> bool:
 			return false
 		return _current_dialogue_document() != _dialogue_history[0]
 	if _current_kind == "quest":
+		_capture_quest_conversation_inputs()
+		if not _quest_conversation_drafts.is_empty():
+			return true
 		if _quest_is_new and not _quest_draft.is_empty():
 			return true
 		if _quest_history.is_empty() or _quest_draft.is_empty():
@@ -1288,7 +1327,7 @@ func _create_quest_draft() -> void:
 	_update_quest_draft_status()
 
 
-func _add_quest_objective() -> void:
+func _add_quest_objective(after_id: String = "") -> void:
 	if _current_kind != "quest" or _quest_draft.is_empty():
 		return
 	var document := _current_quest_document()
@@ -1297,6 +1336,8 @@ func _add_quest_objective() -> void:
 	for raw_objective in objectives:
 		if typeof(raw_objective) == TYPE_DICTIONARY:
 			known[str((raw_objective as Dictionary).get("id", ""))] = true
+	if not after_id.is_empty() and not known.has(after_id):
+		return
 	var objective_id := "objective_%d" % (objectives.size() + 1)
 	var serial := objectives.size() + 2
 	while known.has(objective_id):
@@ -1310,8 +1351,11 @@ func _add_quest_objective() -> void:
 		"counterEventId": "",
 		"requiredCount": 1,
 		"optional": false,
+		"requiresObjectiveIds": [] if after_id.is_empty() else [after_id],
 	})
 	document["objectives"] = objectives
+	if not after_id.is_empty():
+		_quest_focus_target = objective_id
 	_push_quest_draft(document)
 	_select_quest_objective(objectives.size() - 1)
 
@@ -1348,6 +1392,9 @@ func _apply_quest_event(token: String) -> void:
 		_select_action_index(insert_at)
 		return
 	if _current_kind != "dialogue":
+		return
+	if str(preset.get("type", "")) != "set_flag":
+		_status.text = "Передачу назначайте через разговор NPC в карточке цели; её выполняет цепочка действий."
 		return
 	var document := _current_dialogue_document()
 	var center := _graph.scroll_offset + _graph.size / maxf(_graph.zoom * 2.0, 0.01)
@@ -2141,6 +2188,8 @@ func _update_dialogue_draft_status() -> void:
 func _update_quest_draft_status() -> void:
 	if _current_kind != "quest":
 		return
+	_capture_quest_conversation_inputs()
+	var pending_conversation := not _quest_conversation_drafts.is_empty()
 	var errors := QuestStore.validation_errors(_quest_draft)
 	var objective_count: int = _quest_draft.get("objectives", []).size()
 	var dependency_count := QuestStore.dependency_edges(_quest_draft).size()
@@ -2149,7 +2198,7 @@ func _update_quest_draft_status() -> void:
 		objective_count,
 		dependency_count,
 		" · НОВЫЙ" if _quest_is_new else " · ЧЕРНОВИК" if _quest_cursor > 0 or not _quest_inline_before.is_empty() else "",
-		" · ⚠ %s" % errors[0] if not errors.is_empty() else " · готово к сохранению",
+		" · ⚠ %s" % errors[0] if not errors.is_empty() else " · есть неназначенные настройки" if pending_conversation else " · готово к сохранению",
 	]
 	_status.modulate = Color(1.0, 0.48, 0.42) if not errors.is_empty() else Color(0.72, 0.84, 0.48)
 	if _diagnostic_focus_button != null:
@@ -2196,6 +2245,10 @@ func _save_dialogue_graph() -> void:
 
 
 func _save_quest_graph() -> void:
+	_capture_quest_conversation_inputs()
+	if not _quest_conversation_drafts.is_empty():
+		_status.text = "Сначала назначьте настройки разговора NPC или сбросьте их черновик."
+		return
 	var document := _current_quest_document()
 	var errors := QuestStore.validation_errors(document)
 	if not errors.is_empty():
@@ -2258,6 +2311,7 @@ func _refresh_resource_list(preferred: String = "") -> void:
 
 
 func _open_selected() -> void:
+	_capture_quest_conversation_inputs()
 	_capture_view_state()
 	if _game_systems_workspace != null:
 		_game_systems_workspace.visible = _current_kind == "systems"
@@ -2419,6 +2473,8 @@ func _open_selected() -> void:
 
 
 func _render_document(document: Dictionary) -> void:
+	_capture_quest_conversation_inputs()
+	_quest_conversation_form = {}
 	_clear_graph()
 	if document.is_empty():
 		if _diagnostic_focus_button != null:
@@ -2458,6 +2514,8 @@ func _render_document(document: Dictionary) -> void:
 			_graph_nodes().size(),
 		]
 	_restore_view_state()
+	if _current_kind == "quest" and not _quest_conversation_drafts.is_empty():
+		_status.text += " · есть неназначенные настройки"
 	_graph.queue_redraw()
 
 
@@ -2487,7 +2545,7 @@ func _render_quest(document: Dictionary) -> void:
 	var root_visible := not focused_mode or _quest_focus_target == "quest_root"
 	var root_node := GraphNode.new()
 	root_node.name = "quest_root"
-	root_node.title = "Задание · %s" % str(document.get("id", ""))
+	root_node.title = str(document.get("titleRu", "Задание"))
 	var root_layout: Dictionary = layout.get("quest_root", {})
 	root_node.position_offset = Vector2(
 		float(root_layout.get("x", 60.0)),
@@ -2504,14 +2562,6 @@ func _render_quest(document: Dictionary) -> void:
 	root_body.add_theme_constant_override("separation", 4)
 	root_node.add_child(root_body)
 	_add_quest_inline_line(
-		root_body, "ID", "id", str(document.get("id", "")), _quest_is_new,
-		"Имя Resource. После первого сохранения не переименовывается."
-	)
-	_add_quest_inline_line(
-		root_body, "Статус", "statusFlagId", str(document.get("statusFlagId", "")), true,
-		"Save-ключ общего состояния: active / done / true."
-	)
-	_add_quest_inline_line(
 		root_body, "Название", "titleRu", str(document.get("titleRu", "")), true,
 		"Название, которое увидит игрок в журнале."
 	)
@@ -2521,6 +2571,15 @@ func _render_quest(document: Dictionary) -> void:
 		"Показывать до принятия",
 		"showWhenAvailable",
 		bool(document.get("showWhenAvailable", false)),
+	)
+	var root_advanced := _quest_advanced_fields(root_body, "QuestAdvanced", root_node)
+	_add_quest_inline_line(
+		root_advanced, "ID", "id", str(document.get("id", "")), _quest_is_new,
+		"Создаётся автоматически. После первого сохранения не переименовывается."
+	)
+	_add_quest_inline_line(
+		root_advanced, "Статус", "statusFlagId", str(document.get("statusFlagId", "")), true,
+		"Ключ сохранения. Обычно менять не требуется."
 	)
 	_add_quest_binding_controls(root_body, [
 		{
@@ -2574,12 +2633,12 @@ func _render_quest(document: Dictionary) -> void:
 			continue
 		var node := GraphNode.new()
 		node.name = "quest_objective_%d" % index
-		node.title = "Цель %d · %s" % [index + 1, objective_id]
+		node.title = "Цель %d" % (index + 1)
 		var layout_key := "objective:%s" % objective_id
 		var objective_layout: Dictionary = layout.get(layout_key, {})
 		node.position_offset = Vector2(
 			float(objective_layout.get("x", 520.0)),
-			float(objective_layout.get("y", 60.0 + index * 245.0)),
+			float(objective_layout.get("y", 60.0 + index * 440.0)),
 		)
 		node.custom_minimum_size = Vector2(350.0, 215.0)
 		node.resizable = false
@@ -2592,19 +2651,55 @@ func _render_quest(document: Dictionary) -> void:
 		body.custom_minimum_size.x = 315.0
 		body.add_theme_constant_override("separation", 4)
 		node.add_child(body)
-		_add_quest_objective_line(body, index, "Внутренний ID", "id", objective_id)
 		_add_quest_objective_line(
 			body, index, "Текст", "textRu", str(objective.get("textRu", ""))
-		)
-		_add_quest_objective_line(
-			body, index, "Прогресс цели (save key)", "flagId", str(objective.get("flagId", ""))
 		)
 		_add_quest_objective_progress(body, index, objective)
 		_add_quest_objective_toggle(
 			body, index, "Необязательная", bool(objective.get("optional", false))
 		)
-		var counter_mode := str(objective.get("progressMode", "flag")) == "counter"
+		var advanced := _quest_advanced_fields(body, "QuestObjectiveAdvanced_%d" % index, node)
+		_add_quest_objective_line(advanced, index, "Внутренний ID", "id", objective_id)
+		_add_quest_objective_line(
+			advanced, index, "Ключ сохранения", "flagId", str(objective.get("flagId", ""))
+		)
+		var next_goal := Button.new()
+		next_goal.name = "QuestNextObjective_%d" % index
+		next_goal.text = "+ Следующая цель"
+		next_goal.tooltip_text = "Новая цель откроется после выполнения этой. Связь создаётся автоматически; ↶ отменяет весь шаг."
+		next_goal.pressed.connect(_add_quest_objective.bind(objective_id))
+		body.add_child(next_goal)
+		var counter_mode := str(objective.get("progressMode", "flag")) in ["counter", "purchase"]
 		if not counter_mode:
+			var reach := Button.new()
+			reach.name = "CreateQuestReachZone_%d" % index
+			var reach_zone := EmberObjectInspectorModel.quest_reach_zone(_scene_root(), str(objective.get("flagId", "")))
+			reach.text = "+ Место, до которого нужно дойти" if reach_zone == null else "Выбрать место на карте →"
+			reach.disabled = _scene_root() == null
+			reach.tooltip_text = "Вход игрока засчитывает цель после предыдущих этапов. Ранний визит не запоминается: потом войдите снова. Размер и место зоны меняются на карте."
+			reach.pressed.connect(func() -> void:
+				if is_instance_valid(reach_zone):
+					_request_scene_node(_scene_root().get_path_to(reach_zone))
+				else:
+					quest_reach_zone_requested.emit(_selected_scene_path, objective_id, _current_quest_document())
+			)
+			reach.visible = str(objective.get("progressMode", "")) != "handover"
+			body.add_child(reach)
+			var placement := Button.new()
+			placement.name = "CreateQuestObjectPlacement_%d" % index
+			var zone := EmberObjectInspectorModel.quest_object_zone(_scene_root(), str(document.get("id", "")), objective_id)
+			placement.text = "+ Ящик и отмеченная зона" if zone == null else "Выбрать зону на карте →"
+			placement.disabled = _scene_root() == null
+			placement.tooltip_text = "Один переносной ящик: F взять / F поставить. Цель засчитается, когда ящик целиком окажется в зоне и остановится."
+			placement.pressed.connect(func() -> void:
+				if is_instance_valid(zone):
+					_request_scene_node(_scene_root().get_path_to(zone))
+				else:
+					quest_object_placement_requested.emit(_selected_scene_path, objective_id, _current_quest_document())
+			)
+			placement.visible = str(objective.get("progressMode", "")) != "handover"
+			body.add_child(placement)
+			_add_quest_conversation_controls(body, index, objective_id, document)
 			_add_quest_binding_controls(body, [{
 			"name": "BindQuestObjective_%d_ToSelection" % index,
 			"text": "□ Выполнение → объект",
@@ -2623,10 +2718,13 @@ func _render_quest(document: Dictionary) -> void:
 		var dependency_ports := HBoxContainer.new()
 		dependency_ports.name = "QuestDependencyPorts_%d" % index
 		var dependency_hint := Label.new()
+		var previous_titles: PackedStringArray = []
+		for prerequisite in objective.get("requiresObjectiveIds", []):
+			for previous_index in objectives.size():
+				if str(objectives[previous_index].get("id", "")) == str(prerequisite):
+					previous_titles.append("цели %d" % (previous_index + 1))
 		dependency_hint.text = "После: %s" % (
-			", ".join(objective.get("requiresObjectiveIds", []))
-			if not (objective.get("requiresObjectiveIds", []) as Array).is_empty()
-			else "без условий"
+			", ".join(previous_titles) if not previous_titles.is_empty() else "начала задания"
 		)
 		dependency_hint.tooltip_text = "Синий вход — предыдущие цели. Синий выход — следующая цель."
 		dependency_hint.modulate = Color(0.54, 0.76, 0.96)
@@ -2650,7 +2748,7 @@ func _render_quest(document: Dictionary) -> void:
 			node.set_slot(0, true, 0, color, false, 0, color)
 		node.set_slot(1, true, 1, dependency_color, true, 1, dependency_color)
 		if focused_mode:
-			node.position_offset = Vector2(520.0, 220.0)
+			node.position_offset = Vector2(520.0, 60.0)
 		_graph.add_child(node)
 		objective_nodes[objective_id] = node.name
 		if root_visible and all_links_mode:
@@ -3015,6 +3113,425 @@ func _request_scene_node(node_path: NodePath) -> void:
 	scene_node_requested.emit(node_path)
 
 
+func _selected_quest_giver() -> EmberInteract:
+	var scene := _scene_root()
+	if scene == null or _selected_scene_path.is_empty():
+		return null
+	var target := scene.get_node_or_null(_selected_scene_path)
+	if target == null:
+		return null
+	return EmberObjectInspectorModel.quest_conversation_target(target)
+
+
+func _capture_quest_conversation_inputs() -> void:
+	if _quest_conversation_form.is_empty() or not is_instance_valid(_quest_conversation_form.get("node")):
+		return
+	var values: Dictionary = (_quest_conversation_form.read as Callable).call()
+	for part in ["stage", "completed"]:
+		var key := str(_quest_conversation_form[part])
+		if values[part] != (_quest_conversation_form.base as Dictionary)[part]:
+			_quest_conversation_drafts[key] = values[part].duplicate(true)
+		else:
+			_quest_conversation_drafts.erase(key)
+
+
+func _add_quest_conversation_controls(parent: Container, index: int, objective_id: String, document: Dictionary) -> void:
+	if _quest_focus_target != objective_id:
+		var open := Button.new()
+		open.text = "Разговор / напоминание / награда →"
+		open.pressed.connect(_set_quest_focus.bind(objective_id))
+		parent.add_child(open)
+		return
+	var box := VBoxContainer.new()
+	var stage_key := "%s:%s" % [document.get("id", ""), objective_id]
+	var completed_key := "%s:__completed__" % document.get("id", "")
+	box.name = "QuestConversation_%d" % index
+	parent.add_child(box)
+	var heading := Label.new()
+	heading.text = "Поговорить с NPC · диалог"
+	heading.add_theme_font_size_override("font_size", 12)
+	box.add_child(heading)
+	var picker := OptionButton.new()
+	picker.name = "QuestConversationDialogue_%d" % index
+	picker.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	picker.clip_text = true
+	var giver := _selected_quest_giver()
+	var existing_dialogue := ""
+	var existing_costs: Dictionary = {}
+	var existing_rewards: Dictionary = {}
+	var existing_reminder := false
+	var existing_any_completion := false
+	var goal: Dictionary = document.objectives[index]
+	var goal_handover := str(goal.get("progressMode", "")) == "handover"
+	var goal_flag := str(goal.get("flagId", ""))
+	if giver != null:
+		var routes: Dictionary = giver.get("objective_scripts")
+		var chain := ActionStore.document(str(routes.get(objective_id, "")))
+		existing_reminder = chain.get("steps", []).size() == 1 and str(chain.steps[0].get("type", "")) == "talk"
+		for step in chain.get("steps", []):
+			if str(step.get("type", "")) == "talk":
+				existing_dialogue = str(step.get("dialogueId", ""))
+			if str(step.get("type", "")) in ["exchange_items", "handover_quest_items"]:
+				existing_costs = step.get("costs", {}).duplicate()
+				existing_rewards = step.get("rewards", {}).duplicate()
+			if str(step.get("type", "")) == "set_flag" and str(step.get("flag", "")) == goal_flag:
+				existing_any_completion = true
+	for dialogue_id in EmberInteractionContent.dialogue_ids():
+		var dialogue := DialogueStore.document(dialogue_id)
+		picker.add_item(str(dialogue.get("nameRu", dialogue_id)))
+		picker.set_item_metadata(picker.item_count - 1, dialogue_id)
+		if dialogue_id == existing_dialogue:
+			picker.select(picker.item_count - 1)
+	picker.tooltip_text = "Диалог для этой цели. Выполнение засчитывается после окончания разговора."
+	box.add_child(picker)
+	var edit := Button.new()
+	edit.name = "OpenQuestConversationDialogue_%d" % index
+	edit.text = "Открыть диалог →"
+	edit.disabled = picker.item_count == 0
+	edit.pressed.connect(func() -> void:
+		_request_navigation("dialogue", str(picker.get_selected_metadata()), false)
+	)
+	box.add_child(edit)
+	var own_text := CheckBox.new()
+	own_text.name = "QuestConversationOwnText_%d" % index
+	own_text.text = "Своя короткая реплика"
+	var initial_text := DialogueGraphModel.short_reply_text(DialogueStore.document(existing_dialogue))
+	own_text.button_pressed = picker.item_count == 0 or (existing_dialogue.begins_with(str(document.get("id", "")) + "_") and "_line" in existing_dialogue and not initial_text.is_empty())
+	box.add_child(own_text)
+	var reply := TextEdit.new()
+	reply.name = "QuestConversationText_%d" % index
+	reply.placeholder_text = "Что скажет NPC?"
+	reply.text = initial_text
+	reply.custom_minimum_size.y = 76
+	reply.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+	reply.visible = own_text.button_pressed
+	box.add_child(reply)
+	var update_reply := func(_enabled: bool = false) -> void:
+		reply.visible = own_text.button_pressed
+		picker.disabled = own_text.button_pressed
+		edit.disabled = own_text.button_pressed or picker.item_count == 0
+		(parent.get_parent() as GraphNode).reset_size.call_deferred()
+	own_text.toggled.connect(update_reply)
+	update_reply.call()
+	var mode := OptionButton.new()
+	mode.name = "QuestConversationMode_%d" % index
+	mode.add_item("Разговор выполняет цель")
+	mode.add_item("Только напомнить · цель не меняется")
+	mode.clip_text = true
+	mode.tooltip_text = "Напоминание доступно, пока выполняется эта цель, например перенос ящика или путь к месту. Ничего не выдаёт и не засчитывает."
+	box.add_child(mode)
+	var handover := CheckBox.new()
+	handover.name = "QuestHandoverEnabled_%d" % index
+	handover.text = "Передать предметы после разговора"
+	handover.button_pressed = not existing_costs.is_empty()
+	handover.tooltip_text = "Предметы расходуются только при успешной передаче; нехватка не выполняет цель. Уже собранные предметы подходят."
+	box.add_child(handover)
+	var cost_row := HBoxContainer.new()
+	cost_row.visible = handover.button_pressed
+	box.add_child(cost_row)
+	var item := OptionButton.new()
+	item.name = "QuestHandoverItem_%d" % index
+	item.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	item.clip_text = true
+	for item_id in EmberInteractionContent.item_ids():
+		var definition := EmberItemCatalog.definition(item_id)
+		item.add_item(str(definition.get("nameRu", item_id)))
+		item.set_item_metadata(item.item_count - 1, item_id)
+		if existing_costs.has(item_id):
+			item.select(item.item_count - 1)
+	cost_row.add_child(item)
+	var count := SpinBox.new()
+	count.name = "QuestHandoverCount_%d" % index
+	count.min_value = 1
+	count.max_value = 999
+	count.step = 1
+	count.value = int(existing_costs.values()[0]) if existing_costs.size() == 1 else 3
+	count.custom_minimum_size.x = 80
+	cost_row.add_child(count)
+	handover.disabled = item.item_count == 0 or existing_costs.size() > 1
+	if existing_costs.size() > 1:
+		cost_row.visible = false
+		var multi_hint := Label.new()
+		multi_hint.text = "Несколько предметов: настройте список в цепочке действий."
+		multi_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		box.add_child(multi_hint)
+	handover.toggled.connect(func(enabled: bool) -> void: cost_row.visible = enabled)
+	var requested_costs := func() -> Dictionary:
+		if goal_handover:
+			return {} # Item/count belong to the goal, not a copied Action payload.
+		if existing_costs.size() > 1:
+			return existing_costs.duplicate()
+		return {str(item.get_selected_metadata()): int(count.value)} if handover.button_pressed and item.item_count > 0 else {}
+	var reward_enabled := CheckBox.new()
+	reward_enabled.name = "QuestRewardEnabled_%d" % index
+	reward_enabled.text = "Выдать награду после разговора"
+	reward_enabled.button_pressed = not existing_rewards.is_empty()
+	reward_enabled.tooltip_text = "Выдача и выполнение цели идут вместе. Отмена разговора ничего не выдаёт; завершённая цель больше не выдаёт награду."
+	box.add_child(reward_enabled)
+	var reward_items := ItemCounts.new()
+	reward_items.name = "QuestRewardItems_%d" % index
+	reward_items.setup(existing_rewards, "Награда")
+	reward_items.visible = reward_enabled.button_pressed
+	box.add_child(reward_items)
+	reward_enabled.toggled.connect(func(enabled: bool) -> void:
+		reward_items.visible = enabled
+		(parent.get_parent() as GraphNode).reset_size.call_deferred()
+	)
+	var requested_options := func() -> Dictionary:
+		var options := {"reminder": mode.selected == 1, "rewards": reward_items.value() if reward_enabled.button_pressed else {}}
+		if own_text.button_pressed:
+			options["text"] = reply.text
+		return options
+	var configuration_error := func() -> String:
+		if own_text.button_pressed and reply.text.strip_edges().is_empty():
+			return "Введите короткую реплику NPC."
+		var rewards: Dictionary = reward_items.value() if reward_enabled.button_pressed else {}
+		if reward_enabled.button_pressed and (rewards.is_empty() or rewards.has("")):
+			return "Награда не назначена · добавьте предмет и укажите его количество."
+		return ""
+	var outcome := OptionButton.new()
+	outcome.name = "QuestConversationOutcome_%d" % index
+	outcome.clip_text = true
+	outcome.tooltip_text = "Засчитать только выбранный ответ после окончания разговора. Для передачи предметов используйте отдельный этап. Исходный диалог сохраняется; создаётся отдельная версия."
+	box.add_child(outcome)
+	var update_outcomes := func(_selected: int = -1) -> void:
+		outcome.clear()
+		outcome.add_item("Засчитать: после любого завершения")
+		outcome.set_item_metadata(0, {})
+		var source := DialogueStore.document(str(picker.get_selected_metadata())) if picker.item_count > 0 and not own_text.button_pressed and not goal_handover else {}
+		for choice in DialogueGraphModel.quest_choice_options(source, goal_flag):
+			outcome.add_item("Ответ: %s" % str(choice.label))
+			outcome.set_item_metadata(outcome.item_count - 1, {"stepId": choice.stepId, "optionIndex": choice.optionIndex})
+			if choice.selected and not existing_any_completion:
+				outcome.select(outcome.item_count - 1)
+		if mode.selected == 1:
+			outcome.select(0)
+		if outcome.selected > 0:
+			handover.button_pressed = false
+			reward_enabled.button_pressed = false
+		handover.disabled = outcome.selected > 0 or item.item_count == 0 or existing_costs.size() > 1
+		reward_enabled.disabled = outcome.selected > 0
+	update_outcomes.call()
+	mode.select(1 if existing_reminder and outcome.selected == 0 else 0)
+	var update_mode := func(_selected: int = -1) -> void:
+		var reminding := mode.selected == 1
+		if reminding:
+			handover.button_pressed = false
+			reward_enabled.button_pressed = false
+			outcome.select(0)
+		update_outcomes.call()
+		handover.visible = not reminding and not goal_handover
+		cost_row.visible = handover.button_pressed and not goal_handover
+		reward_enabled.visible = not reminding
+		outcome.visible = not reminding and not goal_handover
+		(parent.get_parent() as GraphNode).reset_size.call_deferred()
+	mode.item_selected.connect(update_mode)
+	update_mode.call()
+	picker.item_selected.connect(update_outcomes)
+	own_text.toggled.connect(func(_enabled: bool) -> void: update_outcomes.call())
+	outcome.item_selected.connect(func(selected: int) -> void:
+		if selected > 0:
+			handover.button_pressed = false
+			reward_enabled.button_pressed = false
+		handover.disabled = selected > 0 or item.item_count == 0 or existing_costs.size() > 1
+		reward_enabled.disabled = selected > 0
+	)
+	var bind := Button.new()
+	bind.name = "BindQuestConversation_%d" % index
+	var update_bind_title := func(_selected: Variant = null) -> void:
+		bind.text = "Назначить напоминание NPC" if mode.selected == 1 else ("Назначить награду NPC" if reward_enabled.button_pressed else ("Назначить передачу NPC" if handover.button_pressed or goal_handover else "Разговор с выбранным NPC"))
+	update_bind_title.call()
+	mode.item_selected.connect(update_bind_title)
+	reward_enabled.toggled.connect(update_bind_title)
+	handover.toggled.connect(func(enabled: bool) -> void:
+		update_bind_title.call(enabled)
+	)
+	bind.disabled = giver == null or (picker.item_count == 0 and not own_text.button_pressed) or (
+		not giver.quest_id.is_empty() and giver.quest_id != str(document.get("id", ""))
+	)
+	bind.tooltip_text = "Выберите квестового собеседника (как хранитель на берегу). Назначает выбранный диалог этой стадии; прежняя цепочка сохраняется отдельно. Ctrl+Z отменяет."
+	bind.pressed.connect(func() -> void:
+		var current := _current_quest_document()
+		var errors := QuestStore.validation_errors(current)
+		if not configuration_error.call().is_empty():
+			_status.text = configuration_error.call()
+			return
+		if not errors.is_empty():
+			_status.text = "Разговор не назначен · %s" % errors[0]
+			return
+		_capture_quest_conversation_inputs()
+		_quest_conversation_submission = stage_key
+		quest_conversation_bind_requested.emit(
+			_selected_scene_path, QuestStore.event_token(str(current.id), "objective", objective_id),
+			str(picker.get_selected_metadata()) if picker.item_count > 0 else "", current, requested_costs.call(), outcome.get_selected_metadata(), requested_options.call(),
+		)
+	)
+	box.add_child(bind)
+	var hint := Label.new()
+	hint.text = (
+		"NPC: %s · разговор доступен на этом этапе" % _selected_scene_label
+		if not bind.disabled else "Выберите квестового NPC этого задания в сцене"
+	)
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.add_theme_font_size_override("font_size", 12)
+	box.add_child(hint)
+	var creator_toggle := Button.new()
+	creator_toggle.text = "Новый собеседник · временный облик"
+	creator_toggle.toggle_mode = true
+	creator_toggle.button_pressed = giver == null
+	box.add_child(creator_toggle)
+	var creator_fields := VBoxContainer.new()
+	creator_fields.visible = creator_toggle.button_pressed
+	box.add_child(creator_fields)
+	creator_toggle.toggled.connect(func(expanded: bool) -> void:
+		creator_fields.visible = expanded
+		(parent.get_parent() as GraphNode).reset_size.call_deferred()
+	)
+	var npc_name := LineEdit.new()
+	npc_name.name = "QuestConversationName_%d" % index
+	npc_name.placeholder_text = "Имя нового собеседника"
+	npc_name.text = "Новый собеседник"
+	creator_fields.add_child(npc_name)
+	var create := Button.new()
+	create.name = "CreateQuestConversation_%d" % index
+	create.text = "+ Создать собеседника на карте"
+	create.disabled = (picker.item_count == 0 and not own_text.button_pressed) or _scene_root() == null
+	create.tooltip_text = "Временный облик хранителя. Появится рядом с выбранным объектом или стартом игрока; получит выбранный диалог этой цели. Одно Ctrl+Z отменяет создание и привязку."
+	create.pressed.connect(func() -> void:
+		var current := _current_quest_document()
+		var errors := QuestStore.validation_errors(current)
+		if not configuration_error.call().is_empty():
+			_status.text = configuration_error.call()
+			return
+		if not errors.is_empty() or npc_name.text.strip_edges().is_empty():
+			_status.text = "Укажите имя собеседника и исправьте ошибки задания."
+			return
+		_capture_quest_conversation_inputs()
+		_quest_conversation_submission = stage_key
+		quest_conversation_create_requested.emit(
+			_selected_scene_path, npc_name.text.strip_edges(),
+			QuestStore.event_token(str(current.id), "objective", objective_id),
+			str(picker.get_selected_metadata()) if picker.item_count > 0 else "", current, requested_costs.call(), outcome.get_selected_metadata(), requested_options.call(),
+		)
+	)
+	creator_fields.add_child(create)
+	own_text.toggled.connect(func(_enabled: bool) -> void:
+		bind.disabled = giver == null or (picker.item_count == 0 and not own_text.button_pressed) or (not giver.quest_id.is_empty() and giver.quest_id != str(document.get("id", "")))
+		create.disabled = _scene_root() == null or (picker.item_count == 0 and not own_text.button_pressed)
+	)
+	var completed_toggle := Button.new()
+	completed_toggle.name = "QuestCompletedConversationToggle_%d" % index
+	completed_toggle.text = "Разговор после завершения задания →"
+	completed_toggle.toggle_mode = true
+	box.add_child(completed_toggle)
+	var completed_box := VBoxContainer.new()
+	completed_box.visible = false
+	box.add_child(completed_box)
+	completed_toggle.toggled.connect(func(expanded: bool) -> void:
+		completed_box.visible = expanded
+		(parent.get_parent() as GraphNode).reset_size.call_deferred()
+	)
+	var completed_reply := TextEdit.new()
+	completed_reply.name = "QuestCompletedConversationText_%d" % index
+	completed_reply.placeholder_text = "Что NPC скажет после выполнения всего задания?"
+	completed_reply.custom_minimum_size.y = 76
+	completed_reply.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+	var completed_source := ""
+	if giver != null:
+		var completed_chain := ActionStore.document(str(giver.get("completed_script_id")))
+		for step in completed_chain.get("steps", []):
+			if str(step.get("type", "")) == "talk":
+				completed_source = str(step.get("dialogueId", ""))
+				break
+	completed_reply.text = DialogueGraphModel.short_reply_text(DialogueStore.document(completed_source))
+	completed_box.add_child(completed_reply)
+	var completed_hint := Label.new()
+	completed_hint.text = "Отдельная реплика этого NPC после всего квеста. Награды и стадии не повторяются."
+	if not completed_source.is_empty() and completed_reply.text.is_empty():
+		completed_hint.text += " Уже назначен сложный диалог: новый текст заменит его только после назначения."
+	completed_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	completed_hint.add_theme_font_size_override("font_size", 12)
+	completed_box.add_child(completed_hint)
+	var completed_bind := Button.new()
+	completed_bind.name = "BindQuestCompletedConversation_%d" % index
+	completed_bind.text = "Назначить финальную реплику NPC"
+	completed_bind.disabled = giver == null or (not giver.quest_id.is_empty() and giver.quest_id != str(document.get("id", "")))
+	completed_bind.pressed.connect(func() -> void:
+		var current := _current_quest_document()
+		if completed_reply.text.strip_edges().is_empty():
+			_status.text = "Введите реплику после задания."
+			return
+		_capture_quest_conversation_inputs()
+		_quest_conversation_submission = completed_key
+		quest_conversation_bind_requested.emit(_selected_scene_path, QuestStore.event_token(str(current.id), "objective", objective_id), completed_source, current, {}, {}, {"after_completion": true, "text": completed_reply.text})
+	)
+	completed_box.add_child(completed_bind)
+	var read_inputs := func() -> Dictionary:
+		return {
+			"stage": {"dialogue": str(picker.get_selected_metadata()) if picker.item_count > 0 else "", "own": own_text.button_pressed, "text": reply.text,
+				"mode": mode.selected, "handover": handover.button_pressed, "item": str(item.get_selected_metadata()) if item.item_count > 0 else "", "count": int(count.value),
+				"reward": reward_enabled.button_pressed, "rewards": reward_items.value(), "outcome": outcome.get_selected_metadata(), "name": npc_name.text, "creator": creator_toggle.button_pressed},
+			"completed": {"text": completed_reply.text},
+		}
+	var baseline: Dictionary = read_inputs.call().duplicate(true)
+	_quest_conversation_form = {"node": box, "read": read_inputs, "base": baseline, "stage": stage_key, "completed": completed_key}
+	var stage_draft: Dictionary = _quest_conversation_drafts.get(stage_key, {}).duplicate(true)
+	if not stage_draft.is_empty():
+		for option_index in picker.item_count:
+			if str(picker.get_item_metadata(option_index)) == str(stage_draft.dialogue):
+				picker.select(option_index)
+		own_text.button_pressed = bool(stage_draft.own)
+		reply.text = str(stage_draft.text)
+		mode.select(int(stage_draft.mode))
+		update_mode.call()
+		handover.button_pressed = bool(stage_draft.handover)
+		for option_index in item.item_count:
+			if str(item.get_item_metadata(option_index)) == str(stage_draft.item):
+				item.select(option_index)
+		count.value = int(stage_draft.count)
+		reward_items.set_value(stage_draft.rewards)
+		reward_enabled.button_pressed = bool(stage_draft.reward)
+		for option_index in outcome.item_count:
+			if outcome.get_item_metadata(option_index) == stage_draft.outcome:
+				outcome.select(option_index)
+		npc_name.text = str(stage_draft.name)
+		creator_toggle.button_pressed = bool(stage_draft.creator)
+		update_bind_title.call()
+	if _quest_conversation_drafts.has(completed_key):
+		completed_reply.text = str(_quest_conversation_drafts[completed_key].text)
+	var pending_hint := Label.new()
+	pending_hint.name = "QuestConversationPending_%d" % index
+	pending_hint.text = "Не назначено · настройки сохранятся кнопкой «Назначить» для выбранного NPC."
+	pending_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	pending_hint.add_theme_font_size_override("font_size", 12)
+	box.add_child(pending_hint)
+	var update_pending := func(_unused: Variant = null) -> void:
+		_capture_quest_conversation_inputs()
+		pending_hint.visible = _quest_conversation_drafts.has(stage_key) or _quest_conversation_drafts.has(completed_key)
+		if pending_hint.visible:
+			_status.text = "Не назначено · выберите NPC и назначьте разговор или сбросьте черновик."
+	for control in [own_text, handover, reward_enabled]:
+		control.toggled.connect(update_pending)
+	for control in [picker, mode, item, outcome]:
+		control.item_selected.connect(update_pending)
+	reply.text_changed.connect(update_pending)
+	completed_reply.text_changed.connect(update_pending)
+	npc_name.text_changed.connect(update_pending)
+	count.value_changed.connect(update_pending)
+	update_pending.call()
+	var reset_inputs := Button.new()
+	reset_inputs.name = "DiscardQuestConversation_%d" % index
+	reset_inputs.text = "Сбросить неназначенные настройки"
+	reset_inputs.pressed.connect(func() -> void:
+		_quest_conversation_drafts.erase(stage_key)
+		_quest_conversation_drafts.erase(completed_key)
+		_quest_conversation_form = {}
+		_quest_conversation_submission = ""
+		_render_document(_quest_draft)
+	)
+	box.add_child(reset_inputs)
+
+
 func _add_quest_binding_controls(parent: Container, choices: Array) -> void:
 	var selection := Label.new()
 	selection.name = "QuestSceneSelection"
@@ -3046,7 +3563,7 @@ func _add_quest_binding_controls(parent: Container, choices: Array) -> void:
 		var button := Button.new()
 		button.name = str(choice.get("name", "BindQuestEventToSelection"))
 		button.text = str(choice.get("text", "Привязать событие"))
-		button.disabled = _selected_scene_path.is_empty()
+		button.disabled = _selected_scene_path.is_empty() or _selected_quest_giver() != null
 		button.tooltip_text = (
 			"Добавит обычный set_flag в цепочку выбранного объекта. "
 			+ "Resource и scene binding входят в одно Undo/Redo."
@@ -3066,6 +3583,10 @@ func _request_quest_event_binding_for(
 	event_token: String,
 ) -> void:
 	if scene_path.is_empty() or event_token.is_empty():
+		return
+	var scene := _scene_root()
+	if scene != null and EmberObjectInspectorModel.quest_conversation_target(scene.get_node_or_null(scene_path)) != null:
+		_status.text = "Для этого NPC выберите диалог в карточке цели и нажмите «Разговор с выбранным NPC»."
 		return
 	var document := _current_quest_document()
 	var errors := QuestStore.validation_errors(document)
@@ -3093,6 +3614,25 @@ func _request_orphaned_quest_event_removal(event_entry: Dictionary) -> void:
 	if str(event_entry.get("documentKind", "")) != "action":
 		return
 	quest_event_remove_requested.emit(event_entry.duplicate(true))
+
+
+func _quest_advanced_fields(parent: Container, control_name: String, card: GraphNode = null) -> VBoxContainer:
+	var toggle := Button.new()
+	toggle.name = control_name + "Toggle"
+	toggle.text = "Дополнительно · служебные ключи"
+	toggle.toggle_mode = true
+	toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	parent.add_child(toggle)
+	var fields := VBoxContainer.new()
+	fields.name = control_name
+	fields.visible = false
+	parent.add_child(fields)
+	toggle.toggled.connect(func(expanded: bool) -> void:
+		fields.visible = expanded
+		if is_instance_valid(card):
+			card.reset_size.call_deferred()
+	)
+	return fields
 
 
 func _add_quest_inline_line(
@@ -3214,7 +3754,11 @@ func _add_quest_objective_progress(
 	mode.set_item_metadata(0, "flag")
 	mode.add_item("Боевой счётчик")
 	mode.set_item_metadata(1, "counter")
-	mode.select(1 if str(objective.get("progressMode", "flag")) == "counter" else 0)
+	mode.add_item("Купить")
+	mode.set_item_metadata(2, "purchase")
+	mode.add_item("Собрать и передать")
+	mode.set_item_metadata(3, "handover")
+	mode.select(["flag", "counter", "purchase", "handover"].find(str(objective.get("progressMode", "flag"))))
 	mode.tooltip_text = "Боевой счётчик обновляет итог встречи; объект и set_flag для него не нужны."
 	parent.add_child(mode)
 	var counter := OptionButton.new()
@@ -3239,10 +3783,23 @@ func _add_quest_objective_progress(
 	required.value = maxi(1, int(objective.get("requiredCount", 1)))
 	required.prefix = "Нужно: "
 	parent.add_child(required)
+	var purchase := preload("res://addons/ember_import/ember_quest_purchase_fields.gd").add(parent, objective, func(shop_id: String, item_id: String) -> void:
+		_begin_quest_inline_edit()
+		_set_quest_objective_field(shop_id, index, "purchaseShopId")
+		_set_quest_objective_field(item_id, index, "purchaseItemId")
+		_commit_quest_inline_edit()
+	)
+	var handover := preload("res://addons/ember_import/ember_quest_handover_fields.gd").add(parent, objective, func(item_id: String) -> void:
+		_begin_quest_inline_edit()
+		_set_quest_objective_field(item_id, index, "handoverItemId")
+		_commit_quest_inline_edit()
+	)
 	var update_visibility := func() -> void:
 		var enabled := str(mode.get_selected_metadata()) == "counter"
 		counter.visible = enabled
-		required.visible = enabled
+		purchase.visible = str(mode.get_selected_metadata()) == "purchase"
+		handover.visible = str(mode.get_selected_metadata()) == "handover"
+		required.visible = enabled or purchase.visible or handover.visible
 	mode.item_selected.connect(func(_selected: int) -> void:
 		_begin_quest_inline_edit()
 		_set_quest_objective_field(str(mode.get_selected_metadata()), index, "progressMode")
@@ -3722,6 +4279,9 @@ func _open_inline_quest_event_library(step_id: String) -> void:
 
 func _apply_inline_quest_event(token: String, step_id: String) -> void:
 	var preset := QuestStore.action_for_event(token)
+	if str(preset.get("type", "")) != "set_flag":
+		_status.text = "Передачу назначайте через разговор NPC в карточке цели."
+		return
 	if preset.is_empty():
 		return
 	var changed := DialogueGraphModel.set_step_field(
@@ -4680,7 +5240,7 @@ func _build_property_editor() -> void:
 	selection_row.add_child(show_all)
 	var note := Label.new()
 	note.text = (
-		"Поля внутри quest-нод — основной редактор. Золотая линия означает принадлежность; синяя A → B — B откроется после A. Фиолетовые события и зелёные объекты открытой сцены вычисляются и редактируются только через их кнопки перехода."
+		"Редактируйте карточки слева. «Следующая цель» создаёт порядок прохождения. Выберите объект в сцене и привяжите к нему начало или выполнение цели."
 		if _current_kind == "quest"
 		else "Поля внутри dialogue-нод — основной редактор. Правая карточка служит обзором. Shift+клик выбирает несколько нод для visual Group/Frame; runtime группы не видит."
 	)
@@ -4702,7 +5262,9 @@ func _build_property_editor() -> void:
 			for control in _quest_editor.find_children(control_name, "Control", true, false):
 				(control as Control).visible = false
 		_set_editor_read_only(_quest_editor)
-		_editor_holder.add_child(_quest_editor)
+		var technical := _quest_advanced_fields(_editor_holder, "QuestTechnicalOverview")
+		(_editor_holder.find_child("QuestTechnicalOverviewToggle", true, false) as Button).text = "Дополнительно · обзор всех полей"
+		technical.add_child(_quest_editor)
 	elif _current_kind == "dialogue":
 		_add_dialogue_scene_properties()
 		_action_editor = null
@@ -4726,6 +5288,7 @@ func _build_property_editor() -> void:
 		_quest_editor = null
 		_add_action_script_properties()
 		_action_editor = ActionEditor.new() as EmberActionChainEditor
+		_action_editor.presentation_scene_root = _scene_root()
 		_action_editor.setup(_current_id, ActionStore.suggested_id(_current_id), _action_draft)
 		_action_editor.save_requested.connect(_on_action_save)
 		_action_editor.dialogue_save_requested.connect(_on_dialogue_save)
@@ -4767,10 +5330,23 @@ func _add_quest_resource_properties() -> void:
 	source.modulate = Color(0.90, 0.68, 0.36) if _quest_is_new else Color(0.50, 0.82, 0.60)
 	section.add_child(source)
 	var legend := Label.new()
-	legend.text = "◆ status flag задаёт active/done · золото = принадлежность · синяя A → B = последовательность · несколько входов означают «выполнить все»."
+	legend.text = "Синяя линия A → B: сначала выполнить A, затем B. Несколько входящих линий: выполнить все предыдущие цели."
 	legend.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	legend.modulate = Color(0.62, 0.72, 0.84)
 	section.add_child(legend)
+	var start := Button.new()
+	start.text = "Начало и завершение задания →"
+	start.pressed.connect(_set_quest_focus.bind("quest_root"))
+	section.add_child(start)
+	var goals: Array = _quest_draft.get("objectives", [])
+	for index in goals.size():
+		var goal: Dictionary = goals[index]
+		var open := Button.new()
+		open.text = "%d. %s →" % [index + 1, str(goal.get("textRu", "Цель"))]
+		open.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		open.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		open.pressed.connect(_set_quest_focus.bind(str(goal.get("id", ""))))
+		section.add_child(open)
 	_editor_holder.add_child(section)
 	_editor_holder.add_child(HSeparator.new())
 
@@ -5064,9 +5640,11 @@ func _dialogue_editor_indices(document: Dictionary) -> Dictionary:
 func _action_title(step_type: String) -> String:
 	match step_type:
 		"talk": return "Диалог"
+		"handover_quest_items": return "Сдать предметы по цели"
 		"give_item": return "Предмет"
 		"set_flag": return "Флаг"
 		"wait": return "Пауза"
+		"play_cutscene": return "Сценка"
 		"open_shop": return "Магазин"
 		"change_map": return "Карта"
 		"start_battle": return "Бой"
@@ -5077,9 +5655,11 @@ func _action_title(step_type: String) -> String:
 func _action_summary(step: Dictionary) -> String:
 	match str(step.get("type", "")):
 		"talk": return "dialogue: %s" % step.get("dialogueId", "—")
+		"handover_quest_items": return "Цель: %s / %s" % [step.get("questId", "—"), step.get("objectiveId", "—")]
 		"give_item": return "%s × %s" % [step.get("itemId", "—"), step.get("count", 1)]
 		"set_flag": return "%s = %s" % [step.get("flag", "—"), step.get("value", true)]
 		"wait": return "%s сек." % step.get("sec", 0)
+		"play_cutscene": return "Сценка на карте: %s" % step.get("presentationId", "—")
 		"open_shop": return "shop: %s" % step.get("shopId", "—")
 		"change_map": return "%s → %s" % [step.get("targetMapId", "—"), step.get("targetRegionId", "start")]
 		"start_battle": return "encounter: %s" % step.get("encounterId", "—")

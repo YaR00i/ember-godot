@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_action_resource.gd" id="1_htv71"]
+
+[resource]
+script = ExtResource("1_htv71")
+action_id = "shore_read_letter"
+document = {
+"id": "shore_read_letter",
+"nameRu": "Прочитать письмо из бутылки",
+"steps": [{
+"dialogueId": "shore_letter_text",
+"type": "talk"
+}, {
+"flag": "shore_letter_read",
+"type": "set_flag",
+"value": true
+}]
+}

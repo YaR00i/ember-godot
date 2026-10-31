@@ -6,6 +6,7 @@ const Preset = preload("res://addons/ember_import/ember_voxel_stamp_preset.gd")
 const Placement = preload("res://addons/ember_import/ember_voxel_brush_placement.gd")
 const Generator = preload("res://addons/ember_import/ember_voxel_generator.gd")
 const Profiles = preload("res://scripts/ember_voxel_material_profiles.gd")
+const Solid=preload("res://scripts/ember_voxel_solid_surface.gd")
 const DIRECTORY := "res://content/editor/voxel_stamps"
 
 static func capture(source: EmberVoxelModelResource, indices: PackedInt32Array, title: String) -> Dictionary:
@@ -20,8 +21,13 @@ static func capture(source: EmberVoxelModelResource, indices: PackedInt32Array, 
 	preset.geometry.display_name = preset.display_name
 	preset.geometry.tags = PackedStringArray(["stamp"])
 	preset.geometry.voxel_groups = []
-	preset.geometry.merge_parts = PackedStringArray()
-	preset.geometry.voxel_part_ids = PackedInt32Array()
+	if preset.geometry.solid_surface.is_empty():
+		preset.geometry.merge_parts = PackedStringArray()
+		preset.geometry.voxel_part_ids = PackedInt32Array()
+	var errors:=preset.geometry.validation_errors()
+	if not errors.is_empty():return {"error":"Некорректная геометрия штампа: "+errors[0]}
+	if not preset.geometry.solid_surface.is_empty() and not Solid.active(EmberVoxelPrefab.model_of(preset.geometry.to_definition(true))):
+		return {"error":"В выделении есть объёмные ячейки без части. Назначьте им часть перед сохранением штампа."}
 	return {"preset":preset}
 
 static func save_new(preset: Resource, directory := DIRECTORY, sources := "res://content/voxel_models") -> Dictionary:
@@ -352,6 +358,18 @@ static func _stamp_offsets(
 			)
 	return offsets
 
+static func _stamp_basis(axis:int,turns:int,mirror:int,surface_normal:Vector3i)->Basis:
+	var normal:=Fragment.Model.axis_normal(surface_normal)
+	var scale:=Vector3.ONE
+	if mirror in [0,1,2]:scale[mirror]=-1
+	var rotation_axis:=1 if normal!=Vector3i.ZERO else axis
+	var rotation_vector:Vector3=[Vector3.RIGHT,Vector3.UP,Vector3.BACK][rotation_axis]
+	var basis:=Basis(rotation_vector,posmod(turns,4)*PI*0.5)*Basis.from_scale(scale)
+	if normal!=Vector3i.ZERO:
+		var tangents:=Fragment.Model.tangent_axes(normal)
+		basis=Basis(Vector3(tangents[0]),Vector3(normal),Vector3(tangents[1]))*basis
+	return basis
+
 
 static func plan_many(target: EmberVoxelModelResource, preset: Resource, placements: Array[Vector3i], axis: int, turns: int, mirror: int, anchor: int, replace: bool, part: int, region := Rect2i(), height := -1, instance_turns := PackedInt32Array(), surface_normal := Vector3i.ZERO, conform_surface := false, max_bend := 2, indent := false, clip_bounds := false) -> Dictionary:
 	var variants: Array[EmberVoxelModelResource] = []
@@ -393,12 +411,19 @@ static func _plan_many_variants(
 		return {"error":"Некорректные параметры штампа."}
 	if not target.validation_errors().is_empty() or variants.is_empty():
 		return {"error":"Некорректный voxel-источник."}
+	var solid:bool=not target.solid_surface.is_empty()
+	if not indent and solid and not Solid.active(EmberVoxelPrefab.model_of(target.to_definition(true))):
+		return {"error":"В объекте есть объёмные ячейки без части. Назначьте им часть перед нанесением штампа."}
 	if not instance_variants.is_empty() and instance_variants.size() != placements.size():
 		return {"error":"Внутренняя ошибка набора форм россыпи."}
 	var contexts: Array[Dictionary] = []
 	for stamp: EmberVoxelModelResource in variants:
 		if stamp == null or not stamp.validation_errors().is_empty():
 			return {"error":"Некорректный voxel-источник."}
+		if not indent and solid!=(not stamp.solid_surface.is_empty()):
+			return {"error":"Оформленный объёмный штамп наносится на оформленный объёмный объект. Смешанный режим пока не переносит материалы; исходник не изменён."}
+		if not indent and solid and not Solid.active(EmberVoxelPrefab.model_of(stamp.to_definition(true))):
+			return {"error":"У объёмной формы есть ячейки без части. Назначьте им часть в Canvas перед нанесением штампа."}
 		if stamp.emissive_casts_light or not stamp.emissive_lights.is_empty() or stamp.surface_fill_materials.count(0) != stamp.surface_fill_materials.size():
 			return {"error":"Штамп переносит воксели, а не водную заливку или отдельные источники света. Уберите их из модели штампа."}
 		if target.normalized_density() != stamp.normalized_density():
@@ -485,6 +510,9 @@ static func _plan_many_variants(
 		properties[channel] = values
 	properties.palette = target.palette.duplicate()
 	var surface_material := target.material.duplicate(true)
+	var surface_profile:Dictionary=target.solid_surface.duplicate(true)
+	var part_names:PackedStringArray=target.merge_parts.duplicate()
+	var part_mapping:Dictionary={}
 	var owners := target.voxel_part_ids.duplicate()
 	var locked := Fragment.Groups.locked_indices(target.voxel_groups)
 	var selected := PackedInt32Array()
@@ -495,6 +523,7 @@ static func _plan_many_variants(
 		var variant_index := int(instance_variants[placement_index]) if not instance_variants.is_empty() else 0
 		var context: Dictionary = contexts[variant_index]
 		var stamp: EmberVoxelModelResource = context.stamp
+		var active_turns:=int(instance_turns[placement_index]) if not instance_turns.is_empty() else turns
 		var indices: PackedInt32Array = context.indices
 		var offsets: Array = instance_offsets[placement_index]
 		var placement: Vector3i = placements[placement_index]
@@ -533,8 +562,9 @@ static func _plan_many_variants(
 			var color_key := "%d:%d" % [variant_index, color_index]
 			if not colors.has(color_key):
 				var mapped := -1
+				var identity:=Profiles.palette_identity(stamp.palette,stamp.material,color_index,stamp.solid_surface)
 				for candidate in range(1,properties.palette.size()):
-					if properties.palette[candidate] == stamp.palette[color_index] and Profiles.palette_role(surface_material,candidate) == Profiles.palette_role(stamp.material,color_index):
+					if Profiles.palette_identity(properties.palette,surface_material,candidate,surface_profile)==identity:
 						mapped = candidate
 						break
 				if mapped == -1:
@@ -543,6 +573,9 @@ static func _plan_many_variants(
 					mapped = properties.palette.size()
 					properties.palette.append(stamp.palette[color_index])
 					Profiles.set_palette_role(surface_material,mapped,Profiles.palette_role(stamp.material,color_index))
+					if solid:
+						var roles:PackedStringArray=surface_profile.roles;roles.append(stamp.solid_surface.roles[color_index]);surface_profile.roles=roles
+						var ids:PackedStringArray=surface_profile.material_ids;ids.append(stamp.solid_surface.material_ids[color_index]);surface_profile.material_ids=ids
 				colors[color_key] = mapped
 			properties.voxels[dest] = colors[color_key]
 			for channel in Fragment.CHANNELS:
@@ -554,7 +587,18 @@ static func _plan_many_variants(
 				else:
 					properties[channel][dest] = values[index] if not values.is_empty() else 0
 			if not owners.is_empty() and target.voxels[dest] == 0:
-				owners[dest] = clampi(part,0,target.merge_parts.size())
+				var owner:=clampi(part,0,target.merge_parts.size())
+				if solid and owner==0:
+					var source_owner:int=stamp.voxel_part_ids[index]
+					var key:=[variant_index,source_owner,active_turns,mirror,surface_normal]
+					if not part_mapping.has(key):
+						if part_names.size()>=32:return {"error":"В объекте получится больше32 частей. Выберите существующую часть для новых ячеек штампа."}
+						part_names.append(preset.display_name+" · "+stamp.merge_parts[source_owner-1])
+						var guide:=PackedVector3Array();var basis:=_stamp_basis(axis,active_turns,mirror,surface_normal)
+						for direction:Vector3 in stamp.solid_surface.parts[source_owner-1]:guide.append((basis*direction).normalized())
+						surface_profile.parts.append(guide);part_mapping[key]=part_names.size()
+					owner=part_mapping[key]
+				owners[dest] = owner
 			if not selected_set.has(dest):
 				if selected.size() >= Fragment.Selection.LIMIT:
 					return {"error":"Результат превышает 32768 вокселей. Увеличьте шаг или разделите путь.","positions":positions}
@@ -562,6 +606,11 @@ static func _plan_many_variants(
 				selected.append(dest)
 	if not owners.is_empty():
 		properties.voxel_part_ids = owners
+	if solid and not indent:
+		var errors:=Solid.validation_errors(surface_profile,part_names.size(),properties.palette.size())
+		if not errors.is_empty():return {"error":"Не удалось сохранить оформление объёмного штампа: "+errors[0]}
+		if part_names!=target.merge_parts:properties.merge_parts=part_names
+		if surface_profile!=target.solid_surface:properties.solid_surface=surface_profile
 	if surface_material != target.material: properties.material = surface_material
 	var before := {}
 	for key in properties.keys():
@@ -585,5 +634,6 @@ static func _plan_many_variants(
 		"instance_variants":instance_variants.duplicate(),
 		"label":label,
 		"removes":indent,
+		"active_part":part_mapping.values()[0] if not part_mapping.is_empty() else part,
 		"clipped_voxels":clipped,
 	}

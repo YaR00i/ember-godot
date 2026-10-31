@@ -32,6 +32,10 @@ vec4 obstacle_wave_sample(vec2 world_point, float seconds) {
 				/ vec2(33.0, 33.0 * float(obstacle_patch_count)));
 		}
 		float rim = min(min(local.x, local.y), min(32.0 - local.x, 32.0 - local.y));
+		// Height/foam age interpolate only over water. A solid texel's old age
+		// must not erase a fresh crest just outside the contact boundary.
+		if (value.a <= 0.001) { return vec4(0.0, 0.0, 8.0, 0.0); }
+		value.gb /= value.a;
 		float weight = smoothstep(0.0, 5.0, rim) * value.a * obstacle_strength;
 		return vec4(value.r * weight, value.g / max(bounds.w, 0.01), value.b, weight);
 	}

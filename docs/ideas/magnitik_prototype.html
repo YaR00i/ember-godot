@@ -44,6 +44,8 @@ h1 span { color: var(--copper); }
   border-radius: 8px; padding: 6px 12px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center;
 }
 .lv[aria-current="true"] { border-color: var(--copper); color: var(--copper); }
+.brake { font-size: 13px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.brake input { accent-color: var(--copper); }
 .lv .done { color: var(--mint); font-size: 11px; }
 .game { position: relative; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); background: #0a0d12; }
 canvas { display: block; width: 100%; height: auto; aspect-ratio: 960 / 600; max-width: 100%; touch-action: none; cursor: crosshair; }
@@ -87,6 +89,12 @@ kbd { font: 600 11px var(--body); border: 1px solid var(--line); border-bottom-w
     <div class="tag">прототип мини-игры · идея для Ember</div>
   </header>
 
+  <div class="levelbar">
+    <span class="tag">Правила</span>
+    <button class="lv" id="ruleLength">Длина полёта</button>
+    <button class="lv" id="rulePins">Штифты</button>
+    <label class="brake"><input type="checkbox" id="brakeOn" checked> Тормоз: клик или пробел, пока шарик катится</label>
+  </div>
   <div class="levelbar" id="levels"></div>
 
   <div class="hud">
@@ -136,7 +144,9 @@ kbd { font: 600 11px var(--body); border: 1px solid var(--line); border-bottom-w
       <ul>
         <li><span class="legend" style="background:var(--gold)"></span>Золотой пунктир — фигуру надо обвести. Обведённое ребро загорается.</li>
         <li>Катится туда, куда «скользит» удар: попал под углом вверх — поедет вверх.</li>
-        <li><span class="legend" style="background:var(--pin)"></span><b>Катится до штифта.</b> Шарик едет вдоль края, пока не упрётся в штифт (латунный выступ). Нет штифта — объезжает фигуру по кругу и встаёт там, где приземлился.</li>
+        <li><b>Правила «Длина полёта»:</b> сколько шарик пролетел (с отскоками), столько и проедет. Длина видна у прицела, полный обход — внутри фигуры.</li>
+        <li><span class="legend" style="background:var(--pin)"></span><b>Правила «Штифты»:</b> шарик едет, пока не упрётся в латунный штифт; нет штифта — объезжает фигуру по кругу и встаёт там, где приземлился.</li>
+        <li><b>Тормоз:</b> пока шарик катится, клик или пробел останавливает его на месте.</li>
         <li>Угол прицела виден внизу. Одинаковый выстрел всегда даёт одинаковый результат; «Показать решение» проиграет решение с начала.</li>
         <li><span class="legend" style="background:var(--glass)"></span>Стекло не магнитится: шарик отскакивает. Так можно достать до того, что за углом.</li>
         <li><span class="legend" style="background:var(--spike)"></span>Шипы — шарик лопается, ход отменяется.</li>
@@ -188,7 +198,110 @@ const reg = (cx, cy, r, n, rotDeg = -90) => {
 
 // ---------- levels ----------
 // rect edges: 0 top, 1 right, 2 bottom, 3 left. Arena edges the same.
-const LEVELS = [
+const LEVELS_LENGTH = [
+  {
+    name: 'Разбег', par: 1,
+    solution: [{ r: 0, a: -37.8 }],
+    start: v(80, 600), aim: -30,
+    hint: 'Сколько пролетел — столько проедет. Квадрат далеко: разбега хватит, чтобы объехать его целиком. Потом зелёная зона сама поймает шарик.',
+    shapes: [{ kind: 'target', pts: rect(650, 100, 130, 130) }],
+    pad: { shape: 0, edge: 0, f0: 0.25, f1: 0.75 }
+  },
+  {
+    name: 'Отойди подальше', par: 3,
+    solution: [{ r: 0, a: -11.1 }, { r: 0, a: 149.2 }, { r: 0, a: -87 }],
+    start: v(330, 600), aim: -150,
+    hint: 'Треугольник рядом, но вплотную длины не хватит. Сначала отойди.',
+    shapes: [{ kind: 'target', pts: reg(190, 430, 85, 3) }],
+    pad: { shape: 'arena', edge: 0, f0: 0.42, f1: 0.58 }
+  },
+  {
+    name: 'Рикошет', par: 2,
+    solution: [{ r: 0, a: -14.6 }, { r: 0, a: -1.8 }],
+    start: v(0, 300), aim: 0,
+    hint: 'До шестиугольника рукой подать. Отскок от стекла добавит длины.',
+    shapes: [
+      { kind: 'target', pts: reg(280, 300, 70, 6, 0) },
+      { kind: 'glass', pts: rect(800, 170, 26, 260) }
+    ],
+    pad: { shape: 0, edge: 4, f0: 0.2, f1: 0.8 }
+  },
+  {
+    name: 'Бильярд', par: 3,
+    solution: [{ r: 0, a: -104 }, { r: 0, a: 14 }, { r: 0, a: -93.3 }],
+    start: v(140, 260), aim: 0,
+    hint: 'Пол и потолок в шипах. Длину набирай отскоками от стёкол.',
+    shapes: [
+      { kind: 'stone', pts: rect(115, 270, 50, 50) },
+      { kind: 'target', pts: reg(470, 300, 80, 5) },
+      { kind: 'glass', pts: reg(850, 130, 50, 4, 0) },
+      { kind: 'glass', pts: reg(850, 470, 50, 4, 0) },
+      { kind: 'glass', pts: rect(440, 50, 70, 18) }
+    ],
+    arenaSpikes: [{ edge: 0, f0: 0.08, f1: 0.92 }, { edge: 2, f0: 0.08, f1: 0.92 }],
+    pad: { shape: 1, edge: 2, f0: 0.25, f1: 0.75 }
+  },
+  {
+    name: 'Созвездие', par: 8,
+    solution: [{ r: 0, a: -109.5 }, { r: 0, a: -6 }, { r: 0, a: 176 }, { r: 0, a: 54 }, { r: 0, a: 44.1 }, { r: 0, a: -159.9 }, { r: 0, a: 126 }, { r: 0, a: -55.9 }],
+    start: v(80, 600), aim: -70,
+    hint: 'Три фигуры, шипы на полу и потолке. Финиш — на маленькой серой полке.',
+    shapes: [
+      { kind: 'target', pts: reg(230, 210, 75, 3) },
+      { kind: 'target', pts: rect(420, 350, 110, 110) },
+      { kind: 'target', pts: reg(740, 240, 78, 6, 30) },
+      { kind: 'stone', pts: rect(500, 120, 80, 34) },
+      { kind: 'glass', pts: rect(650, 430, 140, 22) }
+    ],
+    arenaSpikes: [{ edge: 2, f0: 0.3, f1: 0.58 }, { edge: 0, f0: 0.62, f1: 0.82 }],
+    pad: { shape: 3, edge: 0, f0: 0.15, f1: 0.85 }
+  },
+  {
+    name: 'Липучки', par: 6,
+    solution: [{ r: 0, a: -75.8 }, { r: 0, a: -48.1 }, { r: 0, a: 154 }, { r: 0, a: -138.1 }, { r: 0, a: 29.4 }, { r: 0, a: -176.5 }],
+    start: v(80, 600), aim: -45,
+    hint: 'Тест липучек. Фиолетовое останавливает шарик сразу. Пунктирная липучка проснётся, когда обведёшь треугольник.',
+    shapes: [
+      { kind: 'target', pts: reg(200, 300, 80, 3) },
+      { kind: 'target', pts: reg(770, 330, 80, 6, 0) },
+      { kind: 'stone', pts: rect(450, 270, 60, 60) }
+    ],
+    arenaSpikes: [{ edge: 2, f0: 0.18, f1: 0.95 }, { edge: 1, f0: 0.1, f1: 0.9 }],
+    sticky: [
+      { shape: 'arena', edge: 0, f0: 0.28, f1: 0.4 },
+      { shape: 2, edge: 1, f0: 0.15, f1: 0.85, after: 0 }
+    ],
+    pad: { shape: 2, edge: 0, f0: 0.2, f1: 0.8 }
+  },
+  {
+    name: 'Сундук: кодовый диск', par: 3, charges: 4,
+    solution: [{ r: 0, a: -73.8 }, { r: 0, a: 149.9 }, { r: 0, a: 12.8 }],
+    chest: true, start: v(110, 600), aim: -40,
+    hint: 'Замок сундука. Золотой диск поворачивается (кнопки «Диск» или Q/E), поворот бесплатный. У отмычки 4 заряда. Руна рядом — вблизи длины не хватит.',
+    shapes: [
+      { kind: 'target', pts: rect(320, 250, 100, 100) },
+      { kind: 'stone', pts: rect(500, 280, 40, 40) }
+    ],
+    rotor: { c: v(520, 300), shapes: [0] },
+    pad: { shape: 1, edge: 0, f0: 0.1, f1: 0.9 }
+  },
+  {
+    name: 'Сундук: двойной замок', par: 5, charges: 6,
+    solution: [{ r: 2, a: -159.8 }, { r: 0, a: 52 }, { r: 0, a: -150.2 }, { r: 1, a: 150.3 }, { r: 0, a: -96.5 }],
+    chest: true, start: v(960, 300), aim: -170,
+    hint: 'Две руны на одном диске, пол и потолок в шипах. Искра на диске поворачивается вместе с ним. 6 зарядов.',
+    shapes: [
+      { kind: 'target', pts: rect(463.5, 434.5, 73, 73) },
+      { kind: 'target', pts: reg(336, 300, 39, 3) },
+      { kind: 'stone', pts: rect(480, 280, 40, 40) }
+    ],
+    rotor: { c: v(500, 300), shapes: [0, 1] },
+    arenaSpikes: [{ edge: 0, f0: 0.03, f1: 0.97 }, { edge: 2, f0: 0.03, f1: 0.97 }],
+    pad: { shape: 2, edge: 0, f0: 0.1, f1: 0.9 }
+  }
+];
+
+const LEVELS_PINS = [
   {
     name: 'Штифт', par: 3,
     solution: [{ r: 0, a: -131.6 }, { r: 0, a: -22.1 }, { r: 0, a: -179.8 }],
@@ -408,6 +521,16 @@ const saveProgress = () => { try { localStorage.setItem('magnitik.progress', JSO
 
 const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d');
+let RULES = 'length';
+try { RULES = localStorage.getItem('magnitik.rules') === 'pins' ? 'pins' : 'length'; } catch (e) {}
+let LEVELS = RULES === 'pins' ? LEVELS_PINS : LEVELS_LENGTH;
+const isLen = () => RULES === 'length';
+function setRules(r) {
+  RULES = r; LEVELS = r === 'pins' ? LEVELS_PINS : LEVELS_LENGTH;
+  try { localStorage.setItem('magnitik.rules', r); } catch (e) {}
+  loadLevel(0);
+}
+const pkey = i => RULES + ':' + i;
 const powerOut = $('powerOut');
 
 function loadLevel(i) {
@@ -423,6 +546,8 @@ function loadLevel(i) {
   shots = 0; history = []; mode = 'idle'; flight = roll = null; trail = []; particles = [];
   aimAng = snapAim(level.aim * Math.PI / 180);
   $('solve').hidden = !level.solution;
+  $('ruleLength').setAttribute('aria-current', isLen() ? 'true' : 'false');
+  $('rulePins').setAttribute('aria-current', isLen() ? 'false' : 'true');
   $('win').hidden = true;
   $('lvTitle').textContent = `${i + 1}. ${level.name}`;
   $('rotL').hidden = $('rotR').hidden = !rotor;
@@ -478,7 +603,9 @@ function updatePreview() {
   preview = computeShot(p, d);
   if (preview) {
     const bounces = preview.pts.length - 2;
-    powerOut.textContent = `${aimDeg()}° · ` + (bounces ? `отскоков: ${bounces}` : 'прямо');
+    preview.total = 0;
+    for (let i = 1; i < preview.pts.length; i++) preview.total += vlen(sub(preview.pts[i], preview.pts[i - 1]));
+    powerOut.textContent = `${aimDeg()}° · ` + (isLen() ? `пролетит и проедет ${Math.round(preview.total)}` + (bounces ? ` (отскоков: ${bounces})` : '') : (bounces ? `отскоков: ${bounces}` : 'прямо'));
   }
 }
 
@@ -508,7 +635,7 @@ function shapeDone(sh) {
     for (let k = 0; k < cells.length; k++) {
       if (cells[k]) continue;
       if (spikeAt(sh, segs[e], (k + .5) / cells.length)) continue;
-      if (nearPin(sh, segs[e].s0 + (k + .5) / cells.length * segs[e].len)) continue;
+      if (!isLen() && nearPin(sh, segs[e].s0 + (k + .5) / cells.length * segs[e].len)) continue;
       return false;
     }
     return true;
@@ -559,8 +686,8 @@ function settle() {
     mode = 'won';
     burst(pointAt(ball.sh, ball.s).p, C.mint, 40);
     const stars = shots <= level.par ? 3 : shots <= level.par + 2 ? 2 : 1;
-    const prev = progress[li];
-    if (!prev || shots < prev) { progress[li] = shots; saveProgress(); }
+    const prev = progress[pkey(li)];
+    if (!prev || shots < prev) { progress[pkey(li)] = shots; saveProgress(); }
     $('winTitle').textContent = level.charges ? 'Сундук открыт' : 'Фигуры замкнуты';
     $('winText').textContent = level.charges
       ? `Зарядов осталось: ${level.charges - shots} из ${level.charges}`
@@ -634,16 +761,20 @@ function step(dt) {
       ball = { sh: sh.sh, s: sh.s };
       if (sh.spiky) { pop(pos); return; }
       paintAt(pointAt(ball.sh, ball.s));
-      if (shouldStop() || pinAhead(ball.sh, ball.s, sh.dir)) { settle(); return; }
-      roll = { dir: sh.dir, start: ball.s, went: 0, budget: 0 };
+      if (shouldStop() || (!isLen() && pinAhead(ball.sh, ball.s, sh.dir))) { settle(); return; }
+      roll = { dir: sh.dir, start: ball.s, went: 0, budget: 0, rem: isLen() ? flight.total : Infinity };
       mode = 'rolling';
     }
   } else if (mode === 'rolling') {
-    roll.budget += 760 * dt;
+    roll.budget += (isLen() ? clamp((roll.rem - roll.went) * 2.4, 55, 640) : 760) * dt;
     while (roll.budget >= 3) {
-      if (pinAhead(ball.sh, ball.s, roll.dir)) { settle(); return; }
-      if (roll.went >= ball.sh.len - 3) { ball.s = roll.start; settle(); return; }
-      const ds = Math.min(3, ball.sh.len - roll.went); roll.budget -= 3; roll.went += ds;
+      if (isLen()) {
+        if (roll.went >= roll.rem - 1e-9) { settle(); return; }
+      } else {
+        if (pinAhead(ball.sh, ball.s, roll.dir)) { settle(); return; }
+        if (roll.went >= ball.sh.len - 3) { ball.s = roll.start; settle(); return; }
+      }
+      const ds = Math.min(3, isLen() ? roll.rem - roll.went : ball.sh.len - roll.went); roll.budget -= 3; roll.went += ds;
       ball.s += roll.dir * ds;
       const at = pointAt(ball.sh, ball.s);
       if (spikeAt(ball.sh, at.piece, at.u)) { pop(at.p); return; }
@@ -779,6 +910,7 @@ function drawShape(sh, t) {
   ctx.fillStyle = done ? C.ember : 'rgba(201,169,89,0.8)';
   ctx.font = '600 13px "Golos Text", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   if (done) ctx.fillText('✓', sh.c.x, sh.c.y);
+  else if (isLen()) ctx.fillText('⟳ ' + Math.round(sh.len), sh.c.x, sh.c.y);
 }
 
 function drawBall(p, t) {
@@ -802,6 +934,12 @@ function drawPreview(t) {
   const at = pointAt(preview.sh, preview.s), q = at.p;
   ctx.strokeStyle = preview.spiky ? C.spike : 'rgba(231,227,218,0.8)'; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.arc(q.x, q.y, R, 0, TAU); ctx.stroke();
+  if (isLen()) {
+    const lp = add(q, mul(at.n, 34));
+    ctx.font = '600 13px "Golos Text", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(10,13,18,0.85)'; ctx.strokeText(Math.round(preview.total), lp.x, lp.y);
+    ctx.fillStyle = C.fg; ctx.fillText(Math.round(preview.total), lp.x, lp.y);
+  }
   if (!preview.spiky) {
     const dir = mul(at.t, preview.dir), o = add(q, mul(at.n, 18)), tip = add(o, mul(dir, 14)), back = add(o, mul(dir, -6));
     const side = v(-dir.y, dir.x);
@@ -852,7 +990,7 @@ function renderLevelBar() {
     const b = document.createElement('button');
     b.className = 'lv'; b.id = 'lv' + i;
     b.setAttribute('aria-current', i === li ? 'true' : 'false');
-    b.innerHTML = `${i + 1}. ${L.name}` + (progress[i] ? ` <span class="done">✓ ${progress[i]}</span>` : '');
+    b.innerHTML = `${i + 1}. ${L.name}` + (progress[pkey(i)] ? ` <span class="done">✓ ${progress[pkey(i)]}</span>` : '');
     b.onclick = () => loadLevel(i);
     bar.appendChild(b);
   });
@@ -874,10 +1012,16 @@ function aimAt(q) {
 }
 let pressed = false;
 cv.addEventListener('pointermove', e => { if (e.pointerType === 'mouse' || pressed) aimAt(toLocal(e)); });
-cv.addEventListener('pointerdown', e => { pressed = true; cv.setPointerCapture(e.pointerId); aimAt(toLocal(e)); });
+function brake() {
+  if (mode !== 'rolling' || demo || !$('brakeOn').checked) return false;
+  settle(); return true;
+}
+cv.addEventListener('pointerdown', e => { if (brake()) return; pressed = true; cv.setPointerCapture(e.pointerId); aimAt(toLocal(e)); });
 cv.addEventListener('pointerup', e => { if (!pressed) return; pressed = false; if (demo) return; aimAt(toLocal(e)); fire(); });
 cv.addEventListener('pointercancel', () => { pressed = false; });
-$('fire').onclick = () => { if (!demo) fire(); };
+$('fire').onclick = () => { if (!demo && !brake()) fire(); };
+$('ruleLength').onclick = () => setRules('length');
+$('rulePins').onclick = () => setRules('pins');
 $('solve').onclick = showSolution;
 $('undo').onclick = () => { if (history.length && (mode === 'idle' || mode === 'won')) { $('win').hidden = true; restore(history.pop()); say(''); } };
 $('restart').onclick = () => loadLevel(li);
@@ -891,7 +1035,7 @@ window.addEventListener('keydown', e => {
   const fine = (e.shiftKey ? 0.1 : 0.5) * Math.PI / 180;
   if (e.key === 'ArrowLeft') { aimAng -= fine; updatePreview(); updateHud(); e.preventDefault(); }
   else if (e.key === 'ArrowRight') { aimAng += fine; updatePreview(); updateHud(); e.preventDefault(); }
-  else if (e.key === ' ' || e.key === 'Enter') { if (e.target.tagName !== 'BUTTON') { fire(); e.preventDefault(); } }
+  else if (e.key === ' ' || e.key === 'Enter') { if (e.target.tagName !== 'BUTTON') { if (!brake()) fire(); e.preventDefault(); } }
   else if (e.key === 'z' || e.key === 'Z' || e.key === 'я' || e.key === 'Я') $('undo').click();
   else if (e.key === 'r' || e.key === 'R' || e.key === 'к' || e.key === 'К') loadLevel(li);
   else if ('qQйЙ'.includes(e.key)) rotate(-1);

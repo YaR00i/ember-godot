@@ -38,6 +38,8 @@ func _run() -> void:
 	check(ready.size() == 1 and second.pending_count() == 0,"second renderer regenerated an unchanged preview")
 	if not ready.is_empty():
 		check(ready[0].get_image().get_pixel(0,0).r > 0.9,"disk preview pixels changed")
+	second.queue_preview("probe",prefab_path,true)
+	check(ready.size()==2 and second.pending_count()==0,"startup retains cached artwork without rendering")
 	second.free()
 	root_node = Node3D.new()
 	root_node.name = "Probe"
@@ -49,6 +51,8 @@ func _run() -> void:
 	third.disk_cache_directory = cache_dir
 	root.add_child(third)
 	check(third._disk_preview_path("probe",prefab_path) != old_cache,"changed source retained old disk fingerprint")
+	third.queue_preview("probe",prefab_path,true)
+	check(third.pending_count()==0,"startup never renders an uncached changed object")
 	third.queue_preview("probe",prefab_path)
 	check(third.pending_count() == 1,"changed object reused stale preview")
 	third.cancel_pending()

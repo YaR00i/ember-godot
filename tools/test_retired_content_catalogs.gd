@@ -25,8 +25,10 @@ func _run() -> void:
 		if "Песочница" in session.current_text() or "Сундук" in session.current_text(): errors.append("battle introduction still contains retired map directions")
 		session.advance()
 	if not session.is_finished() or session.flags() != {"new_flag": true}: errors.append("battle introduction changed existing completion flag/end")
-	for id in ["vox_fan_barrel", "vox_fan_crate_stack"]:
-		if EmberVoxelCatalog.native_resource(id) == null: errors.append("shared Pier model missing " + id)
+	for id in ["vox_fan_anvil", "vox_fan_barrel", "vox_fan_crate_stack", "vox_fan_door", "vox_vil_bush"]:
+		if EmberVoxelCatalog.native_resource(id) != null: errors.append("retired import still resolves " + id)
+	if EmberMapTransition.saved_destination("test_pier") != {"map_id": "landscape_compact", "at_entry": true}:
+		errors.append("retired pier save does not return to the main map entry")
 	for id in ["fan_town", "agent_sandbox"]:
 		if ResourceLoader.exists(EmberVoxelModelResource.world_surface_path(id)): errors.append("retired city Surface survived")
 	var map_source := Maps.save_map(EmberMapTransition.DEFAULT_MAP_ID, _directory)

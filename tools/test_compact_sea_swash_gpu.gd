@@ -57,11 +57,18 @@ func _run() -> void:
 		var image: Image = gpu.state_texture.get_image()
 		var foam: Image = gpu.foam_age_texture.get_image()
 		check(image != null and foam != null, "readback failed")
+		var cpu_extra: Image = cpu.foam_age_texture.get_image()
 		for record in range(0, gpu.records.size(), 97):
 			var p := Vector2i(gpu.records[record].x, gpu.records[record].y)
 			var expected: Dictionary = cpu.sample(p)
 			var actual := image.get_pixelv(p - gpu.bounds.position)
 			var age := foam.get_pixelv(p - gpu.bounds.position).r
+			check(absf(foam.get_pixelv(p - gpu.bounds.position).g - cpu_extra.get_pixelv(p - cpu.bounds.position).g) < 0.0002,
+				"unclamped detailed wave diverged")
+			var detail := foam.get_pixelv(p - gpu.bounds.position)
+			var detail_expected := cpu_extra.get_pixelv(p - cpu.bounds.position)
+			check(absf(detail.b-detail_expected.b)<0.0002 and absf(detail.a-detail_expected.a)<0.0002,
+				"continuous foam crest/grain diverged")
 			check(absf(actual.r - expected.height) < 0.0002 and absf(actual.g - expected.foam) < 0.0002
 				and absf(actual.b - expected.wetness) < 0.0002 and absf(actual.a - expected.coverage) < 0.0002
 				and absf(age - expected.foam_age) < 0.0002, "GPU history diverged at step %d cell %s" % [step, p])
@@ -72,6 +79,8 @@ func _run() -> void:
 			check(absf(current.height - expected.height) < 0.0002 and absf(current.coverage - expected.coverage) < 0.0002,
 				"current physics query diverged")
 			check(absf(gpu.surface_height(Vector2(p) + Vector2(0.25, 0.75)) - cpu.surface_height(Vector2(p) + Vector2(0.25, 0.75))) < 0.0002, "bilinear surface query diverged")
+			check(absf(gpu.surface_height(Vector2(p) + Vector2(0.25, 0.75), true) - cpu.surface_height(Vector2(p) + Vector2(0.25, 0.75), true)) < 0.0002,
+				"unclamped physics surface diverged")
 			comparisons += 1
 	check(gpu._query_cache.size() <= Swash.QUERY_CACHE_LIMIT, "query cache exceeded its budget")
 	# Migrating an already running editor must keep the current foam/wet sand.
@@ -111,7 +120,10 @@ func _run() -> void:
 	for record in range(0, copied_records.size(), 97):
 		var point := Vector2i(copied_records[record].x, copied_records[record].y) - copied_bounds.position
 		check(absf(copied_image.get_pixelv(point).b - migrated_image.get_pixelv(point).b) < 0.0002
-			and absf(copied_foam.get_pixelv(point).r - old_foam.get_pixelv(point).r) < 0.0002, "regional replacement lost foam or wet sand")
+			and absf(copied_foam.get_pixelv(point).r - old_foam.get_pixelv(point).r) < 0.0002
+			and absf(copied_foam.get_pixelv(point).g - old_foam.get_pixelv(point).g) < 0.0002
+			and absf(copied_foam.get_pixelv(point).b - old_foam.get_pixelv(point).b) < 0.0002
+			and absf(copied_foam.get_pixelv(point).a - old_foam.get_pixelv(point).a) < 0.0002, "regional replacement lost foam, wet sand or detailed wave")
 	replacement._gpu.release()
 	await frames()
 	check(migration_backend._resources.is_empty(), "owner disposal leaked GPU handles")

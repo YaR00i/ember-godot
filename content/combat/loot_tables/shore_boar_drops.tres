@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="EmberCombatLootTableResource" load_steps=3 format=3]
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_loot_table_resource.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/prototypes/ember_combat_loot_entry_resource.gd" id="2"]
+[sub_resource type="Resource" id="Hide"]
+script = ExtResource("2")
+item_id = "shore_boar_hide"
+chance_percent = 100.0
+minimum_count = 1
+maximum_count = 1
+[resource]
+script = ExtResource("1")
+table_id = "shore_boar_drops"
+display_name = "Кожа берегового кабана"
+entries = Array[ExtResource("2")]([SubResource("Hide")])

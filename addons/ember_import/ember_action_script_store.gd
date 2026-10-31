@@ -1,15 +1,18 @@
 @tool
 class_name EmberActionScriptStore
 extends RefCounted
-## Canonical native-only action projection/writer; schema stays unchanged.
+## Canonical native-only action projection/writer; step contracts match runtime.
 
 const Catalog = preload("res://scripts/ember_action_catalog.gd")
 
 const STEP_TYPES := [
 	"talk",
 	"give_item",
+	"exchange_items",
+	"handover_quest_items",
 	"set_flag",
 	"wait",
+	"play_cutscene",
 	"open_shop",
 	"change_map",
 	"start_battle",
@@ -67,8 +70,11 @@ static func default_step(step_type: String) -> Dictionary:
 	match step_type:
 		"talk": return {"type": step_type, "dialogueId": ""}
 		"give_item": return {"type": step_type, "itemId": "", "count": 1}
+		"handover_quest_items": return {"type": step_type, "questId": "", "objectiveId": "", "rewards": {}}
+		"exchange_items": return {"type":step_type,"costs":{},"rewards":{}}
 		"set_flag": return {"type": step_type, "flag": "", "value": true}
 		"wait": return {"type": step_type, "sec": 0.0}
+		"play_cutscene": return {"type": step_type, "presentationId": ""}
 		"open_shop": return {"type": step_type, "shopId": ""}
 		"change_map": return {"type": step_type, "targetMapId": "", "targetRegionId": ""}
 		"start_battle": return {"type": step_type, "encounterId": ""}
@@ -91,14 +97,16 @@ static func normalized_document(raw: Dictionary) -> Dictionary:
 	return result
 
 
-static func validation_errors(raw: Dictionary) -> Array[String]:
+static func validation_errors(raw: Dictionary, pending_dialogue_ids: Array[String] = [], pending_quest: Dictionary = {}) -> Array[String]:
+	# Authoring may commit a separately validated Dialogue in the same Undo action.
+	# Such IDs exist in the pending mutation, before they appear in the catalog.
 	var errors: Array[String] = []
-	for diagnostic in validation_diagnostics(raw):
+	for diagnostic in validation_diagnostics(raw, pending_dialogue_ids, pending_quest):
 		errors.append(str(diagnostic.get("message", "")))
 	return errors
 
 
-static func validation_diagnostics(raw: Dictionary) -> Array[Dictionary]:
+static func validation_diagnostics(raw: Dictionary, pending_dialogue_ids: Array[String] = [], pending_quest: Dictionary = {}) -> Array[Dictionary]:
 	var document_value := normalized_document(raw)
 	var diagnostics: Array[Dictionary] = []
 	var script_id := str(document_value.get("id", ""))
@@ -115,12 +123,23 @@ static func validation_diagnostics(raw: Dictionary) -> Array[Dictionary]:
 		if step_type not in STEP_TYPES:
 			_add_diagnostic(diagnostics, "Шаг %d: неподдерживаемый тип %s." % [index + 1, step_type], index)
 			continue
+		if step_type == "handover_quest_items":
+			var quest := pending_quest if str(pending_quest.get("id", "")) == str(step.get("questId", "")) else EmberQuestCatalog.definition(str(step.get("questId", "")))
+			var found := false
+			for objective in quest.get("objectives", []):
+				if str(objective.get("id", "")) == str(step.get("objectiveId", "")) and str(objective.get("progressMode", "")) == "handover":
+					found = true
+			if not found:
+				_add_diagnostic(diagnostics, "Шаг %d: выберите цель «Собрать и передать»." % [index + 1], index)
 		match step_type:
+			"play_cutscene":
+				if str(step.get("presentationId", "")).strip_edges().is_empty():
+					_add_diagnostic(diagnostics, "Шаг %d: выберите сценку на открытой карте." % [index + 1], index)
 			"talk":
 				var dialogue_id := str(step.get("dialogueId", ""))
 				if dialogue_id.is_empty():
 					_add_diagnostic(diagnostics, "Шаг %d: выберите диалог." % [index + 1], index)
-				elif dialogue_id not in EmberInteractionContent.dialogue_ids():
+				elif dialogue_id not in pending_dialogue_ids and dialogue_id not in EmberInteractionContent.dialogue_ids():
 					_add_diagnostic(diagnostics, "Шаг %d: диалог %s не найден." % [index + 1, dialogue_id], index)
 			"give_item":
 				var item_id := str(step.get("itemId", ""))
@@ -128,6 +147,19 @@ static func validation_diagnostics(raw: Dictionary) -> Array[Dictionary]:
 					_add_diagnostic(diagnostics, "Шаг %d: выберите предмет." % [index + 1], index)
 				elif item_id not in EmberInteractionContent.item_ids():
 					_add_diagnostic(diagnostics, "Шаг %d: предмет %s не найден." % [index + 1, item_id], index)
+			"exchange_items", "handover_quest_items":
+				var any := step_type == "handover_quest_items"
+				for key in (["rewards"] if step_type == "handover_quest_items" else ["costs", "rewards"]):
+					var counts: Variant = step.get(key,{})
+					if not counts is Dictionary:
+						_add_diagnostic(diagnostics,"Шаг %d: нужен список предметов." % [index+1],index)
+						continue
+					for id in counts:
+						any = true
+						var count: Variant = counts[id]
+						if str(id) not in EmberInteractionContent.item_ids() or typeof(count) not in [TYPE_INT,TYPE_FLOAT] or not is_finite(float(count)) or count < 1 or count > 999 or count != floor(float(count)):
+							_add_diagnostic(diagnostics,"Шаг %d: выберите предмет и целое количество от1 до999." % [index+1],index)
+				if not any: _add_diagnostic(diagnostics,"Шаг %d: добавьте отдаваемые или получаемые предметы." % [index+1],index)
 			"set_flag":
 				if str(step.get("flag", "")).is_empty():
 					_add_diagnostic(diagnostics, "Шаг %d: укажите флаг." % [index + 1], index)
@@ -195,6 +227,8 @@ static func delete_document(script_id: String) -> int:
 static func _normalized_step(raw: Dictionary) -> Dictionary:
 	var step_type := str(raw.get("type", "")).strip_edges()
 	match step_type:
+		"play_cutscene":
+			return {"type": step_type, "presentationId": str(raw.get("presentationId", "")).strip_edges()}
 		"talk":
 			return {"type": step_type, "dialogueId": str(raw.get("dialogueId", "")).strip_edges()}
 		"give_item":

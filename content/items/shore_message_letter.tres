@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="EmberItemResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_item_resource.gd" id="1_mux8q"]
+
+[resource]
+script = ExtResource("1_mux8q")
+item_id = "shore_message_letter"
+definition = {
+"id": "shore_message_letter",
+"kind": "key",
+"nameRu": "Письмо из бутылки",
+"notesRu": "Свёрнутый листок с посланием.",
+"rarity": "common",
+"slot": "none",
+"stackMax": 1,
+"useIn": "explore",
+"useLabelRu": "Прочитать",
+"useScriptId": "shore_read_letter",
+"worldScene": "res://prefabs/items/message_letter.tscn"
+}

@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="EmberItemResource" format=3]
+[ext_resource type="Script" path="res://scripts/ember_item_resource.gd" id="1"]
+[resource]
+script = ExtResource("1")
+item_id = "forest_berry"
+definition = {
+"id": "forest_berry", "nameRu": "Лесная ягода",
+"notesRu": "Красно-малиновая ягода с лесного куста.",
+"kind": "material", "rarity": "common", "slot": "none", "stackMax": 99,
+"useIn": "explore", "iconId": "forest_berry", "tags": ["fruit", "forage"],
+"worldScene": "res://prefabs/items/forest_berry.scn"
+}

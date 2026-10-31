@@ -122,6 +122,16 @@ static func prepare(tree: SceneTree, directory: String) -> Dictionary:
 	return state
 
 
+static func placeholder_coverage() -> ImageTexture:
+	# Explicitly opt in only from guarded disposable fixtures. Real main-map
+	# captures keep their authored artwork and never call this helper.
+	var image := Image.create(1,1,false,Image.FORMAT_RGBA8)
+	image.fill(Color.WHITE)
+	var texture := ImageTexture.create_from_image(image)
+	texture.take_over_path("res://content/terrain_materials/textures/grass-edge-coverage.png")
+	return texture
+
+
 static func _region(map_id: String, id: String, kind: String, position: Vector3) -> EmberRegion:
 	var region := EmberRegion.new()
 	region.name = id

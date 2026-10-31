@@ -27,8 +27,8 @@ engine/import cache не включены. SHA-256 ZIP:
 
 Последовательность небольших контрактов:
 1. Общий exploration controller перенесён в `scripts/ember_explore_scene.gd`;
-   `world_canvas.gd`, `test_pier.gd` и семь пока активных старых сцен используют
-   одного owner. Script UID сохранён, body не менялся, кроме комментария;
+   `world_canvas.gd` использует одного owner; Test Pier и семь старых сцен
+   впоследствии удалены, проверки перенесены на искусственные входы. Script UID сохранён, body не менялся, кроме комментария;
    старого файла/compat alias нет. Parse и шесть targeted runtime gates PASS.
 2. Map/region selectors, схемы входов и Inspector теперь читают native `.tscn`
    через `EmberInteractionContent`, без map JSON/JOI fallback. Каталог читает
@@ -201,9 +201,11 @@ engine/import cache не включены. SHA-256 ZIP:
 4. Семь архивированных сцен выведены после проверки свежести/входящих ссылок.
    Удалены только .tscn; остальные 704 author map/content/prefab/material files
    сохранили SHA. Exclusive ресурсы пока не удалялись: только после отдельной
-   полной сверки текущих code/dynamic/binary/catalog uses. `vox_fan_barrel`/`vox_fan_crate_stack` нужны Причалу; scan
-   shared-models.json покрывает лишь прямые ссылки других `.tscn`, не доказывает
-   отсутствие code/dynamic/binary uses у остальных моделей.
+   полной сверки текущих code/dynamic/binary/catalog uses. Уборка23.10 вывела9 свободных импортов и их
+   производные; состав/новый архив — directions/quality-cleanup.md. Свои черновики не входят в разрешение.
+   Последующий срез23.10 удалил Test Pier и5 оставшихся исходных импортов после переноса
+   checks на искусственные данные и сверки native/code/catalog uses. Три авторских
+   canvas-варианта сохранены. Состав/архив — directions/quality-cleanup.md.
    Static gate теперь отвергает возвращение retired .tscn; negative control PASS.
    Native startup/cutaway, restore/menu/map/battle/Retry и native editor report/
    dashboard regressions PASS. Ручной F5/old Save/Load остаётся OPEN.
@@ -228,6 +230,15 @@ engine/import cache не включены. SHA-256 ZIP:
 5. G4/G5: editor и F5, native authoring/save/reopen, взаимодействия и бой без
    физически доступного JOI; проверить выбранные данные export. Ручные gates
    новых карт/материалов сохраняются. Старые пользовательские saves не удалять.
+
+### Возврат к незакрытой ручной приёмке
+
+Первое действие — F5 на landscape_compact и старый Load с прогрессом, затем
+Save/Load/Reopen/Delete, диалог colored_crossing_intro → бой colored_crossing_demo,
+125% UI. Предыдущие targeted native/story/shop/PCK/mixed PASS не закрывают этот gate.
+Полный physical/export G4/G5 без физически доступного sibling JOI OPEN; long A/B
+не запускался, world_canvas physics в cleanup не пересматривался. Agent Sandbox и Test Pier
+удалены; старые saves сохранены, retired map IDs направляются ко входу основной карты.
 
 ## Исторический migration baseline
 

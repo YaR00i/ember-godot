@@ -126,6 +126,8 @@ static func buy(
 		return _failure("broke", next_inventory, next_remaining)
 	var item: Dictionary = items.get(item_id, {})
 	var stack_max := maxi(1, int(item.get("stackMax", 99)))
+	if int(next_inventory.get(item_id, 0)) >= stack_max:
+		return _failure("stack_full", next_inventory, next_remaining)
 	_set_count(next_inventory, WALLET_ITEM_ID, wallet_count(next_inventory) - price)
 	next_inventory[item_id] = mini(stack_max, int(next_inventory.get(item_id, 0)) + 1)
 	if left != null:

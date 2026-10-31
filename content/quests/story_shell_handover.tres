@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="EmberQuestResource" format=3]
+[ext_resource type="Script" path="res://scripts/ember_quest_resource.gd" id="1"]
+[resource]
+script = ExtResource("1")
+quest_id = "story_shell_handover"
+definition = {
+  "id": "story_shell_handover",
+  "titleRu": "Ракушки для смотрителя · проба",
+  "statusFlagId": "story_shell_status",
+  "objectives": [
+    {
+      "id": "meet",
+      "textRu": "Взять поручение у смотрителя",
+      "flagId": "story_shell_meet"
+    },
+    {
+      "id": "deliver",
+      "textRu": "Собрать и передать три ракушки смотрителю",
+      "flagId": "story_shell_delivered",
+      "progressMode": "handover",
+      "handoverItemId": "shore_shell",
+      "requiredCount": 3,
+      "requiresObjectiveIds": [
+        "meet"
+      ]
+    }
+  ]
+}

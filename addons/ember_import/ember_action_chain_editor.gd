@@ -11,7 +11,10 @@ const ShopStore = preload("res://addons/ember_import/ember_shop_store.gd")
 const ShopEditor = preload("res://addons/ember_import/ember_shop_editor.gd")
 const VisualLibraryPopup = preload("res://addons/ember_import/ember_visual_library_popup.gd")
 const QuestStore = preload("res://addons/ember_import/ember_quest_store.gd")
+const ItemCounts = preload("res://addons/ember_import/ember_item_counts_editor.gd")
 const MapVisuals = preload("res://scripts/ember_map_visuals.gd")
+const StoryBinding = preload("res://scripts/ember_story_binding.gd")
+var presentation_scene_root: Node # Fixture/context override; never serialized.
 const EncounterCatalog = preload("res://scripts/prototypes/ember_encounter_catalog.gd")
 const EncounterVisuals = preload("res://scripts/prototypes/ember_encounter_visuals.gd")
 
@@ -225,6 +228,18 @@ func _build_payload(panel: PanelContainer, step: Dictionary) -> void:
 		"give_item":
 			payload.add_child(_option_row("itemId", "Предмет", EmberInteractionContent.item_ids(), str(step.get("itemId", ""))))
 			payload.add_child(_number_row("count", "Количество", float(step.get("count", 1)), 1.0, 999.0, 1.0))
+		"handover_quest_items":
+			payload.add_child(_handover_quest_row(step))
+			var rewards := ItemCounts.new()
+			rewards.name = "StepItems_rewards"
+			rewards.setup(step.get("rewards", {}), "Награда после сдачи")
+			payload.add_child(rewards)
+		"exchange_items":
+			for entry in [["costs","Отдать из сумки"],["rewards","Получить в сумку"]]:
+				var counts := ItemCounts.new()
+				counts.name = "StepItems_"+entry[0]
+				counts.setup(step.get(entry[0],{}),entry[1])
+				payload.add_child(counts)
 		"set_flag":
 			var quest_event := Button.new()
 			quest_event.name = "ChooseQuestEvent"
@@ -249,6 +264,8 @@ func _build_payload(panel: PanelContainer, step: Dictionary) -> void:
 			var wait_row := _number_row("sec", "Секунды", float(step.get("sec", 0.0)), 0.0, 60.0, 0.1)
 			wait_row.tooltip_text = "Останавливает цепочку на указанное реальное время. Продолжение автоматическое; F не пропускает паузу."
 			payload.add_child(wait_row)
+		"play_cutscene":
+			payload.add_child(_presentation_row(str(step.get("presentationId", ""))))
 		"open_shop":
 			payload.add_child(_shop_rows(str(step.get("shopId", ""))))
 		"change_map":
@@ -262,6 +279,32 @@ func _build_payload(panel: PanelContainer, step: Dictionary) -> void:
 			unsupported.text = "Неподдерживаемый шаг сохранён только до следующей правки: %s" % step_type
 			unsupported.modulate = Color(1.0, 0.55, 0.45)
 			payload.add_child(unsupported)
+
+
+func _handover_quest_row(step: Dictionary) -> Control:
+	var row := _field_row("Цель задания")
+	var picker := OptionButton.new()
+	picker.name = "StepField_handoverTarget"
+	picker.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	picker.add_item("Выбери цель «Собрать и передать»…")
+	picker.set_item_metadata(0, "")
+	var current := "%s/%s" % [step.get("questId", ""), step.get("objectiveId", "")]
+	for quest_id in EmberQuestCatalog.ids():
+		var quest := EmberQuestCatalog.definition(quest_id)
+		for goal in quest.get("objectives", []):
+			if str(goal.get("progressMode", "")) != "handover":
+				continue
+			var target := "%s/%s" % [quest_id, goal.get("id", "")]
+			picker.add_item("%s · %s" % [quest.get("titleRu", quest_id), goal.get("textRu", "")])
+			picker.set_item_metadata(picker.item_count - 1, target)
+			if current == target:
+				picker.select(picker.item_count - 1)
+	if picker.selected == 0 and current != "/":
+		picker.add_item("Недоступно · " + current)
+		picker.set_item_metadata(picker.item_count - 1, current)
+		picker.select(picker.item_count - 1)
+	row.add_child(picker)
+	return row
 
 
 func _dialogue_rows(current: String) -> Control:
@@ -281,6 +324,40 @@ func _dialogue_rows(current: String) -> Control:
 	column.add_child(holder)
 	edit.pressed.connect(_toggle_dialogue_editor.bind(holder, edit, option))
 	return column
+
+
+func _presentation_row(current: String) -> Control:
+	var row := _option_row("presentationId", "Сценка на карте", [], current)
+	var picker := row.find_child("StepField_presentationId", true, false) as OptionButton
+	picker.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_refresh_presentation_picker(picker)
+	picker.get_popup().about_to_popup.connect(_refresh_presentation_picker.bind(picker))
+	row.tooltip_text = "Ждёт завершения сценки. Отмена останавливает цепочку без следующих наград. Привязка должна быть на этой карте."
+	return row
+
+
+func _refresh_presentation_picker(picker: OptionButton) -> void:
+	var current := str(picker.get_item_metadata(picker.selected)) if picker.selected >= 0 else ""
+	var scene := presentation_scene_root
+	if not is_instance_valid(scene) and Engine.is_editor_hint():
+		scene = EditorInterface.get_edited_scene_root()
+	var entries := StoryBinding.entries(scene) if is_instance_valid(scene) else []
+	picker.clear()
+	picker.add_item("— выбери сценку —")
+	picker.set_item_metadata(0, "")
+	var ids: Array[String] = []
+	for entry in entries:
+		if str(entry.id) in ids:
+			continue
+		ids.append(str(entry.id))
+		picker.add_item(str(entry.name) if not str(entry.name).is_empty() else str(entry.node.name))
+		picker.set_item_metadata(picker.item_count - 1, str(entry.id))
+		if str(entry.id) == current:
+			picker.select(picker.item_count - 1)
+	if not current.is_empty() and current not in ids:
+		picker.add_item("Нет на карте: " + current)
+		picker.set_item_metadata(picker.item_count - 1, current)
+		picker.select(picker.item_count - 1)
 
 
 func _shop_rows(current: String) -> Control:
@@ -740,8 +817,13 @@ func _step_value(panel: PanelContainer) -> Dictionary:
 	match step_type:
 		"talk": return {"type": step_type, "dialogueId": _option_value(panel, "dialogueId")}
 		"give_item": return {"type": step_type, "itemId": _option_value(panel, "itemId"), "count": roundi(_number_value(panel, "count"))}
+		"handover_quest_items":
+			var target := _option_value(panel, "handoverTarget").split("/", false)
+			return {"type": step_type, "questId": target[0] if target.size() > 0 else "", "objectiveId": target[1] if target.size() > 1 else "", "rewards": panel.find_child("StepItems_rewards", true, false).value()}
+		"exchange_items": return {"type":step_type,"costs":panel.find_child("StepItems_costs",true,false).value(),"rewards":panel.find_child("StepItems_rewards",true,false).value()}
 		"set_flag": return {"type": step_type, "flag": _text_value(panel, "flag"), "value": _flag_value(panel)}
 		"wait": return {"type": step_type, "sec": _number_value(panel, "sec")}
+		"play_cutscene": return {"type": step_type, "presentationId": _option_value(panel, "presentationId")}
 		"open_shop": return {"type": step_type, "shopId": _option_value(panel, "shopId")}
 		"change_map": return {
 			"type": step_type,
@@ -797,8 +879,11 @@ func _type_title(step_type: String) -> String:
 	match step_type:
 		"talk": return "Диалог"
 		"give_item": return "Выдать предмет"
+		"handover_quest_items": return "Сдать предметы по цели квеста"
+		"exchange_items": return "Передать / обменять предметы"
 		"set_flag": return "Изменить флаг"
 		"wait": return "Пауза (авто)"
+		"play_cutscene": return "Показать сценку"
 		"open_shop": return "Открыть магазин"
 		"change_map": return "Сменить карту (финал)"
 		"start_battle": return "Начать бой (финал)"

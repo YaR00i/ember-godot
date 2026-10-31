@@ -12,13 +12,17 @@ func _init() -> void:
 	if _state.refused:
 		quit.call_deferred(2)
 		return
+	if OS.get_cmdline_user_args().has("--prepare-only"):
+		print("PASS synthetic native inputs")
+		quit.call_deferred(0)
+		return
 	_run.call_deferred()
 
 func _run() -> void:
 	var errors: Array[String] = []
 	Fixture.check_detached(_state, errors)
 	_check_native(errors, false)
-	var binary := EmberVoxelCatalog.native_resource("vox_fan_crate_stack").duplicate_model()
+	var binary := EmberVoxelCatalog.native_resource(Fixture.IDS[0]).duplicate_model()
 	binary.model_id = "binary_fixture"
 	var path := EmberVoxelCatalog.NATIVE_DIR.path_join("binary_fixture.res")
 	if ResourceSaver.save(binary, path) != OK or EmberVoxelCatalog.owner("binary_fixture") != "godot" or str(EmberVoxelPrefab.source_paths("binary_fixture").source) != path:
@@ -58,7 +62,7 @@ func _check_native(errors: Array[String], packed: bool) -> void:
 		if definition.get("_owner") != "godot": errors.append("shelf includes historical owner")
 		for channel in ["voxels", "collisionVoxels", "palette", "voxelGroups"]:
 			if definition.model.has(channel): errors.append("metadata expanded geometry: " + id)
-	for id in ["vox_fan_crate_stack", "vox_fan_barrel"]:
+	for id in [Fixture.IDS[0], Fixture.IDS[1]]:
 		var resource := EmberVoxelCatalog.native_resource(id)
 		if resource == null or not resource.validation_errors().is_empty():
 			errors.append("native source invalid: " + id)

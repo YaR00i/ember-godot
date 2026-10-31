@@ -18,6 +18,7 @@ func _init() -> void:
 	_directory = "user://ember-tests/combat-defeat-retry-%d-%d" % [OS.get_process_id(), Time.get_ticks_usec()]
 	# Shared native items supply the wallet; no historical content is supplied.
 	_setup = Fixture.prepare(self, _directory)
+	_setup.coverage_texture = Fixture.placeholder_coverage()
 	call_deferred("_run")
 
 

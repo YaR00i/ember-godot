@@ -23,6 +23,31 @@ const WorkshopTheme = preload("res://addons/ember_import/ember_voxel_workshop_th
 const PerfPolicy = preload("res://addons/ember_import/ember_voxel_editor_perf_policy.gd")
 const PerfMonitor = preload("res://addons/ember_import/ember_voxel_editor_perf_monitor.gd")
 const EditTrace = preload("res://addons/ember_import/ember_voxel_editor_edit_trace.gd")
+const CanvasForms=preload("res://addons/ember_import/ember_voxel_canvas_forms.gd")
+const VolumeSmooth=preload("res://addons/ember_import/ember_voxel_volume_smooth.gd")
+
+class VolumePreviewJob extends RefCounted:
+	var task_id:=-1
+	var cancelled:=false
+	var source:EmberVoxelModelResource
+	var chunk:Vector2i
+	var revision:=0
+	var region_min:Vector3i
+	var region_size:Vector3i
+	var include_water:=false
+	var visible_height:=-1
+	var mesh:ArrayMesh
+	func run()->void:
+		if cancelled:return
+		var dry:=source.transparency.count(0)==source.transparency.size() and source.surface_fill_levels.count(0)==source.surface_fill_levels.size()
+		if dry:
+			# SurfaceMesher copies its generated terrain through surface_get_arrays
+			# before adding water. Dry objects need no copy or GPU readback.
+			mesh=VoxMesher.build_from_packed_voxel_region(source.voxels,source.grid_size(),source.palette,PackedByteArray(),region_min,region_size,1.0/source.normalized_density(),PackedByteArray(),visible_height,source.material)
+		else:
+			mesh=EmberVoxelSurfaceMesher.build_region(source,region_min,region_size,1.0/source.normalized_density(),false,include_water,visible_height)
+const FormsPanel=preload("res://addons/ember_import/ember_voxel_canvas_forms_panel.gd")
+const FormObjectSession=preload("res://addons/ember_import/ember_voxel_object_session.gd")
 const PREVIEW_REBUILD_BUDGET_USEC := 6000
 const MAX_VIEWPORT_DIMENSION := 4096
 const DEFAULT_CAMERA_TARGET := Vector3(2.0, 0.12, 2.0)
@@ -47,12 +72,78 @@ enum CanvasMode {
 	COLOR_PICK,
 	REGION_SELECT,
 	GENERATOR,
+	FORMS,
 }
 
 signal status_changed(message: String, color: Color)
 signal generator_assets_changed(model_id: String)
+signal world_context_return_requested(target:Node3D)
 
 var _object_session: RefCounted
+var _canvas_forms:RefCounted
+var _forms_panel:VBoxContainer
+var _forms_registry:RefCounted
+var _forms_save:Callable
+
+func configure_forms(registry:RefCounted,save_callback:Callable)->void:
+	_forms_registry=registry;_forms_save=save_callback
+
+func open_scene_forms(nodes:Array,separating:=false)->bool:
+	_forms_panel.finish_input()
+	if _canvas_forms==null:_enable_canvas_forms()
+	if _canvas_forms==null:return false
+	_forms_panel.show()
+	if not _canvas_forms.include_nodes(nodes):_set_status(_canvas_forms.error,true);return false
+	_switch_canvas_mode(CanvasMode.BRUSH if separating else CanvasMode.FORMS);_forms_panel.refresh()
+	_set_status("Выберите «Разобрать части»; новые формы останутся в Canvas." if separating else "Формы сцены открыты в Canvas · выберите основную и нажмите «Соединить» · прежние правки сохранены")
+	return true
+
+func _enable_canvas_forms()->void:
+	_forms_panel.finish_input()
+	if _canvas_forms!=null:_forms_panel.visible=not _forms_panel.visible;return
+	if _object_session==null or not _object_session is FormObjectSession or _object_session.shared:
+		_set_status("Откройте один объект сцены для лепки форм.",true);return
+	var registry:RefCounted=_world_sessions if _world_sessions!=null else _forms_registry
+	if registry==null:_set_status("Сохранение форм не подключено к сцене.",true);return
+	var entry:Dictionary=_world_entry if not _world_entry.is_empty() else registry.adopt_object(_object_session,_resource)
+	var existing:WeakRef=entry.get("canvas_forms")
+	if existing!=null and existing.get_ref()!=null:
+		_canvas_forms=existing.get_ref();_canvas_forms.workspace=weakref(self)
+		for body in _canvas_forms.bodies:
+			if body.entry==entry:_canvas_forms.active=body
+	else:
+		_canvas_forms=CanvasForms.new();_canvas_forms.configure(self,registry,entry)
+	_world_entry=entry;_world_sessions=registry
+	if _world_save.is_null():_world_save=_forms_save
+	_actions.history_context=entry.scene.get_ref()
+	_forms_panel.configure(self);_forms_panel.show()
+	registry.preview(entry)
+	if not _resource.merge_parts.is_empty():_actions.active_part=1;_part_selector.select(1)
+	_forms_panel.sync_preview()
+	_context_controls.visible=false
+	find_child("CreateCanvasObject",true,false).hide()
+	_update_workshop_shell()
+
+func _bind_canvas_form(entry:Dictionary,before_frame:Transform3D,after_frame:Transform3D,rebuild:=true)->void:
+	if _resource!=entry.resource:_publish_world_guard()
+	var transition:=_guard_transition;_guard_transition=true
+	var target:=_camera_target
+	var different:bool=_resource!=entry.resource
+	if different:_disconnect_resource()
+	_resource=entry.resource;_resource_path=entry.path;_object_session=entry.object_session
+	_refresh_tool_context()
+	_world_entry=entry;_world_sessions=_canvas_forms.registry;_actions.history_context=entry.scene.get_ref()
+	_camera_target=after_frame.affine_inverse()*(before_frame*target)
+	if different:
+		_refresh_palette();_refresh_groups()
+		if not _resource.merge_parts.is_empty():_actions.active_part=1;_part_selector.select(1)
+	if rebuild:_on_source_changed(PackedInt32Array())
+	_update_camera();_sync_camera_controls();_forms_panel.sync_preview();_forms_panel.refresh()
+	restore_world_guard(true)
+	_guard_transition=transition
+	_update_workshop_shell()
+
+var _guard_transition:=false
 var _world_entry := {}
 var _world_sessions: RefCounted
 var _world_save: Callable
@@ -64,17 +155,77 @@ func open_world_draft(entry: Dictionary, sessions: RefCounted, save_callback: Ca
 		return false
 	_flush_pending_stroke_position()
 	_finish_stroke()
+	_remember_current_editor_view()
 	_open_surface_unchecked(entry.resource,entry.path)
 	_world_entry = entry
 	_world_sessions = sessions
 	_world_save = save_callback
 	_object_session = entry.object_session
+	_refresh_tool_context()
 	_actions.history_context = entry.scene.get_ref()
 	_context_controls.visible = _object_session != null
 	_grow_button.visible = _object_session != null
 	_title.text = "CANVAS · " + entry.resource.display_name
 	_resource_path_label.text = "Общий черновик мира · Ctrl+S сохраняет карту и объекты"
+	_return_world_button.show()
+	restore_world_guard()
 	return true
+
+func _publish_world_guard()->void:
+	if _guard_transition or _world_entry.is_empty() or _resource!=_world_entry.resource or not is_visible_in_tree():return
+	var previous:Dictionary=_world_entry.get("canvas_guard",{})
+	if not previous.is_empty() and previous.selection.get("grid_size",_resource.grid_size())!=_resource.grid_size() and (previous.selection.get("mask_enabled",false) or previous.get("region",Rect2i()).has_area() or previous.get("height",-1)>=0) and not _selection_panel.has_saved_mask():return
+	_world_entry.canvas_guard={"selection":_selection_panel.history_state(),"region":_edit_region_blocks,"height":_slice_height}
+
+func restore_world_guard(reset_if_empty:=false)->void:
+	var state:Dictionary=_world_entry.get("canvas_guard",{})
+	if state.is_empty():
+		if not reset_if_empty:return
+		state={"selection":{"grid_size":_resource.grid_size()},"region":Rect2i(),"height":-1}
+	if state.selection.get("grid_size",Vector3i.ZERO)!=_resource.grid_size():
+		_set_status("Размер формы изменился: выберите маску и рабочую область заново.",true);return
+	var transition:=_guard_transition;_guard_transition=true
+	_edit_region_blocks=state.region;_slice_height=state.height
+	_selection_panel.sync(_resource,_edit_region_blocks,_slice_height,_surface_root)
+	_selection_panel.apply_history_state(state.selection)
+	_refresh_tool_context();_update_slice_tools();_update_region_label(_edit_region_blocks)
+	_slice_control.configure(_resource.grid_size().y);_slice_control.restore_view(_slice_height)
+	_rebuild_region_overlay()
+	_guard_transition=transition
+
+func _select_numeric_brush_value(option:OptionButton,value:int,label:String)->void:
+	for i in option.item_count:
+		if option.get_item_metadata(i)==value:option.select(i);return
+	option.add_item(label%value);option.set_item_metadata(option.item_count-1,value);option.select(option.item_count-1)
+
+func set_world_brush_radius(blocks:float)->void:
+	if _resource==null:return
+	var voxels:=clampi(roundi(blocks*_resource.normalized_density()),1,BrushProfiles.MAX_RADIUS_VOXELS)
+	_select_numeric_brush_value(_radius,voxels,"Радиус %d vox")
+	_on_brush_setting_changed()
+
+func world_brush_settings()->Dictionary:
+	var tool:=_selected_tool_id()
+	if tool==Model.TOOL_SMOOTH and _uses_volume_smooth():return {"depth":float(_smooth_strength.get_selected_metadata())}
+	if tool in [Model.TOOL_ADD,Model.TOOL_REMOVE]:return {"depth":_depth.value}
+	if tool==Model.TOOL_GRAB:return {"softness":_grab_softness.value}
+	return {}
+
+func set_world_brush_settings(depth:float,softness:float)->void:
+	var tool:=_selected_tool_id()
+	if tool==Model.TOOL_SMOOTH and _uses_volume_smooth():_select_numeric_brush_value(_smooth_strength,clampi(roundi(depth),1,8),"Сила %d vox")
+	elif tool in [Model.TOOL_ADD,Model.TOOL_REMOVE]:_depth.set_value_no_signal(clampf(depth,1,32))
+	elif tool==Model.TOOL_GRAB:_grab_softness.set_value_no_signal(clampf(softness,0,100))
+	_on_brush_setting_changed()
+
+func can_switch_world_context()->bool:
+	if _world_entry.is_empty():return not has_unsaved_changes()
+	return not _stroke_active and _precision_line_anchor_cell==Model.INVALID_CELL and not (_grab_interaction!=null and _grab_interaction.active) and not (_selection_interaction!=null and _selection_interaction.transforming) and not (_canvas_forms!=null and _canvas_forms.moving) and not (_forms_panel!=null and not _forms_panel.candidate.is_empty()) and _canvas_mode!=CanvasMode.STAMP_DRAFT and not (_generator_active() and _generator_panel.creation!=null)
+
+func _return_to_world_context()->void:
+	if _world_entry.is_empty() or not can_switch_world_context():_set_status("Завершите жест или примените/отмените предпросмотр перед возвратом.",true);return
+	var target:Node3D=_world_entry.target.get_ref()
+	request_close(func():world_context_return_requested.emit(target),Callable())
 var _generator_panel: VBoxContainer
 var _generator_preview: Node3D
 var _extraction_go_to_3d := false
@@ -198,6 +349,7 @@ var _selection_interaction: Control
 var _stamp_panel: VBoxContainer
 var _groups_panel: VBoxContainer
 var _displayed_groups: Array[Dictionary] = []
+var _displayed_parts:=PackedStringArray()
 var _locked_indices: Dictionary = {}
 var _isolated_group_indices := PackedInt32Array()
 var _hidden_group_indices := PackedInt32Array()
@@ -214,6 +366,7 @@ var _surface_fill_tint: OptionButton
 var _coarse: CheckBox
 var _title: Label
 var _dirty_label: Label
+var _return_world_button:Button
 var _object_name_input: LineEdit
 var _workshop_context_label: Label
 var _active_tool_label: Label
@@ -275,6 +428,18 @@ var _stroke_relief_amount_cache: Dictionary = {}
 var _stroke_relief_center_height_cache: Dictionary = {}
 var _stroke_shell_foundation_cache: Dictionary = {}
 var _stroke_smooth_column_cache: Dictionary = {}
+var _surface_plane_mode:OptionButton
+var _surface_plane_offset:SpinBox
+var _stroke_plane:Dictionary={}
+var _volume_smooth_job:RefCounted
+var _volume_smooth_retired:Array[RefCounted]=[]
+var _volume_smooth_segments:Array[Dictionary]=[]
+var _volume_smooth_last:=Vector3i(-99999,-99999,-99999)
+var _volume_smooth_owners:Dictionary={}
+var _volume_smooth_last_usec:=0
+var _volume_preview_job:RefCounted
+var _volume_preview_versions:Dictionary={}
+var _volume_preview_active:=false
 var _stroke_generator_column_cache: Dictionary = {}
 var _stroke_heightfield := PackedInt32Array()
 var _stroke_normal := Vector3i.ZERO
@@ -341,6 +506,7 @@ func _on_workspace_visibility_changed() -> void:
 
 
 func _process(delta: float) -> void:
+	_drain_volume_smooth()
 	if _grab_interaction != null:
 		_grab_interaction.tick()
 	_sync_object_name_input()
@@ -362,7 +528,7 @@ func _process(delta: float) -> void:
 	):
 		return
 	var tool_id := _selected_tool_id()
-	if not _is_relief_tool(tool_id) or _is_relief_generator():
+	if not BrushProfiles.is_relief(tool_id) or _is_relief_generator():
 		return
 	var height_limit := int(_height_limit.get_item_metadata(_height_limit.selected))
 	var rate := float(_buildup_rate.get_item_metadata(_buildup_rate.selected))
@@ -413,6 +579,8 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode==KEY_ESCAPE and _canvas_mode==CanvasMode.FORMS and _canvas_forms.moving:
+			_forms_panel.handle(event);get_viewport().set_input_as_handled();return
 		if event.keycode == KEY_ESCAPE and is_instance_valid(_selection_panel) and _selection_panel.busy():
 			if _selection_panel.busy():
 				_selection_panel.cancel_search()
@@ -556,6 +724,7 @@ func _open_object_after_navigation(session: RefCounted) -> void:
 func _open_object_unchecked(session: RefCounted) -> void:
 	_open_surface_unchecked(session.draft, "")
 	_object_session = session
+	_refresh_tool_context()
 	_context_controls.visible = true
 	_grow_button.visible = session.can_grow_canvas()
 	_title.text = "CANVAS · %s" % session.draft.display_name
@@ -567,6 +736,7 @@ func _open_object_unchecked(session: RefCounted) -> void:
 
 func request_close(continuation: Callable, cancel: Callable) -> void:
 	ensure_ui()
+	if _canvas_forms!=null:_forms_panel.finish_input()
 	_flush_pending_stroke_position()
 	_finish_stroke()
 	_remember_current_editor_view()
@@ -615,7 +785,14 @@ func _open_surface_unchecked(
 	resource: EmberVoxelModelResource, resource_path: String,
 	initial_region_blocks := Rect2i(),
 ) -> void:
+	if _canvas_forms!=null:_forms_panel.finish_input()
+	_canvas_forms=null
+	var create_form:=find_child("CreateCanvasObject",true,false)
+	if create_form!=null:create_form.show()
+	if is_instance_valid(_forms_panel):_forms_panel.hide()
+	_forms_panel.clear_preview()
 	_world_entry = {}
+	if is_instance_valid(_return_world_button):_return_world_button.hide()
 	_world_sessions = null
 	_world_save = Callable()
 	if _actions != null: _actions.history_context = null
@@ -731,6 +908,7 @@ func _clamped_block_region(region: Rect2i, width: int, depth: int) -> Rect2i:
 
 
 func has_unsaved_changes() -> bool:
+	if _canvas_forms!=null:return _canvas_forms.dirty()
 	if not _world_entry.is_empty() and _world_sessions != null:
 		return _world_sessions.dirty(_world_entry)
 	return (
@@ -778,6 +956,7 @@ func _capture_editor_view_state() -> Dictionary:
 
 
 func _remember_current_editor_view() -> void:
+	_publish_world_guard()
 	if _view_store == null:
 		return
 	_store_active_tool_profile()
@@ -813,6 +992,7 @@ func _restore_editor_view_state(state: Dictionary) -> void:
 
 
 func discard_changes() -> void:
+	if _canvas_forms!=null:_cancel_stroke();_canvas_forms.discard();return
 	if not _world_entry.is_empty() and _world_sessions != null:
 		_cancel_stroke()
 		for field in _world_sessions.FIELDS:
@@ -893,12 +1073,18 @@ func _build() -> void:
 	workspace_actions.add_theme_constant_override("h_separation", 6)
 	workspace_actions.add_theme_constant_override("v_separation", 4)
 	var create_object := Button.new()
+	create_object.name="CreateCanvasObject"
 	create_object.text = "+ Объект"
 	create_object.pressed.connect(func():
 		if create_object_callback.is_valid():
 			request_close(create_object_callback, Callable())
 	)
 	workspace_actions.add_child(create_object)
+	_return_world_button=Button.new();_return_world_button.name="ReturnToWorldContext";_return_world_button.text="← В мир · 3D"
+	_return_world_button.tooltip_text="Вернуться к текущей цели в 3D. Не сохраняет и не отменяет черновик."
+	_return_world_button.pressed.connect(_return_to_world_context);_return_world_button.hide();workspace_actions.add_child(_return_world_button)
+	var forms_button:=Button.new();forms_button.text="Формы";forms_button.name="OpenCanvasForms"
+	forms_button.pressed.connect(_enable_canvas_forms);workspace_actions.add_child(forms_button)
 	_grow_button = Button.new()
 	_grow_button.text = "Расширить холст…"
 	_grow_button.visible = false
@@ -1008,6 +1194,7 @@ func _build() -> void:
 	_workshop_context_label.tooltip_text = "Текущий объект сцены, voxel-модель, часть склейки и пресет штампа."
 	context_bar.add_child(_workshop_context_label)
 	root.add_child(workspace_actions)
+	_forms_panel=FormsPanel.new();_forms_panel.workspace=weakref(self);root.add_child(_forms_panel);_forms_panel.hide()
 
 	_context_controls = HFlowContainer.new()
 	_context_controls.visible = false
@@ -1105,6 +1292,16 @@ func _build() -> void:
 	)
 	_depth.value_changed.connect(func(_value: float) -> void: _on_brush_setting_changed())
 	tool_settings.add_child(_depth)
+	_surface_plane_mode=OptionButton.new();_surface_plane_mode.name="SurfacePlaneMode"
+	for label in ["Площадка · по высоте","Поверхность · выровнять","Поверхность · срезать"]:_surface_plane_mode.add_item(label)
+	_surface_plane_mode.select(1);tool_settings.add_child(_surface_plane_mode)
+	_surface_plane_mode.item_selected.connect(func(_index):_on_brush_setting_changed();_refresh_tool_context())
+	_surface_plane_offset=SpinBox.new();_surface_plane_offset.name="SurfacePlaneOffset"
+	_surface_plane_offset.custom_minimum_size.x=190
+	_surface_plane_offset.prefix="Смещение ";_surface_plane_offset.suffix=" vox";_surface_plane_offset.min_value=-32;_surface_plane_offset.max_value=32
+	tool_settings.add_child(_surface_plane_offset)
+	_surface_plane_offset.value_changed.connect(func(_value):_on_brush_setting_changed())
+
 	_application_mode = OptionButton.new()
 	_application_mode.name = "VoxelSculptApplication"
 	_application_mode.tooltip_text = (
@@ -1623,19 +1820,9 @@ func _build() -> void:
 	_tool.same_column_width = true
 	_tool.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_tool.custom_minimum_size = Vector2(168.0, 170.0)
-	for entry in [
-		["▧ Лепка · объём", Model.TOOL_ADD],
-		["↝ Тянуть · мягко", Model.TOOL_GRAB],
-		["▣ Покраска", Model.TOOL_PAINT],
-		["◐ Материал / вода", Model.TOOL_MATERIAL],
-		["▰ Заливка уровня", Model.TOOL_SURFACE_FILL],
-		["⛰ Рельеф", Model.TOOL_RAISE],
-		["▬ Площадка", Model.TOOL_LEVEL],
-		["≈ Сгладить", Model.TOOL_SMOOTH],
-		["╱ Склон A → B", Model.TOOL_RAMP],
-	]:
-		_tool.add_item(entry[0])
-		_tool.set_item_metadata(_tool.item_count - 1, entry[1])
+	for tool_id in BrushProfiles.TOOLS:
+		_tool.add_item(BrushProfiles.title(tool_id))
+		_tool.set_item_metadata(_tool.item_count - 1, tool_id)
 	_tool.select(0)
 	_tool.item_selected.connect(_on_tool_selected)
 	_tool_rail.add_child(_tool)
@@ -1713,7 +1900,7 @@ func _build() -> void:
 	_selection_panel.paint_requested.connect(_paint_voxel_selection)
 	_selection_panel.transform_requested.connect(_transform_voxel_selection)
 	_selection_panel.extract_requested.connect(_extract_voxel_selection)
-	_selection_panel.selection_changed.connect(func(has_selection: bool) -> void: _groups_panel.set_can_create(has_selection))
+	_selection_panel.selection_changed.connect(func(has_selection: bool) -> void: _groups_panel.set_can_create(has_selection);_publish_world_guard())
 	selection_tab.add_child(_selection_panel)
 	_selection_interaction = preload("res://addons/ember_import/ember_voxel_selection_interaction.gd").new()
 	_viewport_container.add_child(_selection_interaction)
@@ -1942,7 +2129,7 @@ func _show_stamp_operation(display_name: String, pattern := false) -> void:
 
 func _set_non_brush_tool_context(active: bool, keep_palette := false) -> void:
 	var controls: Array[Control] = [
-		_radius, _grab_softness, _depth, _application_mode, _brush_shape, _follow_surface,
+		_surface_plane_mode,_surface_plane_offset,_radius, _grab_softness, _depth, _application_mode, _brush_shape, _follow_surface,
 		_volume_operation, _relief_direction, _relief_geometry, _height_limit,
 		_buildup_rate, _smooth_strength, _smooth_mode, _smooth_fill_pits,
 		_coarse, _palette, _material_preset,
@@ -1971,6 +2158,7 @@ func _switch_canvas_mode(next_mode: int, announce := false) -> void:
 	if _switching_canvas_mode:
 		return
 	_switching_canvas_mode = true
+	if _canvas_mode==CanvasMode.FORMS and next_mode!=CanvasMode.FORMS:_forms_panel.finish_input()
 	if _grab_interaction != null:
 		_grab_interaction.cancel()
 	if is_instance_valid(_selection_interaction) and _selection_interaction.transforming:
@@ -1999,6 +2187,7 @@ func _apply_canvas_mode(next_mode: int, announce := false, pattern := false) -> 
 	var brush_mode := next_mode == CanvasMode.BRUSH
 	var selection_mode := next_mode in [CanvasMode.SELECTION, CanvasMode.SELECTION_TRANSFORM]
 	var stamp_mode := next_mode in [CanvasMode.STAMP_LIBRARY, CanvasMode.STAMP_DRAFT]
+	if _canvas_forms!=null:_forms_panel.mode.set_pressed_no_signal(next_mode==CanvasMode.FORMS);_forms_panel.refresh()
 	if is_instance_valid(_tool):
 		if brush_mode:
 			_last_brush_item = clampi(_last_brush_item, 0, maxi(0, _tool.item_count - 1))
@@ -2015,7 +2204,7 @@ func _apply_canvas_mode(next_mode: int, announce := false, pattern := false) -> 
 			not selection_mode
 			and (
 				not brush_mode
-				or BrushProfiles.mask_kind(_selected_tool_id()) == BrushProfiles.MASK_NONE
+				or BrushProfiles.mask_kind(_selected_tool_id(),_uses_volume_mask()) == BrushProfiles.MASK_NONE
 			)
 		)
 		_selection_panel.set_active(
@@ -2039,6 +2228,10 @@ func _apply_canvas_mode(next_mode: int, announce := false, pattern := false) -> 
 	elif stamp_mode and is_instance_valid(_sidebar_tabs):
 		_sidebar_tabs.current_tab = 1
 	match next_mode:
+		CanvasMode.FORMS:
+			_active_tool_label.text="Формы · перемещение"
+			_info.text="Выбери и перетащи форму · Esc отменяет движение · кисть возвращает лепку."
+			_update_workshop_shell()
 		CanvasMode.GENERATOR:
 			_active_tool_label.text = "Генератор · рецепт"
 			_info.text = "Настройки справа меняют рецепт, не исходник. Соберите предпросмотр; RMB/MMB/колесо управляют камерой."
@@ -2097,6 +2290,7 @@ func _on_workshop_part_selected(index: int) -> void:
 
 
 func _update_workshop_shell() -> void:
+	if is_instance_valid(_return_world_button):_return_world_button.visible=not _world_entry.is_empty()
 	if is_instance_valid(_dirty_label):
 		_dirty_label.text = "Черновик" if _grab_interaction != null and _grab_interaction.active else ("Не сохранено" if _resource != null and has_unsaved_changes() else "Сохранено")
 		_dirty_label.modulate = (
@@ -2118,9 +2312,17 @@ func _update_workshop_shell() -> void:
 	if model.is_empty():
 		model = "без ID"
 	_sync_object_name_input()
+	if is_instance_valid(_footer_stats):
+		var occupied := _resource.voxels.size() - _resource.voxels.count(0)
+		_footer_stats.text = "%d вокселей · %s · %d вокс./м" % [occupied, str(_resource.grid_size()), _resource.normalized_density()]
+	if _canvas_forms!=null:
+		_title.text=("ФОРМЫ · " if _canvas_mode==CanvasMode.FORMS else "ЛЕПКА · ")+_resource.display_name
+		_workshop_context_label.text="%d формы · активна: %s"%[_canvas_forms.bodies.size(),_resource.display_name]
+		_workshop_context_label.tooltip_text="Формы используют прежние Sources, кисти и сохранение мира."
+		return
 	if is_instance_valid(_workshop_context_label):
 		var model_name := _resource.display_name if not _resource.display_name.is_empty() else model
-		var preset_name := _workshop_preset_name if not _workshop_preset_name.is_empty() else "—"
+		var preset_name := _workshop_preset_name if _canvas_mode in [CanvasMode.STAMP_LIBRARY,CanvasMode.STAMP_DRAFT] and not _workshop_preset_name.is_empty() else "—"
 		_workshop_context_label.text = "›  Модель %s (%s)  ›  Часть %s  ›  Пресет %s" % [
 			model_name,
 			model,
@@ -2131,9 +2333,6 @@ func _update_workshop_shell() -> void:
 			"Voxel-модель: %s · ID: %s · часть: %s · пресет: %s"
 			% [model_name, model, part, preset_name]
 		)
-	if is_instance_valid(_footer_stats):
-		var occupied := _resource.voxels.size() - _resource.voxels.count(0)
-		_footer_stats.text = "%d vox · сетка %d" % [occupied, _resource.normalized_density()]
 
 
 func _sync_object_name_input(force := false) -> void:
@@ -2492,6 +2691,10 @@ func _bend_voxel_volume() -> void:
 	dialog.open_bend(_resource, _selection_panel.selection_indices(), _actions, _edit_region_blocks, _slice_height, _clip_bounds)
 
 func _extract_voxel_selection(cut: bool) -> void:
+	if _canvas_forms!=null:
+		_forms_panel.finish_input()
+		if not _canvas_forms.separate(_selection_panel.selection_indices(),cut):_set_status(_canvas_forms.error,true)
+		return
 	_finish_palette_gesture()
 	_finish_stroke()
 	if _resource == null or _selection_panel.busy():
@@ -2603,6 +2806,7 @@ func _paint_voxel_selection(indices: PackedInt32Array) -> void:
 
 
 func _refresh_groups(preferred_id := "") -> void:
+	_displayed_parts=_resource.merge_parts.duplicate() if _resource!=null else PackedStringArray()
 	if _part_selector != null:
 		_part_selector.clear()
 		_part_selector.visible = _resource != null and not _resource.merge_parts.is_empty()
@@ -2709,15 +2913,19 @@ func _rebuild_visual(indices := PackedInt32Array(), rebuild_grid := true) -> voi
 	_heightfield_source_voxels = _resource.voxels
 	if _edit_trace != null:
 		_edit_trace.end()
+	var pending_volume_chunks:Array=_pending_preview_chunks.keys() if _volume_preview_enabled() else []
+	_invalidate_volume_preview()
 	_pending_preview_chunks.clear()
 	if _edit_trace != null:
 		_edit_trace.queue_cleared()
 	if _edit_trace != null:
 		_edit_trace.begin("affected_chunks")
 	var chunks := _all_preview_chunks() if indices.is_empty() else _affected_preview_chunks(indices)
+	for chunk in pending_volume_chunks:
+		if chunk not in chunks:chunks.append(chunk)
 	if _edit_trace != null:
 		_edit_trace.end()
-	if indices.is_empty() and PerfPolicy.should_queue_full_rebuild(chunks.size(), _adaptive_chunks_enabled()):
+	if _volume_preview_enabled() or (indices.is_empty() and PerfPolicy.should_queue_full_rebuild(chunks.size(), _adaptive_chunks_enabled())):
 		for chunk in chunks:
 			_pending_preview_chunks[chunk] = false
 			if _edit_trace != null:
@@ -2747,6 +2955,7 @@ func _queue_visual_rebuild(indices: PackedInt32Array, draft_relief := false) -> 
 		_edit_trace.begin("queue_mutation")
 	for chunk in chunks:
 		# Exact rebuild always wins over a still-pending draft for this chunk.
+		if _volume_preview_enabled():_volume_preview_versions[chunk]=int(_volume_preview_versions.get(chunk,0))+1
 		if not _pending_preview_chunks.has(chunk) or not draft_relief:
 			_pending_preview_chunks[chunk] = draft_relief
 			if _edit_trace != null:
@@ -2756,6 +2965,9 @@ func _queue_visual_rebuild(indices: PackedInt32Array, draft_relief := false) -> 
 
 
 func _drain_preview_chunk() -> void:
+	if _volume_preview_enabled():
+		_drain_volume_preview();return
+	if _volume_preview_job!=null:_invalidate_volume_preview()
 	if _pending_preview_chunks.is_empty() or _resource == null:
 		return
 	var deadline := Time.get_ticks_usec() + PREVIEW_REBUILD_BUDGET_USEC
@@ -2859,30 +3071,7 @@ func _rebuild_chunk(chunk: Vector2i, draft_relief := false) -> void:
 		fallback_reason = "none"
 	if _edit_trace != null:
 		_edit_trace.begin("mesh_material_assignment")
-	var has_water_surface := false
-	for surface_index in mesh.get_surface_count():
-		var surface_name: StringName = mesh.surface_get_name(surface_index)
-		if surface_name == "water":
-			has_water_surface = true
-		mesh.surface_set_material(
-			surface_index,
-			transparent if surface_name == "water"
-			else foam if surface_name == "water_foam"
-			else opaque,
-		)
-	if _edit_trace != null:
-		_edit_trace.end()
-		_edit_trace.begin("mesh_instance_assignment")
-	var visual := _chunk_meshes.get(chunk) as MeshInstance3D
-	if visual == null:
-		visual = MeshInstance3D.new()
-		visual.name = "Chunk_%d_%d" % [chunk.x, chunk.y]
-		_surface_root.add_child(visual)
-		_chunk_meshes[chunk] = visual
-	visual.position = projection.get("position", Vector3.ZERO)
-	visual.scale = projection.get("scale", Vector3.ONE)
-	visual.mesh = mesh if mesh.get_surface_count() > 0 else null
-	visual.visible = true
+	var has_water_surface:=_install_chunk_mesh(chunk,mesh,projection,opaque,transparent,foam)
 	if _edit_trace != null:
 		_edit_trace.end()
 		_edit_trace.end()
@@ -2905,6 +3094,52 @@ func _rebuild_chunk(chunk: Vector2i, draft_relief := false) -> void:
 			"superseded_requests": int(queue_info.get("superseded", 0)),
 		})
 
+
+func _install_chunk_mesh(chunk:Vector2i,mesh:Mesh,projection:Dictionary,opaque:Material,transparent:Material,foam:Material)->bool:
+	var has_water:=false
+	for surface in mesh.get_surface_count():
+		var title:StringName=mesh.surface_get_name(surface)
+		has_water=has_water or title=="water"
+		mesh.surface_set_material(surface,transparent if title=="water" else foam if title=="water_foam" else opaque)
+	if _edit_trace!=null:
+		_edit_trace.end();_edit_trace.begin("mesh_instance_assignment")
+	var visual:=_chunk_meshes.get(chunk) as MeshInstance3D
+	if visual==null:
+		visual=MeshInstance3D.new();visual.name="Chunk_%d_%d"%[chunk.x,chunk.y];_surface_root.add_child(visual);_chunk_meshes[chunk]=visual
+	visual.position=projection.get("position",Vector3.ZERO);visual.scale=projection.get("scale",Vector3.ONE)
+	visual.mesh=mesh if mesh.get_surface_count()>0 else null;visual.visible=true
+	return has_water
+
+func _volume_preview_enabled()->bool:
+	return _uses_volume_smooth() and (_selected_tool_id()==Model.TOOL_SMOOTH or _volume_preview_active)
+
+func _invalidate_volume_preview()->void:
+	if _volume_preview_job!=null:
+		_volume_preview_job.cancelled=true;_volume_smooth_retired.append(_volume_preview_job);_volume_preview_job=null
+	_volume_preview_versions.clear()
+
+func _drain_volume_preview()->void:
+	if _volume_preview_job!=null and WorkerThreadPool.is_task_completed(_volume_preview_job.task_id):
+		WorkerThreadPool.wait_for_task_completion(_volume_preview_job.task_id)
+		var ready:RefCounted=_volume_preview_job;_volume_preview_job=null
+		if not ready.cancelled and ready.revision==int(_volume_preview_versions.get(ready.chunk,0)) and _pending_preview_chunks.has(ready.chunk):
+			_pending_preview_chunks.erase(ready.chunk)
+			var opaque:=SurfaceMaterials.opaque_material()
+			if _resource.material.get("object_surface",{}).has("style_rim"):
+				opaque=opaque.duplicate() as ShaderMaterial
+				preload("res://scripts/ember_voxel_material_profiles.gd").apply_rim(opaque,_resource.material)
+			if _edit_trace!=null:_edit_trace.begin("mesh_material_assignment")
+			_install_chunk_mesh(ready.chunk,ready.mesh,{},opaque,SurfaceMaterials.water_material(),SurfaceMaterials.foam_material())
+			if _edit_trace!=null:_edit_trace.end()
+	if _volume_preview_job!=null or _pending_preview_chunks.is_empty():return
+	var job:=VolumePreviewJob.new();job.chunk=_pending_preview_chunks.keys()[0]
+	var snapshot:EmberVoxelModelResource=_isolation_resource if _isolation_resource!=null else _resource
+	job.source=snapshot.duplicate_model();job.revision=int(_volume_preview_versions.get(job.chunk,0))
+	var width:=_preview_chunk_size();var size:=job.source.grid_size()
+	job.region_min=Vector3i(job.chunk.x*width,0,job.chunk.y*width)
+	job.region_size=Vector3i(mini(width,size.x-job.region_min.x),size.y,mini(width,size.z-job.region_min.z))
+	job.visible_height=_slice_height;job.include_water=_shows_water_overlay() and _isolation_resource==null
+	_volume_preview_job=job;job.task_id=WorkerThreadPool.add_task(job.run,false,"Canvas volume preview chunk")
 
 func _shows_water_overlay() -> bool:
 	if _slice_height >= 0:
@@ -2957,6 +3192,7 @@ func _on_height_slice_changed(enabled: bool, height: int) -> void:
 
 
 func _slice_allows_tool(tool_id: int) -> bool:
+	if tool_id==Model.TOOL_LEVEL and _uses_volume_smooth() and _surface_plane_mode.selected>0:return true
 	return _slice_height < 0 or tool_id in [
 		Model.TOOL_ADD, Model.TOOL_REMOVE, Model.TOOL_PAINT, Model.TOOL_MATERIAL,
 		Model.TOOL_GRAB,
@@ -3239,6 +3475,9 @@ func _top_height(x: int, z: int) -> float:
 
 
 func _on_viewport_input(event: InputEvent) -> void:
+	if _canvas_mode==CanvasMode.FORMS:
+		if _handle_camera_input(event):accept_event();return
+		if _forms_panel.handle(event):accept_event();return
 	if _grab_interaction != null and _grab_interaction.handle(event):
 		accept_event()
 		return
@@ -3583,6 +3822,10 @@ func _update_region_label(region: Rect2i, selecting := false) -> void:
 	_region_label.tooltip_text = _region_label.text
 
 
+func _refresh_tool_context()->void:
+	for item in _tool.item_count:_tool.set_item_text(item,BrushProfiles.title(int(_tool.get_item_metadata(item)),_uses_volume_smooth()))
+	_selection_panel.set_tool_support(BrushProfiles.mask_kind(_selected_tool_id(),_uses_volume_mask()))
+
 func _on_tool_selected(index: int) -> void:
 	_store_active_tool_profile()
 	_last_brush_item = clampi(index, 0, maxi(0, _tool.item_count - 1))
@@ -3590,33 +3833,37 @@ func _on_tool_selected(index: int) -> void:
 	var tool_id := _selected_tool_id()
 	var base_tool := _selected_base_tool_id()
 	_restore_tool_profile(base_tool)
+	_refresh_tool_context()
 	tool_id = _selected_tool_id()
-	_selection_panel.set_tool_support(BrushProfiles.mask_kind(tool_id))
-	var oriented_brush := _is_oriented_brush_tool(tool_id)
+	_refresh_tool_context()
+	var oriented_brush := (BrushProfiles.is_oriented(tool_id) and not (tool_id==Model.TOOL_PAINT and _is_sand_paint()))
 	_volume_operation.visible = base_tool == Model.TOOL_ADD
-	var relief := _is_relief_tool(tool_id)
+	var relief := BrushProfiles.is_relief(tool_id)
 	_relief_mode.visible = base_tool == Model.TOOL_RAISE
 	_height_limit.visible = relief
 	_update_relief_controls()
-	var smooth := _is_smooth_tool(tool_id)
+	var smooth := (tool_id == Model.TOOL_SMOOTH)
 	_smooth_strength.visible = smooth
-	_smooth_mode.visible = smooth
+	_smooth_mode.visible = smooth and not _uses_volume_smooth()
+	_smooth_strength.tooltip_text="Размер локального сглаживания в ячейках. Мягкий край кисти сохраняет остальную форму; новый мазок продолжает сглаживание." if _uses_volume_smooth() else "Максимальное изменение высоты колонки за жест."
 	_smooth_fill_pits.visible = (
-		smooth and _smooth_mode.selected >= 0
+		smooth and not _uses_volume_smooth() and _smooth_mode.selected >= 0
 		and str(_smooth_mode.get_selected_metadata()) == BrushProfiles.SMOOTH_COMMON
 	)
-	var material_tool := _is_material_tool(tool_id)
-	var surface_fill_tool := _is_surface_fill_tool(tool_id)
+	var material_tool := (tool_id == Model.TOOL_MATERIAL)
+	var surface_fill_tool := (tool_id == Model.TOOL_SURFACE_FILL)
 	_depth.visible = oriented_brush and not (
 		material_tool and _material_scope.selected >= 0
 		and str(_material_scope.get_item_metadata(_material_scope.selected)) == "connected"
 	)
-	_application_mode.visible = _depth.visible
-	_brush_shape.visible = _depth.visible
+	_depth.visible=_depth.visible or _uses_surface_plane()
+	_depth.prefix="Влияние " if _uses_surface_plane() else "Глубина "
+	_application_mode.visible = _depth.visible and not _uses_surface_plane()
+	_brush_shape.visible = _depth.visible and not _uses_surface_plane()
 	_follow_surface.visible = (
-		_depth.visible and _application_kind() == BrushProfiles.APPLICATION_STROKE
+		_depth.visible and not _uses_surface_plane() and _application_kind() == BrushProfiles.APPLICATION_STROKE
 	)
-	_palette.visible = not material_tool and not surface_fill_tool and tool_id != Model.TOOL_GRAB
+	_palette.visible = not material_tool and not surface_fill_tool and tool_id != Model.TOOL_GRAB and not (smooth and _uses_volume_smooth())
 	_palette.disabled = tool_id == Model.TOOL_LOWER
 	_material_preset.visible = material_tool
 	_material_scope.visible = material_tool
@@ -3734,7 +3981,9 @@ func _store_active_tool_profile() -> void:
 	_tool_profiles[_active_profile_tool] = BrushProfiles.normalize_profile({
 		"radius": radius,
 		"grab_softness": _grab_softness.value,
+		"smooth_strength":int(_smooth_strength.get_selected_metadata()),
 		"depth": int(_depth.value),
+		"surface_plane_mode":_surface_plane_mode.selected,"surface_plane_offset":_surface_plane_offset.value,
 		"coarse": _coarse.button_pressed,
 		"follow_surface": _follow_surface.button_pressed,
 		"direction_behavior_version": BrushProfiles.DIRECTION_BEHAVIOR_VERSION,
@@ -3775,8 +4024,10 @@ func _restore_tool_profile(base_tool: int) -> void:
 	var profile := BrushProfiles.normalize_profile(
 		_tool_profiles.get(base_tool, {}) as Dictionary
 	)
-	_select_option_metadata(_radius, int(profile.radius))
+	_select_numeric_brush_value(_radius,int(profile.radius),"Радиус %d vox")
+	_select_numeric_brush_value(_smooth_strength,int(profile.smooth_strength),"Сила %d vox")
 	_depth.set_value_no_signal(float(profile.depth))
+	_surface_plane_mode.select(int(profile.surface_plane_mode));_surface_plane_offset.set_value_no_signal(float(profile.surface_plane_offset))
 	_grab_softness.set_value_no_signal(float(profile.grab_softness))
 	_coarse.set_pressed_no_signal(bool(profile.coarse))
 	_follow_surface.set_pressed_no_signal(bool(profile.follow_surface))
@@ -3835,6 +4086,9 @@ func _on_brush_setting_changed() -> void:
 	_update_smooth_controls()
 	_update_tool_help(_selected_tool_id())
 	_update_paint_controls()
+	if _resource!=null:
+		_radius.tooltip_text="Радиус %d ячеек = %.3f блока; размер сохраняется при переходе в3D."%[int(_radius.get_selected_metadata()),float(_radius.get_selected_metadata())/_resource.normalized_density()]
+	_refresh_tool_context()
 	if is_instance_valid(_viewport_container):
 		_update_cursor(_viewport_container.get_local_mouse_position())
 
@@ -4118,12 +4372,18 @@ func _update_tool_help(tool_id: int) -> void:
 		Model.TOOL_LEVEL:
 			title = "Выровнять площадку"
 			help = "Берёт высоту первой точки и протягивает одну плоскость до отпускания LMB."
+			if _uses_surface_plane():
+				title="Поверхность · срезать" if _surface_plane_mode.selected==2 else "Поверхность · выровнять"
+				help="Плоскость по первому касанию, фиксирована до конца мазка. Смещение вглубь отрицательное; покрытие наследуется от поверхности."
 		Model.TOOL_SMOOTH:
 			var common_level := (
 				is_instance_valid(_smooth_mode) and _smooth_mode.selected >= 0
 				and str(_smooth_mode.get_selected_metadata()) == BrushProfiles.SMOOTH_COMMON
 			)
-			if common_level:
+			if _uses_volume_smooth():
+				title="Сгладить · объём"
+				help="Заминать стык или неровность с любой стороны. Кисть меняет форму и наследует покрытие соседней поверхности."
+			elif common_level:
 				title = "Сгладить · общий уровень"
 				help = (
 					"Сводит выступы%s к устойчивой высоте вокруг кисти не больше выбранной силы за жест."
@@ -4135,7 +4395,7 @@ func _update_tool_help(tool_id: int) -> void:
 		Model.TOOL_RAMP:
 			title = "Склон A → B"
 			help = "Первый клик ставит A, второй соединяет реальные высоты цельным проходом. Esc отменяет A."
-	if _is_oriented_brush_tool(tool_id) and is_instance_valid(_application_mode) and _application_mode.visible:
+	if (BrushProfiles.is_oriented(tool_id) and not (tool_id==Model.TOOL_PAINT and _is_sand_paint())) and is_instance_valid(_application_mode) and _application_mode.visible:
 		match _application_kind():
 			BrushProfiles.APPLICATION_STROKE:
 				help += (
@@ -4153,52 +4413,22 @@ func _update_tool_help(tool_id: int) -> void:
 	_info.tooltip_text = help
 
 
-func _is_relief_tool(tool_id: int) -> bool:
-	return tool_id in [
-		Model.TOOL_RAISE,
-		Model.TOOL_LOWER,
-		Model.TOOL_SHELL_RAISE,
-		Model.TOOL_SHELL_LOWER,
-	]
+func _uses_surface_plane()->bool:
+	return _selected_tool_id()==Model.TOOL_LEVEL and _uses_volume_smooth() and _surface_plane_mode.selected>0
 
+func _uses_volume_mask()->bool:
+	return _uses_volume_smooth() and (_selected_tool_id()!=Model.TOOL_LEVEL or _uses_surface_plane())
 
-func _is_oriented_brush_tool(tool_id: int) -> bool:
-	if tool_id == Model.TOOL_PAINT and _is_sand_paint():
-		return false
-	return tool_id in [
-		Model.TOOL_ADD,
-		Model.TOOL_REMOVE,
-		Model.TOOL_PAINT,
-		Model.TOOL_MATERIAL,
-	]
+func surface_plane_settings()->Dictionary:
+	return {"mode":_surface_plane_mode.selected,"offset":_surface_plane_offset.value,"depth":_depth.value} if _selected_tool_id()==Model.TOOL_LEVEL and _uses_volume_smooth() else {}
 
+func set_surface_plane_settings(mode:int,offset:float,depth:float)->void:
+	if not _uses_volume_smooth():return
+	_surface_plane_mode.select(clampi(mode,0,2));_surface_plane_offset.set_value_no_signal(clampf(offset,-32,32));_depth.set_value_no_signal(clampf(depth,1,32))
+	_on_brush_setting_changed();_refresh_tool_context()
 
-func _is_shell_relief_tool(tool_id: int) -> bool:
-	return tool_id in [Model.TOOL_SHELL_RAISE, Model.TOOL_SHELL_LOWER]
-
-
-func _is_shell_lower_tool(tool_id: int) -> bool:
-	return tool_id == Model.TOOL_SHELL_LOWER
-
-
-func _is_level_tool(tool_id: int) -> bool:
-	return tool_id == Model.TOOL_LEVEL
-
-
-func _is_smooth_tool(tool_id: int) -> bool:
-	return tool_id == Model.TOOL_SMOOTH
-
-
-func _is_ramp_tool(tool_id: int) -> bool:
-	return tool_id == Model.TOOL_RAMP
-
-
-func _is_material_tool(tool_id: int) -> bool:
-	return tool_id == Model.TOOL_MATERIAL
-
-
-func _is_surface_fill_tool(tool_id: int) -> bool:
-	return tool_id == Model.TOOL_SURFACE_FILL
+func _uses_volume_smooth()->bool:
+	return _resource!=null and _resource.tree_surface.is_empty() and (_object_session is FormObjectSession or not _resource.solid_surface.is_empty())
 
 
 func _on_material_scope_changed(_index: int) -> void:
@@ -4251,13 +4481,18 @@ func _update_material_scope_controls() -> void:
 	var point_fill := tool_id == Model.TOOL_SURFACE_FILL
 	var grab := tool_id == Model.TOOL_GRAB
 	_grab_softness.visible = grab
+	_surface_plane_mode.visible=tool_id==Model.TOOL_LEVEL and _uses_volume_smooth()
+	_surface_plane_offset.visible=_uses_surface_plane()
+	_palette.visible=tool_id not in [Model.TOOL_MATERIAL,Model.TOOL_SURFACE_FILL,Model.TOOL_GRAB] and not (tool_id==Model.TOOL_SMOOTH and _uses_volume_smooth()) and not _uses_surface_plane()
 	_radius.visible = not connected and not point_fill
-	_coarse.visible = not connected and not point_fill and not grab
-	_depth.visible = _is_oriented_brush_tool(tool_id) and not connected
-	_application_mode.visible = _depth.visible
-	_brush_shape.visible = _depth.visible
+	_coarse.visible = not connected and not point_fill and not grab and not (tool_id==Model.TOOL_SMOOTH and _uses_volume_smooth()) and not _uses_surface_plane()
+	_depth.visible = (BrushProfiles.is_oriented(tool_id) and not (tool_id==Model.TOOL_PAINT and _is_sand_paint())) and not connected
+	_depth.visible=_depth.visible or _uses_surface_plane()
+	_depth.prefix="Влияние " if _uses_surface_plane() else "Глубина "
+	_application_mode.visible = _depth.visible and not _uses_surface_plane()
+	_brush_shape.visible = _depth.visible and not _uses_surface_plane()
 	_follow_surface.visible = (
-		_depth.visible and _application_kind() == BrushProfiles.APPLICATION_STROKE
+		_depth.visible and not _uses_surface_plane() and _application_kind() == BrushProfiles.APPLICATION_STROKE
 	)
 
 
@@ -4267,14 +4502,18 @@ func _begin_stroke(position: Vector2) -> void:
 	if _is_sand_paint() and _slice_height >= 0:
 		_set_status("Рисунок поверхности работает по верху колонок · выключите срез",true)
 		return
+	if not _world_entry.is_empty() and _world_sessions.brush_guard(_world_entry,"voxels").get("invalid",false):
+		_set_status("Размер формы изменился: выберите маску заново или снимите защиту в3D.",true);return
 	var tool_id := _selected_tool_id()
+	if _selection_panel.has_saved_mask() and BrushProfiles.mask_kind(tool_id,_uses_volume_mask())==BrushProfiles.MASK_NONE:
+		_set_status("Этот инструмент не поддерживает маску. Снимите маску перед действием.",true);return
 	if not _slice_allows_tool(tool_id):
 		_set_status("Эта кисть работает со всей колонкой · выключите срез", true)
 		return
-	if _is_surface_fill_tool(tool_id):
+	if (tool_id == Model.TOOL_SURFACE_FILL):
 		_apply_surface_fill_click(position)
 		return
-	if _is_ramp_tool(tool_id):
+	if (tool_id == Model.TOOL_RAMP):
 		_handle_ramp_click(position)
 		return
 	_prepare_stroke(tool_id)
@@ -4447,7 +4686,7 @@ func _prepare_stroke(tool_id: int) -> void:
 	_stroke_changes.clear()
 	# Only the material brush writes transparency. Other strokes must not scan
 	# and allocate a full model-sized channel just to prepare Undo/Cancel.
-	if _is_material_tool(tool_id):
+	if (tool_id == Model.TOOL_MATERIAL):
 		if _edit_trace != null:
 			_edit_trace.begin("transparency_snapshot_copy")
 		_stroke_before_transparency = _resource.transparency.duplicate()
@@ -4485,7 +4724,7 @@ func _prepare_stroke(tool_id: int) -> void:
 	_has_stroke_smoothed_position = false
 	_surface_normal_cache_key.clear()
 	_surface_normal_cache_value = Vector3.ZERO
-	if _is_smooth_tool(tool_id) or _is_relief_generator() or _is_sand_paint():
+	if ((tool_id == Model.TOOL_SMOOTH) and not _uses_volume_smooth()) or _is_relief_generator() or _is_sand_paint():
 		if _surface_heightfield.size() != _resource.grid_size().x * _resource.grid_size().z:
 			_surface_heightfield = Model.column_heights(
 				_stroke_before, _resource.grid_size(), _resource.palette.size() - 1
@@ -4563,7 +4802,7 @@ func _cancel_ramp_anchor(show_message := true) -> void:
 
 
 func _handle_precision_line_click(position: Vector2) -> void:
-	if _resource == null or not _is_oriented_brush_tool(_selected_tool_id()):
+	if _resource == null or not BrushProfiles.is_oriented(_selected_tool_id()) or (_selected_tool_id()==Model.TOOL_PAINT and _is_sand_paint()):
 		return
 	if _precision_line_anchor_cell == Model.INVALID_CELL:
 		var pick := _pick_at(position)
@@ -4676,7 +4915,7 @@ func _precision_line_indices(centers: Array[Vector3i], normal: Vector3i) -> Pack
 	var coarse := _coarse.button_pressed
 	var shape := _brush_footprint_shape()
 	var palette_index := int(_palette.get_item_metadata(_palette.selected)) if _palette.selected >= 0 else 1
-	if _is_material_tool(tool_id):
+	if (tool_id == Model.TOOL_MATERIAL):
 		var amount := int(
 			_material_preset.get_item_metadata(_material_preset.selected)
 			if _material_preset.selected >= 0
@@ -4824,8 +5063,8 @@ func _stop_single_face_stroke() -> bool:
 
 func _extend_stroke(position: Vector2, exact_position := false) -> bool:
 	var tool_id := _selected_tool_id()
-	var oriented := _is_oriented_brush_tool(tool_id)
-	var sculpt_like := oriented or _is_relief_tool(tool_id) or _is_smooth_tool(tool_id)
+	var oriented := (BrushProfiles.is_oriented(tool_id) and not (tool_id==Model.TOOL_PAINT and _is_sand_paint()))
+	var sculpt_like := oriented or BrushProfiles.is_relief(tool_id) or (tool_id == Model.TOOL_SMOOTH)
 	var sample_position := position
 	if sculpt_like:
 		if not _has_stroke_smoothed_position or exact_position:
@@ -4944,22 +5183,22 @@ func _extend_stroke(position: Vector2, exact_position := false) -> bool:
 	var centers: Array[Vector3i] = [center]
 	if (
 		_last_stroke_cell != Model.INVALID_CELL
-		and not _is_relief_tool(tool_id)
-		and not _is_level_tool(tool_id)
-		and not _is_smooth_tool(tool_id)
+		and not BrushProfiles.is_relief(tool_id)
+		and not (tool_id == Model.TOOL_LEVEL)
+		and not (tool_id == Model.TOOL_SMOOTH)
 	):
 		centers = Model.line_cells(_last_stroke_cell, center)
 	_last_stroke_cell = center
 	_last_stroke_normal = picked_normal
-	if _is_level_tool(tool_id):
+	if (tool_id == Model.TOOL_LEVEL):
 		if _stroke_level_target_y < 0:
 			_stroke_level_target_y = center.y
 		_relief_hold_center = Model.INVALID_CELL
 		return _apply_level_segment(segment_from, center)
-	if _is_smooth_tool(tool_id):
+	if (tool_id == Model.TOOL_SMOOTH):
 		_relief_hold_center = Model.INVALID_CELL
 		return _apply_smooth_segment(segment_from, center)
-	if _is_relief_tool(tool_id):
+	if BrushProfiles.is_relief(tool_id):
 		if _is_relief_generator():
 			_relief_hold_center = Model.INVALID_CELL
 			return _apply_generative_relief_segment(segment_from, center)
@@ -5008,6 +5247,15 @@ func _apply_sand_segment(from: Vector3i, to: Vector3i) -> bool:
 
 
 func _apply_level_segment(from: Vector3i, to: Vector3i) -> bool:
+	if _uses_surface_plane():
+		_volume_preview_active=true
+		if _stroke_plane.is_empty():
+			var normal:=_last_stroke_normal if _last_stroke_normal!=Vector3i.ZERO else Vector3i.UP
+			var n:=Model.averaged_surface_normal(_stroke_before,_resource.grid_size(),from,normal,Model.surface_normal_radius(int(_radius.get_selected_metadata())),normal)
+			_stroke_plane={"normal":n,"point":Vector3(from)+Vector3(normal)*0.5+n*_surface_plane_offset.value,"depth":int(_depth.value),"cut":_surface_plane_mode.selected==2}
+		if from==to and to==_volume_smooth_last:return true
+		_volume_smooth_segments.append({"from":from,"to":to});_volume_smooth_last=to
+		_drain_volume_smooth();return true
 	var radius := int(_radius.get_item_metadata(_radius.selected))
 	var palette_index := int(_palette.get_item_metadata(_palette.selected)) if _palette.selected >= 0 else 1
 	var changes := Model.level_segment_changes(
@@ -5025,6 +5273,14 @@ func _apply_level_segment(from: Vector3i, to: Vector3i) -> bool:
 
 
 func _apply_smooth_segment(from: Vector3i, to: Vector3i) -> bool:
+	if _uses_volume_smooth():
+		# Keep the same preparation queue for follow-up carving/painting, rather
+		# than synchronously rebuilding pending chunks when the tool changes.
+		_volume_preview_active=true
+		if from==to and to==_volume_smooth_last:return true
+		_volume_smooth_segments.append({"from":from,"to":to});_volume_smooth_last=to
+		_drain_volume_smooth()
+		return true
 	var radius := int(_radius.get_item_metadata(_radius.selected))
 	var strength := int(
 		_smooth_strength.get_item_metadata(_smooth_strength.selected)
@@ -5050,6 +5306,44 @@ func _apply_smooth_segment(from: Vector3i, to: Vector3i) -> bool:
 	_merge_live_changes(changes, dirty)
 	return _finish_live_changes(dirty, Model.TOOL_SMOOTH, -1)
 
+
+func _drain_volume_smooth(wait:=false)->void:
+	for job in _volume_smooth_retired.duplicate():
+		if WorkerThreadPool.is_task_completed(job.task_id):
+			WorkerThreadPool.wait_for_task_completion(job.task_id);_volume_smooth_retired.erase(job)
+	while true:
+		if _volume_smooth_job==null:
+			if _volume_smooth_segments.is_empty() or not _stroke_active:return
+			var job:RefCounted=Model.SurfacePlaneJob.new() if not _stroke_plane.is_empty() else VolumeSmooth.new()
+			job.values=_stroke_before;job.parts=_resource.voxel_part_ids;job.size=_resource.grid_size()
+			job.radius=int(_radius.get_selected_metadata())
+			if job is Model.SurfacePlaneJob:
+				job.plane_normal=_stroke_plane.normal;job.plane_point=_stroke_plane.point;job.depth=_stroke_plane.depth;job.cut_only=_stroke_plane.cut
+			else:job.kernel=int(_smooth_strength.get_selected_metadata())
+			job.segments.assign(_volume_smooth_segments);_volume_smooth_segments=[]
+			_volume_smooth_job=job;job.task_id=WorkerThreadPool.add_task(job.run,false,"Canvas volume smooth")
+		if not wait and not WorkerThreadPool.is_task_completed(_volume_smooth_job.task_id):return
+		WorkerThreadPool.wait_for_task_completion(_volume_smooth_job.task_id)
+		var completed:RefCounted=_volume_smooth_job;_volume_smooth_job=null
+		if _stroke_active and not completed.cancelled:
+			_volume_smooth_last_usec=completed.elapsed_usec if completed is VolumeSmooth else 0
+			_volume_smooth_owners.merge(completed.owners,true)
+			var dirty:Dictionary={};_merge_live_changes(completed.changes,dirty)
+			_finish_live_changes(dirty,_stroke_tool_id,-1)
+		if not wait:return
+
+func _cancel_volume_smooth()->void:
+	_stroke_plane.clear()
+	_volume_smooth_segments.clear();_volume_smooth_last=Vector3i(-99999,-99999,-99999)
+	_volume_smooth_owners.clear()
+	if _volume_smooth_job!=null:
+		_volume_smooth_job.cancelled=true;_volume_smooth_retired.append(_volume_smooth_job);_volume_smooth_job=null
+
+func _exit_tree()->void:
+	_invalidate_volume_preview()
+	_cancel_volume_smooth()
+	for job in _volume_smooth_retired:WorkerThreadPool.wait_for_task_completion(job.task_id)
+	_volume_smooth_retired.clear()
 
 func _apply_relief_segment(
 	from: Vector3i,
@@ -5077,7 +5371,7 @@ func _apply_relief_segment(
 			_stroke_relief_amount_cache,
 			_stroke_shell_foundation_cache,
 		)
-		if _is_shell_relief_tool(tool_id)
+		if (tool_id in [Model.TOOL_SHELL_RAISE,Model.TOOL_SHELL_LOWER])
 		else Model.relief_segment_changes(
 			_resource,
 			_stroke_before,
@@ -5152,7 +5446,7 @@ func _shell_relief_changes(
 	amount_cache: Dictionary,
 	foundation_cache: Dictionary,
 ) -> Dictionary:
-	if _is_shell_lower_tool(_selected_tool_id()):
+	if (_selected_tool_id() == Model.TOOL_SHELL_LOWER):
 		return Model.shell_lower_segment_changes(
 			resource, baseline_values, from, to, palette_index, radius, height,
 			coarse, top_cache, previous_height, amount_cache, foundation_cache,
@@ -5175,7 +5469,7 @@ func _apply_oriented_stroke_segments(segments: Array[Dictionary]) -> bool:
 		var centers: Array = segment.get("centers", [])
 		for raw_center in centers:
 			var center: Vector3i = raw_center
-			if _is_material_tool(tool_id):
+			if (tool_id == Model.TOOL_MATERIAL):
 				_apply_material_center(center, dirty, normal, true)
 				continue
 			var changes := Model.oriented_stroke_changes(
@@ -5206,11 +5500,11 @@ func _apply_stroke_centers(
 	var palette_index := int(_palette.get_item_metadata(_palette.selected)) if _palette.selected >= 0 else 1
 	var dirty := {}
 	for line_center in centers:
-		if _is_material_tool(tool_id):
+		if (tool_id == Model.TOOL_MATERIAL):
 			_apply_material_center(line_center, dirty)
 			continue
 		var changes := {}
-		if _is_relief_tool(tool_id):
+		if BrushProfiles.is_relief(tool_id):
 			var active_height := relief_height
 			if active_height < 1:
 				active_height = int(_height_limit.get_item_metadata(_height_limit.selected))
@@ -5235,7 +5529,7 @@ func _apply_stroke_centers(
 					_stroke_relief_amount_cache,
 					_stroke_shell_foundation_cache,
 				)
-				if _is_shell_relief_tool(tool_id)
+				if (tool_id in [Model.TOOL_SHELL_RAISE,Model.TOOL_SHELL_LOWER])
 				else Model.relief_changes(
 					_resource,
 					_stroke_before,
@@ -5400,13 +5694,13 @@ func _finish_live_changes(dirty: Dictionary, tool_id: int, relief_height: int) -
 		_edit_trace.begin("live_changes")
 	var dirty_indices := _dictionary_indices(dirty)
 	_queue_visual_rebuild(
-		dirty_indices, _is_relief_tool(tool_id) or _is_smooth_tool(tool_id)
+		dirty_indices, BrushProfiles.is_relief(tool_id) or ((tool_id == Model.TOOL_SMOOTH) and not _uses_volume_smooth())
 	)
 	var change_count := (
-		_stroke_material_changes.size() if _is_material_tool(tool_id) else _stroke_changes.size()
+		_stroke_material_changes.size() if (tool_id == Model.TOOL_MATERIAL) else _stroke_changes.size()
 	)
 	var message := "Мазок: %d art voxels · отпустите LMB · Esc отменяет жест" % change_count
-	if _is_relief_tool(tool_id):
+	if BrushProfiles.is_relief(tool_id):
 		var height_limit := int(_height_limit.get_item_metadata(_height_limit.selected))
 		if _is_relief_generator():
 			var style := (
@@ -5422,9 +5716,9 @@ func _finish_live_changes(dirty: Dictionary, tool_id: int, relief_height: int) -
 		else:
 			var mode := (
 				"Оболочка вниз"
-				if _is_shell_lower_tool(tool_id)
+				if (tool_id == Model.TOOL_SHELL_LOWER)
 				else "Оболочка вверх"
-				if _is_shell_relief_tool(tool_id)
+				if (tool_id in [Model.TOOL_SHELL_RAISE,Model.TOOL_SHELL_LOWER])
 				else "Углубление"
 				if tool_id == Model.TOOL_LOWER
 				else "Нарастание"
@@ -5433,11 +5727,11 @@ func _finish_live_changes(dirty: Dictionary, tool_id: int, relief_height: int) -
 			message = "%s %d/%d vox · %d vox/сек · Esc отменяет" % [
 				mode, relief_height, height_limit, rate,
 			]
-	elif _is_level_tool(tool_id):
+	elif (tool_id == Model.TOOL_LEVEL):
 		message = "Плоскость: высота %d vox · %d изменений · Esc отменяет" % [
 			_stroke_level_target_y + 1, _stroke_changes.size(),
 		]
-	elif _is_smooth_tool(tool_id):
+	elif (tool_id == Model.TOOL_SMOOTH):
 		var strength := int(
 			_smooth_strength.get_item_metadata(_smooth_strength.selected)
 		)
@@ -5447,12 +5741,13 @@ func _finish_live_changes(dirty: Dictionary, tool_id: int, relief_height: int) -
 			and str(_smooth_mode.get_selected_metadata()) == BrushProfiles.SMOOTH_COMMON
 			else "ступени"
 		)
+		if _uses_volume_smooth():smooth_kind="объём"
 		message = "Сглаживание · %s: сила %d vox · %d изменений · Esc отменяет" % [
 			smooth_kind, strength, _stroke_changes.size(),
 		]
-	elif _is_ramp_tool(tool_id):
+	elif (tool_id == Model.TOOL_RAMP):
 		message = "Склон A → B: %d изменений" % _stroke_changes.size()
-	elif _is_material_tool(tool_id):
+	elif (tool_id == Model.TOOL_MATERIAL):
 		message = (
 			"Связанная область: %d voxels · один Undo · Esc отменяет" % change_count
 			if _stroke_smart_fill_applied
@@ -5471,12 +5766,14 @@ func _finish_live_changes(dirty: Dictionary, tool_id: int, relief_height: int) -
 func _finish_stroke() -> void:
 	if not _stroke_active:
 		return
+	_drain_volume_smooth(true)
+	var inherited:=_volume_smooth_owners.duplicate()
 	if _edit_trace != null:
 		_edit_trace.begin("pointer_up")
 		_edit_trace.begin("undo_snapshot_copy")
 	var before := _stroke_before
 	var after := _resource.voxels.duplicate() if _resource != null else PackedByteArray()
-	var material_tool := _is_material_tool(_selected_tool_id())
+	var material_tool := (_selected_tool_id() == Model.TOOL_MATERIAL)
 	var before_transparency := _stroke_before_transparency
 	var after_transparency := (
 		_resource.transparency.duplicate()
@@ -5484,7 +5781,7 @@ func _finish_stroke() -> void:
 	)
 	if _edit_trace != null:
 		_edit_trace.end()
-	var clear_transient_selection := BrushProfiles.mask_kind(_stroke_tool_id) == "columns"
+	var clear_transient_selection := BrushProfiles.mask_kind(_stroke_tool_id,_uses_volume_mask()) == BrushProfiles.MASK_COLUMNS
 	var indices := _dictionary_indices(
 		_stroke_material_changes if material_tool else _stroke_changes
 	)
@@ -5503,7 +5800,7 @@ func _finish_stroke() -> void:
 			_resource, before_transparency, after_transparency, indices
 		)
 		if material_tool
-		else _actions.commit_applied_stroke(_resource, before, after, indices)
+		else _actions.commit_applied_stroke(_resource, before, after, indices,inherited)
 	)
 	if _edit_trace != null:
 		_edit_trace.end()
@@ -5549,7 +5846,7 @@ func _finish_stroke() -> void:
 func _cancel_stroke() -> void:
 	if not _stroke_active:
 		return
-	var material_tool := _is_material_tool(_selected_tool_id())
+	var material_tool := (_selected_tool_id() == Model.TOOL_MATERIAL)
 	var indices := _dictionary_indices(
 		_stroke_material_changes if material_tool else _stroke_changes
 	)
@@ -5566,6 +5863,7 @@ func _cancel_stroke() -> void:
 
 
 func _clear_stroke_state() -> void:
+	_cancel_volume_smooth()
 	_stroke_active = false
 	_shore_stroke_origin = Model.INVALID_CELL
 	_stroke_tool_id = -1
@@ -5642,7 +5940,7 @@ func _update_cursor(position: Vector2) -> void:
 		_cursor.visible = false
 		return
 	var tool_id := _selected_tool_id()
-	var pick := _pick_at(position, _stroke_active and _is_oriented_brush_tool(tool_id))
+	var pick := _pick_at(position, _stroke_active and (BrushProfiles.is_oriented(tool_id) and not (tool_id==Model.TOOL_PAINT and _is_sand_paint())))
 	if pick.is_empty():
 		_cursor.visible = false
 		if _application_kind() in [BrushProfiles.APPLICATION_POINT, BrushProfiles.APPLICATION_LINE]:
@@ -5650,7 +5948,7 @@ func _update_cursor(position: Vector2) -> void:
 		return
 	var cursor_surface_normal := Vector3i.ZERO
 	if (
-		_is_oriented_brush_tool(tool_id)
+		(BrushProfiles.is_oriented(tool_id) and not (tool_id==Model.TOOL_PAINT and _is_sand_paint()))
 		and _application_kind() == BrushProfiles.APPLICATION_STROKE
 	):
 		var previous := _last_stroke_normal if _stroke_active else Vector3i.ZERO
@@ -5668,7 +5966,7 @@ func _update_cursor(position: Vector2) -> void:
 			_show_precision_line_preview(PackedInt32Array())
 		return
 	if (
-		_is_oriented_brush_tool(tool_id)
+		(BrushProfiles.is_oriented(tool_id) and not (tool_id==Model.TOOL_PAINT and _is_sand_paint()))
 		and _application_kind() in [BrushProfiles.APPLICATION_POINT, BrushProfiles.APPLICATION_LINE]
 	):
 		var preview_normal := Model.axis_normal(
@@ -5680,8 +5978,8 @@ func _update_cursor(position: Vector2) -> void:
 	var density := float(_resource.normalized_density())
 	var radius := int(_radius.get_item_metadata(_radius.selected)) if _radius.selected >= 0 else 1
 	var span := radius * 2 if _coarse.button_pressed else radius * 2 - 1
-	var relief := _is_relief_tool(tool_id)
-	var level := _is_level_tool(tool_id)
+	var relief := BrushProfiles.is_relief(tool_id)
+	var level := (tool_id == Model.TOOL_LEVEL)
 	var cursor_height := 2 if _coarse.button_pressed else 1
 	if relief and _height_limit.selected >= 0:
 		cursor_height = int(_height_limit.get_item_metadata(_height_limit.selected))
@@ -5702,7 +6000,7 @@ func _update_cursor(position: Vector2) -> void:
 			(float(cell.y) + 1.0 + direction * float(cursor_height) * 0.5) / density,
 			(float(cell.z) + 0.5) / density,
 		)
-	elif _is_oriented_brush_tool(tool_id):
+	elif (BrushProfiles.is_oriented(tool_id) and not (tool_id==Model.TOOL_PAINT and _is_sand_paint())):
 		var outward := Model.axis_normal(pick.get("normal", Vector3i.UP) as Vector3i)
 		if cursor_surface_normal != Vector3i.ZERO:
 			outward = cursor_surface_normal
@@ -5723,6 +6021,12 @@ func _update_cursor(position: Vector2) -> void:
 			+ Vector3(0.5, 0.5, 0.5)
 			+ Vector3(direction) * float(depth - 1) * 0.5
 		) / density
+	elif tool_id==Model.TOOL_SMOOTH and _uses_volume_smooth() or _uses_surface_plane():
+		var sphere:=_cursor.mesh as SphereMesh
+		if sphere==null:
+			sphere=SphereMesh.new();sphere.radial_segments=16;sphere.rings=8
+		sphere.radius=float(radius)/density;sphere.height=sphere.radius*2
+		_cursor.mesh=sphere;_cursor.position=(Vector3(cell)+Vector3.ONE*0.5)/density
 	else:
 		var box := BoxMesh.new()
 		box.size = Vector3(float(span) / density, float(cursor_height) / density, float(span) / density)
@@ -5963,6 +6267,9 @@ func _reset_pilot() -> void:
 
 
 func _save() -> bool:
+	if _canvas_forms!=null and _canvas_forms.moving:
+		_set_status("Сначала завершите перемещение или отмените его Esc.",true);return false
+	if _canvas_forms!=null:_forms_panel.finish_position()
 	if _grab_interaction != null and _grab_interaction.active:
 		_set_status("Сначала отпустите ЛКМ, чтобы применить деформацию, или отмените её Esc.",true)
 		return false
@@ -6121,6 +6428,7 @@ func _play_owner_scene() -> void:
 
 
 func _on_source_changed(indices: PackedInt32Array) -> void:
+	if _canvas_forms!=null:_canvas_forms.active.mesh=null
 	if _edit_trace != null:
 		_edit_trace.begin("source_changed")
 	if _grab_interaction != null and not _grab_interaction.committing:
@@ -6129,7 +6437,7 @@ func _on_source_changed(indices: PackedInt32Array) -> void:
 	_surface_normal_cache_key.clear()
 	_surface_normal_cache_value = Vector3.ZERO
 	_sync_canvas_dimensions()
-	if _resource != null and _resource.voxel_groups != _displayed_groups:
+	if _resource != null and (_resource.voxel_groups != _displayed_groups or _resource.merge_parts!=_displayed_parts):
 		_refresh_groups(_groups_panel.selected_id())
 		_hidden_group_indices = _groups_panel.hidden_indices()
 		_isolated_group_indices = (
@@ -6303,6 +6611,8 @@ func _show_canvas_growth() -> void:
 
 
 func _disconnect_resource() -> void:
+	_volume_preview_active=false
+	_invalidate_volume_preview()
 	if is_instance_valid(_generator_panel):
 		_generator_panel.close_source()
 	_remember_current_editor_view()

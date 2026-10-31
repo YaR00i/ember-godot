@@ -7,6 +7,7 @@ extends Node
 const QuestCatalog = preload("res://scripts/ember_quest_catalog.gd")
 const EmberPartyState = preload("res://scripts/ember_party_state.gd")
 const GameStart = preload("res://scripts/ember_game_start_resource.gd")
+const WorldItems = preload("res://scripts/ember_world_items.gd")
 
 signal economy_changed
 signal progress_changed
@@ -29,6 +30,7 @@ var legacy_storage_root := DEFAULT_LEGACY_STORAGE_ROOT
 var persistence_enabled := true
 var restore_enabled := true
 var inventory: Dictionary = {}
+var world_items: Dictionary = {}
 var shop_stock: Dictionary = {}
 var party: Dictionary = {}
 var active_hero_ids: Array[String] = EmberPartyState.HERO_IDS.duplicate()
@@ -99,6 +101,7 @@ func _boot_new_game() -> void:
 
 func _initialize_new_game(recipe: Dictionary) -> void:
 	inventory = recipe.inventory
+	world_items = {}
 	shop_stock = {}
 	party = recipe.party
 	active_hero_ids = EmberPartyState.HERO_IDS.duplicate()
@@ -277,6 +280,22 @@ func set_flag(flag_id: String, value: Variant, autosave := true) -> bool:
 	return true
 
 
+func set_flags_batch(updates: Dictionary, autosave := true) -> bool:
+	## Commit a circuit's memory changes before observers/save can see them.
+	var clean := {}
+	for raw_id in updates:
+		var id := str(raw_id).strip_edges()
+		if id.is_empty() or clean.has(id) or not _is_flag_value(updates[raw_id]): return false
+		clean[id] = updates[raw_id]
+	var changed := false
+	for id in clean:
+		if not flags.has(id) or flags[id] != clean[id]: changed = true; break
+	if not changed: return true
+	flags.merge(clean, true)
+	progress_changed.emit()
+	if autosave: save_autosave()
+	return true
+
 func increment_flag(flag_id: String, amount: int, autosave := true) -> bool:
 	## Numeric world/quest progress uses the same typed flag owner and save file.
 	## A non-numeric value is rejected instead of being silently overwritten.
@@ -357,6 +376,114 @@ func grant_item(item_id: String, count := 1, autosave := true) -> Dictionary:
 	}
 
 
+func open_container(item_id: String, autosave := true) -> Dictionary:
+	var items := _items()
+	var item: Dictionary = items.get(item_id,{})
+	var contents: Variant = item.get("openContents",{})
+	if combat_party_locked or int(inventory.get(item_id,0)) < 1: return {"ok":false,"reason":"missing_item"}
+	if not contents is Dictionary or contents.is_empty(): return {"ok":false,"reason":"not_container"}
+	var result := exchange_items({item_id:1},contents,autosave)
+	if result.ok: result["contents"] = contents.duplicate()
+	return result
+
+
+func exchange_items(costs: Dictionary, rewards: Dictionary, autosave := true, _handover_flag := "") -> Dictionary:
+	if combat_party_locked: return {"ok":false,"reason":"locked"}
+	if costs.is_empty() and rewards.is_empty(): return {"ok":false,"reason":"empty_exchange"}
+	var items := _items()
+	var next := inventory.duplicate(true)
+	for quantities in [costs,rewards]:
+		for id in quantities:
+			var count: Variant = quantities[id]
+			if not items.has(id) or typeof(count) not in [TYPE_INT,TYPE_FLOAT] or not is_finite(float(count)) or count < 1 or count > 999 or count != floor(float(count)):
+				return {"ok":false,"reason":"invalid_contents"}
+	for id in costs:
+		if int(next.get(id,0)) < int(costs[id]): return {"ok":false,"reason":"missing_items","itemId":id,"required":int(costs[id]),"owned":int(next.get(id,0))}
+		next[id] = int(next[id])-int(costs[id])
+		if next[id] == 0: next.erase(id)
+	for id in rewards:
+		var total := int(next.get(id,0))+int(rewards[id])
+		if total > int(items[id].get("stackMax",99)): return {"ok":false,"reason":"stack_full"}
+		next[id] = total
+	inventory = next
+	if not _handover_flag.is_empty():
+		flags[_handover_flag] = true
+	economy_changed.emit()
+	progress_changed.emit()
+	if autosave: save_autosave()
+	return {"ok":true}
+
+
+func handover_quest_items(quest_id: String, objective_id: String, rewards: Dictionary = {}, autosave := true) -> Dictionary:
+	var quest := QuestCatalog.projection(QuestCatalog.definition(quest_id), flags, inventory)
+	if str(quest.get("status", "")) != "active":
+		return {"ok": false, "reason": "quest_unavailable"}
+	for objective in quest.get("objectives", []):
+		if str(objective.get("id", "")) != objective_id:
+			continue
+		if str(objective.get("progressMode", "")) != "handover" or not bool(objective.get("available", false)):
+			return {"ok": false, "reason": "objective_unavailable"}
+		var item_id := str(objective.get("handoverItemId", ""))
+		if str(objective.get("flagId", "")).strip_edges().is_empty():
+			return {"ok": false, "reason": "invalid_objective"}
+		return exchange_items({item_id: maxi(1, int(objective.get("requiredCount", 1)))}, rewards, autosave, str(objective.get("flagId", "")))
+	return {"ok": false, "reason": "missing_objective"}
+
+
+func ensure_authored_item(id: String, item_id: String, map_id: String, placement: Transform3D) -> void:
+	if world_items.has(id) or id.is_empty() or world_items.size() >= WorldItems.MAX_RECORDS: return
+	var records := WorldItems.normalize({id:{"itemId":item_id,"mapId":map_id,"count":1,
+		"position":WorldItems.packed(placement.origin),"rotation":WorldItems.packed(placement.basis.get_euler())}})
+	if records.has(id): world_items[id] = records[id]
+
+
+func drop_inventory_item(item_id: String, map_id: String, at: Vector3, autosave := true) -> Dictionary:
+	var item: Dictionary = _items().get(item_id,{})
+	if combat_party_locked or int(inventory.get(item_id,0)) < 1: return {"ok":false,"reason":"missing_item"}
+	if str(item.get("worldScene","")).is_empty(): return {"ok":false,"reason":"not_droppable"}
+	if world_items.size() >= WorldItems.MAX_RECORDS: return {"ok":false,"reason":"world_full"}
+	var id := "drop_" + Crypto.new().generate_random_bytes(12).hex_encode()
+	var records := WorldItems.normalize({id:{"itemId":item_id,"mapId":map_id,"count":1,
+		"position":WorldItems.packed(at),"rotation":[0.0,0.0,0.0]}})
+	if records.is_empty(): return {"ok":false,"reason":"invalid_position"}
+	# Validate the visual before removing anything from the bag.
+	if not load(str(item.worldScene)) is PackedScene: return {"ok":false,"reason":"missing_visual"}
+	world_items[id] = records[id]
+	inventory[item_id] = int(inventory[item_id])-1
+	if inventory[item_id] == 0: inventory.erase(item_id)
+	economy_changed.emit()
+	progress_changed.emit()
+	if autosave: save_autosave()
+	return {"ok":true,"id":id}
+
+
+func destroy_world_item(id: String) -> bool:
+	if combat_party_locked or not world_items.has(id) or int(world_items[id].get("count", 0)) <= 0: return false
+	world_items[id].count = 0
+	if id.begins_with("drop_"): world_items.erase(id)
+	progress_changed.emit()
+	save_autosave()
+	return true
+
+func pickup_world_item(id: String, autosave := true) -> Dictionary:
+	if combat_party_locked or not world_items.has(id): return {"ok":false,"reason":"missing_item"}
+	var row: Dictionary = world_items[id]
+	var count := int(row.get("count",0))
+	var item_id := str(row.get("itemId",""))
+	var item: Dictionary = _items().get(item_id,{})
+	if count < 1 or item.is_empty(): return {"ok":false,"reason":"missing_item"}
+	if int(inventory.get(item_id,0))+count > int(item.get("stackMax",99)): return {"ok":false,"reason":"stack_full"}
+	inventory[item_id] = int(inventory.get(item_id,0))+count
+	row.count = 0
+	# Only authored placements need tombstones. A consumed dynamic drop has
+	# no authored source to respawn and must not accumulate forever.
+	if id.begins_with("drop_"): world_items.erase(id)
+	economy_changed.emit()
+	progress_changed.emit()
+	if autosave: save_autosave()
+	return {"ok":true,"nameRu":str(item.get("nameRu",item_id)),"count":count}
+
+
 func inventory_view() -> Dictionary:
 	return inventory_view_for_member(EmberPartyState.LEADER_ID)
 
@@ -380,7 +507,11 @@ func party_view() -> Array[Dictionary]:
 
 func party_member_view(hero_id: String) -> Dictionary:
 	_sync_party_from_compatibility()
-	return EmberPartyState.member_view(party, hero_id, _items())
+	if hero_id not in EmberPartyState.HERO_IDS:
+		return {}
+	# The compatibility sync already normalized the entire party, including
+	# retired equipment recovery. HUD reads must not repeat that work.
+	return EmberPartyState._member_view_from_normalized(party, hero_id, _items())
 
 
 func equip_item(item_id: String, slot := "") -> Dictionary:
@@ -589,7 +720,7 @@ func buy(shop_id: String, item_id: String) -> Dictionary:
 		_remaining_for_shop(shop),
 		_items(),
 	)
-	_apply_economy_result(shop_id, result)
+	_apply_economy_result(shop_id, result, item_id)
 	return result
 
 
@@ -642,6 +773,20 @@ func apply_combat_result(
 	if combat_state.has("inventory"):
 		inventory = EmberEconomy.compact_counts(combat_state.get("inventory", {}))
 		economy_changed.emit()
+	if victory:
+		for unit: Dictionary in combat_state.get("units",{}).values():
+			var id:=str(unit.get("worldItemId",""))
+			if id.is_empty() or not world_items.has(id):continue
+			var row: Dictionary=world_items[id].duplicate(true)
+			if int(unit.get("hp",0))<=0:
+				if id.begins_with("drop_"):
+					world_items.erase(id);continue
+				row.count=0
+			elif unit.has("worldItemPosition"):
+				row.position=unit.worldItemPosition
+			else:continue
+			var valid:=WorldItems.normalize({id:row})
+			if valid.has(id):world_items[id]=valid[id]
 	_sync_compatibility_from_party()
 	progress_changed.emit()
 	if autosave:
@@ -707,6 +852,7 @@ func adopt_loaded_save(source: EmberExploreState) -> void:
 		return
 	active_slot = source.active_slot
 	inventory = source.inventory.duplicate(true)
+	world_items = source.world_items.duplicate(true)
 	shop_stock = source.shop_stock.duplicate(true)
 	party = source.party.duplicate(true)
 	active_hero_ids = source.active_hero_ids.duplicate()
@@ -779,6 +925,7 @@ func _load_v2_path(path: String, expected_kind: String, expected_slot: int) -> b
 func _apply_v2_payload(data: Dictionary, pending_restore: bool) -> void:
 	var items := _items()
 	inventory = EmberEconomy.compact_counts(data.get("inventory", {}))
+	world_items = WorldItems.normalize(data.get("worldItems",{}))
 	shop_stock = _parse_shop_stock(data.get("shopStock", {}))
 	opened_chests = _parse_string_array(data.get("openedChests", []))
 	flags = _parse_flags(data.get("flags", {}))
@@ -796,6 +943,9 @@ func _apply_v2_payload(data: Dictionary, pending_restore: bool) -> void:
 
 
 func capture_save(save_kind := "manual", slot := active_slot) -> Dictionary:
+	if is_inside_tree():
+		for body in get_tree().get_nodes_in_group("ember_world_item_bodies"):
+			if body.get("progress_state") == self: body.capture_progress()
 	_sync_party_from_compatibility()
 	var pos := _current_save_position()
 	var tx := floori(pos.x / _tile_size)
@@ -814,6 +964,7 @@ func capture_save(save_kind := "manual", slot := active_slot) -> Dictionary:
 		"y": pos.z,
 		"elev": pos.y,
 		"inventory": EmberEconomy.compact_counts(inventory),
+		"worldItems": WorldItems.normalize(world_items),
 		"party": EmberPartyState.serialize(party, _items()),
 		"activeHeroIds": active_hero_ids.duplicate(),
 		"battleStrategy": EmberPartyState.normalize_battle_strategy(battle_strategy),
@@ -883,11 +1034,14 @@ func _remaining_for_shop(shop: Dictionary) -> Dictionary:
 	return shop_stock[shop_id]
 
 
-func _apply_economy_result(shop_id: String, result: Dictionary) -> void:
+func _apply_economy_result(shop_id: String, result: Dictionary, purchased_item_id := "") -> void:
 	if not bool(result.get("ok", false)):
 		return
 	inventory = result.get("inventory", {}).duplicate(true)
 	shop_stock[shop_id] = result.get("remaining", {}).duplicate(true)
+	if not purchased_item_id.is_empty():
+		for update in QuestCatalog.purchase_objective_updates(shop_id, purchased_item_id, flags):
+			increment_flag(str(update.flagId), int(update.amount), false)
 	economy_changed.emit()
 	progress_changed.emit()
 	save_autosave()
@@ -1083,6 +1237,7 @@ func _migrate_legacy_slot(slot: int) -> bool:
 
 	var items := _items()
 	inventory = EmberEconomy.compact_counts(legacy.get("inventory", {}))
+	world_items = {}
 	shop_stock = _parse_shop_stock(legacy.get("shopStock", {}))
 	opened_chests = _parse_string_array(legacy.get("openedChests", []))
 	flags = _parse_flags(legacy.get("flags", {}))
@@ -1207,7 +1362,7 @@ func _sync_party_from_compatibility() -> void:
 	var normalized := EmberPartyState.normalize(party, items)
 	party = normalized.get("party", {}).duplicate(true)
 	_return_unequipped_items(normalized.get("returnedItems", []), items)
-	_sync_compatibility_from_party()
+	_sync_compatibility_from_party(EmberPartyState._member_view_from_normalized(party, EmberPartyState.LEADER_ID, items))
 
 
 func _return_unequipped_items(item_ids: Array, _catalog: Dictionary) -> void:
@@ -1217,14 +1372,13 @@ func _return_unequipped_items(item_ids: Array, _catalog: Dictionary) -> void:
 		inventory[item_id] = int(inventory.get(item_id, 0)) + 1
 
 
-func _sync_compatibility_from_party() -> void:
+func _sync_compatibility_from_party(view: Dictionary = {}) -> void:
 	if party.is_empty():
 		return
-	var view := EmberPartyState.member_view(
-		party,
-		EmberPartyState.LEADER_ID,
-		_items(),
-	)
+	# Mutating callers still use the validating path. A caller that just
+	# normalized the party can pass its leader view without another full pass.
+	if view.is_empty():
+		view = EmberPartyState.member_view(party, EmberPartyState.LEADER_ID, _items())
 	if view.is_empty():
 		return
 	equipment = EmberEquipment.normalize(view.get("equipment", {}))

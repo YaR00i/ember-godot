@@ -1,0 +1,45 @@
+[gd_resource type="Resource" script_class="EmberQuestResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_quest_resource.gd" id="1_fjp7u"]
+
+[resource]
+script = ExtResource("1_fjp7u")
+quest_id = "shore_message"
+definition = {
+"id": "shore_message",
+"objectives": [{
+"flagId": "shore_letter_read",
+"id": "read_letter",
+"progressMode": "flag",
+"requiresObjectiveIds": [],
+"textRu": "Прочитать письмо из бутылки"
+}, {
+"flagId": "shore_sender_met",
+"id": "meet_sender",
+"progressMode": "flag",
+"requiresObjectiveIds": ["read_letter"],
+"textRu": "Найти отправителя за прибрежным домом"
+}, {
+"flagId": "shore_shells_delivered",
+"id": "deliver_shells",
+"progressMode": "flag",
+"requiresObjectiveIds": ["meet_sender"],
+"textRu": "Собрать и передать три ракушки"
+}, {
+"flagId": "shore_boar_defeated",
+"id": "defeat_boar",
+"progressMode": "flag",
+"requiresObjectiveIds": ["deliver_shells"],
+"textRu": "Победить кабана и добыть кожу"
+}, {
+"flagId": "shore_reward_received",
+"id": "return_for_reward",
+"progressMode": "flag",
+"requiresObjectiveIds": ["defeat_boar"],
+"textRu": "Вернуться к отправителю и получить награду"
+}],
+"showWhenAvailable": false,
+"statusFlagId": "shore_message_status",
+"summaryRu": "Найти отправителя письма за прибрежным домом.",
+"titleRu": "Послание на берегу"
+}

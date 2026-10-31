@@ -29,6 +29,8 @@ uniform float object_style_rim_strength : hint_range(0.0, 1.0) = 0.0;
 varying flat vec2 painted_bark_frames;
 #endif
 #include "res://shaders/ember_voxel_surface_light.gdshaderinc"
+#include "res://shaders/ember_voxel_light.gdshaderinc"
+varying float voxel_object_light_weight;
 #include "res://shaders/ember_object_look_clip.gdshaderinc"
 #ifdef EMBER_OBJECT_PAINTED_FOLIAGE_STUDY
 #include "res://shaders/ember_painted_foliage_study.gdshaderinc"
@@ -119,12 +121,23 @@ void fragment() {
 		}
 	}
 #endif
+ // Extrapolate the continuous view position; never reconstruct it through world space.
+ vec3 local_normal = normalize(cross(dFdx(surface_local_position), dFdy(surface_local_position)) + vec3(0.0000001));
+ vec3 sample_delta = ember_texel_sample(surface_local_position, surface_local_position, local_normal, voxel_light_cell, 0.0);
+ float voxel_weight = ember_voxel_light_weight((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz);
+ voxel_object_light_weight = voxel_weight;
+ sample_delta.z *= voxel_weight;
+ if (!IN_SHADOW_PASS && voxel_weight > 0.0) {
+  LIGHT_VERTEX = ember_texel_extrapolate(VERTEX, sample_delta);
+  NORMAL = normalize(ember_texel_extrapolate(NORMAL, sample_delta));
+ }
 	// Keep Godot's default LIGHT_VERTEX (= interpolated VERTEX in view space).
 	// Rebuilding it through MODEL_MATRIX -> world -> VIEW_MATRIX introduces
 	// enough precision drift to self-shadow large voxel surfaces as moire waves.
 }
 
 void light() {
+ vec3 voxel_previous_diffuse = DIFFUSE_LIGHT;
 #ifdef EMBER_OBJECT_PAINTED_FOLIAGE_STUDY
 	// The accepted grass response uses this same leaf math and actual shadows.
 	// Here the canopy's own macro normal carries shape; no ground slope noise.
@@ -143,7 +156,9 @@ void light() {
 #ifdef EMBER_OBJECT_LEAF_CARDS_STUDY
 	if (LIGHT_IS_DIRECTIONAL) {
 		if (painted_leaf_rim_weight>0.0) {
-			SPECULAR_LIGHT+=LIGHT_COLOR*leaf_attenuation*leaf_response.y*mix(vec3(1.0),ALBEDO,0.45)/PI;
+			// Diffuse softening is artistic fill, not visibility of a light source.
+			// Using it here painted a view-dependent bright band into full shadow.
+			SPECULAR_LIGHT+=LIGHT_COLOR*ATTENUATION*leaf_response.y*mix(vec3(1.0),ALBEDO,0.45)/PI;
 		}
 		if (painted_leaf_transmission>0.0) {
 			float through=ember_painterly_leaf_transmission(NORMAL,VIEW,LIGHT);
@@ -185,4 +200,8 @@ void light() {
 		float rim=ember_stylized_rim(rim_normal,VIEW,LIGHT,1.0)*rim_profile.y;
 		SPECULAR_LIGHT+=LIGHT_COLOR*ATTENUATION*rim*mix(vec3(1.0),ALBEDO,0.35)/PI;
 	}
+ float voxel_weight = voxel_object_light_weight;
+ if (voxel_weight > 0.0) DIFFUSE_LIGHT = voxel_previous_diffuse + mix(DIFFUSE_LIGHT - voxel_previous_diffuse,
+  ember_texel_light_steps(DIFFUSE_LIGHT - voxel_previous_diffuse, LIGHT_COLOR, voxel_light_levels), voxel_weight);
+
 }

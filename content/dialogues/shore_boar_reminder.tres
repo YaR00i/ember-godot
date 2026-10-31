@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EmberDialogueResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_dialogue_resource.gd" id="1_0bknj"]
+
+[resource]
+script = ExtResource("1_0bknj")
+dialogue_id = "shore_boar_reminder"
+document = {
+"id": "shore_boar_reminder",
+"nameRu": "Хранитель берега",
+"startStepId": "line",
+"steps": [{
+"id": "line",
+"next": "end",
+"textRu": "Мне нужна кожа кабана с поляны дальше за домом, налево от меня. ЛКМ вблизи — первый удар; со спины преимущество сильнее. Победи его и принеси добычу — награда будет ждать здесь.",
+"type": "dialogue"
+}, {
+"id": "end",
+"type": "end"
+}]
+}

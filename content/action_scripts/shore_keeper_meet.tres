@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_action_resource.gd" id="1_bx7ot"]
+
+[resource]
+script = ExtResource("1_bx7ot")
+action_id = "shore_keeper_meet"
+document = {
+"id": "shore_keeper_meet",
+"nameRu": "Хранитель: попросить три ракушки",
+"steps": [{
+"dialogueId": "shore_keeper_intro",
+"type": "talk"
+}]
+}

@@ -1,0 +1,9 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Resource" path="res://content/voxel_models/vox_detail_shell.tres" id="1_alt3r"]
+[ext_resource type="Script" path="res://addons/ember_import/ember_voxel_stamp_preset.gd" id="2_weq14"]
+
+[resource]
+script = ExtResource("2_weq14")
+display_name = "Ракушки"
+geometry = ExtResource("1_alt3r")
