@@ -1,4 +1,4 @@
-extends CharacterBody3D
+extends "res://scripts/ember_field_animal.gd"
 ## Field movement and first contact only; the encounter owns actual combat.
 @export var home := Vector3(-248,12,312)
 @export var combat_unit_id := "shore_boar"
@@ -8,6 +8,7 @@ var _engaging := false
 var _facing := Vector3.FORWARD
 
 func _ready() -> void:
+	_setup_presentation()
 	visible = false
 	collision_layer = 0
 	collision_mask = 1
@@ -29,9 +30,12 @@ func _physics_process(dt: float) -> void:
 	if _engaging and not state.combat_party_locked and get_parent().battle == null:
 		_engaging = false
 	visible = _available() and not _engaging
+	if _gait != null: _gait.active = visible
 	if not visible or _engaging: return
 	var player := world.get("_player") as EmberPlayer
-	if state.combat_party_locked or player._ui_blocks_movement(): return
+	if state.combat_party_locked or player._ui_blocks_movement():
+		_animate_gait(0.0)
+		return
 	_phase += dt
 	var delta := player.global_position - global_position
 	delta.y = 0
@@ -48,10 +52,13 @@ func _physics_process(dt: float) -> void:
 	if direction.length() > 2:
 		_facing = direction.normalized()
 		$Visual.rotation.y = atan2(-_facing.x,-_facing.z)
-	velocity.x = _facing.x * (24 if sees else 7)
-	velocity.z = _facing.z * (24 if sees else 7)
+	var speed := profile.retreat_speed if sees else profile.walk_speed
+	velocity.x = _facing.x * speed
+	velocity.z = _facing.z * speed
 	velocity.y -= 150*dt
 	move_and_slide()
+	var travel := get_real_velocity().slide(Vector3.UP).length()
+	_animate_gait(travel)
 	for leg in ["LegFL","LegFR","LegBL","LegBR"]:
 		var node := $Visual.get_node_or_null(leg)
 		if node != null: node.rotation.x = sin(_phase*(12 if sees else 5) + (0 if leg in ["LegFL","LegBR"] else PI))*0.25
@@ -60,11 +67,23 @@ func _physics_process(dt: float) -> void:
 		_engaging = true
 		_enter_battle.call_deferred("enemy")
 
+func can_receive_field_strike(player: EmberPlayer) -> bool:
+	if not is_visible_in_tree() or _engaging or player == null or player.global_position.distance_to(global_position) > 32:
+		return false
+	var ray := PhysicsRayQueryParameters3D.create(player.global_position+Vector3.UP*8,global_position+Vector3.UP*8,1)
+	return get_world_3d().direct_space_state.intersect_ray(ray).is_empty()
+
 func strike() -> Error:
 	var player := _world().get("_player") as EmberPlayer
-	if not visible or player == null or player.global_position.distance_to(global_position) > 32: return ERR_UNAVAILABLE
-	var ray := PhysicsRayQueryParameters3D.create(player.global_position+Vector3.UP*8,global_position+Vector3.UP*8,1)
-	if not get_world_3d().direct_space_state.intersect_ray(ray).is_empty(): return ERR_UNAVAILABLE
+	if not can_receive_field_strike(player): return ERR_UNAVAILABLE
+	return receive_field_spell(player)
+
+func field_spell_aim_point() -> Vector3:
+	return global_position + Vector3.UP * 8.0
+
+func receive_field_spell(player: EmberPlayer) -> Error:
+	if not is_visible_in_tree() or _engaging or not is_instance_valid(player):
+		return ERR_UNAVAILABLE
 	var direction := player.global_position-global_position
 	direction.y = 0
 	return start_battle("rear" if _facing.dot(direction.normalized()) < -0.5 else "player")
@@ -72,7 +91,7 @@ func strike() -> Error:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		var player := _world().get("_player") as EmberPlayer
-		if player != null and not player._ui_blocks_movement() and strike() == OK:
+		if player != null and not player.uses_trial_staff() and not player._ui_blocks_movement() and strike() == OK:
 			get_viewport().set_input_as_handled()
 
 func start_battle(advantage: String) -> Error:

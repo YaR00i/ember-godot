@@ -1,0 +1,539 @@
+[gd_scene format=4]
+[ext_resource type="PackedScene" path="res://prefabs/items/chapter1_delivery_crate.tscn" id="delivery_crate"]
+[ext_resource type="PackedScene" path="res://prefabs/items/chapter1_zipline.tscn" id="zipline"]
+[ext_resource type="PackedScene" path="res://prefabs/items/chapter1_ice_slope.tscn" id="ice_slope"]
+[ext_resource type="PackedScene" path="res://prefabs/items/chapter1_pipe_slide.tscn" id="pipe_slide"]
+[ext_resource type="Script" path="res://scripts/ember_traversal_route.gd" id="vine_route"]
+[ext_resource type="Script" path="res://scripts/ember_interact.gd" id="interact"]
+
+[ext_resource type="Script" path="res://scripts/world_canvas.gd" id="1_cglpm"]
+[ext_resource type="Script" path="res://scripts/ember_map_loader.gd" id="2_5fusx"]
+[ext_resource type="Resource" path="res://content/world_terrains/chapter1/chapter1_woodland.res" id="3_t5rto"]
+[ext_resource type="Material" path="res://materials/ember_compact_sky_reflection_study.tres" id="4_m8uah"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_painted_maple_autumn_palette.tscn" id="5_0dhtq"]
+[ext_resource type="Script" path="res://scripts/ember_voxel_prop.gd" id="6_b32ny"]
+[ext_resource type="Script" path="res://scripts/ember_grass_patch.gd" id="7_etip8"]
+[ext_resource type="Material" path="res://materials/ember_voxel_toon.tres" id="8_sp501"]
+[ext_resource type="Script" path="res://scripts/ember_region.gd" id="9_bl2uv"]
+
+[sub_resource type="Curve3D" id="Curve3D_main_vine"]
+_data = {
+"points": PackedVector3Array(0, 0, 0, 14, -3, 0, 0, 0, 0, -15, 3, 0, 17, -4, 0, 45, -10, 8, -17, 4, 0, 0, 0, 0, 104, -24, 0),
+"tilts": PackedFloat32Array(0, 0, 0)
+}
+point_count = 3
+
+[sub_resource type="Curve3D" id="Curve3D_side_vine"]
+_data = {
+"points": PackedVector3Array(0, 0, 0, 16, -3, 0, 0, 0, 0, -18, 4, 2, 18, -4, -2, 58, -11, -5, -18, 4, 1, 0, 0, 0, 120, -24, -12),
+"tilts": PackedFloat32Array(0, 0, 0)
+}
+point_count = 3
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_qf2v8"]
+sky_top_color = Color(0.24, 0.32, 0.48, 1)
+sky_horizon_color = Color(1, 0.6, 0.35, 1)
+ground_horizon_color = Color(0.68, 0.42, 0.33, 1)
+
+[sub_resource type="Sky" id="Sky_7xaqx"]
+sky_material = SubResource("ProceduralSkyMaterial_qf2v8")
+
+[sub_resource type="Environment" id="Environment_npns6"]
+background_mode = 2
+sky = SubResource("Sky_7xaqx")
+ambient_light_source = 2
+ambient_light_color = Color(0.5, 0.59, 0.78, 1)
+ambient_light_energy = 0.55
+tonemap_mode = 2
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_mixvr"]
+_surfaces = [{
+"aabb": AABB(-6, -6, -6, 12, 12, 12),
+"attribute_data": PackedByteArray("knVV/wAAAAAAAAAAknVV/6uqKj8AAAAAknVV/6uqqj4AAAAAknVV/wAAgD8AAAAAknVV/wAAAAAAAAA/knVV/6uqKj8AAAA/knVV/6uqqj4AAAA/knVV/wAAgD8AAAA/knVV/6uqqj4AAAAAknVV/wAAAAAAAAA/knVV/6uqKj8AAAAAknVV/6uqqj4AAAA/knVV/6uqqj4AAAA/knVV/wAAAAAAAIA/knVV/6uqKj8AAAA/knVV/6uqqj4AAIA/knVV/6uqqj4AAAA/knVV/6uqKj8AAAA/knVV/6uqKj8AAAA/knVV/wAAgD8AAAA/knVV/6uqqj4AAIA/knVV/6uqKj8AAIA/knVV/6uqKj8AAIA/knVV/wAAgD8AAIA/"),
+"format": 34359742495,
+"index_count": 36,
+"index_data": PackedByteArray("AAACAAQAAgAGAAQAAQADAAUAAwAHAAUACAAKAAwACgAOAAwACQALAA0ACwAPAA0AEAASABQAEgAWABQAEQATABUAEwAXABUA"),
+"material": ExtResource("8_sp501"),
+"name": "chapter1_blockout",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 24,
+"vertex_data": PackedByteArray("AADAwAAAwEAAAMBAAADAQAAAwEAAAMDAAADAQAAAwEAAAMBAAADAwAAAwEAAAMDAAADAwAAAwMAAAMBAAADAQAAAwMAAAMDAAADAQAAAwMAAAMBAAADAwAAAwMAAAMDAAADAQAAAwEAAAMBAAADAwAAAwEAAAMDAAADAQAAAwEAAAMDAAADAwAAAwEAAAMBAAADAQAAAwMAAAMBAAADAwAAAwMAAAMDAAADAQAAAwMAAAMDAAADAwAAAwMAAAMBAAADAQAAAwEAAAMBAAADAwAAAwMAAAMBAAADAwAAAwEAAAMBAAADAQAAAwMAAAMBAAADAQAAAwEAAAMDAAADAwAAAwMAAAMDAAADAwAAAwEAAAMDAAADAQAAAwMAAAMDA/3//f////7//////AAD/v/9//3////+//////wAA/7//f/9/////v/////8AAP+//3//f////7//////AAD/v///AID/////AAAAgP9//7///wCA/////wAAAID/f/+///8AgP////8AAACA/3//v///AID/////AAAAgP9//78AgP//AAD/vwCAAAD///+/AID//wAA/78AgAAA////vwCA//8AAP+/AIAAAP///78AgP//AAD/vwCAAAD///+/")
+}]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_6uaa2"]
+size = Vector3(12, 12, 12)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_em67n"]
+size = Vector3(12, 12, 12)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_cnm5t"]
+size = Vector3(12, 12, 12)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_jggaw"]
+size = Vector3(28, 48, 28)
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_pay0k"]
+_surfaces = [{
+"aabb": AABB(-1.5, -12, -1.5, 3, 24, 3),
+"attribute_data": PackedByteArray("hpN1/wAAAAAAAAAAhpN1/6uqKj8AAAAAhpN1/6uqqj4AAAAAhpN1/wAAgD8AAAAAhpN1/wAAAAAAAAA/hpN1/6uqKj8AAAA/hpN1/6uqqj4AAAA/hpN1/wAAgD8AAAA/hpN1/6uqqj4AAAAAhpN1/wAAAAAAAAA/hpN1/6uqKj8AAAAAhpN1/6uqqj4AAAA/hpN1/6uqqj4AAAA/hpN1/wAAAAAAAIA/hpN1/6uqKj8AAAA/hpN1/6uqqj4AAIA/hpN1/6uqqj4AAAA/hpN1/6uqKj8AAAA/hpN1/6uqKj8AAAA/hpN1/wAAgD8AAAA/hpN1/6uqqj4AAIA/hpN1/6uqKj8AAIA/hpN1/6uqKj8AAIA/hpN1/wAAgD8AAIA/"),
+"format": 34359742495,
+"index_count": 36,
+"index_data": PackedByteArray("AAACAAQAAgAGAAQAAQADAAUAAwAHAAUACAAKAAwACgAOAAwACQALAA0ACwAPAA0AEAASABQAEgAWABQAEQATABUAEwAXABUA"),
+"material": ExtResource("8_sp501"),
+"name": "chapter1_blockout",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 24,
+"vertex_data": PackedByteArray("AADAvwAAQEEAAMA/AADAPwAAQEEAAMC/AADAPwAAQEEAAMA/AADAvwAAQEEAAMC/AADAvwAAQMEAAMA/AADAPwAAQMEAAMC/AADAPwAAQMEAAMA/AADAvwAAQMEAAMC/AADAPwAAQEEAAMA/AADAvwAAQEEAAMC/AADAPwAAQEEAAMC/AADAvwAAQEEAAMA/AADAPwAAQMEAAMA/AADAvwAAQMEAAMC/AADAPwAAQMEAAMC/AADAvwAAQMEAAMA/AADAPwAAQEEAAMA/AADAvwAAQMEAAMA/AADAvwAAQEEAAMA/AADAPwAAQMEAAMA/AADAPwAAQEEAAMC/AADAvwAAQMEAAMC/AADAvwAAQEEAAMC/AADAPwAAQMEAAMC//3//f////7//////AAD/v/9//3////+//////wAA/7//f/9/////v/////8AAP+//3//f////7//////AAD/v///AID/////AAAAgP9//7///wCA/////wAAAID/f/+///8AgP////8AAACA/3//v///AID/////AAAAgP9//78AgP//AAD/vwCAAAD///+/AID//wAA/78AgAAA////vwCA//8AAP+/AIAAAP///78AgP//AAD/vwCAAAD///+/")
+}]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_0qkyv"]
+size = Vector3(3, 24, 3)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_l4ic4"]
+size = Vector3(3, 24, 3)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_w168f"]
+size = Vector3(28, 48, 28)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_sshxt"]
+size = Vector3(3, 24, 3)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_jy8qm"]
+size = Vector3(3, 24, 3)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_rk2sx"]
+size = Vector3(28, 48, 28)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ksduk"]
+size = Vector3(28, 48, 28)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_5jrld"]
+size = Vector3(28, 48, 28)
+
+[node name="chapter1_woodland" type="Node3D" unique_id=236710229]
+script = ExtResource("1_cglpm")
+sandbox_storage_root = "user://ember-chapter1-blockout"
+map_id = "chapter1_woodland"
+metadata/chapter1_blockout = true
+metadata/blockout_title = "Опушка и склоны · прогулка"
+
+[node name="Map" type="Node3D" parent="." unique_id=1187381409]
+script = ExtResource("2_5fusx")
+map_id = "chapter1_woodland"
+compact_smooth_study_column_limit = 1572864
+compact_terrain = ExtResource("3_t5rto")
+compact_ground_style = 1
+compact_smooth_material_blend = true
+compact_water_visual_material = ExtResource("4_m8uah")
+compact_water_mesh_step = 8
+compact_water_volume_sides = true
+compact_material_light_mode = 1
+authored_size_blocks = Vector2i(40, 36)
+camera_distance = 170.0
+camera_polar = 0.88
+camera_yaw = 0.35
+camera_look_height = 5.0
+camera_far = 1600.0
+
+[node name="Look" type="Node3D" parent="Map" unique_id=1121426207]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="Map/Look" unique_id=1220579290]
+environment = SubResource("Environment_npns6")
+
+[node name="Sun" type="DirectionalLight3D" parent="Map/Look" unique_id=1811039684]
+transform = Transform3D(0.57357645, 0.46984634, -0.6710101, 0, 0.81915206, 0.57357645, 0.81915206, -0.32898995, 0.46984634, 0, 0, 0)
+light_color = Color(1, 0.79, 0.59, 1)
+light_energy = 1.1
+shadow_enabled = true
+directional_shadow_max_distance = 600.0
+
+[node name="Terrain" type="Node3D" parent="Map" unique_id=210055642]
+
+[node name="Props" type="Node3D" parent="Map" unique_id=1570657742]
+
+[node name="Maple0" type="Node3D" parent="Map/Props" unique_id=424303866 instance=ExtResource("5_0dhtq")]
+transform = Transform3D(0.7, 0, 0, 0, 0.7, 0, 0, 0, 0.7, 96, 8, 80)
+script = ExtResource("6_b32ny")
+model_id = "vox_painted_maple_autumn_palette"
+placement_id = "chapter1_woodland_Maple0"
+metadata/ember_source_signature = "802017ebad60aeae8e176230727862c08ba5c4c3e1b8f1e838a124aaf50166fe"
+
+[node name="Maple1" type="Node3D" parent="Map/Props" unique_id=1082804701 instance=ExtResource("5_0dhtq")]
+transform = Transform3D(0.7, 0, 0, 0, 0.7, 0, 0, 0, 0.7, 80, 8, 448)
+script = ExtResource("6_b32ny")
+model_id = "vox_painted_maple_autumn_palette"
+placement_id = "chapter1_woodland_Maple1"
+metadata/ember_source_signature = "802017ebad60aeae8e176230727862c08ba5c4c3e1b8f1e838a124aaf50166fe"
+
+[node name="Maple2" type="Node3D" parent="Map/Props" unique_id=1012838079 instance=ExtResource("5_0dhtq")]
+transform = Transform3D(0.7, 0, 0, 0, 0.7, 0, 0, 0, 0.7, 224, 8, 496)
+script = ExtResource("6_b32ny")
+model_id = "vox_painted_maple_autumn_palette"
+placement_id = "chapter1_woodland_Maple2"
+metadata/ember_source_signature = "802017ebad60aeae8e176230727862c08ba5c4c3e1b8f1e838a124aaf50166fe"
+
+[node name="Maple3" type="Node3D" parent="Map/Props" unique_id=1620872461 instance=ExtResource("5_0dhtq")]
+transform = Transform3D(0.7, 0, 0, 0, 0.7, 0, 0, 0, 0.7, 256, 8, 80)
+script = ExtResource("6_b32ny")
+model_id = "vox_painted_maple_autumn_palette"
+placement_id = "chapter1_woodland_Maple3"
+metadata/ember_source_signature = "802017ebad60aeae8e176230727862c08ba5c4c3e1b8f1e838a124aaf50166fe"
+
+[node name="Maple4" type="Node3D" parent="Map/Props" unique_id=2045511548 instance=ExtResource("5_0dhtq")]
+transform = Transform3D(0.7, 0, 0, 0, 0.7, 0, 0, 0, 0.7, 400, 8, 112)
+script = ExtResource("6_b32ny")
+model_id = "vox_painted_maple_autumn_palette"
+placement_id = "chapter1_woodland_Maple4"
+metadata/ember_source_signature = "802017ebad60aeae8e176230727862c08ba5c4c3e1b8f1e838a124aaf50166fe"
+
+[node name="Maple5" type="Node3D" parent="Map/Props" unique_id=1698000640 instance=ExtResource("5_0dhtq")]
+transform = Transform3D(0.7, 0, 0, 0, 0.7, 0, 0, 0, 0.7, 528, 8, 112)
+script = ExtResource("6_b32ny")
+model_id = "vox_painted_maple_autumn_palette"
+placement_id = "chapter1_woodland_Maple5"
+metadata/ember_source_signature = "802017ebad60aeae8e176230727862c08ba5c4c3e1b8f1e838a124aaf50166fe"
+
+[node name="Maple6" type="Node3D" parent="Map/Props" unique_id=1590056599 instance=ExtResource("5_0dhtq")]
+transform = Transform3D(0.7, 0, 0, 0, 0.7, 0, 0, 0, 0.7, 560, 8, 480)
+script = ExtResource("6_b32ny")
+model_id = "vox_painted_maple_autumn_palette"
+placement_id = "chapter1_woodland_Maple6"
+metadata/ember_source_signature = "802017ebad60aeae8e176230727862c08ba5c4c3e1b8f1e838a124aaf50166fe"
+
+[node name="Maple7" type="Node3D" parent="Map/Props" unique_id=167153528 instance=ExtResource("5_0dhtq")]
+transform = Transform3D(0.7, 0, 0, 0, 0.7, 0, 0, 0, 0.7, 464, 8, 496)
+script = ExtResource("6_b32ny")
+model_id = "vox_painted_maple_autumn_palette"
+placement_id = "chapter1_woodland_Maple7"
+metadata/ember_source_signature = "802017ebad60aeae8e176230727862c08ba5c4c3e1b8f1e838a124aaf50166fe"
+
+[node name="Grass8" type="Node3D" parent="Map/Props" unique_id=1566906806]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 96, 8, 176)
+script = ExtResource("7_etip8")
+size_blocks = Vector2(4, 4)
+tufts_per_block = 30.0
+scatter_seed = 3049479133
+density_mask = PackedByteArray()
+
+[node name="Grass9" type="Node3D" parent="Map/Props" unique_id=1134971363]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 240, 8, 432)
+script = ExtResource("7_etip8")
+size_blocks = Vector2(4, 4)
+tufts_per_block = 30.0
+scatter_seed = 3049479134
+density_mask = PackedByteArray()
+
+[node name="Grass10" type="Node3D" parent="Map/Props" unique_id=31118516]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 496, 8, 176)
+script = ExtResource("7_etip8")
+size_blocks = Vector2(4, 4)
+tufts_per_block = 30.0
+scatter_seed = 1848563398
+density_mask = PackedByteArray()
+
+[node name="Grass11" type="Node3D" parent="Map/Props" unique_id=38060754]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 560, 8, 384)
+script = ExtResource("7_etip8")
+size_blocks = Vector2(4, 4)
+tufts_per_block = 30.0
+scatter_seed = 1848563399
+density_mask = PackedByteArray()
+
+[node name="Cargo12" type="Node3D" parent="Map/Props" unique_id=2020705543]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 160, 8, 368)
+metadata/presentation_id = "Cargo12"
+
+[node name="Crate0" type="MeshInstance3D" parent="Map/Props/Cargo12" unique_id=1140643266]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6, 0)
+mesh = SubResource("ArrayMesh_mixvr")
+
+[node name="Crate0Collision" type="StaticBody3D" parent="Map/Props/Cargo12" unique_id=1953217292]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/Cargo12/Crate0Collision" unique_id=58629582]
+shape = SubResource("BoxShape3D_6uaa2")
+
+[node name="Crate1" type="MeshInstance3D" parent="Map/Props/Cargo12" unique_id=139408341]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15, 6, 0)
+mesh = SubResource("ArrayMesh_mixvr")
+
+[node name="Crate1Collision" type="StaticBody3D" parent="Map/Props/Cargo12" unique_id=1814928329]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15, 6, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/Cargo12/Crate1Collision" unique_id=1204233752]
+shape = SubResource("BoxShape3D_em67n")
+
+[node name="Crate2" type="MeshInstance3D" parent="Map/Props/Cargo12" unique_id=1813754340]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 6, 0)
+mesh = SubResource("ArrayMesh_mixvr")
+
+[node name="Crate2Collision" type="StaticBody3D" parent="Map/Props/Cargo12" unique_id=862338591]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 6, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/Cargo12/Crate2Collision" unique_id=1739517443]
+shape = SubResource("BoxShape3D_cnm5t")
+
+[node name="Label" type="Label3D" parent="Map/Props" unique_id=944305859]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 160, 30, 384)
+pixel_size = 0.11
+billboard = 1
+modulate = Color(1, 0.95686275, 0.83137256, 1)
+text = "Телега / груз · место"
+outline_size = 8
+
+[node name="ToCentre" type="Node3D" parent="Map/Props" unique_id=1718279368]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 24, 8, 288)
+metadata/presentation_id = "ToCentre"
+
+[node name="exit_from_centre" type="Area3D" parent="Map/Props/ToCentre" unique_id=474005220]
+script = ExtResource("9_bl2uv")
+region_id = "exit_from_centre"
+map_id = "chapter1_woodland"
+target_map_id = "chapter1_centre"
+target_region_id = "from_woodland"
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/ToCentre/exit_from_centre" unique_id=381923100]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 16, 0)
+shape = SubResource("BoxShape3D_jggaw")
+
+[node name="Label" type="Label3D" parent="Map/Props/ToCentre" unique_id=1402512454]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 22, 0)
+pixel_size = 0.11
+billboard = 1
+modulate = Color(0.84313726, 0.9137255, 0.7254902, 1)
+text = "← Город"
+outline_size = 8
+
+[node name="GateLeft" type="MeshInstance3D" parent="Map/Props/ToCentre" unique_id=1480510104]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -19, 12, 0)
+mesh = SubResource("ArrayMesh_pay0k")
+
+[node name="GateLeftCollision" type="StaticBody3D" parent="Map/Props/ToCentre" unique_id=2008714586]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -19, 12, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/ToCentre/GateLeftCollision" unique_id=682470471]
+shape = SubResource("BoxShape3D_0qkyv")
+
+[node name="GateRight" type="MeshInstance3D" parent="Map/Props/ToCentre" unique_id=380218098]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 12, 0)
+mesh = SubResource("ArrayMesh_pay0k")
+
+[node name="GateRightCollision" type="StaticBody3D" parent="Map/Props/ToCentre" unique_id=1832708692]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 12, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/ToCentre/GateRightCollision" unique_id=720928710]
+shape = SubResource("BoxShape3D_l4ic4")
+
+[node name="ToCoast" type="Node3D" parent="Map/Props" unique_id=1771615976]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 616, 8, 288)
+metadata/presentation_id = "ToCoast"
+
+[node name="exit_from_coast" type="Area3D" parent="Map/Props/ToCoast" unique_id=336981955]
+script = ExtResource("9_bl2uv")
+region_id = "exit_from_coast"
+map_id = "chapter1_woodland"
+target_map_id = "chapter1_coast"
+target_region_id = "from_woodland"
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/ToCoast/exit_from_coast" unique_id=584813805]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 16, 0)
+shape = SubResource("BoxShape3D_w168f")
+
+[node name="Label" type="Label3D" parent="Map/Props/ToCoast" unique_id=61383593]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 22, 0)
+pixel_size = 0.11
+billboard = 1
+modulate = Color(0.84313726, 0.9137255, 0.7254902, 1)
+text = "Побережье →"
+outline_size = 8
+
+[node name="GateLeft" type="MeshInstance3D" parent="Map/Props/ToCoast" unique_id=1769132727]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -19, 12, 0)
+mesh = SubResource("ArrayMesh_pay0k")
+
+[node name="GateLeftCollision" type="StaticBody3D" parent="Map/Props/ToCoast" unique_id=789651128]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -19, 12, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/ToCoast/GateLeftCollision" unique_id=509350835]
+shape = SubResource("BoxShape3D_sshxt")
+
+[node name="GateRight" type="MeshInstance3D" parent="Map/Props/ToCoast" unique_id=760109173]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 12, 0)
+mesh = SubResource("ArrayMesh_pay0k")
+
+[node name="GateRightCollision" type="StaticBody3D" parent="Map/Props/ToCoast" unique_id=1323093709]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 12, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/ToCoast/GateRightCollision" unique_id=931485624]
+shape = SubResource("BoxShape3D_jy8qm")
+
+[node name="Regions" type="Node3D" parent="Map" unique_id=135376758]
+
+[node name="entry" type="Area3D" parent="Map/Regions" unique_id=112715155]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 96, 8, 288)
+script = ExtResource("9_bl2uv")
+region_id = "entry"
+map_id = "chapter1_woodland"
+kind = "player_start"
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Regions/entry" unique_id=1591572432]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 16, 0)
+shape = SubResource("BoxShape3D_rk2sx")
+
+[node name="from_centre" type="Area3D" parent="Map/Regions" unique_id=1299053191]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 8, 288)
+script = ExtResource("9_bl2uv")
+region_id = "from_centre"
+map_id = "chapter1_woodland"
+kind = "player_start"
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Regions/from_centre" unique_id=1076428898]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 16, 0)
+shape = SubResource("BoxShape3D_ksduk")
+
+[node name="from_coast" type="Area3D" parent="Map/Regions" unique_id=499582858]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 568, 8, 288)
+script = ExtResource("9_bl2uv")
+region_id = "from_coast"
+map_id = "chapter1_woodland"
+kind = "player_start"
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Regions/from_coast" unique_id=307361189]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 16, 0)
+shape = SubResource("BoxShape3D_5jrld")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=1725928933]
+
+[node name="Gate" type="Label" parent="CanvasLayer" unique_id=1250486990]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 16.0
+offset_bottom = 16.0
+
+[node name="BlockoutLegend" type="Label" parent="CanvasLayer" unique_id=198499138]
+offset_left = 16.0
+offset_top = 104.0
+offset_right = 16.0
+offset_bottom = 104.0
+theme_override_font_sizes/font_size = 18
+text = "Опушка и склоны · прогулка · ЧЕРНОВОЙ МАРШРУТ
+WASD — ходьба · F — дверь / разговор · Tab — лидер"
+[node name="DeliveryCrate" parent="Map/Props" instance=ExtResource("delivery_crate")]
+position = Vector3(112, 8.3, 288)
+
+[node name="Zipline" parent="Map/Props" instance=ExtResource("zipline")]
+position = Vector3(384, 32, 432)
+
+[node name="IceSlope" parent="Map/Props" instance=ExtResource("ice_slope")]
+position = Vector3(272, 8, 356)
+
+[node name="PipeSlide" parent="Map/Props" instance=ExtResource("pipe_slide")]
+position = Vector3(352, 32, 220)
+
+[node name="MainVine" parent="Map/Props" instance=ExtResource("zipline")]
+position = Vector3(272, 32, 535)
+route_mode = 1
+speed = 50.0
+left_vine = NodePath("../SideVine")
+transfer_start = 0.23
+transfer_end = 0.65
+
+[node name="Landing" parent="Map/Props/MainVine" index="0"]
+position = Vector3(104, -24, 0)
+
+[node name="LandingPost" parent="Map/Props/MainVine" index="4"]
+visible = false
+
+[node name="Sign" parent="Map/Props/MainVine" index="5"]
+text = "Большие лианы · F"
+
+[node name="RoutePath" type="Path3D" parent="Map/Props/MainVine"]
+curve = SubResource("Curve3D_main_vine")
+
+[node name="SideVine" type="Area3D" parent="Map/Props"]
+position = Vector3(272, 32, 511)
+collision_layer = 0
+collision_mask = 0
+monitoring = false
+monitorable = false
+script = ExtResource("vine_route")
+kind = "custom"
+route_mode = 1
+speed = 50.0
+right_vine = NodePath("../MainVine")
+transfer_start = 0.34
+transfer_end = 0.68
+
+[node name="Landing" type="Marker3D" parent="Map/Props/SideVine"]
+position = Vector3(120, -24, -12)
+
+[node name="RoutePath" type="Path3D" parent="Map/Props/SideVine"]
+curve = SubResource("Curve3D_side_vine")
+
+[node name="ParkDoor0" type="Area3D" parent="Map/Props"]
+position = Vector3(144, 8, 180)
+collision_layer = 0
+collision_mask = 0
+monitoring = false
+script = ExtResource("interact")
+kind = "door"
+target_map_id = "traversal_ice_park"
+target_region_id = "entry"
+
+[node name="ParkLabel0" type="Label3D" parent="Map/Props"]
+position = Vector3(144, 34, 180)
+text = "F · Ледовый полигон"
+billboard = 1
+pixel_size = 0.105
+
+[node name="ParkDoor1" type="Area3D" parent="Map/Props"]
+position = Vector3(144, 8, 217)
+collision_layer = 0
+collision_mask = 0
+monitoring = false
+script = ExtResource("interact")
+kind = "door"
+target_map_id = "traversal_vine_park"
+target_region_id = "entry"
+
+[node name="ParkLabel1" type="Label3D" parent="Map/Props"]
+position = Vector3(144, 34, 217)
+text = "F · Парк лиан"
+billboard = 1
+pixel_size = 0.105
+
+[node name="ParkDoor2" type="Area3D" parent="Map/Props"]
+position = Vector3(144, 8, 254)
+collision_layer = 0
+collision_mask = 0
+monitoring = false
+script = ExtResource("interact")
+kind = "door"
+target_map_id = "traversal_cable_park"
+target_region_id = "entry"
+
+[node name="ParkLabel2" type="Label3D" parent="Map/Props"]
+position = Vector3(144, 34, 254)
+text = "F · Парк канатов"
+billboard = 1
+pixel_size = 0.105
+
+[node name="from_traversal_parks" type="Area3D" parent="Map/Regions"]
+position = Vector3(114, 8, 217)
+script = ExtResource("9_bl2uv")
+kind = "player_start"
+map_id = "chapter1_woodland"
+region_id = "from_traversal_parks"
+[node name="Shape" type="CollisionShape3D" parent="Map/Regions/from_traversal_parks"]
+shape = SubResource("BoxShape3D_rk2sx")
+
+[editable path="Map/Props/MainVine"]

@@ -7,6 +7,11 @@ const BrushMath = preload("res://scripts/prototypes/ember_terrain_pilot_brush_ma
 const WorldCanvas = preload("res://scripts/world_canvas.gd")
 const Region = preload("res://scripts/ember_region.gd")
 const TerrainMath = preload("res://scripts/prototypes/ember_terrain_generation_math.gd")
+const Materials = preload("res://scripts/ember_voxel_surface_materials.gd")
+const GrassPatch = preload("res://scripts/ember_grass_patch.gd")
+const EveningEnvironment = preload("res://content/world_presets/terrain_evening_environment.tres")
+const EveningSun = preload("res://content/world_presets/terrain_evening_sun.tscn")
+const GRASS_PATCH_M := 8
 const SECTION_BLOCKS := 24
 const MAX_INITIAL_SECTIONS := 4
 const MAX_EXTENDED_SECTIONS := 5
@@ -112,6 +117,10 @@ func prepare(raw_id: String, width_blocks: int, depth_blocks: int, ground_height
 	])
 	source.palette_surface_roles = PackedStringArray(["", "soil", "grass", "sand", "stone", ""])
 	source.palette_material_ids = PackedStringArray(["", "soil", "grass", "sand", "stone", ""])
+	for slot in source.palette_surface_roles.size():
+		var role := source.palette_surface_roles[slot]
+		if Materials.WORLD_GROUND_MATERIALS.has(role):
+			source.palette_material_ids[slot] = Materials.WORLD_GROUND_MATERIALS[role]
 	var columns := source.width * source.depth
 	source.heights.resize(columns)
 	source.heights.fill(ground_height)
@@ -186,6 +195,13 @@ func _scene_root(saved: TerrainResource) -> Node3D:
 	map.hydrate_legacy_regions = false
 	map.authored_size_blocks = blocks
 	map.compact_terrain = saved
+	map.compact_smooth_study_column_limit = 1572864
+	map.compact_ground_style = 1
+	map.compact_smooth_material_blend = true
+	map.compact_material_light_mode = 1
+	map.sky_preset = EmberMapLoader.WorldPresets.default_sky
+	map.weather_preset = EmberMapLoader.WorldPresets.default_weather
+	map.default_npc_model = EmberMapLoader.WorldPresets.default_npc_model
 	map.camera_distance = 200.0
 	map.camera_polar = 0.88
 	map.camera_yaw = 0.35
@@ -195,30 +211,16 @@ func _scene_root(saved: TerrainResource) -> Node3D:
 	var look := Node3D.new()
 	look.name = "Look"
 	_owned(map, look, root)
-	var environment := Environment.new()
-	environment.background_mode = 1
-	environment.background_color = Color(0.43, 0.57, 0.6)
-	environment.ambient_light_source = 3
-	environment.ambient_light_color = Color(0.77, 0.84, 0.8)
-	environment.ambient_light_energy = 0.35
-	environment.tonemap_mode = 2
 	var world_environment := WorldEnvironment.new()
 	world_environment.name = "WorldEnvironment"
-	world_environment.environment = environment
+	world_environment.environment = EveningEnvironment
 	_owned(look, world_environment, root)
-	var sun := DirectionalLight3D.new()
-	sun.name = "Sun"
-	sun.rotation_degrees = Vector3(-58, -30, 0)
-	sun.light_color = Color(1, 0.96, 0.87)
-	sun.light_energy = 0.3
-	sun.light_angular_distance = 1.1
-	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 800.0
-	_owned(look, sun, root)
+	_owned(look, EveningSun.instantiate(), root)
 	for name in ["Terrain", "Props"]:
 		var group := Node3D.new()
 		group.name = name
 		_owned(map, group, root)
+	_add_grass(map, root)
 	var regions := Node3D.new()
 	regions.name = "Regions"
 	_owned(map, regions, root)
@@ -242,6 +244,21 @@ func _scene_root(saved: TerrainResource) -> Node3D:
 	gate.text = "EMBER · НОВАЯ КАРТА"
 	_owned(canvas, gate, root)
 	return root
+
+
+func _add_grass(map: EmberMapLoader, root: Node3D) -> void:
+	var props := map.get_node("Props")
+	for z in range(0, blocks.y, GRASS_PATCH_M):
+		for x in range(0, blocks.x, GRASS_PATCH_M):
+			var size := Vector2(mini(GRASS_PATCH_M, blocks.x - x), mini(GRASS_PATCH_M, blocks.y - z))
+			var center := Vector2(x, z) + size * 0.5
+			var patch := GrassPatch.new()
+			patch.name = "BaseGrass_%d_%d" % [x, z]
+			patch.size_blocks = size
+			patch.position = Vector3(center.x, 0.0, center.y) * map.imported_tile_size
+			patch.scatter_seed = 7 + x + z * blocks.x
+			patch.tuft_size = 1.25
+			_owned(props, patch, root)
 
 
 func _owned(parent: Node, child: Node, scene_root: Node) -> void:

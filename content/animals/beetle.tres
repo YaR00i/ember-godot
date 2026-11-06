@@ -1,0 +1,20 @@
+[gd_resource type="Resource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_animal_profile.gd" id="1"]
+[ext_resource type="PackedScene" path="res://content/animals/HerculesBeetle.scn" id="2"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Жук-геркулес"
+model = ExtResource("2")
+model_scale = 0.09
+ground_offset = 0.07
+move_clip = &"crawl"
+reaction = 3
+walk_speed = 2.7
+retreat_speed = 2.7
+notice_distance = 10.0
+roam_radius = 4.0
+retreat_radius = 7.0
+body_size = Vector3(3,3,5)
+

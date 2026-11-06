@@ -60,6 +60,8 @@ func _run() -> void:
 		quit(1)
 		return
 	var giver := npc.get_node("Talk") as EmberInteract
+	check(giver.get("model_preset") == EmberMapLoader.WorldPresets.default_npc_model,
+		"NPC on a map without a model override must use the shared library default")
 	var original_route := str((giver.get("objective_scripts") as Dictionary).main)
 	var original_chain := ActionStore.document(original_route)
 	workspace.accept_quest_binding_save("", true)

@@ -3,6 +3,7 @@ extends Node3D
 ## Scene-owned single sphere. Prepared display instances are internal; authored
 ## props, terrain, collision and grass scatter keep their existing owners.
 const Correspondence = preload("res://scripts/ember_anomaly_correspondence.gd")
+const RuntimeShadowLod = preload("res://scripts/ember_runtime_shadow_lod.gd")
 @export var enabled := true
 @export_enum("Low poly:1", "Воксельный мир:2") var inner_look := 1:
 	set(value): inner_look = clampi(value, 1, 2)
@@ -88,8 +89,8 @@ func _process(_delta: float) -> void:
 	if next != _field:
 		_field = next
 		for binding in _bindings:
-			binding.visual.set_instance_shader_parameter("ember_anomaly_sphere", Vector4(global_position.x, global_position.y, global_position.z, radius_m*unit if enabled else 0.0))
-			binding.visual.set_instance_shader_parameter("ember_anomaly_band_look", Vector2(feather_m*unit, inner_look))
+			RuntimeShadowLod.forward_instance_parameter(binding.visual,"ember_anomaly_sphere", Vector4(global_position.x, global_position.y, global_position.z, radius_m*unit if enabled else 0.0))
+			RuntimeShadowLod.forward_instance_parameter(binding.visual,"ember_anomaly_band_look", Vector2(feather_m*unit, inner_look))
 	for binding in _bindings:
 		if binding.overlay and binding.visual.material_overlay != binding.source.material_overlay:
 			binding.visual.material_overlay = binding.source.material_overlay

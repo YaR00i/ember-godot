@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3]
+[ext_resource type="Script" path="res://scripts/ember_action_resource.gd" id="1"]
+[resource]
+script = ExtResource("1")
+action_id = "chapter1_day1_start"
+document = {
+  "id": "chapter1_day1_start",
+  "nameRu": "chapter1_day1_start",
+  "steps": [
+    {
+      "type": "talk",
+      "dialogueId": "chapter1_day1_guild_talk"
+    },
+    {
+      "type": "set_flag",
+      "flag": "chapter1_day1_status",
+      "value": "active"
+    },
+    {
+      "type": "set_flag",
+      "flag": "chapter1_day1_guild",
+      "value": true
+    },
+    {
+      "type": "set_flag",
+      "flag": "chapter1_day1_errand_pending",
+      "value": true
+    }
+  ]
+}

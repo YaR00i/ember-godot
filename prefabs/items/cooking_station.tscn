@@ -1,0 +1,37 @@
+[gd_scene load_steps=7 format=3]
+[ext_resource type="Script" path="res://scripts/ember_crafting_station.gd" id="station"]
+[ext_resource type="Resource" path="res://content/recipes/chapter1_practice_drink.tres" id="recipe"]
+[sub_resource type="StandardMaterial3D" id="stone"]
+albedo_color = Color(0.38, 0.4, 0.42, 1)
+[sub_resource type="BoxMesh" id="stove"]
+size = Vector3(26, 20, 22)
+material = SubResource("stone")
+[sub_resource type="BoxShape3D" id="solid"]
+size = Vector3(26, 20, 22)
+[sub_resource type="SphereShape3D" id="reach"]
+radius = 9.0
+[node name="CookingStation" type="Node3D"]
+[node name="Visual" type="MeshInstance3D" parent="."]
+position = Vector3(0, 10, 0)
+mesh = SubResource("stove")
+[node name="Body" type="StaticBody3D" parent="."]
+collision_layer = 1
+collision_mask = 0
+[node name="Shape" type="CollisionShape3D" parent="Body"]
+position = Vector3(0, 10, 0)
+shape = SubResource("solid")
+[node name="Interaction" type="Area3D" parent="."]
+script = ExtResource("station")
+kind = "custom"
+position = Vector3(0, 8, 18)
+station_title = "Кухня"
+station_kind = "kitchen"
+recipes = Array[Resource]([ExtResource("recipe")])
+[node name="Shape" type="CollisionShape3D" parent="Interaction"]
+shape = SubResource("reach")
+[node name="Label" type="Label3D" parent="."]
+position = Vector3(0, 34, 0)
+text = "Кухня · F"
+font_size = 32
+pixel_size = 0.1
+billboard = 1

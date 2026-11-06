@@ -1,0 +1,35 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3]
+[ext_resource type="Script" path="res://scripts/ember_action_resource.gd" id="1"]
+[resource]
+script = ExtResource("1")
+action_id = "chapter1_coast_fishing"
+document = {
+  "id": "chapter1_coast_fishing",
+  "nameRu": "Ловля у тихого берега",
+  "steps": [
+    {
+      "type": "talk",
+      "dialogueId": "chapter1_fishing_cast"
+    },
+    {
+      "type": "wait",
+      "sec": 1.25
+    },
+    {
+      "type": "talk",
+      "dialogueId": "chapter1_fishing_bite"
+    },
+    {
+      "type": "exchange_items",
+      "costs": {},
+      "rewards": {
+        "chapter1_raw_fish": 1
+      }
+    },
+    {
+      "type": "set_flag",
+      "flag": "chapter1_coast_fish_caught",
+      "value": true
+    }
+  ]
+}

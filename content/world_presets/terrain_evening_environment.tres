@@ -1,0 +1,21 @@
+[gd_resource type="Environment" format=3]
+
+[ext_resource type="Sky" path="res://content/world_presets/sky_evening.tres" id="1"]
+
+[resource]
+resource_local_to_scene = true
+background_mode = 2
+background_color = Color(0.22, 0.27, 0.25, 1)
+sky = ExtResource("1")
+ambient_light_source = 2
+ambient_light_color = Color(0.5, 0.59, 0.78, 1)
+ambient_light_sky_contribution = 0.25
+ambient_light_energy = 0.55
+reflected_light_source = 2
+tonemap_mode = 2
+tonemap_exposure = 1.01
+ssao_enabled = true
+ssao_radius = 10.4
+ssao_intensity = 0.8
+adjustment_enabled = true
+adjustment_saturation = 0.99

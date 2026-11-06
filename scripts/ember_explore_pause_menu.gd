@@ -5,11 +5,15 @@ extends Control
 ## save owner, and modal explore UIs keep first refusal on Escape.
 
 var progress_state: EmberExploreState
+var player: EmberPlayer
+var map_loader: EmberMapLoader
 var map_display_name := "Локация"
 var blockers: Array[Control] = []
 
 var _overlay: ColorRect
 var _resume_button: Button
+var _quit_button: Button
+var _save_title: Label
 var _feedback: Label
 var _slot_labels: Array[Label] = []
 var _slot_load_buttons: Array[Button] = []
@@ -18,6 +22,9 @@ var _autosave_label: Label
 var _autosave_delete_button: Button
 var _armed_delete_key := ""
 var _armed_delete_until_ms := 0
+var _mira_model: OptionButton
+var _test_panel: VBoxContainer
+var _test_destinations: OptionButton
 
 
 func _ready() -> void:
@@ -48,6 +55,10 @@ func open_menu() -> void:
 	_armed_delete_until_ms = 0
 	_overlay.visible = true
 	_feedback.text = ""
+	_test_panel.visible = EmberMapTransition.test_mode(_progress())
+	if is_instance_valid(player):
+		_mira_model.select(0 if player.mira_outfit_selected() and player.mira_outfit_available() else 1)
+		_mira_model.set_item_disabled(0, not player.mira_outfit_available())
 	_refresh_save_metadata()
 	get_tree().paused = true
 	_focus_resume.call_deferred()
@@ -243,10 +254,10 @@ func _build_overlay() -> void:
 	controls.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	controls.add_theme_color_override("font_color", Color("a9b8d0"))
 	content.add_child(controls)
-	var save_title := Label.new()
-	save_title.text = "РУЧНЫЕ СОХРАНЕНИЯ"
-	save_title.add_theme_color_override("font_color", Color("ffc85a"))
-	content.add_child(save_title)
+	_save_title = Label.new()
+	_save_title.text = "РУЧНЫЕ СОХРАНЕНИЯ"
+	_save_title.add_theme_color_override("font_color", Color("ffc85a"))
+	content.add_child(_save_title)
 	for slot in EmberExploreState.MANUAL_SLOT_COUNT:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
@@ -288,6 +299,20 @@ func _build_overlay() -> void:
 	_autosave_delete_button.text = "Удалить"
 	_autosave_delete_button.pressed.connect(_request_delete_autosave)
 	autosave_row.add_child(_autosave_delete_button)
+	var appearance := HBoxContainer.new()
+	content.add_child(appearance)
+	var appearance_label := Label.new()
+	appearance_label.text = "Модель Миры"
+	appearance.add_child(appearance_label)
+	_mira_model = OptionButton.new()
+	_mira_model.add_item("Камира · текущий костюм")
+	_mira_model.add_item("Хоши · пробный облик")
+	_mira_model.item_selected.connect(func(index: int) -> void:
+		if is_instance_valid(player):
+			player.set_mira_outfit(index == 0)
+	)
+	appearance.add_child(_mira_model)
+	_build_location_test(content)
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	content.add_child(spacer)
@@ -298,12 +323,11 @@ func _build_overlay() -> void:
 	_resume_button.custom_minimum_size = Vector2(0, 50)
 	_resume_button.pressed.connect(close_menu)
 	content.add_child(_resume_button)
-	var quit_button := Button.new()
-	quit_button.name = "ExplorePauseQuit"
-	quit_button.text = "Сохранить и закрыть игру"
-	quit_button.custom_minimum_size = Vector2(0, 50)
-	quit_button.pressed.connect(_quit_game)
-	content.add_child(quit_button)
+	_quit_button = Button.new()
+	_quit_button.name = "ExplorePauseQuit"
+	_quit_button.custom_minimum_size = Vector2(0, 50)
+	_quit_button.pressed.connect(_quit_game)
+	content.add_child(_quit_button)
 	_feedback = Label.new()
 	_feedback.name = "ExplorePauseFeedback"
 	_feedback.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -311,18 +335,98 @@ func _build_overlay() -> void:
 	content.add_child(_feedback)
 	_refresh_save_metadata()
 
+func _build_location_test(content: VBoxContainer) -> void:
+	var toggle := Button.new()
+	toggle.text = "Проверка локаций"
+	content.add_child(toggle)
+	_test_panel = VBoxContainer.new()
+	_test_panel.visible = false
+	content.add_child(_test_panel)
+	toggle.pressed.connect(func() -> void: _test_panel.visible = not _test_panel.visible)
+	var note := Label.new()
+	note.text = "После перехода сохранения отключены до выхода из игры."
+	note.add_theme_color_override("font_color", Color("a9b8d0"))
+	_test_panel.add_child(note)
+	var row := HBoxContainer.new()
+	_test_panel.add_child(row)
+	_test_destinations = OptionButton.new()
+	_test_destinations.name = "ExploreTestLocations"
+	_test_destinations.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(_test_destinations)
+	_test_destinations.add_item("Выбери локацию")
+	for category: String in EmberMapTransition.TEST_DESTINATIONS:
+		_test_destinations.add_separator(category)
+		var locations: Dictionary = EmberMapTransition.TEST_DESTINATIONS[category]
+		for map_id: String in locations:
+			_test_destinations.add_item(locations[map_id])
+			var index := _test_destinations.item_count - 1
+			_test_destinations.set_item_metadata(index, map_id)
+			_test_destinations.set_item_disabled(index, not ResourceLoader.exists(EmberMapTransition.scene_path(map_id)))
+	var visit := Button.new()
+	visit.name = "ExploreVisitTestLocation"
+	visit.text = "Перейти"
+	visit.disabled = true
+	_test_destinations.item_selected.connect(func(index: int) -> void: visit.disabled = index == 0)
+	visit.pressed.connect(_visit_test_location)
+	row.add_child(visit)
+	var compare := CheckButton.new()
+	compare.text = "Камера сравнения из общего пресета"
+	compare.button_pressed = EmberFollowCamera.comparison_enabled
+	compare.toggled.connect(func(enabled: bool):
+		EmberFollowCamera.comparison_enabled = enabled
+		if is_instance_valid(player) and is_instance_valid(player.camera_rig) and is_instance_valid(map_loader):
+			player.camera_rig.apply_exploration_framing(map_loader.camera_fov, map_loader.camera_distance, map_loader.camera_polar, map_loader.imported_tile_size))
+	_test_panel.add_child(compare)
+	var reset := Button.new()
+	reset.name = "ExploreResetNotSave"
+	reset.text = "Reset · начать заново без сохранения"
+	_test_panel.add_child(reset)
+	var confirmation := ConfirmationDialog.new()
+	confirmation.title = "Начать тест заново"
+	confirmation.dialog_text = "Сбросить задания, сумку и состояние мира и вернуться ко входу в текущую локацию? Обычные сохранения останутся на диске."
+	confirmation.ok_button_text = "Начать заново"
+	add_child(confirmation)
+	reset.pressed.connect(func() -> void: confirmation.popup_centered())
+	confirmation.confirmed.connect(_restart_test_session)
+
+func _visit_test_location() -> void:
+	var index := _test_destinations.selected
+	if index <= 0 or _test_destinations.is_item_disabled(index):
+		return
+	var tree := get_tree()
+	var map_id := str(_test_destinations.get_item_metadata(index))
+	if EmberMapTransition.visit_test_location(tree, _progress(), map_id) == OK:
+		tree.paused = false
+	else:
+		_feedback.text = "Не удалось открыть тестовую локацию."
+
+func _restart_test_session() -> void:
+	var tree := get_tree()
+	if EmberMapTransition.restart_test_session(tree, _progress()) == OK:
+		tree.paused = false
+	else:
+		_feedback.text = "Не удалось начать тест заново."
 
 func _refresh_save_metadata() -> void:
 	var state := _progress()
 	if state == null or _slot_labels.is_empty():
 		return
+	var testing := EmberMapTransition.test_mode(state)
+	_save_title.visible = not testing
+	_quit_button.text = "Закрыть проверку" if testing else "Сохранить и закрыть игру"
 	for slot in mini(_slot_labels.size(), EmberExploreState.MANUAL_SLOT_COUNT):
+		_slot_labels[slot].get_parent().visible = not testing
+		if testing:
+			continue
 		var meta := state.slot_metadata(slot)
 		_slot_labels[slot].text = "Слот %d · %s" % [slot + 1, _metadata_text(meta)]
 		_slot_load_buttons[slot].disabled = not bool(meta.get("exists", false))
 		_slot_delete_buttons[slot].disabled = not bool(meta.get("exists", false))
 		_slot_delete_buttons[slot].text = "Удалить?" if _armed_delete_key == "manual_%d" % slot else "Удалить"
 	if _autosave_label != null:
+		_autosave_label.get_parent().visible = not testing
+		if testing:
+			return
 		var auto_meta := state.autosave_metadata()
 		_autosave_label.text = "Автосейв · %s" % _metadata_text(auto_meta)
 		_autosave_delete_button.disabled = not bool(auto_meta.get("exists", false))

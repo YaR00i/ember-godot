@@ -1,0 +1,48 @@
+[gd_scene format=3]
+
+[sub_resource type="StandardMaterial3D" id="wood"]
+albedo_color = Color(0.39, 0.25, 0.15, 1)
+
+[sub_resource type="StandardMaterial3D" id="ice"]
+albedo_color = Color(0.35, 0.76, 0.91, 1)
+roughness = 0.25
+
+[sub_resource type="BoxMesh" id="approach_mesh"]
+material = SubResource("wood")
+size = Vector3(60.92618484691127, 2, 38)
+
+[sub_resource type="BoxShape3D" id="approach_shape"]
+size = Vector3(60.92618484691127, 2, 38)
+
+[sub_resource type="BoxMesh" id="ice_mesh"]
+material = SubResource("ice")
+size = Vector3(87.36131867136622, 2, 38)
+
+[sub_resource type="BoxShape3D" id="ice_shape"]
+size = Vector3(87.36131867136622, 2, 38)
+
+[node name="IceSlope" type="Node3D"]
+
+[node name="Approach" type="StaticBody3D" parent="."]
+position = Vector3(-27.606080701420833, 11.080854969981942, 0)
+rotation = Vector3(0, 0, 0.40489178628508343)
+collision_mask = 0
+[node name="Shape" type="CollisionShape3D" parent="Approach"]
+shape = SubResource("approach_shape")
+[node name="Visual" type="MeshInstance3D" parent="Approach"]
+mesh = SubResource("approach_mesh")
+
+[node name="Ice" type="StaticBody3D" parent="." groups=["ember_ice_surface"]]
+position = Vector3(41.72527887210262, 11.038476052359178, 0)
+rotation = Vector3(0, 0, -0.27829965900511133)
+collision_mask = 0
+[node name="Shape" type="CollisionShape3D" parent="Ice"]
+shape = SubResource("ice_shape")
+[node name="Visual" type="MeshInstance3D" parent="Ice"]
+mesh = SubResource("ice_mesh")
+
+[node name="Sign" type="Label3D" parent="."]
+position = Vector3(2, 37, 0)
+text = "Ледяной склон"
+billboard = 1
+pixel_size = 0.1

@@ -43,8 +43,10 @@ static func write(root_path: String, inputs: Dictionary, metadata: Dictionary) -
 		if total > MAX_TOTAL_BYTES or entries.size() >= MAX_FILES: return {"error": "Bundle exceeds the existing cache budgets."}
 		var target := root_path.path_join(name)
 		if DirAccess.make_dir_recursive_absolute(target.get_base_dir()) != OK: return {"error": "Cannot create bundle subdirectory."}
-		if _write_atomic(target, bytes) != OK: return {"error": "Cannot publish prepared file."}
-		entries.append({"name": name, "bytes": bytes.size(), "sha256": Storage.checksum(bytes).hex_encode()})
+		var digest := Storage.checksum(bytes).hex_encode()
+		if inputs[name] != target and (not FileAccess.file_exists(target) or FileAccess.get_sha256(target) != digest):
+			if _write_atomic(target, bytes) != OK: return {"error": "Cannot publish prepared file."}
+		entries.append({"name": name, "bytes": bytes.size(), "sha256": digest})
 	var manifest := metadata.duplicate()
 	manifest.merge({"version": VERSION, "files": entries, "total_bytes": total}, true)
 	var text := JSON.stringify(manifest)
@@ -59,7 +61,8 @@ static func inspect(root_path: String) -> Dictionary:
 	var manifest: Variant = JSON.parse_string(file.get_as_text()); file.close()
 	if not manifest is Dictionary or manifest.get("version") != VERSION or not manifest.get("files") is Array:
 		return {"error": "Unsupported prepared manifest."}
-	if manifest.files.is_empty() or manifest.files.size() > MAX_FILES: return {"error": "Invalid prepared file count."}
+	var empty_grass:bool=manifest.get("kind")=="painted-grass" and manifest.get("patches") is Dictionary and manifest.patches.is_empty()
+	if (manifest.files.is_empty() and not empty_grass) or manifest.files.size() > MAX_FILES: return {"error": "Invalid prepared file count."}
 	var files := []
 	var seen := {}
 	var total := 0

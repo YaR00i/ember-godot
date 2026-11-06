@@ -7,6 +7,8 @@ var progress_state: EmberExploreState
 var values: Dictionary = {}
 var diagnostics: Array[String] = []
 var timer_remaining: Dictionary = {}
+## A field encounter can supply a virtual plate while its world bodies are suspended.
+var combat_plate_signal: Variant = null
 var _components: Array[Node] = []
 var _document: Dictionary = {}
 var _frames := 0
@@ -32,6 +34,9 @@ func snapshot() -> Dictionary:
 		row["hold_seconds"] = child.hold_seconds
 		row["required_weight"] = child.required_weight
 		row["character_weight"] = child.character_weight
+		if not child.companion_hero_id.is_empty():
+			row["companion_hero_id"] = child.companion_hero_id
+			row["companion_completion_flag"] = child.companion_completion_flag
 		if child.has_meta("mechanism_world_position"): row["world_position"] = child.get_meta("mechanism_world_position")
 		nodes.append(row)
 	return {"nodes": nodes, "links": links.duplicate(true)}
@@ -132,7 +137,10 @@ func _physics_process(delta: float) -> void:
 	var memory := {}
 	for child in _components:
 		if not is_instance_valid(child): continue
-		inputs[child.component_id] = child.sense(delta, progress_state, circuit_id)
+		if child.kind == "plate" and combat_plate_signal != null:
+			inputs[child.component_id] = bool(combat_plate_signal)
+		else:
+			inputs[child.component_id] = child.sense(delta, progress_state, circuit_id)
 		if child.kind == "latch":
 			if progress_state == null: diagnostics = ["Недоступно состояние сохранения фиксации сигнала."]
 			else: memory[child.component_id] = bool(progress_state.flags.get(latch_flag_key(child.component_id), false))
@@ -143,7 +151,9 @@ func _physics_process(delta: float) -> void:
 		if bool(memory.get(id, false)) != bool(next.latches[id]): updates[latch_flag_key(str(id))] = bool(next.latches[id])
 	if not updates.is_empty() and progress_state != null: progress_state.set_flags_batch(updates)
 	for child in _components:
-		if is_instance_valid(child): child.apply(bool(values.get(child.component_id, false)), delta)
+		if is_instance_valid(child):
+			var movement_step := float(child.move_seconds) if child.kind == "door" and combat_plate_signal != null else delta
+			child.apply(bool(values.get(child.component_id, false)), movement_step)
 func latch_flag_key(id: String) -> String:
 	return "mechanism_latch_%s_%s" % [circuit_id, id]
 
@@ -190,6 +200,8 @@ static func make_component(row: Dictionary) -> Node:
 	child.hold_seconds = float(row.get("hold_seconds", 3.0))
 	child.required_weight = float(row.get("required_weight", 0.0))
 	child.character_weight = float(row.get("character_weight", 1.0))
+	child.companion_hero_id = str(row.get("companion_hero_id", ""))
+	child.companion_completion_flag = str(row.get("companion_completion_flag", ""))
 	child.set_meta("graph_position", row.get("position", Vector2.ZERO))
 	if row.has("world_position"): child.set_meta("mechanism_world_position", row.world_position)
 	return child

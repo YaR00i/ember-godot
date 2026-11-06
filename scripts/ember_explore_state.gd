@@ -387,7 +387,8 @@ func open_container(item_id: String, autosave := true) -> Dictionary:
 	return result
 
 
-func exchange_items(costs: Dictionary, rewards: Dictionary, autosave := true, _handover_flag := "") -> Dictionary:
+func preview_exchange(costs: Dictionary, rewards: Dictionary) -> Dictionary:
+	## Same calculation for transaction UI and commit; returned inventory is a copy.
 	if combat_party_locked: return {"ok":false,"reason":"locked"}
 	if costs.is_empty() and rewards.is_empty(): return {"ok":false,"reason":"empty_exchange"}
 	var items := _items()
@@ -405,13 +406,68 @@ func exchange_items(costs: Dictionary, rewards: Dictionary, autosave := true, _h
 		var total := int(next.get(id,0))+int(rewards[id])
 		if total > int(items[id].get("stackMax",99)): return {"ok":false,"reason":"stack_full"}
 		next[id] = total
-	inventory = next
-	if not _handover_flag.is_empty():
-		flags[_handover_flag] = true
+	return {"ok":true,"inventory":next}
+
+
+func exchange_items(costs: Dictionary, rewards: Dictionary, autosave := true, _handover_flag := "") -> Dictionary:
+	var preview := preview_exchange(costs, rewards)
+	if not preview.ok: return preview
+	return _commit_item_exchange(preview, _handover_flag, [], autosave)
+
+
+func _commit_item_exchange(preview: Dictionary, completion_flag: String, updates: Array[Dictionary], autosave: bool) -> Dictionary:
+	inventory = preview.inventory
+	if not completion_flag.is_empty(): flags[completion_flag] = true
+	_apply_world_action_updates(updates)
 	economy_changed.emit()
 	progress_changed.emit()
 	if autosave: save_autosave()
 	return {"ok":true}
+
+
+func _apply_world_action_updates(updates: Array[Dictionary]) -> void:
+	# No signals or save mid-transaction: observers see inventory/world and goals together.
+	for update in updates:
+		var key := str(update.flagId)
+		flags[key] = int(flags.get(key, 0)) + int(update.amount)
+
+
+func harvest_world_items(item_id: String, count: int, completion_flag: String) -> Dictionary:
+	if completion_flag.is_empty() or flags.get(completion_flag, false) == true:
+		return {"ok":false,"reason":"already_harvested"}
+	var permission := QuestCatalog.authored_flag_transition(completion_flag, true, flags)
+	if not permission.allowed: return {"ok":false,"reason":"objective_unavailable"}
+	var preview := preview_exchange({}, {item_id:count})
+	if not preview.ok: return preview
+	return _commit_item_exchange(preview, completion_flag, QuestCatalog.world_action_updates("collect", item_id, count, flags), true)
+
+
+func reveal_world_cover(completion_flag: String, action: String) -> Dictionary:
+	if combat_party_locked or completion_flag.is_empty() or action not in ["reveal_leaves", "cut_grass"]:
+		return {"changed":false}
+	if flags.get(completion_flag, false) == true: return {"changed":false}
+	var permission := QuestCatalog.authored_flag_transition(completion_flag, true, flags)
+	if not permission.allowed: return {"changed":false}
+	var updates := QuestCatalog.world_action_updates(action, "", 1, flags)
+	flags[completion_flag] = true
+	_apply_world_action_updates(updates)
+	progress_changed.emit()
+	save_autosave()
+	return {"changed":true}
+
+
+func preview_recipe(recipe: Resource) -> Dictionary:
+	if not recipe is EmberCraftRecipeResource:
+		return {"ok":false,"reason":"invalid_recipe"}
+	if not recipe.validation_errors(_items()).is_empty():
+		return {"ok":false,"reason":"invalid_recipe"}
+	return preview_exchange(recipe.ingredients, recipe.results)
+
+
+func craft_recipe(recipe: Resource) -> Dictionary:
+	var preview := preview_recipe(recipe)
+	if not preview.ok: return preview
+	return _commit_item_exchange(preview, "", QuestCatalog.world_action_updates("craft", recipe.recipe_id, 1, flags), true)
 
 
 func handover_quest_items(quest_id: String, objective_id: String, rewards: Dictionary = {}, autosave := true) -> Dictionary:
@@ -436,6 +492,18 @@ func ensure_authored_item(id: String, item_id: String, map_id: String, placement
 		"position":WorldItems.packed(placement.origin),"rotation":WorldItems.packed(placement.basis.get_euler())}})
 	if records.has(id): world_items[id] = records[id]
 
+func adopt_carried_items(cargo: Array[Dictionary], destination: String, at: Vector3) -> void:
+	if combat_party_locked or destination.is_empty() or not at.is_finite(): return
+	for entry in cargo:
+		var id := str(entry.get("id", ""))
+		var row: Dictionary = world_items.get(id, {})
+		if int(row.get("count", 0)) <= 0 or str(row.get("mapId", "")) != str(entry.get("sourceMapId", "")): continue
+		var physical := WorldItems.normalized_physical(row.get("physical", {}))
+		if physical.is_empty() or not physical.carryable: continue
+		row.mapId = destination; row.position = WorldItems.packed(at); row.rotation = [0.0,0.0,0.0]
+		physical.returnOrigin = WorldItems.packed(at); row.physical = physical
+		row["carrierHeroId"] = str(entry.get("heroId", ""))
+
 
 func drop_inventory_item(item_id: String, map_id: String, at: Vector3, autosave := true) -> Dictionary:
 	var item: Dictionary = _items().get(item_id,{})
@@ -459,8 +527,11 @@ func drop_inventory_item(item_id: String, map_id: String, at: Vector3, autosave 
 
 func destroy_world_item(id: String) -> bool:
 	if combat_party_locked or not world_items.has(id) or int(world_items[id].get("count", 0)) <= 0: return false
+	var item_id := str(world_items[id].get("itemId", ""))
+	var updates := QuestCatalog.world_action_updates("destroy", item_id, 1, flags)
 	world_items[id].count = 0
 	if id.begins_with("drop_"): world_items.erase(id)
+	_apply_world_action_updates(updates)
 	progress_changed.emit()
 	save_autosave()
 	return true
@@ -473,11 +544,15 @@ func pickup_world_item(id: String, autosave := true) -> Dictionary:
 	var item: Dictionary = _items().get(item_id,{})
 	if count < 1 or item.is_empty(): return {"ok":false,"reason":"missing_item"}
 	if int(inventory.get(item_id,0))+count > int(item.get("stackMax",99)): return {"ok":false,"reason":"stack_full"}
+	# Inventory drops are withdrawals of already owned items, not new gathering.
+	var updates: Array[Dictionary] = []
+	if not id.begins_with("drop_"): updates = QuestCatalog.world_action_updates("collect", item_id, count, flags)
 	inventory[item_id] = int(inventory.get(item_id,0))+count
 	row.count = 0
 	# Only authored placements need tombstones. A consumed dynamic drop has
 	# no authored source to respawn and must not accumulate forever.
 	if id.begins_with("drop_"): world_items.erase(id)
+	_apply_world_action_updates(updates)
 	economy_changed.emit()
 	progress_changed.emit()
 	if autosave: save_autosave()

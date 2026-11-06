@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="EmberDialogueResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_dialogue_resource.gd" id="1_d3085"]
+
+[resource]
+script = ExtResource("1_d3085")
+dialogue_id = "chapter1_blockout_mansion"
+document = {
+"id": "chapter1_blockout_mansion",
+"nameRu": "Управляющий · макет",
+"startStepId": "line",
+"steps": [{
+"id": "line",
+"nameRu": "Управляющий · макет",
+"next": "end",
+"textRu": "Это макет входного зала. Место встречи с Мирой находится в саду снаружи.",
+"type": "dialogue"
+}, {
+"id": "end",
+"type": "end"
+}],
+"use": "talk"
+}

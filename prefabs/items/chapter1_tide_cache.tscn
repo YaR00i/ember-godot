@@ -1,0 +1,207 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_mechanism_circuit.gd" id="circuit"]
+[ext_resource type="Script" path="res://scripts/ember_mechanism_component.gd" id="component"]
+[ext_resource type="Script" path="res://scripts/ember_world_item_3d.gd" id="item"]
+[ext_resource type="PackedScene" path="res://prefabs/items/chapter1_delivery_crate.tscn" id="crate"]
+
+[sub_resource type="StandardMaterial3D" id="stone"]
+albedo_color = Color(0.32, 0.4, 0.42, 1)
+
+[sub_resource type="StandardMaterial3D" id="iron"]
+albedo_color = Color(0.53, 0.39, 0.28, 1)
+
+[sub_resource type="BoxMesh" id="bar"]
+material = SubResource("iron")
+size = Vector3(2, 30, 2)
+
+[sub_resource type="BoxShape3D" id="grate"]
+size = Vector3(22, 30, 3)
+
+[sub_resource type="BoxShape3D" id="clearance"]
+size = Vector3(22, 34, 14)
+
+[sub_resource type="BoxMesh" id="plate_visual"]
+size = Vector3(24, 0.5, 24)
+
+[sub_resource type="BoxShape3D" id="plate_sensor"]
+size = Vector3(24, 12, 24)
+
+[sub_resource type="BoxMesh" id="FrontLeft_mesh"]
+material = SubResource("stone")
+size = Vector3(21, 32, 5)
+
+[sub_resource type="BoxShape3D" id="FrontLeft_shape"]
+size = Vector3(21, 32, 5)
+
+[sub_resource type="BoxMesh" id="FrontRight_mesh"]
+material = SubResource("stone")
+size = Vector3(21, 32, 5)
+
+[sub_resource type="BoxShape3D" id="FrontRight_shape"]
+size = Vector3(21, 32, 5)
+
+[sub_resource type="BoxMesh" id="LeftWall_mesh"]
+material = SubResource("stone")
+size = Vector3(5, 32, 48)
+
+[sub_resource type="BoxShape3D" id="LeftWall_shape"]
+size = Vector3(5, 32, 48)
+
+[sub_resource type="BoxMesh" id="RightWall_mesh"]
+material = SubResource("stone")
+size = Vector3(5, 32, 28)
+
+[sub_resource type="BoxShape3D" id="RightWall_shape"]
+size = Vector3(5, 32, 28)
+
+[sub_resource type="BoxMesh" id="BackWall_mesh"]
+material = SubResource("stone")
+size = Vector3(64, 32, 5)
+
+[sub_resource type="BoxShape3D" id="BackWall_shape"]
+size = Vector3(64, 32, 5)
+
+[node name="TideCache" type="Node3D"]
+script = ExtResource("circuit")
+circuit_id = "tide_cache"
+links = Array[Dictionary]([{"from": "plate", "to": "door", "port": 0}])
+
+[node name="FrontLeft" type="StaticBody3D" parent="."]
+position = Vector3(-21.5, 16, 24)
+collision_mask = 0
+
+[node name="Visual" type="MeshInstance3D" parent="FrontLeft"]
+mesh = SubResource("FrontLeft_mesh")
+
+[node name="Shape" type="CollisionShape3D" parent="FrontLeft"]
+shape = SubResource("FrontLeft_shape")
+
+[node name="FrontRight" type="StaticBody3D" parent="."]
+position = Vector3(21.5, 16, 24)
+collision_mask = 0
+
+[node name="Visual" type="MeshInstance3D" parent="FrontRight"]
+mesh = SubResource("FrontRight_mesh")
+
+[node name="Shape" type="CollisionShape3D" parent="FrontRight"]
+shape = SubResource("FrontRight_shape")
+
+[node name="LeftWall" type="StaticBody3D" parent="."]
+position = Vector3(-32, 16, 0)
+collision_mask = 0
+
+[node name="Visual" type="MeshInstance3D" parent="LeftWall"]
+mesh = SubResource("LeftWall_mesh")
+
+[node name="Shape" type="CollisionShape3D" parent="LeftWall"]
+shape = SubResource("LeftWall_shape")
+
+[node name="RightWall" type="StaticBody3D" parent="."]
+position = Vector3(32, 16, 10)
+collision_mask = 0
+
+[node name="Visual" type="MeshInstance3D" parent="RightWall"]
+mesh = SubResource("RightWall_mesh")
+
+[node name="Shape" type="CollisionShape3D" parent="RightWall"]
+shape = SubResource("RightWall_shape")
+
+[node name="BackWall" type="StaticBody3D" parent="."]
+position = Vector3(0, 16, -24)
+collision_mask = 0
+
+[node name="Visual" type="MeshInstance3D" parent="BackWall"]
+mesh = SubResource("BackWall_mesh")
+
+[node name="Shape" type="CollisionShape3D" parent="BackWall"]
+shape = SubResource("BackWall_shape")
+
+[node name="Grate" type="AnimatableBody3D" parent="."]
+position = Vector3(0, 15, 24)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Grate"]
+shape = SubResource("grate")
+
+[node name="Bar0" type="MeshInstance3D" parent="Grate"]
+position = Vector3(-9, 0, 0)
+mesh = SubResource("bar")
+
+[node name="Bar1" type="MeshInstance3D" parent="Grate"]
+position = Vector3(-4.5, 0, 0)
+mesh = SubResource("bar")
+
+[node name="Bar2" type="MeshInstance3D" parent="Grate"]
+position = Vector3(0, 0, 0)
+mesh = SubResource("bar")
+
+[node name="Bar3" type="MeshInstance3D" parent="Grate"]
+position = Vector3(4.5, 0, 0)
+mesh = SubResource("bar")
+
+[node name="Bar4" type="MeshInstance3D" parent="Grate"]
+position = Vector3(9, 0, 0)
+mesh = SubResource("bar")
+
+[node name="Clearance" type="Area3D" parent="."]
+position = Vector3(0, 16, 24)
+collision_layer = 0
+collision_mask = 6
+
+[node name="Shape" type="CollisionShape3D" parent="Clearance"]
+shape = SubResource("clearance")
+
+[node name="WeightPlate" type="Area3D" parent="."]
+position = Vector3(0, 0, 45)
+collision_layer = 0
+collision_mask = 6
+
+[node name="Shape" type="CollisionShape3D" parent="WeightPlate"]
+position = Vector3(0, 5, 0)
+shape = SubResource("plate_sensor")
+
+[node name="Visual" type="MeshInstance3D" parent="WeightPlate"]
+mesh = SubResource("plate_visual")
+
+[node name="Label" type="Label3D" parent="WeightPlate"]
+position = Vector3(0, 16, 0)
+text = "Плита для тяжёлого груза"
+billboard = 1
+pixel_size = 0.09
+
+[node name="CacheCrate" parent="." instance=ExtResource("crate")]
+position = Vector3(-30, 0.2, 48)
+pickup_id = "chapter1_tide_cache_crate"
+map_id = "chapter1_tide_cave"
+
+[node name="Shell" type="RigidBody3D" parent="."]
+position = Vector3(0, 0.4, 0)
+script = ExtResource("item")
+pickup_id = "chapter1_tide_cache_shell"
+item_id = "shore_shell"
+map_id = "chapter1_tide_cave"
+visual_size = 12.0
+
+[node name="Label" type="Label3D" parent="Shell"]
+position = Vector3(0, 16, 0)
+text = "Ракушка"
+billboard = 1
+pixel_size = 0.1
+
+[node name="Plate" type="Node" parent="."]
+script = ExtResource("component")
+component_id = "plate"
+kind = "plate"
+label = "Грузовая плита"
+target_path = NodePath("../WeightPlate")
+required_weight = 2.5
+
+[node name="Door" type="Node" parent="."]
+script = ExtResource("component")
+component_id = "door"
+kind = "door"
+label = "Решётка тайника"
+target_path = NodePath("../Grate")
+clearance_path = NodePath("../Clearance")
+open_offset = Vector3(0, 34, 0)

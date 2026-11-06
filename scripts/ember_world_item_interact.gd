@@ -1,6 +1,16 @@
 extends "res://scripts/ember_interact.gd"
 ## The existing F interaction route, with a persistent world pickup as its target.
 
+func distance_to_world(world: Vector3) -> float:
+	var body := get_parent()
+	if body.is_heavy_crate():
+		var box: CollisionShape3D = body.crate_box()
+		if box != null:
+			var half: Vector3 = box.shape.size * 0.5
+			var local := box.to_local(world)
+			return world.distance_to(box.to_global(local.clamp(-half, half)))
+	return super.distance_to_world(world)
+
 func prompt() -> String:
 	if get_parent().carryable:
 		return ("F поставить · G бросить: " if get_parent().is_carried() else "Взять: ") + str(get_parent().display_name)

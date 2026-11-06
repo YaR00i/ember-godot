@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="EmberShopResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_shop_resource.gd" id="1_1cdh1"]
+
+[resource]
+script = ExtResource("1_1cdh1")
+shop_id = "chapter1_general_store"
+definition = {
+"id": "chapter1_general_store",
+"listings": [{
+"buyPrice": 2,
+"itemId": "apple",
+"sellPrice": 1,
+"stock": 8
+}, {
+"buyPrice": 5,
+"itemId": "meat_bun",
+"sellPrice": 2,
+"stock": 4
+}],
+"nameRu": "Обычные товары · макет ассортимента"
+}

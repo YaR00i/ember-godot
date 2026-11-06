@@ -1,0 +1,121 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_mechanism_circuit.gd" id="circuit"]
+[ext_resource type="Script" path="res://scripts/ember_mechanism_component.gd" id="component"]
+
+[sub_resource type="StandardMaterial3D" id="stone"]
+albedo_color = Color(0.32, 0.39, 0.40, 1)
+
+[sub_resource type="BoxMesh" id="wall_mesh"]
+material = SubResource("stone")
+size = Vector3(208, 40, 12)
+
+[sub_resource type="BoxShape3D" id="wall_shape"]
+size = Vector3(208, 40, 12)
+
+[sub_resource type="BoxMesh" id="door_mesh"]
+material = SubResource("stone")
+size = Vector3(32, 36, 9)
+
+[sub_resource type="BoxShape3D" id="door_shape"]
+size = Vector3(32, 36, 9)
+
+[sub_resource type="BoxShape3D" id="clear_shape"]
+size = Vector3(32, 42, 22)
+
+[sub_resource type="BoxMesh" id="lever_mesh"]
+size = Vector3(6, 12, 6)
+
+[node name="TideTeamGate" type="Node3D"]
+script = ExtResource("circuit")
+circuit_id = "tide_team"
+links = Array[Dictionary]([{"from": "inside", "to": "secured", "port": 0}, {"from": "outside", "to": "either", "port": 0}, {"from": "secured", "to": "either", "port": 1}, {"from": "either", "to": "door", "port": 0}])
+
+[node name="LeftWall" type="StaticBody3D" parent="."]
+position = Vector3(-120, 20, 0)
+collision_mask = 0
+[node name="Visual" type="MeshInstance3D" parent="LeftWall"]
+mesh = SubResource("wall_mesh")
+[node name="Shape" type="CollisionShape3D" parent="LeftWall"]
+shape = SubResource("wall_shape")
+
+[node name="RightWall" type="StaticBody3D" parent="."]
+position = Vector3(120, 20, 0)
+collision_mask = 0
+[node name="Visual" type="MeshInstance3D" parent="RightWall"]
+mesh = SubResource("wall_mesh")
+[node name="Shape" type="CollisionShape3D" parent="RightWall"]
+shape = SubResource("wall_shape")
+
+[node name="Gate" type="AnimatableBody3D" parent="."]
+position = Vector3(0, 18, 0)
+collision_mask = 0
+[node name="Visual" type="MeshInstance3D" parent="Gate"]
+mesh = SubResource("door_mesh")
+[node name="Shape" type="CollisionShape3D" parent="Gate"]
+shape = SubResource("door_shape")
+
+[node name="Clearance" type="Area3D" parent="."]
+position = Vector3(0, 20, 0)
+collision_layer = 0
+collision_mask = 6
+[node name="Shape" type="CollisionShape3D" parent="Clearance"]
+shape = SubResource("clear_shape")
+
+[node name="OutsideLever" type="Node3D" parent="."]
+position = Vector3(0, 0, 33)
+[node name="Visual" type="MeshInstance3D" parent="OutsideLever"]
+position = Vector3(-5, 6, 0)
+mesh = SubResource("lever_mesh")
+[node name="Label" type="Label3D" parent="OutsideLever"]
+position = Vector3(0, 26, 0)
+text = "Попросить Миру удерживать рычаг · F"
+billboard = 1
+pixel_size = 0.1
+
+[node name="InsideLever" type="Node3D" parent="."]
+position = Vector3(0, 0, -27)
+[node name="Visual" type="MeshInstance3D" parent="InsideLever"]
+position = Vector3(5, 6, 0)
+mesh = SubResource("lever_mesh")
+[node name="Label" type="Label3D" parent="InsideLever"]
+position = Vector3(0, 26, 0)
+text = "Зафиксировать заслонку · F"
+billboard = 1
+pixel_size = 0.1
+
+[node name="Outside" type="Node" parent="."]
+script = ExtResource("component")
+component_id = "outside"
+label = "Мира, подержи рычаг"
+kind = "lever"
+target_path = NodePath("../OutsideLever")
+companion_hero_id = "mira"
+companion_completion_flag = "mechanism_latch_tide_team_secured"
+
+[node name="Inside" type="Node" parent="."]
+script = ExtResource("component")
+component_id = "inside"
+label = "Зафиксировать заслонку"
+kind = "lever"
+target_path = NodePath("../InsideLever")
+
+[node name="Secured" type="Node" parent="."]
+script = ExtResource("component")
+component_id = "secured"
+label = "Фиксатор"
+kind = "latch"
+
+[node name="Either" type="Node" parent="."]
+script = ExtResource("component")
+component_id = "either"
+label = "Сигнал заслонки"
+kind = "any"
+
+[node name="Door" type="Node" parent="."]
+script = ExtResource("component")
+component_id = "door"
+label = "Приливная заслонка"
+kind = "door"
+target_path = NodePath("../Gate")
+clearance_path = NodePath("../Clearance")

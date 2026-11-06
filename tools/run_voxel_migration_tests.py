@@ -53,6 +53,10 @@ def copy_code(destination):
     # preloads. Copy their small non-voxel fixtures, never the author libraries.
     shutil.copytree(ROOT / "content" / "combat", destination / "content" / "combat")
     shutil.copytree(ROOT / "scenes" / "prototypes", destination / "scenes" / "prototypes")
+    shutil.copytree(ROOT / "content/world_presets", destination / "content/world_presets")
+    npc_visual = Path("prefabs/items/shore_keeper_visual.tscn")
+    (destination / npc_visual.parent).mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(ROOT / npc_visual, destination / npc_visual)
 
 
 def chunk(name, content):

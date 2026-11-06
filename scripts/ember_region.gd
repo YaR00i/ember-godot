@@ -54,6 +54,13 @@ func _on_body_entered(body: Node3D) -> void:
 	if not EmberMapTransition.trigger_allowed(region_id):
 		return
 	_transitioning = true
+	# Area signals arrive during physics queries; remove the map afterward.
+	_transition_to_target.call_deferred()
+
+
+func _transition_to_target() -> void:
+	if not is_inside_tree():
+		return
 	var progress := _progress()
 	if progress:
 		progress.save_autosave()

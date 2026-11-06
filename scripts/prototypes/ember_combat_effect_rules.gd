@@ -19,22 +19,9 @@ static func set_push(
 		(resolved.get("notes", []) as Array).append("Устойчивость цели блокирует отбрасывание.")
 		return
 	if state.has("grid") and actor.has("cell") and target.has("cell"):
-		var actor_cell: Vector2i = actor.get("cell", Vector2i.ZERO)
 		var target_cell: Vector2i = target.get("cell", Vector2i.ZERO)
-		var delta := target_cell - actor_cell
-		var direction := Vector2i.ZERO
-		if absi(delta.x) >= absi(delta.y) and delta.x != 0:
-			direction.x = signi(delta.x)
-		elif delta.y != 0:
-			direction.y = signi(delta.y)
-		var destination := target_cell + direction
-		if (
-			direction != Vector2i.ZERO
-			and _grid_inside(state, destination)
-			and not bool(_grid_cell_definition(state, destination).get("blocked", true))
-			and Terrain.can_force_move(state, target_cell, destination)
-			and _grid_occupant(state, destination).is_empty()
-		):
+		var destination := push_destination(state, actor.cell, target_cell)
+		if destination != INVALID_CELL:
 			var moves: Dictionary = resolved.get("moves", {})
 			moves[str(target.get("id", ""))] = destination
 			resolved["moves"] = moves
@@ -55,6 +42,23 @@ static func set_push(
 		var moves: Dictionary = resolved.get("moves", {})
 		moves[str(target.get("id", ""))] = destination
 		resolved["moves"] = moves
+
+
+static func push_destination(state: Dictionary, actor_cell: Vector2i, target_cell: Vector2i) -> Vector2i:
+	var delta := target_cell - actor_cell
+	var direction := Vector2i.ZERO
+	if absi(delta.x) >= absi(delta.y) and delta.x != 0:
+		direction.x = signi(delta.x)
+	elif delta.y != 0:
+		direction.y = signi(delta.y)
+	var destination := target_cell + direction
+	if direction == Vector2i.ZERO or not _grid_inside(state, destination):
+		return INVALID_CELL
+	if bool(_grid_cell_definition(state, destination).get("blocked", true)):
+		return INVALID_CELL
+	if not Terrain.can_force_move(state, target_cell, destination) or not _grid_occupant(state, destination).is_empty():
+		return INVALID_CELL
+	return destination
 
 
 static func shares_conduction_area(state: Dictionary, first: Dictionary, second: Dictionary) -> bool:

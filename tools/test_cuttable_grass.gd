@@ -23,8 +23,9 @@ func restore(slot: int) -> void:
 func shot(label: String) -> void:
 	var output := OS.get_environment("EMBER_GRASS_CAPTURE_DIR")
 	if output.is_empty():return
+	check(DirAccess.make_dir_recursive_absolute(output)==OK,"capture directory unavailable")
 	await process_frame; await RenderingServer.frame_post_draw
-	root.get_texture().get_image().save_png(output.path_join(label+".png"))
+	check(root.get_texture().get_image().save_png(output.path_join(label+".png"))==OK,"capture failed "+label)
 func _run() -> void:
 	state=root.get_node("EmberExploreProgress"); state.persistence_enabled=false; state.flags.clear(); state.world_items.clear()
 	host=LeafGate.Host.new(); var map:=LeafGate.StubMap.new(); map.name="Map"; host.add_child(map)
@@ -42,6 +43,12 @@ func _run() -> void:
 		var world:=WorldEnvironment.new(); world.environment=Environment.new(); world.environment.background_mode=Environment.BG_COLOR; world.environment.background_color=Color(0.52,0.65,0.75); world.environment.ambient_light_source=Environment.AMBIENT_SOURCE_COLOR; world.environment.ambient_light_color=Color.WHITE; world.environment.ambient_light_energy=0.4; host.add_child(world)
 		var ground:=MeshInstance3D.new(); ground.mesh=BoxMesh.new(); ground.mesh.size=Vector3(240,2,240); ground.position.y=-1; var paint:=StandardMaterial3D.new(); paint.albedo_color=Color("657b43"); ground.material_override=paint; host.add_child(ground)
 	await frames(30)
+	var foliage: ShaderMaterial=grass.get_node("PileVisual").material_override
+	check(grass.get_node("PileVisual").mesh.surface_get_array_index_len(0)==72,"high grass misses three simple contour tufts")
+	check(grass.get_node("PileVisual").cast_shadow==GeometryInstance3D.SHADOW_CASTING_SETTING_ON,"high grass shadows disabled")
+	check(foliage.get_shader_parameter("flower_tint")==Color.WHITE,"harvest grass adds a separate dark tint")
+	check(foliage.shader.has_meta("ember_feature_base"),"harvest grass misses existing compiled feature program")
+	check(grass.get_node("CutStubble").material_override==foliage,"stubble lost shared meadow material")
 	var initial:=int(state.inventory.get("herb",0))
 	check(pickup()!=null and not pickup().visible and pickup().freeze,"herb exposed before cutting")
 	check(not grass.get_node("CutStubble").visible and grass.get_node("PileVisual").visible,"uncut visuals wrong")
@@ -70,6 +77,7 @@ func _run() -> void:
 	check(player.get("_action_message").contains("Трава"),"grass used leaf/crate feedback")
 	var effects:=get_nodes_in_group("ember_world_break_effects")
 	check(effects.size()==1 and effects[0].get("_leaf_parts").size()==64 and effects[0].get_child_count()==4,"individual grass blades missing")
+	check(effects[0].get_child(0).material_override.shader.has_meta("ember_feature_base"),"cut wisps miss existing compiled feature program")
 	check(effects[0].lifetime<0.8 and effects[0].get("_leaf_floor").is_empty(),"grass wisps use slow ground-fragment motion")
 	var first_blade: Transform3D=effects[0].get_child(0).multimesh.get_instance_transform(0)
 	check(first_blade.origin.distance_to(effects[0].leaf_transforms[0].origin)>0.01,"grass blades did not drift in the wind")
@@ -102,6 +110,7 @@ func _run() -> void:
 	for batch: MultiMeshInstance3D in fragments.get_children():
 		blade_count += batch.multimesh.instance_count
 		var bounds: AABB=batch.multimesh.mesh.get_aabb()
+		check(batch.multimesh.mesh.surface_get_array_index_len(0)==9,"cut blade exceeds three triangles")
 		check(bounds.size.y>maxf(bounds.size.x,bounds.size.z)*1.2,"grass wisps still contain wide clump cards")
 	check(blade_count==64 and fragments.leaf_transforms.size()==64,"saved scatter lost individual blade poses")
 	check(fragments.find_children("*","PhysicsBody3D",true,false).is_empty(),"cosmetic blades created physics bodies")

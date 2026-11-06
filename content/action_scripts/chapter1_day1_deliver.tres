@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3]
+[ext_resource type="Script" path="res://scripts/ember_action_resource.gd" id="1"]
+[resource]
+script = ExtResource("1")
+action_id = "chapter1_day1_deliver"
+document = {
+  "id": "chapter1_day1_deliver",
+  "nameRu": "chapter1_day1_deliver",
+  "steps": [
+    {
+      "type": "talk",
+      "dialogueId": "chapter1_day1_give_talk"
+    },
+    {
+      "type": "handover_quest_items",
+      "questId": "chapter1_day1",
+      "objectiveId": "home",
+      "rewards": {}
+    },
+    {
+      "type": "talk",
+      "dialogueId": "chapter1_day1_accept_talk"
+    }
+  ]
+}

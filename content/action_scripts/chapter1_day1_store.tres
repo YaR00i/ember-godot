@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="EmberActionResource" format=3]
+[ext_resource type="Script" path="res://scripts/ember_action_resource.gd" id="1"]
+[resource]
+script = ExtResource("1")
+action_id = "chapter1_day1_store"
+document = {
+  "id": "chapter1_day1_store",
+  "nameRu": "Открыть лавку обычных товаров",
+  "steps": [
+    {
+      "type": "open_shop",
+      "shopId": "chapter1_general_store"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="EmberCraftRecipeResource" format=3]
+[ext_resource type="Script" path="res://scripts/ember_craft_recipe_resource.gd" id="1"]
+[resource]
+script = ExtResource("1")
+recipe_id = "chapter1_day1_gift"
+title = "Подарок для мамы"
+station_kind = "workbench"
+description = "Перевязать подарок лентой вместе с Мирой."
+ingredients = { "chapter1_day1_ribbon": 1 }
+results = { "chapter1_day1_gift": 1 }

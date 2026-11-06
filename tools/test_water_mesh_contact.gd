@@ -1,6 +1,7 @@
 extends SceneTree
 ## Observable waterline: two separate mesh islands must not become one solid disc.
 const Contact := preload("res://scripts/ember_water_contact_3d.gd")
+const MeshSection := preload("res://scripts/ember_water_mesh_section.gd")
 const Field := preload("res://scripts/prototypes/ember_compact_wave_obstacles.gd")
 const Terrain := preload("res://scripts/prototypes/ember_terrain_pilot_resource.gd")
 const Water := preload("res://scripts/prototypes/ember_compact_planar_reflection_study.gd")
@@ -9,6 +10,19 @@ func _init() -> void: run.call_deferred()
 func check(ok: bool, label: String) -> void:
 	if not ok: errors.append(label)
 func run() -> void:
+	var legs: Array[Vector4] = [
+		Vector4(-2, -2, 0, 0.8), Vector4(-2, 5, 0, 0.8),
+		Vector4(2, -2, 0, 0.8), Vector4(2, 5, 0, 0.8),
+	]
+	var rig_section := MeshSection.build_rig(legs, 0.0, Vector2.ZERO)
+	check(not rig_section.is_empty(), "both legs cross the waterline")
+	if not rig_section.is_empty():
+		rig_section.center = rig_section.center_offset
+		rig_section.angle = 0.0
+		for x in [-2.0, 2.0]:
+			check(MeshSection.sample(Vector2(x, 0), rig_section) < -0.4, "each leg occupies the waterline")
+		check(MeshSection.sample(Vector2.ZERO, rig_section) > 0.8, "open water stays between the legs")
+		check(MeshSection.build_rig(legs, 8.0, Vector2.ZERO).is_empty(), "submerged rig has no waterline")
 	var host := Node3D.new()
 	root.add_child(host)
 	var mesh := MeshInstance3D.new()

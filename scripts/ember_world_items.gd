@@ -17,6 +17,32 @@ static func normalize(raw: Variant) -> Dictionary:
 		if not valid_vector(row.get("position")) or not valid_vector(row.get("rotation")): continue
 		result[key] = {"itemId": row.itemId, "mapId": row.mapId, "count": int(count),
 			"position": Array(row.position).duplicate(), "rotation": Array(row.rotation).duplicate()}
+		var physical := normalized_physical(row.get("physical", {}))
+		if not physical.is_empty(): result[key]["physical"] = physical
+		var carrier: Variant = row.get("carrierHeroId", "")
+		if not physical.is_empty() and physical.carryable and carrier is String and not carrier.is_empty() and carrier.length() <= 64:
+			result[key]["carrierHeroId"] = carrier
+	return result
+
+static func normalized_physical(raw: Variant) -> Dictionary:
+	if not raw is Dictionary or raw.is_empty(): return {}
+	var result := {}
+	for key in ["carryable", "pushable", "breakable"]:
+		if typeof(raw.get(key)) != TYPE_BOOL: return {}
+		result[key] = raw[key]
+	var bounds := {"itemMass": [0.05, 1000.0], "visualSize": [1.0, 128.0], "returnRadius": [0.0, 4096.0], "breakImpactSpeed": [1.0, 200.0], "throwDamage": [1.0, 100.0]}
+	for key in bounds:
+		var value: Variant = raw.get(key)
+		if typeof(value) not in [TYPE_INT, TYPE_FLOAT] or not is_finite(float(value)) or float(value) < bounds[key][0] or float(value) > bounds[key][1]: return {}
+		if key == "throwDamage" and float(value) != floor(float(value)): return {}
+		result[key] = int(value) if key == "throwDamage" else float(value)
+	for key in ["availableFlagId", "startQuestId", "breakEffect"]:
+		if not raw.get(key, "") is String or str(raw.get(key, "")).length() > 256: return {}
+		result[key] = str(raw.get(key, ""))
+	var effect: String = result.breakEffect
+	if not effect.is_empty() and (not effect.begins_with("res://prefabs/") or effect.get_extension() not in ["scn", "tscn"] or ".." in effect): return {}
+	if not valid_vector(raw.get("returnOrigin")): return {}
+	result["returnOrigin"] = Array(raw.returnOrigin).duplicate()
 	return result
 
 static func valid_vector(raw: Variant) -> bool:

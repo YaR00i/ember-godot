@@ -68,6 +68,7 @@ var _mountain_fields := {}
 var _road_mode := false
 var _road_grid: GridContainer
 var _road_fields := {}
+var _road_surface: OptionButton
 var _grove_mode := false
 var _grove_grid: VBoxContainer
 var _grove_fields := {}
@@ -275,6 +276,14 @@ func _ready() -> void:
 		spin.value_changed.connect(_changed.unbind(1))
 	_road_fields.edge_m.tooltip_text = "Плавный переход от ровного коридора к прежней земле по бокам дороги."
 	_road_fields.grade_percent.tooltip_text = "Продольный подъём на 100 м пути: 25% — это 25 м. Слишком большой перепад между концами отклоняется; удлините путь или измените площадки. Ручные правки остаются защищёнными."
+	var road_surface_label := Label.new()
+	road_surface_label.text = "Покрытие дороги"
+	_road_grid.add_child(road_surface_label)
+	_road_surface = OptionButton.new()
+	_road_surface.add_item("Грунт")
+	_road_surface.add_item("Брусчатка")
+	_road_surface.item_selected.connect(_changed.unbind(1))
+	_road_grid.add_child(_road_surface)
 	_road_grid.hide()
 	_grove_grid = VBoxContainer.new(); box.add_child(_grove_grid)
 	var grove_label := Label.new(); grove_label.text = "Готовые объекты · до четырёх в наборе\nCtrl + клик — добавить или убрать объект"; grove_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; _grove_grid.add_child(grove_label)
@@ -366,7 +375,7 @@ func open_for(bounds_blocks: Rect2i, new_sections_count := 0) -> void:
 
 func parameters() -> Dictionary:
 	var values := _parameters()
-	if not _grove_mode and _fine.button_pressed and (_operation.selected==0 or _plateau_mode or _mountain_mode or _river_mode or _lake_mode or _road_mode or _coast_mode):values.terrain_sampling="fine16"
+	if not _grove_mode and not _road_mode and _fine.button_pressed and (_operation.selected==0 or _plateau_mode or _mountain_mode or _river_mode or _lake_mode or _coast_mode):values.terrain_sampling="fine16"
 	if _mountain_mode and _massif.button_pressed:
 		values.mountain_shape="massif";values.shape_seed=int(_shape_seed.value)
 	return values
@@ -388,6 +397,9 @@ func _parameters() -> Dictionary:
 	if _road_mode:
 		var values := {}
 		for key in _road_fields: values[key] = float(_road_fields[key].value)
+		values.terrain_sampling = "fine16" if _fine.button_pressed else "legacy8"
+		if _road_surface.selected > 0:
+			values.surface = MathPlan.ROAD_SURFACES[_road_surface.selected]
 		return values
 	if _mountain_mode:
 		var values := {}
@@ -543,7 +555,8 @@ func open_influence(bounds_blocks: Rect2i, values: Dictionary, kind: String, sel
 	if _coast_mode:_units_hint.text="Уровень моря — от мирового нуля; глубина и ширина берега — в метрах."
 	_plateau_mode = kind == "plateau"; _lake_mode = kind == "lake"; _river_mode = kind == "river"; _mountain_mode = kind == "mountain"; _road_mode = kind == "road"; _plan_mode = true
 	_refresh_plains_fields()
-	_fine.set_pressed_no_signal(values.get("terrain_sampling","legacy8")=="fine16");_fine.visible=selected
+	_fine.set_pressed_no_signal(values.get("terrain_sampling", "fine16" if _road_mode else "legacy8") == "fine16")
+	_fine.visible = selected
 	_massif.set_pressed_no_signal(values.get("mountain_shape","ellipse")=="massif");_shape_seed.value=values.get("shape_seed",7);_shape_seed.editable=_massif.button_pressed
 	_terrain_grid.hide(); _plateau_grid.visible = selected and _plateau_mode; _lake_grid.visible = selected and _lake_mode
 	_river_grid.visible = selected and _river_mode
@@ -554,6 +567,8 @@ func open_influence(bounds_blocks: Rect2i, values: Dictionary, kind: String, sel
 	if selected:
 		var fields: Dictionary = _coast_fields if _coast_mode else _road_fields if _road_mode else _mountain_fields if _mountain_mode else _river_fields if _river_mode else _lake_fields if _lake_mode else _plateau_fields
 		for key in fields: fields[key].value = values[key]
+		if _road_mode:
+			_road_surface.select(maxi(0, MathPlan.ROAD_SURFACES.find(values.get("surface", "soil"))))
 	title = "Море · берег и уровень" if _coast_mode else "Дорога · коридор и уклон" if _road_mode else "Гора · вершина и склоны" if _mountain_mode else "Река · русло и течение" if _river_mode else "Озеро · котловина и вода" if _lake_mode else "Плато · локальные влияния" if selected else "Локальные области"
 	if not selected: _area.text = "Обновление локальных областей, включая прежний след"
 	elif _coast_mode:_area.text="Берег по линии в 3D · море справа по ходу линии"
@@ -563,7 +578,7 @@ func open_influence(bounds_blocks: Rect2i, values: Dictionary, kind: String, sel
 	_help.text = "Озеро создаёт овальную котловину с замкнутым берегом внутри выделения. Уровень отсчитывается от основания карты; если он выше окружающей земли, берег внутри области поднимается. Первая проба работает на сухой земле без течения; пересечение с другой водой требует изменения границ.\n" if _lake_mode else "Плато выравнивает сухую землю. Высота отсчитывается от основания карты. Пологий край находится внутри выделения. Пересечения учитывают порядок списка.\n"
 	if _river_mode: _help.text = "Уровни поверхности берутся из двух водоёмов на концах линии. Русло плавно спускается между ними; берега и течение идут по изгибу. Дно должно оставаться выше основания карты. Развилки и водопады добавим отдельно.\n"
 	if _mountain_mode: _help.text = "Гора поднимает сухую землю к высоте вершины от основания карты. Массив создаёт неодинаковые склоны и мягкое подножие; номер варианта меняет его направление. Ширина вершины и два склона должны помещаться в меньшей стороне выделения. Вода и покрытия сохраняются.\n"
-	if _road_mode: _help.text = "Дорога выравнивает сухую землю между высотами на концах линии и использует существующее покрытие грунта. Мягкий край возвращается к соседнему рельефу. Слишком большой продольный уклон и пересечение с водой отклоняются; мосты добавим отдельно. Защищённые ручные правки могут оставить неровности в коридоре — они видны в предпросмотре.\n"
+	if _road_mode: _help.text = "Сетка 16×16 выравнивает край полотна и рельеф на поворотах. Грунт или брусчатка покрывают полотно заданной ширины. Мягкий край сохраняет соседнее покрытие и сглаживает переход по высоте. Защищённые ручные правки видны в предпросмотре. Для перехода над водой нужен мост.\n"
 	if _coast_mode:_help.text="Область моря следует сохранённой линии берега. Уровень — в мировых метрах; глубина формирует дно, ширина — пологий переход от суши. Чтобы изменить берег, вернитесь в план и перенаметьте линию.\n"
 	_help.text += "Перенос и выключение возвращают прежнюю землю и воду после обновления областей. Ручные правки защищаются и отмечаются крестиками в предпросмотре."
 	if _coast_mode:
@@ -575,6 +590,14 @@ func open_influence(bounds_blocks: Rect2i, values: Dictionary, kind: String, sel
 
 func update_plan_bounds(bounds: Rect2i) -> void:
 	_area.text="Область: %d×%d м · начало (%d, %d)"%[bounds.size.x,bounds.size.y,bounds.position.x,bounds.position.y]
+
+
+func open_road_branch(bounds: Rect2i, values: Dictionary) -> void:
+	open_influence(bounds, values, "road")
+	title = "Ответвление · Т-стык"
+	_area.text = "Ответвление от главной дороги"
+	_plan_save_button.hide()
+	ok_button_text = "Применить ответвление"
 
 func set_pending(message: String) -> void:
 	get_apply_button().disabled = true

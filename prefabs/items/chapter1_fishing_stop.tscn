@@ -1,0 +1,94 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_fishing_interact.gd" id="interact"]
+[ext_resource type="PackedScene" path="res://prefabs/items/cooking_station.tscn" id="kitchen"]
+[ext_resource type="Resource" path="res://content/recipes/chapter1_cooked_fish.tres" id="fish"]
+[ext_resource type="Resource" path="res://content/recipes/chapter1_cooked_perch.tres" id="perch"]
+
+[sub_resource type="StandardMaterial3D" id="wood"]
+albedo_color = Color(0.51, 0.34, 0.2, 1)
+
+[sub_resource type="BoxMesh" id="bank_marker"]
+size = Vector3(15, 1, 12)
+material = SubResource("wood")
+
+[sub_resource type="SphereShape3D" id="reach"]
+radius = 8.0
+
+[sub_resource type="StandardMaterial3D" id="bobber_color"]
+shading_mode = 0
+albedo_color = Color(1, 0.22, 0.12, 1)
+
+[sub_resource type="SphereMesh" id="bobber_mesh"]
+material = SubResource("bobber_color")
+radius = 1.6
+height = 3.2
+
+[sub_resource type="StandardMaterial3D" id="ripple_color"]
+shading_mode = 0
+albedo_color = Color(0.83, 0.97, 1, 1)
+
+[sub_resource type="TorusMesh" id="ripple_mesh"]
+material = SubResource("ripple_color")
+inner_radius = 3.0
+outer_radius = 3.45
+rings = 24
+ring_segments = 8
+
+[node name="FishingStop" type="Node3D"]
+
+[node name="BankMarker" type="MeshInstance3D" parent="."]
+mesh = SubResource("bank_marker")
+
+[node name="Label" type="Label3D" parent="."]
+position = Vector3(0, 16, 0)
+text = "Место рыбалки"
+billboard = 1
+pixel_size = 0.1
+
+[node name="Fishing" type="Area3D" parent="."]
+position = Vector3(0, 5, 0)
+script = ExtResource("interact")
+kind = "custom"
+caught_flag_id = "chapter1_coast_fish_caught"
+intro_dialogue_id = "chapter1_fishing_cast"
+catches = Array[Dictionary]([{
+"itemId": "chapter1_raw_fish",
+"weight": 3.0,
+"calm": 1.65,
+"tug": 0.8
+}, {
+"itemId": "chapter1_perch",
+"weight": 2.0,
+"calm": 1.30,
+"tug": 0.88,
+"bonusItemId": "chapter1_perch_scale",
+"bonusChance": 0.45
+}])
+
+[node name="Shape" type="CollisionShape3D" parent="Fishing"]
+shape = SubResource("reach")
+
+[node name="Bobber" type="MeshInstance3D" parent="Fishing"]
+position = Vector3(30, -6.2, 0)
+visible = false
+mesh = SubResource("bobber_mesh")
+cast_shadow = 0
+
+[node name="Ripple" type="MeshInstance3D" parent="Fishing/Bobber"]
+position = Vector3(0, 0.6, 0)
+visible = false
+mesh = SubResource("ripple_mesh")
+cast_shadow = 0
+
+[node name="CoastKitchen" parent="." instance=ExtResource("kitchen")]
+position = Vector3(-42, 0, 18)
+
+[node name="Interaction" parent="CoastKitchen" index="2"]
+station_title = "Походная кухня"
+recipes = Array[Resource]([ExtResource("fish"), ExtResource("perch")])
+
+[node name="Label" parent="CoastKitchen" index="3"]
+text = "Походная кухня · F"
+
+[editable path="CoastKitchen"]

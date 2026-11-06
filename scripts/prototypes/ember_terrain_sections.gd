@@ -39,6 +39,25 @@ static func overlapping_sections(source,bounds:Rect2i)->Dictionary:
 	return result
 
 
+static func is_dry_rectangle(source, bounds: Rect2i) -> bool:
+	var covered := 0
+	var sections := overlapping_sections(source, bounds)
+	for key: Vector2i in sections:
+		var part = sections[key]
+		var origin := key * CELLS
+		var overlap := bounds.intersection(Rect2i(origin, Vector2i(part.width, part.depth)))
+		var local := overlap.position - origin
+		var height: PackedInt32Array = part.heights
+		var water: PackedInt32Array = part.water_levels
+		for row in range(local.y, local.y + overlap.size.y):
+			var first := int(part.width) * row + local.x
+			for index in range(first, first + overlap.size.x):
+				if height[index] <= 0 or water[index] > height[index]:
+					return false
+		covered += overlap.get_area()
+	return covered == bounds.get_area()
+
+
 static func window(source, bounds: Rect2i):
 	var view = source.get_script().new()
 	view.width = bounds.size.x

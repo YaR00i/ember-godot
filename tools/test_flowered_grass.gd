@@ -53,7 +53,7 @@ func run() -> void:
 	check(brush.detail_kind==3 and brush._cover_button.visible,"native selector enters textured flower cover")
 	for i in brush.controls.kind.item_count:
 		var path:Variant=brush.controls.kind.get_item_metadata(i)
-		if path is String and path.get_file() in ["vox_detail_daisy.tres","vox_detail_wildflowers.tres"]:check(brush.controls.kind.is_item_disabled(i),"old voxel flower choice disabled")
+		check(not (path is String and path.get_file() in ["vox_detail_daisy.tres","vox_detail_wildflowers.tres","vox_detail_wheat.tres"]),"voxel vegetation absent from plant brush")
 	brush.controls.radius_m.value=.8;brush.controls.density_per_m2.value=14;brush.controls.size_value.value=.9;await frames(2)
 	brush._append(Vector3(32,0,32));await settle();check(count(3)>0,"textured flower preview renders")
 	for patch in patches():check(patch.owner==null and patch.density_cells.is_empty() and patch.detail_preset==null,"preview has no authored density or voxel source")

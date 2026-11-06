@@ -215,6 +215,8 @@ func update_action_preview(preview: Dictionary, target: String, cell: Vector2i, 
 	_target_cell = cell
 	_secondary_cell = secondary
 	for child in _overlay_root.get_children():
+		if child.name in ["WorldSurfaceStates", "WorldCellEdges"]:
+			continue
 		(child as Node3D).visible = false
 	_add_overlays()
 
@@ -236,7 +238,7 @@ func editor_pick_cell(viewport_camera: Camera3D, screen_position: Vector2) -> Ve
 func editor_cell_corners(cell: Vector2i) -> PackedVector3Array:
 	if _grid_map == null or not Grid.is_inside(_state, cell):
 		return PackedVector3Array()
-	var center := _grid_map.map_to_local(_map_cell(cell))
+	var center := _world_position(cell)
 	center.y += _cell_surface_offset(cell)
 	var half := CELL_SIZE * 0.47
 	return PackedVector3Array([
@@ -290,6 +292,45 @@ func queue_action_animation(before_state: Dictionary, resolved: Dictionary) -> v
 		"before": before_state.duplicate(true),
 		"resolved": resolved.duplicate(true),
 	})
+
+func begin_mira_staff_strike(visual: Node3D, resolved: Dictionary) -> bool:
+	var actor_root := _unit_roots.get("mira") as Node3D
+	var target_root := _unit_roots.get(str(resolved.get("targetId", ""))) as Node3D
+	if not is_instance_valid(actor_root) or not is_instance_valid(target_root):
+		return false
+	var movement := _path_tween(actor_root, resolved.get("movementPath", []))
+	while movement != null and movement.is_running() and is_instance_valid(actor_root):
+		await get_tree().process_frame
+	if not is_instance_valid(actor_root) or not is_instance_valid(target_root) or not is_instance_valid(visual):
+		return false
+	visual.actor.global_position = actor_root.to_global(Vector3(0, -0.36, 0))
+	var direction := target_root.global_position - actor_root.global_position
+	direction.y = 0.0
+	return not direction.is_zero_approx() and visual.begin_battle_staff_strike(direction.normalized())
+
+func show_mira_staff_impact(resolved: Dictionary, after: Dictionary) -> void:
+	var actor_root := _unit_roots.get("mira") as Node3D
+	for raw_id in resolved.get("damage", {}):
+		var target_id := str(raw_id)
+		if int(resolved.damage[raw_id]) <= 0:
+			continue
+		var root := _unit_roots.get(target_id) as Node3D
+		if not is_instance_valid(root):
+			continue
+		var target := Combat.unit_definition(after, target_id)
+		for child in root.get_children():
+			if child is Label3D:
+				child.text = "%s\n%d/%d" % [str(target.get("name", target_id)), int(target.get("hp", 0)), int(target.get("maxHp", 0))]
+				break
+		var original := root.position
+		var away := Vector3.UP * 0.08
+		if is_instance_valid(actor_root):
+			var direction := original - actor_root.position
+			direction.y = 0.0
+			away += direction.normalized() * 0.18
+		var reaction := root.create_tween().set_trans(Tween.TRANS_QUAD)
+		reaction.tween_property(root, "position", original + away, 0.07)
+		reaction.tween_property(root, "position", original, 0.16)
 
 
 func show_battlefield_overview(smooth: bool = true) -> void:
@@ -404,6 +445,7 @@ func _rebuild_projection() -> void:
 		_grid_map.collision_layer = 0
 		_grid_map.collision_mask = 0
 		_visual_surface_projection.visible = false
+		_add_world_surface_states()
 		_add_world_cell_edges()
 	_add_focus()
 	_add_units(previous_positions if can_animate else {})
@@ -422,6 +464,52 @@ func _rebuild_projection() -> void:
 		_play_action_animations.call_deferred(animations, generation)
 	elif can_animate:
 		_animate_changed_units(generation)
+
+
+func _add_world_surface_states() -> void:
+	var patches := ImmediateMesh.new()
+	for tag in ["wet", "frozen", "burning_leaves"]:
+		var centers: Array[Vector3] = []
+		for y in int(_state.grid.height):
+			for x in int(_state.grid.width):
+				var cell := Vector2i(x, y)
+				var definition := Grid.cell_definition(_state, cell)
+				if definition.get("blocked", false) or tag not in definition.get("tags", []):
+					continue
+				if tag == "wet" and definition.get("group", "") == "field_puddle":
+					continue
+				centers.append(_world_position(cell, 0.045))
+		if centers.is_empty():
+			continue
+		var color: Color = {
+			"wet": Color(0.18, 0.55, 0.72, 0.66),
+			"frozen": Color(0.65, 0.88, 0.97),
+			"burning_leaves": Color(1.0, 0.25, 0.06, 0.82),
+		}[tag]
+		patches.surface_begin(Mesh.PRIMITIVE_TRIANGLES, _material(color, tag != "wet"))
+		var r := CELL_SIZE * 0.47
+		var corners := [
+			Vector3(-r, 0, -r), Vector3(r, 0, -r), Vector3(r, 0, r), Vector3(-r, 0, r),
+		]
+		for center in centers:
+			for index in [0, 1, 2, 0, 2, 3]:
+				patches.surface_set_normal(Vector3.UP)
+				patches.surface_add_vertex(center + corners[index])
+			if tag == "burning_leaves":
+				for axis in [Vector3.RIGHT, Vector3.FORWARD]:
+					var base := center + Vector3.UP * CELL_SIZE * 0.11
+					var side: Vector3 = axis * CELL_SIZE * 0.26
+					var tip := center + Vector3.UP * CELL_SIZE * 0.65
+					for vertex in [base - side, tip, base + side, base + side, tip, base - side]:
+						patches.surface_add_vertex(vertex)
+		patches.surface_end()
+	if patches.get_surface_count() == 0:
+		return
+	var overlay := MeshInstance3D.new()
+	overlay.name = "WorldSurfaceStates"
+	overlay.mesh = patches
+	overlay.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_overlay_root.add_child(overlay)
 
 
 func _add_world_cell_edges() -> void:
@@ -1155,8 +1243,14 @@ func _add_overlays() -> void:
 				)
 			if color.a <= 0.0 and cell in _preview.get("castCells", []):
 				color = Color(0.45, 0.61, 0.90, 0.14)
+			if color.a > 0.0 and "burning_leaves" in Grid.cell_definition(_state, cell).get("tags", []):
+				color = Color(1.0, 0.28, 0.08, 0.62)
 			if cell in _preview.get("footprint", []):
 				color = Color(0.95, 0.69, 0.28, 0.42)
+				if _selected_action == "ignite_leaves":
+					color = Color(1.0, 0.32, 0.1, 0.65)
+				elif _selected_action == "quench_leaves":
+					color = Color(0.18, 0.73, 1.0, 0.65)
 			if cell == _preview.get("applicationCell", Combat.INVALID_CELL) and not bool(_preview.get("ok", true)):
 				color = Color(0.95, 0.22, 0.28, 0.50)
 			var occupant := _display_occupant(cell)
@@ -1412,6 +1506,10 @@ func _map_cell(cell: Vector2i) -> Vector3i:
 
 func _world_position(cell: Vector2i, y_offset: float = 0.0) -> Vector3:
 	if _grid_map != null:
+		var floors: Dictionary = _state.get("fieldGeometry", {}).get("offsets", {})
+		if existing_world_surface and floors.has(cell):
+			var base := _grid_map.map_to_local(Vector3i(cell.x, 0, cell.y))
+			return base + Vector3.UP * (float(floors[cell]) * CELL_SIZE / 16.0 + y_offset)
 		return _grid_map.map_to_local(_map_cell(cell)) + Vector3.UP * y_offset
 	return Vector3(
 		float(cell.x) * CELL_SIZE,
@@ -1487,7 +1585,7 @@ func _pick_cell_from_surfaces(ray_origin: Vector3, ray_direction: Vector3) -> Ve
 	for y in int(grid.get("height", Grid.HEIGHT)):
 		for x in int(grid.get("width", Grid.WIDTH)):
 			var cell := Vector2i(x, y)
-			var center_local := _grid_map.map_to_local(_map_cell(cell))
+			var center_local := _world_position(cell)
 			center_local.y += _cell_surface_offset(cell)
 			var center_world := _grid_map.to_global(center_local)
 			var distance := (center_world - ray_origin).dot(normal) / denominator

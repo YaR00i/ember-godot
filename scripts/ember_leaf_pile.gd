@@ -36,7 +36,7 @@ func _refresh() -> void:
 func receive_world_hit(_actor: Node3D, direction: Vector3) -> bool:
 	if progress_state == null or progress_state.combat_party_locked or revealed_flag_id.strip_edges().is_empty(): return false
 	if progress_state.flags.get(revealed_flag_id, false) == true: return false
-	var result := progress_state.apply_authored_flag(revealed_flag_id, true)
+	var result := progress_state.reveal_world_cover(revealed_flag_id, world_cover_action())
 	if not bool(result.get("changed", false)): return false
 	if scatter_effect != null:
 		var effect := scatter_effect.instantiate()
@@ -48,3 +48,6 @@ func receive_world_hit(_actor: Node3D, direction: Vector3) -> bool:
 
 func world_hit_feedback() -> String:
 	return "Листья разлетелись — под ними что-то лежит"
+
+func world_cover_action() -> String:
+	return "reveal_leaves"

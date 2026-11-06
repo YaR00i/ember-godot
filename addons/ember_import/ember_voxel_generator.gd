@@ -110,7 +110,23 @@ static func creation_presets(generator_id: String, legacy := false) -> Array[Dic
 			result.append({"name":CliffProvider.TITLES[shape],"recipe":recipe})
 		return result
 	if generator_id == BUILDING:
-		return [{"name":"Прибрежный дом","recipe":default_recipe(BUILDING)}]
+		var estate := default_recipe(BUILDING)
+		estate.resource_name = "Усадьба с двором"
+		estate.parameters.merge({
+			"width_m": 6.5, "depth_m": 5.0, "floors": 2, "floor_height_m": 2.5,
+			"roof_shape": BuildingProvider.Layout.ROOF_FLAT, "corner_posts": false,
+			"wing_side": 1, "wing_width_m": 2.0, "wing_length_m": 2.75,
+			"opposite_wing": true, "opposite_roof": 0, "opposite_width_m": 2.0, "opposite_length_m": 2.75,
+			"entry_style": 1, "window_style": 2,
+		}, true)
+		estate.structure = {
+			"version": 1, "door": {"side": 0, "t": 0.5},
+			"windows": [{"side": 0, "t": 0.23, "level": 0}, {"side": 0, "t": 0.77, "level": 0},
+				{"side": 5, "t": 0.5, "level": 0}, {"side": 8, "t": 0.5, "level": 0}],
+			"facade_details": [{"kind": "balcony", "side": 0, "t": 0.5, "level": 1},
+				{"kind": "balcony", "side": 2, "t": 0.5, "level": 1}],
+		}
+		return [{"name":"Прибрежный дом","recipe":default_recipe(BUILDING)}, {"name":estate.resource_name,"recipe":estate}]
 	if generator_id == LARGE_TREE and not legacy:
 		var species=load("res://scripts/ember_tree_species.gd")
 		for kind in 5:
@@ -134,6 +150,8 @@ static func creation_presets(generator_id: String, legacy := false) -> Array[Dic
 			recipe.parameters = normalized_parameters(BUSH, recipe.parameters)
 			recipe.resource_name = item.name
 			result.append({"name": item.name, "recipe": recipe})
+		var garden := garden_bush_recipe()
+		result.append({"name": garden.resource_name, "recipe": garden})
 		return result
 	if generator_id == ROCK:
 		for item in [
@@ -219,6 +237,16 @@ static func default_recipe(generator_id: String) -> Resource:
 	return recipe
 
 
+static func garden_bush_recipe() -> Resource:
+	var recipe := default_recipe(BUSH)
+	recipe.resource_name = "Кусты · Садовый с рисованной листвой"
+	recipe.seed = 173
+	recipe.parameters.merge({"generation_version": 7, "height": 25, "spread_radius": 21,
+		"stem_count": 3, "foliage_density": 64, "foliage_color": Color("628148"), "garden_shrub": true}, true)
+	recipe.parameters = normalized_parameters(BUSH, recipe.parameters)
+	return recipe
+
+
 static func normalized_parameters(generator_id: String, parameters: Dictionary) -> Dictionary:
 	match generator_id:
 		CLIFF:
@@ -253,7 +281,9 @@ static func validation_errors(recipe: Resource) -> Array[String]:
 		errors.append("Некорректный ID семейства вариаций.")
 	if recipe.variation_name.strip_edges().is_empty() or recipe.variation_name.length() > 80 or recipe.family_title.length() > 160:
 		errors.append("Имя вариации должно содержать 1–80 символов, семейства — до 160.")
-	if not recipe.structure.is_empty():
+	if recipe.generator_id == BUILDING:
+		errors.append_array(BuildingProvider.Layout.errors(recipe.structure, BuildingProvider.normalize(recipe.parameters)))
+	elif not recipe.structure.is_empty():
 		if recipe.generator_id == LARGE_TREE:
 			errors.append_array(LargeTreeProvider.structure_errors(recipe.structure))
 		else:
@@ -275,7 +305,7 @@ static func build(
 		CLIFF:
 			return CliffProvider.build(recipe.parameters, recipe.seed, color, material, title, model_id)
 		BUILDING:
-			return BuildingProvider.build(recipe.parameters, recipe.seed, color, material, title, model_id)
+			return BuildingProvider.build(recipe.parameters, recipe.seed, color, material, title, model_id,recipe.structure)
 		ROCK:
 			return Rock.build(
 				recipe.parameters, recipe.seed, color, material, title, model_id

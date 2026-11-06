@@ -19,6 +19,7 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     code = (root / 'tools/fixtures/hoshi_avatar_bake.gd.txt').read_text(encoding='utf-8')
     code = code.replace('__HOSHI_OUTPUT__', output.as_posix()).replace('__HOSHI_REPORT__', (output / 'source-checks.json').as_posix())
+    code = code.replace('__HOSHI_LOD_HELPER__', (root / 'tools/fixtures/hoshi_native_lods.gd').as_posix())
     startup = None
     if hasattr(subprocess, 'STARTUPINFO'):
         startup = subprocess.STARTUPINFO()

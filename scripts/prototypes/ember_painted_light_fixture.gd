@@ -176,6 +176,71 @@ static func grass_card_mesh() -> ArrayMesh:
 	surface.index(); _grass_cards = surface.commit()
 	return _grass_cards
 
+static func grass_card_contour_mesh(atlas: Image) -> ArrayMesh:
+	# Bake-only: retain the accepted card planes, artwork UVs and normals.
+	# Two triangles per card, with supporting edges around the padded artwork.
+	var original := grass_card_mesh().surface_get_arrays(0)
+	var indices: PackedInt32Array = original[Mesh.ARRAY_INDEX]
+	var output := SurfaceTool.new(); output.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var cell_size := Vector2i(atlas.get_width()/2,atlas.get_height()/2)
+	var covered_area := 0.0
+	for card in 4:
+		var a: int=indices[card*6]; var b: int=indices[card*6+2]; var c: int=indices[card*6+1]
+		var pa: Vector3=original[Mesh.ARRAY_VERTEX][a]
+		var pb: Vector3=original[Mesh.ARRAY_VERTEX][b]
+		var pc: Vector3=original[Mesh.ARRAY_VERTEX][c]
+		var ua: Vector2=original[Mesh.ARRAY_TEX_UV][a]
+		var ub: Vector2=original[Mesh.ARRAY_TEX_UV][b]
+		var uc: Vector2=original[Mesh.ARRAY_TEX_UV][c]
+		var origin := Vector2i(card%2,card/2)*cell_size
+		var points := PackedVector2Array()
+		for band in 8:
+			var y0 := band*cell_size.y/8; var y1 := (band+1)*cell_size.y/8
+			var left := cell_size.x; var right := -1
+			for y in range(maxi(0,y0-8),mini(cell_size.y,y1+8)):
+				for x in cell_size.x:
+					if atlas.get_pixel(origin.x+x,origin.y+y).a>0.05:
+						left=mini(left,x);right=maxi(right,x)
+			if right<0: continue
+			left=maxi(0,left-8);right=mini(cell_size.x,right+9)
+			points.append_array(PackedVector2Array([Vector2(left,y1),Vector2(right,y1),Vector2(right,y0),Vector2(left,y0)]))
+		var hull := Geometry2D.convex_hull(points)
+		if hull.size()>1 and hull[0]==hull[-1]: hull.resize(hull.size()-1)
+		# Enclose the padded silhouette in one trapezoid, not a many-sided hull.
+		# Supporting lines never cut into the artwork; UVs stay in this atlas cell.
+		var top := INF; var bottom := -INF
+		for point in hull:top=minf(top,point.y);bottom=maxf(bottom,point.y)
+		var height := bottom-top
+		var left_mean := -INF;var right_mean := INF
+		var left_top:=0.0;var left_bottom:=0.0
+		var right_top:=float(cell_size.x);var right_bottom:=float(cell_size.x)
+		for step in range(-8,9):
+			var slope:=step/8.0
+			var left:=INF;var right:=-INF
+			for point in hull:
+				left=minf(left,point.x-slope*(point.y-top))
+				right=maxf(right,point.x-slope*(point.y-top))
+			var lb:=left+slope*height;var rb:=right+slope*height
+			if minf(left,lb)>=0.0 and (left+lb)*0.5>left_mean:
+				left_mean=(left+lb)*0.5;left_top=left;left_bottom=lb
+			if maxf(right,rb)<=cell_size.x and (right+rb)*0.5<right_mean:
+				right_mean=(right+rb)*0.5;right_top=right;right_bottom=rb
+		assert(left_mean!=-INF and right_mean!=INF)
+		hull=PackedVector2Array([Vector2(left_top,top),Vector2(right_top,top),Vector2(right_bottom,bottom),Vector2(left_bottom,bottom)])
+		var triangles := Geometry2D.triangulate_polygon(hull)
+		assert(not triangles.is_empty())
+		for triangle in range(0,triangles.size(),3):
+			covered_area+=absf((hull[triangles[triangle+1]]-hull[triangles[triangle]]).cross(hull[triangles[triangle+2]]-hull[triangles[triangle]]))*0.5/float(cell_size.x*cell_size.y)
+		for index in triangles:
+			var uv: Vector2 = (Vector2(origin)+hull[index])/Vector2(atlas.get_size())
+			var point: Vector3 = pa+(pb-pa)*((uv.x-ua.x)/(ub.x-ua.x))+(pc-pb)*((uv.y-ub.y)/(uc.y-ub.y))
+			output.set_normal(original[Mesh.ARRAY_NORMAL][a]);output.set_color(original[Mesh.ARRAY_COLOR][a])
+			output.set_uv2(original[Mesh.ARRAY_TEX_UV2][a]);output.set_uv(uv);output.add_vertex(point)
+	output.index()
+	var mesh := output.commit()
+	mesh.set_meta("card_area_fraction",covered_area/4.0)
+	return mesh
+
 static func grass_blade_mesh(low_poly := false) -> ArrayMesh:
 	# Shared derived tuft, built once per look. Artwork/palette and scatter stay with their owners.
 	if _blade_tufts.has(low_poly): return _blade_tufts[low_poly]

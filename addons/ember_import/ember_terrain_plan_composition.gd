@@ -19,6 +19,7 @@ var worst_step_us := 0
 var protected_blocks := {}
 var changed_tiles: Array[Vector2i] = []
 var validated_sections: Array[Vector2i] = []
+var local_road := false
 var _layers: Array[Dictionary] = []
 var _old := {}
 var _keys: Array[Vector2i] = []
@@ -62,23 +63,27 @@ var _before_bases_values := PackedByteArray()
 var _before_waters_values := PackedInt32Array()
 var _before_colors_values := PackedByteArray()
 
-func begin(source: Terrain, plan: Resource) -> bool:
+func begin(source: Terrain, plan: Resource, selected_road := {}) -> bool:
 	cancel()
 	cancelled = false; finished = false; error = ""; bounds = Rect2i()
 	elapsed_us = 0; worst_step_us = 0; _completed = 0; _total = 0; _part_key = Vector2i(-1, -1)
 	_prepare_index = 0; _probe_index = 0; _probe.clear(); _flow_targets.clear()
 	protected_blocks.clear(); changed_tiles.clear(); validated_sections.clear()
+	local_road = false
 	if source == null or plan == null: error = "Нет земли или плана."; return false
 	var errors: Array[String] = plan.validation_errors(Vector2i(source.width / 16, source.depth / 16))
 	if not errors.is_empty(): error = errors[0]; return false
 	before = source
 	output_plan = plan.working_copy(); output_plan.schema_version = Plan.VERSION; output_plan.patches.clear()
 	var wanted := {}
+	var roads := {}
 	for patch: Dictionary in plan.patches:
 		var key: Vector2i = patch.rect.position / TILE
 		_old[key] = patch; wanted[key] = true
 	for region: Dictionary in plan.regions:
 		if region.get("kind", "generation") not in ["plateau","lake","river","mountain","road","coast"] or not region.get("enabled", true): continue
+		if region.has("support_placement_id"):
+			continue
 		if region.get("kind") in ["lake","coast"] and region.parameters.water_m-region.parameters.depth_m < float(source.origin_y+4)/16.0:
 			error = "Дно озера оказалось ниже основания существующего рельефа. Измените уровень или глубину."; return false
 		var layer := region.duplicate(true)
@@ -90,6 +95,12 @@ func begin(source: Terrain, plan: Resource) -> bool:
 				if not Rect2(0,0,source.width/16,source.depth/16).has_point(point):error="Изгиб берега выходит за карту. Измените точки.";return false
 		if region.get("kind") in ["river","road"]:
 			layer.curve = Math.path_curve(region.points_m)
+			if layer.kind == "road":
+				if layer.has("road_join"):
+					layer.join_host = roads.get(layer.road_join.host, {})
+					if layer.join_host.is_empty():
+						error = "Не найдена включённая главная дорога ответвления."; return false
+				roads[layer.id] = layer
 			layer.samples = layer.curve.get_baked_points()
 			var radius: float = region.parameters.width_m*0.5+region.parameters.get("edge_m",region.parameters.get("shore_m",0))+0.5
 			for point: Vector2 in layer.samples:
@@ -101,6 +112,8 @@ func begin(source: Terrain, plan: Resource) -> bool:
 			for z in range(rect.position.y / TILE, (rect.end.y - 1) / TILE + 1):
 				for x in range(rect.position.x / TILE, (rect.end.x - 1) / TILE + 1): wanted[Vector2i(x, z)] = true
 		if wanted.size() > Plan.MAX_PATCHES: error = "Суммарный след локальных областей ограничен 256 плитками 4×4 м. Уменьшите области."; return false
+	if not selected_road.is_empty():
+		_limit_to_road(selected_road, wanted)
 	if wanted.is_empty(): error = "Добавьте локальную область: плато, озеро, реку, гору или дорогу."; return false
 	var sections_to_check := {}
 	for key: Vector2i in wanted:
@@ -108,7 +121,7 @@ func begin(source: Terrain, plan: Resource) -> bool:
 	validated_sections.assign(sections_to_check.keys())
 	if not source.validation_errors(validated_sections).is_empty(): error = "Проверьте исходную землю."; return false
 	_sand = source.palette_surface_roles.find("sand"); _soil = source.palette_surface_roles.find("soil"); _water = 0
-	if _soil <= 0 and _layers.any(func(layer): return layer.get("kind") == "road"):
+	if _soil <= 0 and _layers.any(func(layer): return layer.get("kind") == "road" and layer.parameters.get("surface", "soil") == "soil"):
 		error = "Назначьте грунт одному из существующих слотов материала карты для покрытия дороги."; return false
 	if _layers.any(func(layer): return layer.get("kind") in ["lake","river","coast"]):
 		for key in validated_sections:
@@ -121,6 +134,18 @@ func begin(source: Terrain, plan: Resource) -> bool:
 		if _sand <= 0 or _soil <= 0 or _water <= 0:
 			error = "Для водоёма нужны назначенные песок, грунт и существующий слот воды."; return false
 	candidate = source.sectioned_copy()
+	var paving := -1
+	for layer in _layers:
+		if layer.kind != "road":
+			continue
+		if layer.parameters.get("surface", "soil") == "paving":
+			if paving < 0:
+				paving = _road_paving_slot()
+			if paving < 0:
+				return false
+			layer.surface_slot = paving
+		else:
+			layer.surface_slot = _soil
 	# Headers alone expand ceiling; untouched section payloads stay shared.
 	var ceiling := source.height_limit
 	for region in _layers:
@@ -131,21 +156,85 @@ func begin(source: Terrain, plan: Resource) -> bool:
 		candidate.height_limit = ceiling
 		for key in candidate.sections:
 			var part: Terrain = candidate.sections[key].duplicate(false); part.height_limit = ceiling; candidate.sections[key] = part
-	_keys.assign(wanted.keys()); _keys.sort_custom(func(a, b):
-		var sa: Vector2i = a * TILE / Terrain.Sections.CELLS
-		var sb: Vector2i = b * TILE / Terrain.Sections.CELLS
-		if sa != sb: return sa.y < sb.y or (sa.y == sb.y and sa.x < sb.x)
-		return a.y < b.y or (a.y == b.y and a.x < b.x))
+	_keys.assign(wanted.keys()); _keys.sort_custom(_tile_less)
 	_total = _keys.size()
 	for key in _keys:
 		var rect := Rect2i(key * TILE, Vector2i.ONE * TILE).intersection(Rect2i(0, 0, source.width, source.depth))
 		bounds = rect if not bounds.has_area() else bounds.merge(rect)
 	return true
 
+func _limit_to_road(selected: Dictionary, wanted: Dictionary) -> void:
+	var road: Dictionary = {}
+	var others: Array[Rect2i] = []
+	for layer in _layers:
+		if layer.id == selected.id and layer.kind == "road":
+			road = layer
+		else:
+			others.append(layer.bounds)
+	if road.is_empty():
+		return
+	var keep_neighbours: bool = selected.get("branch_edit", false) and road.has("join_host")
+	var old_bounds: Rect2i = selected.bounds
+	var new_bounds: Rect2i = road.bounds
+	var local_keys := {}
+	for key: Vector2i in wanted:
+		var tile := Rect2i(key * (TILE / 16), Vector2i.ONE * (TILE / 16))
+		var on_road := tile.intersects(old_bounds) or tile.intersects(new_bounds)
+		var on_other := false
+		for area in others:
+			# Keep one tile of separation, including any borrowed coast edge heights.
+			if tile.grow(TILE / 16).intersects(area):
+				on_other = true
+				break
+		if on_road and on_other and not keep_neighbours:
+			return
+		if on_road:
+			local_keys[key] = true
+		elif _old.has(key) and not on_other and not keep_neighbours:
+			# An older, moved or deleted feature may still need restoration.
+			return
+	if local_keys.is_empty():
+		return
+	for key: Vector2i in _old:
+		if not local_keys.has(key):
+			output_plan.patches.append(_old[key])
+	wanted.clear()
+	wanted.merge(local_keys)
+	if not keep_neighbours:
+		_layers.assign([road])
+	local_road = true
+
+func _tile_less(a: Vector2i, b: Vector2i) -> bool:
+	var sa := a * TILE / Terrain.Sections.CELLS
+	var sb := b * TILE / Terrain.Sections.CELLS
+	if sa != sb:
+		return sa.y < sb.y or (sa.y == sb.y and sa.x < sb.x)
+	return a.y < b.y or (a.y == b.y and a.x < b.x)
+
+func _road_paving_slot() -> int:
+	var slot := candidate.palette_material_ids.find("paving")
+	if slot > 0:
+		return slot
+	if candidate.palette.size() >= 256:
+		error = "В палитре карты закончилось место для брусчатки."
+		return -1
+	var paving := EmberVoxelSurfaceMaterials.load_compact_terrain_variant("paving")
+	if paving == null or not paving.validation_errors().is_empty():
+		error = "Материал брусчатки недоступен."
+		return -1
+	slot = candidate.palette.size()
+	candidate.palette_surface_roles.resize(slot)
+	candidate.palette_material_ids.resize(slot)
+	candidate.palette.append(paving.base_color)
+	candidate.palette_surface_roles.append(paving.role_id)
+	candidate.palette_material_ids.append("paving")
+	return slot
+
+
 func progress() -> float: return 1.0 if finished else float(_completed) / maxf(1, _total)
 func cancel() -> void:
 	cancelled = true; candidate = null; output_plan = null; before = null; _part = null
-	_patch.clear(); _old.clear(); _layers.clear(); _keys.clear(); _previous.clear()
+	_patch.clear(); _old.clear(); _layers.clear(); _keys.clear(); _previous = {}
 	_tile_layers.clear(); _influences.clear()
 	_probe.clear(); _flow_targets.clear()
 	_part_heights = PackedInt32Array(); _part_caps = PackedByteArray()
@@ -162,7 +251,12 @@ func step(budget_us := 4000) -> void:
 			if not error.is_empty(): cancel(); return
 			continue
 		if _patch.is_empty():
-			if _keys.is_empty(): _flush_part(); finished = true; break
+			if _keys.is_empty():
+				_flush_part()
+				if local_road:
+					output_plan.patches.sort_custom(func(a, b): return _tile_less(a.rect.position / TILE, b.rect.position / TILE))
+				finished = true
+				break
 			_start_tile(_keys.pop_front())
 		_column()
 		if not error.is_empty(): cancel(); return
@@ -329,10 +423,24 @@ func _sample_influence(layer: Dictionary, sample: Vector2) -> Dictionary:
 		sampled.weight=smoothstep(0.0,2.0,maxf(0,edge))
 		return sampled
 	if layer.get("kind") == "road":
-		var sampled := Math.path_sample(layer.curve,sample,layer.parameters.width_m,layer.parameters.edge_m)
-		if sampled.is_empty(): return {}
-		var height_m: float = lerpf(layer.start_height_m,layer.end_height_m,clampf(sampled.offset/layer.curve.get_baked_length(),0,1))
-		return {"kind":"road","height":height_m*16-before.origin_y,"weight":Math.road_weight(sampled.distance,layer.parameters),"surface":sampled.distance<float(layer.parameters.width_m)*0.5}
+		var curve: Curve2D = layer.curve
+		var offset := curve.get_closest_offset(sample)
+		var distance := sample.distance_to(curve.sample_baked(offset))
+		var half_width := float(layer.parameters.width_m) * 0.5
+		if distance >= half_width + float(layer.parameters.edge_m):
+			return {}
+		var join_blend := 1.0
+		if layer.has("join_host"):
+			var host: Dictionary = layer.join_host
+			var host_curve: Curve2D = host.curve
+			var from_host := sample.distance_to(host_curve.get_closest_point(sample)) - float(host.parameters.width_m) * 0.5
+			if from_host <= 0.0:
+				return {}
+			distance = maxf(0.0, distance - 0.35 * (1.0 - smoothstep(0.0, 0.9, from_host)))
+			join_blend = smoothstep(0.0, 0.9, from_host)
+		var height_m: float = lerpf(layer.start_height_m, layer.end_height_m, clampf(offset / curve.get_baked_length(), 0, 1))
+		return {"kind":"road","height":height_m*16-before.origin_y,"weight":Math.road_weight(distance,layer.parameters)*join_blend,
+			"surface_slot":layer.surface_slot if distance < half_width else 0}
 	if layer.get("kind") == "mountain":
 		var weight := Math.mountain_weight(layer.bounds,sample,layer.parameters)
 		return {"kind":"mountain","height":float(layer.parameters.height_m)*16-before.origin_y,"weight":weight} if weight > 0 else {}
@@ -392,7 +500,7 @@ func _project(state: Dictionary, influence: Dictionary) -> void:
 		state.height = clampi(roundi(lerpf(float(state.height),influence.height,influence.weight)/float(quantum))*quantum,4,candidate.height_limit)
 		if state.water > 0 and state.height <= state.water:
 			error = "Дорога опустит землю под воду. Измените линию или высоты конечных площадок; мост добавим отдельно."; return
-		if influence.surface: state.top = _soil
+		if influence.surface_slot > 0: state.top = influence.surface_slot
 		state.side = {}
 	else:
 		state.height = clampi(roundi(lerpf(float(state.height),influence.height,influence.weight)/float(quantum))*quantum,4,candidate.height_limit)

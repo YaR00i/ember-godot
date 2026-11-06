@@ -5,14 +5,18 @@ const PATTERN_PATH = "res://content/terrain_materials/meadow_daisy_cover.tres"
 const SETS = [
 	["Ромашки",PATTERN_PATH],
 	["Жёлтые лютики","res://content/terrain_materials/meadow_buttercup_cover.tres"],
-	["Сиреневые соцветия","res://content/terrain_materials/meadow_lilac_cover.tres"]
+	["Сиреневые соцветия","res://content/terrain_materials/meadow_lilac_cover.tres"],
+	["Маки","res://content/terrain_materials/meadow_poppy_cover.tres"],
+	["Васильки","res://content/terrain_materials/meadow_cornflower_cover.tres"],
+	["Пшеница","res://content/terrain_materials/meadow_wheat_cover.tres"]
 ]
+const SHAPE_LABELS = ["Ромашки","Лютики · чашечки","Луговые соцветия","Маки · чашечки","Васильки","Пшеница · колосья"]
 static var _meshes: Dictionary = {}
 
 static func validation_errors(pattern: EmberCompactTerrainPattern) -> Array[String]:
 	if pattern == null: return ["Не выбран рисунок цветущей травы."]
 	var errors := pattern.validation_errors()
-	if pattern.albedo_texture == null: errors.append("Выберите PNG-атлас цветущей травы.")
+	if pattern.albedo_texture == null: errors.append("Выберите атлас растения.")
 	return errors
 
 static func mesh(pattern: EmberCompactTerrainPattern = null) -> ArrayMesh:
@@ -32,6 +36,17 @@ static func mesh(pattern: EmberCompactTerrainPattern = null) -> ArrayMesh:
 		var height: float = spec[1]; var bend: Vector2 = spec[2]
 		if shape == 1: height *= 0.80
 		if shape == 2: height *= 1.18
+		if shape == 3: height *= 1.35
+		if shape == 4: height *= 1.50
+		if shape == 5:
+			# A rooted reed and crossed ear contours use the same material/wind
+			# and scatter as other plants; no voxel mesh or per-stalk node.
+			height *= 2.7
+			_reed(surface,root,height,bend*2)
+			_leaf(surface,_stem_point(root,height,bend*2,0.35),spec[4].y,0.15)
+			_leaf(surface,_stem_point(root,height,bend*2,0.58),spec[4].y+2.8,0.12)
+			_ear(surface,_stem_point(root,height,bend*2,1),0.17,0.022,spec[4].y)
+			continue
 		_stem(surface,root,height,bend)
 		_leaf(surface,_stem_point(root,height,bend,0.34),spec[4].y+0.6,0.095)
 		_leaf(surface,_stem_point(root,height,bend,0.53),spec[4].y+3.2,0.080)
@@ -44,11 +59,28 @@ static func mesh(pattern: EmberCompactTerrainPattern = null) -> ArrayMesh:
 				_stem(surface,anchor,0.017,branch)
 				_head(surface,_stem_point(anchor,0.017,branch,1),0.022-floret*0.0007,Basis.from_euler(Vector3(0.25,angle,0.18)),0.20)
 		else:
-			_head(surface,_stem_point(root,height,bend,1),float(spec[3])*(0.82 if shape==1 else 1.0),Basis.from_euler(spec[4]),0.43 if shape==1 else -1.0)
+			var radius := float(spec[3])*(0.82 if shape==1 else 1.22 if shape==3 else 0.9 if shape==4 else 1.0)
+			_head(surface,_stem_point(root,height,bend,1),radius,Basis.from_euler(spec[4]),0.43 if shape==1 else 0.30 if shape==3 else 0.12 if shape==4 else -1.0)
 	# Index complete attributes, retaining the atlas seams and triangle order.
 	surface.index()
-	var result := surface.commit(); _meshes[shape] = result
+	var result: ArrayMesh = preload("res://scripts/prototypes/ember_terrain_mesh_lod.gd").object_mesh(surface.commit()).mesh
+	_meshes[shape] = result
 	return result
+
+static func _reed(surface:SurfaceTool,root:Vector3,height:float,bend:Vector2)->void:
+	for side in 2:
+		var across:=Vector3.RIGHT if side==0 else Vector3.BACK
+		for band in 2:
+			var lower:=_stem_point(root,height,bend,band/2.0)
+			var upper:=_stem_point(root,height,bend,(band+1)/2.0)
+			_quad(surface,PackedVector3Array([lower-across*0.0018,lower+across*0.0018,upper+across*0.001,upper-across*0.001]),PackedVector2Array([Vector2(.25,.5),Vector2(.25,.5),Vector2(.25,.5),Vector2(.25,.5)]),Vector3.BACK if side==0 else Vector3.RIGHT)
+
+static func _ear(surface:SurfaceTool,root:Vector3,height:float,width:float,yaw:float)->void:
+	for side in 3:
+		var angle:=yaw+side*PI/3.0
+		var across:=Vector3(cos(angle),0,sin(angle))*width
+		var tip:=root+Vector3(0.012,height,0)
+		_quad(surface,PackedVector3Array([root-across,root+across,tip+across,tip-across]),PackedVector2Array([Vector2(.5,1),Vector2(1,1),Vector2(1,0),Vector2(.5,0)]),Vector3(-sin(angle),0,cos(angle)))
 
 static func _stem_point(root: Vector3, height: float, bend: Vector2, t: float) -> Vector3:
 	return root + Vector3(bend.x*t*t,height*t,bend.y*t*t)

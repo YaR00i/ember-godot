@@ -1,4 +1,108 @@
 # Материалы и текстуры
+Общий пресет обычной травы сохранён в проекте, доступен из кисти и читается при
+старте отдельного стресс-теста. Материалы грунта/травы/песка у особняка и новых
+карт совпадают с main по ID. В стресс-тесте по умолчанию штатный вид травы:
+общие меш/LOD и расчёт размещения, 32 участка и возврат из GPU-пробы
+проверены в Forward+ native2560×1440. Кисть PASS, общий120FPS gate OPEN.
+Общий пресет и атлас проверены на Landscape, во дворце Миры, в саду особняка
+и на опушке. На Landscape загружаются все шесть наборов растений.
+[Проверка растений](../EMBER_TERRAIN_AUTHORING.md#цветы-высокая-трава-и-ориентир-zelda0311).
+«Ковёр листьев» использует чёткую подстилку и редкие загнутые листья из той
+же маски. Сохранение обоих слоёв и Landscape в Forward+ проверены. Автор
+принял вид. Осенние варианты земли и травы отложены, общий 120 FPS открыт.
+Плотность объёмных листьев 0–200% сохраняется в общем рецепте. Разлёт при
+беге по маске ковра проверен в Forward+ на Landscape, ручной вид открыт.
+«Мох на камне и коре» доступен в кисти деталей. На камне и дубе Landscape проверены
+боковой мазок, ластик, история и перенос покрытия. Мох сочетает зелёный
+материал с мягкими переходами и короткий ворс по той же маске. Высота, ширина
+и плотность побегов доступны в общем пресете через кисть. На Landscape
+проверены «Мох на земле» поверх грунта и вариант грунта `moss` в палитре.
+Стыки слоя сглажены с учётом соседних масок, включая ластик и историю.
+Автор принял вид мха на дубе по кадру. Ручная проба кисти в Godot и общий
+бюджет открыты. Следующая проверка кисти — один обычный меш или стена на Landscape.
+[Покрытия и их порядок](../EMBER_WORLD_AUTHORING_ARCHITECTURE.md#наносимые-покрытия-кисть-штамп-и-игровые-события--исследование2810).
+«Вид мира → Материалы → Размер рисунка земли» открывает общие варианты
+грунта, травы, песка, камня и брусчатки. Размер в метрах предпросматривается
+на земле; сохранение меняет общий вариант материала.
+Метровый масштаб земли общий во всех обликах, включая «Сохранённый вид».
+На 18 картах с terrain сверены ID грунта/песка. На Landscape, побережье,
+во дворце Миры и на катке проверены runtime-материалы в Forward+ 2560×1440.
+[Размер рисунка](../EMBER_TERRAIN_AUTHORING.md#единый-размер-рисунка-земли-на-картах).
+Performance01.11 без новой art-приёмки: у detailed stone ray-invariant weathering context
+вынесен из POM loops;depth/steps/fades/paint и3looks сохранены. Main near GPU≈18% дешевле,
+wide gain нет;editor controls/Undo/Save/reopen/discard/looks native PASS.
+Far solid без ручного DEPTH после полного fade подключён;цвет/слои/геометрия прежние.
+Opaque-overlap GPU4,4→0,72мс,main/crowd gain не установлен;native render route PASS.
+5из640² edge pixels >2/255 отличаются;ручной широкий вид/переход остаются открытыми.
+Общий120FPS/dense gate и единственные цифры/следующий шаг — [Performance](../EMBER_WORLD_PERFORMANCE.md#дорогой-ближний-камень-контекст-оптической-глубины0111).
+Текущий срез автора — высокая срезаемая трава/листья;палитра grass main без отдельного
+tint и прежний feature program подключены. Native gameplay/сохранения PASS,art OPEN.
+Простой контур подключён на main:ordinary8/native LOD8,высокая24/тени ON;срезание/подбор/save PASS.
+Main/3looks/retained return/render-stress PASS;плотность/дальность прежние. Контроль8/28/8
+GPU5,993/6,096/6,015мс;общий FPS почти прежний,wall tails/движение/art/120FPS OPEN — Performance.
+Performance02.11:main CPU limit доказан;Separate только QA. Shared materials/merge ещё не проверены.
+Broad character bounds не внедрены из-заизмененияLOD/culling;Skeleton thread groups вSafe
+не ускорили whole frame и не внедрены. Native profile:motion≈38%main,draw≈17%named path;
+GPU NPC representation пока QA. Grass feature shader больше не компилируется вpublish:
+короткие генераторные steps+threaded ResourceLoader перед готовностью binding;
+dense max step2,12мс/publish0,87мс вместо63,8мс. Source/цвет/плотность прежние,
+feature command/3looks/texture RID parity native PASS. Данные/следующий gate — Performance.
+Камера stress02.11: PNG в worker; поздний resize+25% перенесён до startup.
+Startup regression RED259 replaced→GREEN0; все268 buffers сохранены, итоговые220135
+instances/размер/плотность прежние. Полный cold/coverage OPEN — Performance.
+Референсы автора по земле/густой траве/цветам сохранены в Terrain Authoring; art-правок нет.
+Правило общей подготовки объектов закреплено в Workflow; сверка GPU grass/alpha test
+и условия ограниченной пробы — Terrain Authoring. GPU grass QA работает:стебли/ветер/
+GPU culling/indirect/morph LOD;силуэт нравится,цвет оспорен;output103MiB/count/растр PASS.
+ВQA убрана12% примесь зелёного;grass3→2→1tri по экранному размеру,ветер/growth наGPU.
+Цветы3HLOD сохраняют8539clusters/все соцветия,геометрия resident wide≈−23–24%;высота+15%.
+Grass wide−21–33%tri,но отдельный GPU gain не доказан;это не основание переносить ради FPS.
+Counts/FOV40/70/buffers/return/teardown PASS;текущий streaming срез иего gates — ниже/Performance.
+Аудит деревьев:shared mesh/native LOD уже есть,раннийbias gain не дал;общего ветра крон нет.
+Подход цветов/cut/Zelda — Terrain Authoring;Source/арт стволов/крон этим срезом не менялись.
+Текущий production grass renderer не менялся.
+Автору доступна отдельная QA-сессия:кнопка «Производительность»/F3,временныеLOD/ветер/
+камера и JSON-срез. Native UI API/сброс проверены,ручной проход OPEN — Performance.
+После ручного прохода:фактическое разрешение/scale/режим,F8 trace20с и короткий маршрут
+готовы вQA;замеры≈65–91FPS,120FPS открыт. Следующий срез — удобство QA;Performance.
+GPU-трава имеет QA streaming;цветы пока стартовой области,ветер крон не реализован.
+Coding Quests03.11:350comments/29permalinks иготовый merger/native instancing сверены.
+Shared tree materials внедрены вProp/Map:runtime1288bindings→10active materials,
+whole frame near≈−2–3%/wide≈−3–4%,wide GPU8,35→7,94мс,pixel parity exact.
+Map/look/private source isolation и release native PASS;editor сохраняет private path,
+его ручной main/3looks вид OPEN. Local shadow fade/occlusion OPEN — Performance.
+Grass04.11:Dylearn demo/source изучены,ограниченный А/Б/карточки выполнен. Автор выбрал
+Б длядальнейшего QA:своя3/2/1tri GPU geometry/ground pigment/wind,проще root/hybrid toon light.
+GPU≈−0,82–0,95мс,полный кадр≈−2,4–2,5%;карточки поGPU дорожеБ и не выбраны.
+МатериалБ сохранён,streaming QA использует bounded pool;source/плотность/дальность прежние.
+Первый wide был закрыт кроной,не принят;повторён открытый обзор тем жеFOV/дистанцией.
+QA residency/update/release/return иGPU/native switch реализованы;shader fade следует projection.
+Native completed material/cache slots защищены от dense starvation;RED→GREEN/80м/return PASS.
+Полная source preparation40с/27с иmemory pool≈288MiB ещё дороги;Performance хранит детали.
+Диагностика04.11:100/50/10/0% selected447393/223864/45386/0;0→100 exact.
+Source roots сохраняются;engine primitive monitor≈153M не читает GPU selected,не принимать за работу.
+CPU shadow-context исправлен у прежних owners:готовые proxy не проходят полную привязку на поворот.
+Dense A/B/A p99shadow12.7→4.1мс/whole24.0→18.4мс;3FOV40/70 кадра exact,вид прежний.
+Автор отметил улучшение native;обычныйQA теперь Source-тени,F3→«Тени» даёт параметры.
+Тестер27+5cases/UI/reset/snapshot PASS;архив34files,main runtime/карта/плотность прежние.
+PCFLow4096/2каскада:blendOFF≈−4.2%median кcaptured,вид/стыки/120FPS OPEN — Performance.
+Остаточный кадр04.11:controllers-OFF10.65→8.13мс,NPCrender-OFF9.02мс,return10.61.
+В Windows-экспорте зона подготовки центрирована на герое, готовые позиции травы и сетки твёрдых объектов читаются из PCK, дальние шейдеры подготовлены до открытия мира. Общий приоритет — полнота пакета локации, память дальних районов и стоимость плотного поля. Строгие 120 FPS и ручная оценка остаются открытыми. Системные замеры и следующий срез — World Performance.
+Данные/ограничения/возврат — Performance,второй очереди нет.
+Ручной выбор трёх форм иколичества/ширины/высоты/кучности доступен вQA/F3→«Трава».
+Density теперь author-controlled вQA;граница дальности прежняя. Один короткий native smoke
+три формы/сброс/no reupload PASS;вид выбирает автор,full perf не повторён — Performance.
+Manual launch abort на ненужном autowalk gate исправлен;20с survival/неактивные9команд0 PASS.
+Готовый near≈98FPS mean,p9913,94мс;120FPS OPEN. Оригинальный launcher достигготовности.
+Main/цветы streaming/ручной moving вид/120FPS OPEN;видеоряд не просмотрен.
+MIT notice сохранён,чужие textures/models в выбранном Б не используются. Очередь — Performance.
+Высокая трава03.11: долгие spawn-ступени были в загрузке ресурсов и расчёте земли
+для посадки. Точечный CPU snapshot/WorkerThreadPool и готовые scene packs подключены
+к stress;96объектов без остановок≥100мс,но max68мс/120FPS/ручная плавность OPEN.
+Актуальный порядок/границы/результаты — Performance;static sun integration остаётся отложенной.
+Stock shadowmask compatibility probe выполнен,production интеграции нет;UV2 adapter и
+native LOD проверены на Source patch+rock. Гибрид/3looks/memory/dense gates — Performance.
+
 Общий вид: Genshin для детального/low poly, ALLfiring для воксельного мира. Crimson Desert —
 исследование глубины/насыщенных эффектов/стоимости; AION2/WuWa — локальные приёмы растительности.
 Роли/статусы — [Product Plan](../EMBER_PRODUCT_PLAN.md#общая-фактура-материалов-для-трёх-миров).

@@ -2,6 +2,7 @@ extends SceneTree
 const Source=preload("res://scripts/vrm_source.gd")
 const Rig=preload("res://scripts/rig_driver.gd")
 const Soft=preload("res://scripts/soft_toon.gdshader")
+const NativeLod=preload("__HOSHI_LOD_HELPER__")
 const DEST="__HOSHI_OUTPUT__"
 var model:Node3D
 var sk:Skeleton3D
@@ -55,6 +56,8 @@ func run()->void:
 			mat.set_shader_parameter("shadow_strength",config.get_value("render","shadow_strength",1.0))
 			var tint:Color=config.get_value("render","shadow_color",Color.WHITE);mat.set_shader_parameter("shadow_tint",Vector3(tint.r,tint.g,tint.b))
 			mesh.set_surface_override_material(surface,mat)
+	for mesh:MeshInstance3D in model.find_children("*","MeshInstance3D",true,false):
+		mesh.mesh=NativeLod.prepare(mesh.mesh)
 	height=bounds.size.y
 	var player:=AnimationPlayer.new();player.name="Motion";model.add_child(player)
 	var library:=AnimationLibrary.new()

@@ -1,6 +1,9 @@
 extends SceneTree
 var INPUT:=""
 var OUTPUT:="res://assets/local_characters/hoshi/motion.res"
+const CLIP_SOURCES:={"idle":"Idle_Loop","walk":"Walk_Loop","run":"Jog_Fwd_Loop","talk":"Idle_Talking_Loop","sit":"Sitting_Idle_Loop","dance":"Dance_Loop",
+	"fall":"Jump_Loop","land":"Jump_Land","roll":"Roll","swim":"Swim_Fwd_Loop","swim_idle":"Swim_Idle_Loop"}
+var requested_clips:=PackedStringArray(["idle","walk","run"])
 var target:Skeleton3D
 var source:Skeleton3D
 var modifier:RetargetModifier3D
@@ -16,7 +19,13 @@ func run()->void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("source="):INPUT=arg.trim_prefix("source=")
 		if arg.begins_with("output="):OUTPUT=arg.trim_prefix("output=")
+		if arg.begins_with("clips="):requested_clips=arg.trim_prefix("clips=").split(",",false)
 	if INPUT.is_empty():printerr("Provide source=<Quaternius Standard GLB>");quit(2);return
+	if requested_clips.is_empty():printerr("Provide at least one clip");quit(2);return
+	var unique:Dictionary={}
+	for clip:String in requested_clips:
+		if not CLIP_SOURCES.has(clip) or unique.has(clip):printerr("Unknown or repeated clip: ",clip);quit(2);return
+		unique[clip]=true
 	var avatar=(load("res://assets/local_characters/hoshi/avatar.scn") as PackedScene).instantiate()
 	var original:Skeleton3D=avatar.find_children("*","Skeleton3D",true,false)[0]
 	var human:Dictionary=avatar.get_meta("hoshi_bones")
@@ -56,8 +65,10 @@ func run()->void:
 	player.callback_mode_process=AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 	var library:=AnimationLibrary.new()
 	var report:Dictionary={"source":INPUT,"source_sha256":FileAccess.get_sha256(INPUT),"source_motion_scale":source.motion_scale,"target_motion_scale":target.motion_scale,"mapped_bones":ids.size(),"clips":{}}
-	for pair in [["idle","Idle_Loop"],["walk","Walk_Loop"],["run","Jog_Fwd_Loop"]]:
-		var src:=player.get_animation(pair[1]);var anim:=Animation.new();anim.length=src.length;anim.loop_mode=Animation.LOOP_LINEAR
+	for clip_name:String in requested_clips:
+		var pair:Array=[clip_name,CLIP_SOURCES[clip_name]]
+		assert(player.has_animation(pair[1]),"Missing source clip: "+pair[1])
+		var src:=player.get_animation(pair[1]);var anim:=Animation.new();anim.length=src.length;anim.loop_mode=Animation.LOOP_NONE if clip_name in ["land", "roll"] else Animation.LOOP_LINEAR
 		var tracks:Dictionary={}
 		for id:int in ids:
 			var t:=anim.add_track(Animation.TYPE_ROTATION_3D);anim.track_set_path(t,NodePath("Skeleton3D:"+str(ids[id])));tracks[id]=t

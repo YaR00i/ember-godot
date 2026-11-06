@@ -8,6 +8,7 @@ var _objective: Label
 var _toast: PanelContainer
 var _toast_text: Label
 var _tracked_id := ""
+var _current_direction := ""
 var _signature := ""
 var _initialized := false
 var _toast_tween: Tween
@@ -41,7 +42,9 @@ func _ready() -> void:
 	_toast_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_toast.add_child(_toast_text)
 	_toast.hide()
-	if progress_state != null: progress_state.progress_changed.connect(refresh)
+	if progress_state != null:
+		progress_state.progress_changed.connect(refresh)
+		progress_state.exploration_leader_changed.connect(func(_hero_id: String): refresh())
 	refresh()
 
 func _panel(node_name: String) -> PanelContainer:
@@ -77,19 +80,26 @@ func refresh() -> void:
 	var current: Dictionary = {}
 	for objective in selected.get("objectives",[]):
 		if objective.get("available",false): current = objective;break
+	_current_direction = str(current.get("directionRu", "")).strip_edges() if _card.visible else ""
 	_tracked_id = str(selected.get("id",""))
 	var signature := "%s|%s|%s" % [_tracked_id,selected.get("status",""),current.get("id","")]
 	if _card.visible:
 		_title.text = str(selected.titleRu)
 		var objective_text := str(current.get("textRu", ""))
-		if str(current.get("progressMode", "flag")) in ["counter", "purchase", "handover"]:
+		if str(current.get("progressMode", "flag")) in ["counter", "purchase", "handover", "world_action"]:
 			objective_text += " · %d/%d" % [int(current.get("currentCount", 0)), int(current.get("requiredCount", 1))]
 		_objective.text = "Этап %d/%d · %s\nQ — журнал заданий" % [mini(int(selected.completed)+1,int(selected.required)),int(selected.required),objective_text]
+		if not _current_direction.is_empty() and "mira" in progress_state.active_hero_ids and progress_state.exploration_leader_id != "mira":
+			_objective.text += "\nJ — спросить Миру"
 	if _initialized and signature != _signature and not selected.is_empty():
 		var heading := "Задание выполнено" if selected.status == "done" else ("Новое задание" if previous_id != _tracked_id else "Цель обновлена")
 		show_update(heading + " · " + str(selected.titleRu) + ("\n"+str(current.get("textRu","")) if not current.is_empty() else ""))
 	_signature = signature
 	_initialized = true
+
+
+func current_direction() -> String:
+	return _current_direction
 
 func show_update(message: String) -> void:
 	if _toast_tween != null: _toast_tween.kill()

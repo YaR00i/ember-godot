@@ -1,6 +1,8 @@
 class_name EmberFollowCamera
 extends Node3D
 ## Play follow camera. Same fields as JOI `emberCamera.ts` (iso JRPG).
+const GrassProfile = preload("res://scripts/ember_grass_profile.gd")
+static var comparison_enabled := false
 
 @export var fov := 40.0
 @export var follow_distance := 120.0
@@ -22,10 +24,29 @@ var _applied_fov := -1.0
 var _applied_near := -1.0
 var _applied_far := -1.0
 var _height_initialized := false
+
+func apply_exploration_framing(base_fov: float, distance: float, polar: float, units_per_metre: float) -> void:
+	fov = base_fov
+	follow_distance = distance
+	polar_angle = polar
+	if comparison_enabled:
+		var profile := GrassProfile.settings()
+		fov = profile.camera_fov
+		follow_distance = float(profile.camera_distance) * units_per_metre
+		polar_angle = deg_to_rad(profile.camera_polar)
 var _follow_height := 0.0
 var _last_target_position := Vector3.ZERO
 var _height_target: Node3D
 var wing_flight_view := false
+var pipe_forward := Vector3.ZERO
+var _pipe_anchor: Node3D
+var _pipe_route: Node3D
+var _pipe_approach: Node3D
+var _pipe_elapsed := 0.0
+var _pipe_weight := 0.0
+var _pipe_pose := Transform3D.IDENTITY
+## Session framing: screen-right and world-up offsets in world units.
+var look_offset := Vector2.ZERO
 var flight_framing_scale := 1.0
 var _flight_lens_active := false
 var _flight_fov := 72.0
@@ -75,6 +96,8 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if not pipe_forward.is_zero_approx() or is_instance_valid(_pipe_approach):
+		return
 	if wing_flight_view:
 		if target is EmberPlayer and target.is_physics_processing() and event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
 			_flight_mouse_orbit += event.relative * 0.004
@@ -102,7 +125,8 @@ func _process(dt: float) -> void:
 		_update_wing_flight(dt, _read_flight_look())
 		return
 	_flight_initialized = false
-	var look := target.global_position + Vector3(0.0, look_height, 0.0)
+	var look := target.global_position + Vector3(0.0, look_height + look_offset.y, 0.0)
+	look += Vector3(cos(yaw), 0.0, -sin(yaw)) * look_offset.x
 	var moved_down := _height_initialized and target.global_position.y < _last_target_position.y - 0.0001
 	var teleported := _height_initialized and target.global_position.distance_to(_last_target_position) > follow_distance * 0.25
 	if not _height_initialized or target != _height_target or teleported:
@@ -127,13 +151,46 @@ func _process(dt: float) -> void:
 		cos(polar),
 		sin(polar) * cos(yaw),
 	)
-	_cam.global_position = look + dir * follow_distance
-	_cam.look_at(look)
+	var walk_pose := Transform3D(Basis.IDENTITY, look + dir * follow_distance).looking_at(look)
+	_update_pipe_blend(walk_pose, dt)
 
 
 func reset_follow_height() -> void:
 	_height_initialized = false
 	_flight_initialized = false
+
+
+func set_pipe_view(route: Node3D, anchor: Node3D = null) -> void:
+	_pipe_route = route
+	pipe_forward = route.pipe_forward() if is_instance_valid(route) else Vector3.ZERO
+	_pipe_anchor = anchor
+	_pipe_elapsed = 0.0
+
+
+func set_pipe_approach(route: Node3D) -> void:
+	_pipe_approach = route
+
+
+func clear_pipe_approach(route: Node3D) -> void:
+	if _pipe_approach == route:
+		_pipe_approach = null
+
+
+func _update_pipe_blend(walk_pose: Transform3D, dt: float) -> void:
+	var riding := is_instance_valid(_pipe_route)
+	var route := _pipe_route if riding else _pipe_approach
+	var active := is_instance_valid(route)
+	var previous_weight := _pipe_weight
+	_pipe_weight = move_toward(_pipe_weight, 1.0 if active else 0.0, dt / 0.6)
+	if active:
+		var forward: Vector3 = route.pipe_forward(_pipe_elapsed if riding else 0.0)
+		if not forward.is_zero_approx():
+			var torso: Vector3 = _pipe_anchor.global_position if riding and is_instance_valid(_pipe_anchor) else route.route_point(0.0) + Vector3.UP * 10.0
+			var origin: Vector3 = route.ride_camera_origin(_pipe_elapsed if riding else 0.0, torso)
+			var desired := Transform3D(Basis.IDENTITY, origin).looking_at(route.ride_camera_target(_pipe_elapsed if riding else 0.0, torso))
+			_pipe_pose = desired if previous_weight == 0.0 else _pipe_pose.interpolate_with(desired, 1.0 - exp(-12.0 * dt))
+	_cam.global_transform = walk_pose.interpolate_with(_pipe_pose, smoothstep(0.0, 1.0, _pipe_weight))
+	_apply_lens()
 
 
 func _read_flight_look() -> Vector2:
@@ -187,11 +244,12 @@ func _update_wing_flight(dt: float, look: Vector2 = Vector2.ZERO) -> void:
 
 
 func _apply_lens() -> void:
-	if is_equal_approx(_applied_fov, fov) and is_equal_approx(_applied_near, cam_near) and is_equal_approx(_applied_far, cam_far):
+	var active_fov := lerpf(fov, maxf(fov, 58.0), smoothstep(0.0, 1.0, _pipe_weight))
+	if is_equal_approx(_applied_fov, active_fov) and is_equal_approx(_applied_near, cam_near) and is_equal_approx(_applied_far, cam_far):
 		return
-	_applied_fov = fov
+	_applied_fov = active_fov
 	_applied_near = cam_near
 	_applied_far = cam_far
-	_cam.fov = fov
+	_cam.fov = active_fov
 	_cam.near = cam_near
 	_cam.far = cam_far

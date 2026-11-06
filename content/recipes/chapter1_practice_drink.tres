@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="EmberCraftRecipeResource" load_steps=2 format=3]
+[ext_resource type="Script" path="res://scripts/ember_craft_recipe_resource.gd" id="recipe"]
+[resource]
+script = ExtResource("recipe")
+recipe_id = "chapter1_practice_drink"
+title = "Учебный напиток"
+station_kind = "kitchen"
+description = "Учебный рецепт для кухни."
+ingredients = {"apple": 1, "herb": 1}
+results = {"qingxin_tea": 1}

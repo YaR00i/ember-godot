@@ -1,0 +1,11 @@
+{
+  "water_y": 8.0,
+  "zones": [
+    {"name":"south_meadow","kind":"meadow","shape":"ellipse","cx":435,"cz":525,"rx":176,"rz":136,"grass":22.0,"flowers":1.5,"props":{"tree":36,"birch":22,"rock":48}},
+    {"name":"north_woods","kind":"forest","shape":"ellipse","cx":602,"cz":277,"rx":142,"rz":113,"grass":12.0,"flowers":0.35,"props":{"tree":580,"birch":245,"rock":88}},
+    {"name":"west_outcrops","kind":"rocks","shape":"ellipse","cx":180,"cz":644,"rx":102,"rz":112,"grass":5.0,"flowers":0.15,"props":{"rock":210,"birch":21}},
+    {"name":"lake_banks","kind":"lake","shape":"ellipse","cx":706,"cz":667,"rx":132,"rz":105,"grass":12.0,"flowers":0.7,"props":{"birch":76,"rock":50}},
+    {"name":"mountain","kind":"mountain","shape":"ellipse","cx":826,"cz":133,"rx":138,"rz":109,"grass":2.0,"flowers":0.05,"props":{"tree":33,"rock":100}},
+    {"name":"village","kind":"village","shape":"box","cx":302,"cz":335,"rx":83,"rz":69,"grass":6.0,"flowers":0.5,"props":{"house":14,"lamp":28,"crate":42,"tree":15,"rock":12}}
+  ]
+}

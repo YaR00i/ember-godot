@@ -5,6 +5,8 @@ extends Resource
 
 const SIZE := 16
 const ROLE_IDS := ["soil", "grass", "sand", "stone"]
+const DETAIL_SCALE_RANGE := Vector2(0.25, 3.0)
+const DETAIL_DENSITY_RANGE := Vector2(0.0, 2.0)
 
 @export var role_id := ""
 @export var base_color := Color.WHITE
@@ -14,8 +16,12 @@ const ROLE_IDS := ["soil", "grass", "sand", "stone"]
 ## Optional full-colour project texture. Existing 16x16 artwork remains editable
 ## and supplies the fallback when no texture is selected.
 @export var albedo_texture: Texture2D
-## Flower-cover geometry: 0 daisy, 1 buttercup, 2 meadow inflorescence.
+## Shared plant-cover shape: daisy/buttercup/lilac/poppy/cornflower/wheat.
 @export_storage var flower_shape := 0
+## Optional geometry associated with a material recipe. Density 0 leaves only the material.
+@export_storage var detail_height := 1.0
+@export_storage var detail_width := 1.0
+@export_storage var detail_density := 1.0
 ## Optional authored height paired with the colour (e.g. paving joints).
 ## Null uses the existing height-from-paint derivation. Optical only.
 @export var depth_texture: Texture2D
@@ -86,7 +92,13 @@ func suggested_grass_light_tones() -> Dictionary:
 
 func validation_errors() -> Array[String]:
 	var errors: Array[String] = []
-	if flower_shape not in [0,1,2]: errors.append("unknown flower-cover shape")
+	if flower_shape not in [0,1,2,3,4,5]: errors.append("unknown flower-cover shape")
+	for field in ["detail_height", "detail_width"]:
+		var scale: float = get(field)
+		if not is_finite(scale) or scale < DETAIL_SCALE_RANGE.x or scale > DETAIL_SCALE_RANGE.y:
+			errors.append(field + " outside 0.25..3")
+	if not is_finite(detail_density) or detail_density < DETAIL_DENSITY_RANGE.x or detail_density > DETAIL_DENSITY_RANGE.y:
+		errors.append("detail_density outside 0..2")
 	if not is_finite(style_rim_strength) or style_rim_strength < 0.0 or style_rim_strength > 1.0: errors.append("style_rim_strength outside 0..1")
 	if not is_finite(style_rim_width_mm) or style_rim_width_mm < 0.0 or style_rim_width_mm > 50.0: errors.append("style_rim_width_mm outside 0..50")
 	if not is_finite(depth_mm) or depth_mm < 0.0 or depth_mm > 30.0: errors.append("depth_mm outside 0..30")

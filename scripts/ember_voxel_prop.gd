@@ -4,12 +4,27 @@ extends Node3D
 ## Instance of a voxel PackedScene on an authored map.
 
 const WaterContact := preload("res://scripts/ember_water_contact_3d.gd")
+const RuntimeShadowLod := preload("res://scripts/ember_runtime_shadow_lod.gd")
+const ObjectMoss := preload("res://scripts/ember_object_moss.gd")
 
 @export var model_id := ""
 @export var placement_id := ""
 @export_storage var voxels_per_block := 16
 @export_storage var block_world_size := 16.0
-@export_group("Покрытие")
+@export_storage var moss_mask := PackedByteArray():
+	set(value):
+		if not value.is_empty() and value.size() != ObjectMoss.BYTE_COUNT:
+			return
+		if value == moss_mask:
+			return
+		moss_mask = value
+		_moss_texture = null
+		_moss_tuft_source = null
+		if is_node_ready():
+			var visual := get_node_or_null("Mesh") as MeshInstance3D
+			if visual != null:
+				if _has_bark(visual): _apply_tree_moss(visual)
+				else: _bind_moss(visual.get_active_material(0) as ShaderMaterial)
 ## 1 — размер материала земли; больше — крупнее рисунок только этого экземпляра.
 ## Меняет цвет, световой рисунок и частоту рельефа, но не его глубину и не форму.
 @export_range(0.125,16.0,0.025) var material_pattern_scale := 1.0:
@@ -30,6 +45,17 @@ const WaterContact := preload("res://scripts/ember_water_contact_3d.gd")
 		water_contact_radius_blocks = value
 		if is_node_ready(): _sync_water_contact()
 @export_group("")
+var _moss_texture: ImageTexture3D
+var _moss_tufts: MeshInstance3D
+var _moss_tuft_source: Mesh
+var _moss_tuft_detail := Vector3.ZERO
+var _moss_preview := Vector3.ZERO
+var _tree_moss_material: ShaderMaterial
+var _tree_moss_base_override: Material
+var _moss_bark_source: Mesh
+var _moss_bark_bounds := AABB()
+var _moss_pick_source: Mesh
+var _moss_pick_triangles: TriangleMesh
 var _floor_mesh: Mesh
 var _floor_faces:=PackedVector3Array()
 var _floor_data_ready:=false
@@ -93,6 +119,49 @@ var _distance_ready:=false
 var _distance_mesh:ArrayMesh
 var _distance_source:ArrayMesh
 var _distance_flat_mesh:ArrayMesh
+var packed_detail_path := ""
+var packed_detail_mesh: ArrayMesh
+var packed_detail_wanted := false
+var _runtime_physics_state:Array=[] # Derived body processing state; never a new collider.
+var _runtime_shadow: RefCounted
+
+func update_runtime_shadow_lod(state:Dictionary)->bool:
+	if _runtime_shadow==null:_runtime_shadow=RuntimeShadowLod.new()
+	return _runtime_shadow.update(self,state)
+
+func recheck_runtime_shadow_receivers(state:Dictionary)->bool:
+	return _runtime_shadow!=null and _runtime_shadow.recheck_receivers(state)
+
+func restore_runtime_shadow_lod()->void:
+	if _runtime_shadow!=null:_runtime_shadow.restore()
+
+func runtime_physics_safe()->bool:
+	if Engine.is_editor_hint() or authoring_source!=null or (authoring_preview!=null and is_instance_valid(authoring_preview.get_ref())):return false
+	# Gameplay subclasses/components and moving platforms retain their own activity.
+	if get_script()!=load("res://scripts/ember_voxel_prop.gd"):return false
+	var body:=get_node_or_null("Collision") as StaticBody3D
+	var shape:=get_node_or_null("Collision/Shape") as CollisionShape3D
+	if body==null or body is AnimatableBody3D or body.get_script()!=null or shape==null or shape.shape==null or shape.disabled:return false
+	if body.constant_linear_velocity!=Vector3.ZERO or body.constant_angular_velocity!=Vector3.ZERO:return false
+	if _runtime_physics_state.is_empty() and body.process_mode!=Node.PROCESS_MODE_INHERIT:return false
+	for child in get_children():
+		if child.name not in [&"Mesh",&"Collision",&"ShadowBody",&"WaterContact"] and not child is Light3D:return false
+	return body.get_child_count()==1 and shape.get_child_count()==0
+
+func set_runtime_physics_active(active:bool)->void:
+	if active:
+		if _runtime_physics_state.is_empty():return
+		var body:StaticBody3D=_runtime_physics_state[0].get_ref()
+		if is_instance_valid(body):
+			body.disable_mode=_runtime_physics_state[2]
+			body.process_mode=_runtime_physics_state[1]
+		_runtime_physics_state.clear()
+	elif _runtime_physics_state.is_empty() and runtime_physics_safe():
+		var body:=get_node("Collision") as StaticBody3D
+		_runtime_physics_state=[weakref(body),body.process_mode,body.disable_mode]
+		# Native REMOVE leaves authored shape/layers and floor/navigation queries intact.
+		body.disable_mode=CollisionObject3D.DISABLE_MODE_REMOVE
+		body.process_mode=Node.PROCESS_MODE_DISABLED
 
 func _owning_map()->EmberMapLoader:
 	var ancestor:=get_parent()
@@ -136,6 +205,7 @@ func object_far_preparation_mesh() -> ArrayMesh:
 
 
 func apply_object_detail(resident:bool)->void:
+	restore_runtime_shadow_lod()
 	_distance_managed=true;_distance_resident=resident
 	for look in _tree_meshes.keys():
 		if look!=0:_tree_meshes.erase(look)
@@ -146,6 +216,7 @@ func apply_object_detail(resident:bool)->void:
 	_distance_ready=true
 
 func restore_object_detail(look:int)->void:
+	restore_runtime_shadow_lod()
 	_distance_managed=false;_distance_resident=true;_distance_ready=false
 	_distance_mesh=null;_distance_source=null;_distance_flat_mesh=null
 	set_world_look(look)
@@ -164,6 +235,7 @@ func object_lod_allowed()->bool:
 
 func install_object_lod(source:ArrayMesh,mesh:ArrayMesh)->void:
 	if not object_lod_allowed() or object_detail_base()!=source or not object_detail_safe():return
+	restore_runtime_shadow_lod()
 	_distance_source=source;_distance_mesh=mesh
 	get_node("Mesh").mesh=mesh
 	_bind_map_lighting()
@@ -214,20 +286,24 @@ func _remember_tree_overrides(visual:MeshInstance3D,capture_reset:=false)->void:
 
 
 func apply_voxel_light_settings(map: EmberMapLoader) -> void:
+	restore_runtime_shadow_lod()
 	var visual := get_node_or_null("Mesh") as MeshInstance3D
 	if visual == null or visual.mesh == null or visual.mesh.get_surface_count() == 0: return
 	# Named presentation surfaces belong to ArrayMesh, not primitive placeholders.
 	if not visual.mesh is ArrayMesh: return
 	if visual.mesh.surface_get_name(0) == "tree_bark":
 		_remember_tree_overrides(visual)
-		# Share geometry; keep map-specific uniforms on this instance only.
+		# Runtime bindings share within their owning map; editor previews stay private.
 		var cached: Dictionary = _voxel_light_tree_meshes.get(_world_look, {})
 		if cached.is_empty() or visual.mesh != cached.source:
 			var materials:Array[Material]=[]
 			for surface in visual.mesh.get_surface_count():
 				var material:Material=_tree_authored_overrides[surface] if surface<_tree_authored_overrides.size() else null
 				if material==null:material=visual.mesh.surface_get_material(surface)
-				material=material.duplicate() if material!=null else null
+				if material is ShaderMaterial and not Engine.is_editor_hint():
+					material=map.runtime_tree_material(material,_world_look)
+				else:
+					material=material.duplicate() if material!=null else null
 				if material!=null:material.set_meta("ember_derived_tree_material",true)
 				materials.append(material)
 			cached = {"source": visual.mesh, "materials": materials}
@@ -235,6 +311,7 @@ func apply_voxel_light_settings(map: EmberMapLoader) -> void:
 		for surface in visual.mesh.get_surface_count():
 			visual.set_surface_override_material(surface,cached.materials[surface])
 			map.bind_voxel_light(cached.materials[surface] as ShaderMaterial, _world_look, 1.0)
+		_apply_tree_moss(visual)
 	elif visual.mesh.surface_get_name(0) == "solid_surface":
 		var material := visual.get_active_material(0) as ShaderMaterial
 		map.bind_voxel_light(material, _world_look, 1.0)
@@ -247,9 +324,13 @@ func _bind_map_lighting() -> void:
 	if ancestor is EmberMapLoader:
 		apply_solid_light(ancestor.compact_material_light_mode,ancestor.compact_material_gray_preview)
 		apply_voxel_light_settings(ancestor)
+	else:
+		var visual := get_node_or_null("Mesh") as MeshInstance3D
+		if _has_bark(visual): _apply_tree_moss(visual)
 
 
 func set_world_look(look: int) -> void:
+	restore_runtime_shadow_lod()
 	var visual := get_node_or_null("Mesh") as MeshInstance3D
 	if visual == null or not visual.mesh is ArrayMesh or visual.mesh.get_surface_count() == 0: return
 	if visual.mesh.surface_get_name(0)=="tree_bark":_remember_tree_overrides(visual)
@@ -326,6 +407,7 @@ func _ready() -> void:
 	if not queued and _world_look<0 and get_meta("ember_external_source",false):
 		var source:=_solid_source()
 		if source!=null and not source.external_surface.is_empty():set_world_look(0)
+	if not queued and not moss_mask.is_empty() and _has_bark(mesh): _apply_tree_moss(mesh)
 	_sync_water_contact()
 
 
@@ -344,6 +426,7 @@ func _sync_water_contact() -> void:
 
 
 func apply_solid_light(mode: int,gray: bool) -> void:
+	restore_runtime_shadow_lod()
 	var visual:=get_node_or_null("Mesh") as MeshInstance3D
 	if visual==null or not visual.mesh is ArrayMesh or visual.mesh.get_surface_count()==0 or visual.mesh.surface_get_name(0)!="solid_surface":return
 	var material:=visual.get_active_material(0) as ShaderMaterial
@@ -355,6 +438,7 @@ func apply_solid_light(mode: int,gray: bool) -> void:
 
 
 func refresh_solid_material() -> void:
+	restore_runtime_shadow_lod()
 	var visual:=get_node_or_null("Mesh") as MeshInstance3D
 	if visual==null or not visual.mesh is ArrayMesh:return
 	if not visual.mesh.has_meta("solid_surface_material_ids"):
@@ -388,6 +472,7 @@ var _volume_shapes: Dictionary = {}
 var _published_volume_shape: Shape3D
 
 func install_prepared_looks(meshes:Array[ArrayMesh])->void:
+	restore_runtime_shadow_lod()
 	_living_mesh=meshes[0];_hull_mesh=meshes[1];_voxel_mesh=meshes[2]
 	get_node("Mesh").mesh=_hull_mesh
 
@@ -414,6 +499,7 @@ func authoring_visual_state() -> Dictionary:
 
 ## A Canvas Save/Undo installs a new published mesh before restoring its look.
 func refresh_authoring_projection() -> void:
+	restore_runtime_shadow_lod()
 	_distance_mesh=null;_distance_source=null;_distance_flat_mesh=null;_distance_ready=false
 	var visual := get_node_or_null("Mesh") as MeshInstance3D
 	var solid: bool = _hull_mesh != null or (visual != null and visual.mesh != null and visual.mesh.get_surface_count()>0 and visual.mesh.surface_get_name(0)=="solid_surface")
@@ -432,6 +518,7 @@ func refresh_authoring_projection() -> void:
 
 ## Display only: collision, floor and Source stay on the hull.
 func set_solid_look(look: int) -> bool:
+	restore_runtime_shadow_lod()
 	var visual:=get_node_or_null("Mesh") as MeshInstance3D
 	if visual==null or not visual.mesh is ArrayMesh or look not in [SOLID_LOOK_LOW_POLY,SOLID_LOOK_VOXEL,SOLID_LOOK_DETAILED]:return false
 	if _hull_mesh==null:
@@ -452,6 +539,7 @@ func set_solid_look(look: int) -> bool:
 	refresh_solid_material()
 	set_notify_transform(true)
 	set_process(look==SOLID_LOOK_DETAILED)
+	if not Engine.is_editor_hint():process_priority=1 # Follow the default-priority camera update.
 	_sync_solid_depth()
 	return true
 
@@ -462,6 +550,9 @@ func _sync_volume_collision(mesh: Mesh) -> void:
 	var shape:=get_node_or_null("Collision/Shape") as CollisionShape3D
 	if shape==null or shape.disabled:return
 	if _published_volume_shape==null:
+		# The authored collider is already installed. Compare its triangles
+		# only when asked to replace it with a different physical mesh.
+		if mesh==_hull_mesh:return
 		# Retain authored collision masks/overrides instead of replacing them
 		# with the visible shell. Only the generated full boundary follows looks.
 		if not shape.shape is ConcavePolygonShape3D or shape.shape.get_faces()!=_hull_mesh.get_faces():return
@@ -492,6 +583,8 @@ func authoring_collision_shape() -> Shape3D:
 ## for it). A draft Pattern replaces the saved one of its own id, so the editor previews before saving.
 func _living_for(draft: EmberCompactTerrainPattern,draft_id: String) -> ArrayMesh:
 	if _hull_mesh==null or not _hull_mesh.has_meta("solid_surface_material_ids"):return null
+	if packed_detail_mesh != null and draft == null and authoring_source == null:
+		return packed_detail_mesh
 	var solid=load("res://scripts/ember_voxel_solid_surface.gd")
 	if _hull_mesh.get_meta("solid_volume_boundary",false):return solid.detailed_volume_from_boundary(_hull_mesh)
 	var ids: PackedStringArray=_hull_mesh.get_meta("solid_surface_material_ids")
@@ -508,6 +601,28 @@ func _living_for(draft: EmberCompactTerrainPattern,draft_id: String) -> ArrayMes
 	# Hull-face overlays cannot describe an interior surface. Keep the same
 	# material/depth renderer, without projecting the old convex face layout.
 	return mesh if mesh.get_meta("solid_volume_boundary",false) else load("res://scripts/ember_solid_material_layers.gd").prepared_mesh(mesh,model)
+
+## The exporter calls this on a detached instance of the saved map.
+func bake_packed_detail_mesh() -> ArrayMesh:
+	var visual := get_node_or_null("Mesh") as MeshInstance3D
+	if visual == null or not visual.mesh is ArrayMesh or authoring_source != null or get_meta("ember_external_source", false):
+		return null
+	var hull := visual.mesh as ArrayMesh
+	if hull.get_surface_count() == 0 or hull.surface_get_name(0) != "solid_surface" or not hull.has_meta("solid_surface_material_ids"):
+		return null
+	if not hull.get_meta("solid_volume_boundary", false):
+		var source_path := "res://content/voxel_models/%s.tres" % model_id
+		if not ResourceLoader.exists(source_path): return null
+		authoring_source = ResourceLoader.load(source_path, "Resource", ResourceLoader.CACHE_MODE_IGNORE_DEEP) as EmberVoxelModelResource
+		if authoring_source == null: return null
+	# An export may follow several saves in the same editor process.
+	preload("res://scripts/ember_voxel_solid_surface.gd").clear_living_cache()
+	var previous := _hull_mesh
+	_hull_mesh = hull
+	var result := _living_for(null, "")
+	_hull_mesh = previous
+	authoring_source = null
+	return result
 
 
 ## The editor changed a form pull: swap in the matching faces and rebuild the material (the depth and
@@ -528,6 +643,7 @@ func _sync_living(pattern: EmberCompactTerrainPattern,id: String) -> void:
 		var have:=current[slot] if slot<current.size() else 0.0
 		if not is_equal_approx(have,wanted):same=false
 	if same:return
+	restore_runtime_shadow_lod()
 	_living_mesh=_living_for(pattern,id)
 	visual.mesh=_living_mesh if _living_mesh!=null else _hull_mesh
 	refresh_solid_material()
@@ -535,13 +651,20 @@ func _sync_living(pattern: EmberCompactTerrainPattern,id: String) -> void:
 
 func _notification(what: int) -> void:
 	if what==NOTIFICATION_TRANSFORM_CHANGED:
+		restore_runtime_shadow_lod()
+		set_runtime_physics_active(true)
+		var map:=_owning_map()
+		if map!=null:map.invalidate_physics_activity()
 		_sync_solid_unit()
 		if _solid_look==SOLID_LOOK_DETAILED:_sync_solid_depth(true)
 		if is_node_ready():
 			_floor_grid.clear()
 			_notify_surface_change()
 	# Save the published prefab, not a generated presentation override in the map.
-	if what == NOTIFICATION_EDITOR_PRE_SAVE and _world_look >= 0:
+	if what == NOTIFICATION_EDITOR_PRE_SAVE:
+		restore_runtime_shadow_lod()
+		set_runtime_physics_active(true)
+	if what == NOTIFICATION_EDITOR_PRE_SAVE and (_world_look >= 0 or _tree_moss_material != null):
 		var visual := get_node_or_null("Mesh") as MeshInstance3D
 		if visual != null:
 			# Strip our known representations; preserve an unknown authored
@@ -549,7 +672,7 @@ func _notification(what: int) -> void:
 			var authored:=authoring_visual_state()
 			for key:String in authored:visual.set(key,authored[key])
 			if _hull_mesh != null and visual.mesh==_hull_mesh:_sync_volume_collision(_hull_mesh)
-	elif what == NOTIFICATION_EDITOR_POST_SAVE and _world_look >= 0:
+	elif what == NOTIFICATION_EDITOR_POST_SAVE and (_world_look >= 0 or _tree_moss_material != null):
 		var map:=_owning_map()
 		if map!=null and map.editor_object_detail_enabled():map._queue_object_look(self)
 		else:set_world_look.call_deferred(_world_look)
@@ -568,6 +691,7 @@ func _sync_solid_depth(force:=false) -> void:
 	if visual==null:return
 	var material:=visual.get_active_material(0) as ShaderMaterial
 	if material==null or not material.get_meta("ember_detailed_depth",false):return
+	_sync_depth_program(visual,material)
 	material.set_shader_parameter("solid_depth_world_to_local",Projection(visual.global_transform.affine_inverse()))
 	load("res://scripts/ember_solid_material_layers.gd").sync_scale(material,visual)
 	if _sun==null or not is_instance_valid(_sun):
@@ -576,6 +700,28 @@ func _sync_solid_depth(force:=false) -> void:
 		var scope:Node=ancestor if ancestor!=null else get_tree().current_scene
 		if scope!=null:_sun=_first_depth_sun(scope)
 	if _sun!=null:material.set_shader_parameter("material_depth_sun_direction",_sun.global_transform.basis.z.normalized())
+
+
+## Conservative whole-object distance: never drop relief on a near side of a large rock.
+## Editor/active authoring keeps the original program, including live Pattern previews.
+func _sync_depth_program(visual: MeshInstance3D, material: ShaderMaterial) -> void:
+	var shader := material.shader
+	if shader == null:return
+	var full := shader.get_meta("ember_depth_full_shader",shader) as Shader
+	var eligible := is_inside_tree() and not Engine.is_editor_hint() and authoring_source == null and (authoring_preview == null or not is_instance_valid(authoring_preview.get_ref()))
+	# A morph can move vertices outside the undeformed mesh bounds.
+	if material.get_shader_parameter("ember_anomaly_prepared") == true:eligible=false
+	var camera := get_viewport().get_camera_3d() if eligible else null
+	var far := false
+	if camera != null and visual.mesh != null:
+		var fade: Variant = material.get_shader_parameter("material_depth_fade_far_m")
+		if fade is float or fade is int:
+			var bounds := visual.global_transform * visual.get_aabb()
+			var nearest := camera.global_position.clamp(bounds.position,bounds.end)
+			var margin := block_world_size * (0.5 if shader != full else 2.0)
+			far = camera.global_position.distance_to(nearest) > float(fade) + margin
+	var target := load("res://scripts/ember_voxel_solid_surface.gd").far_depth_shader(full) as Shader if far else full
+	if target != null and material.shader != target:material.shader=target
 
 
 ## Same preorder and owned=false semantics as find_children, but the depth
@@ -619,6 +765,125 @@ func bind_pattern_size(material:ShaderMaterial)->void:
 	material.set_shader_parameter("solid_pattern_scale",material_pattern_scale)
 	material.set_shader_parameter("solid_texture_unit_m",visual.global_basis.get_scale().abs()/unit)
 	material.set_shader_parameter("ember_texture_world_unit",unit*material_pattern_scale)
+	if not moss_mask.is_empty(): _bind_moss(material)
+
+
+func moss_paint_bounds() -> AABB:
+	var visual := get_node_or_null("Mesh") as MeshInstance3D
+	if visual == null or visual.mesh == null or visual.mesh.get_surface_count() == 0:
+		return AABB()
+	var material := visual.get_active_material(0) as ShaderMaterial
+	if material == null: return AABB()
+	if _has_bark(visual):
+		if visual.material_override != null or not _is_moss_bark_material(material): return AABB()
+		var source := _tree_meshes.get(0, visual.mesh) as Mesh
+		if source != _moss_bark_source:
+			_moss_bark_source = source
+			var vertices: PackedVector3Array = source.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+			_moss_bark_bounds = AABB()
+			if not vertices.is_empty():
+				_moss_bark_bounds.position = vertices[0]
+				for vertex in vertices: _moss_bark_bounds = _moss_bark_bounds.expand(vertex)
+		return _moss_bark_bounds
+	if not material.get_meta("ember_derived_solid_material", false): return AABB()
+	var authored := authoring_visual_state().get("mesh") as Mesh
+	return authored.get_aabb() if authored != null else AABB()
+
+
+func _has_bark(visual: MeshInstance3D) -> bool:
+	return visual != null and visual.mesh != null and visual.mesh.get_surface_count() > 0 and visual.mesh.surface_get_name(0) == "tree_bark"
+
+
+func _is_moss_bark_material(material: ShaderMaterial) -> bool:
+	return material != null and material.shader != null and material.shader.resource_path == "res://shaders/ember_tree_bark.gdshader"
+
+
+func _apply_tree_moss(visual: MeshInstance3D) -> void:
+	if moss_mask.is_empty():
+		if _tree_moss_material != null:
+			if visual.get_surface_override_material(0) == _tree_moss_material:
+				visual.set_surface_override_material(0, _tree_moss_base_override)
+			_tree_moss_material = null
+			_tree_moss_base_override = null
+			_refresh_moss_tufts(AABB())
+		return
+	var active := visual.get_active_material(0) as ShaderMaterial
+	if visual.material_override != null or not _is_moss_bark_material(active): return
+	if active != _tree_moss_material:
+		if _tree_meshes.is_empty():
+			_tree_meshes[0] = visual.mesh
+			_published_material = visual.material_override
+		_remember_tree_overrides(visual)
+		var base_override := visual.get_surface_override_material(0)
+		if _tree_moss_material == null or base_override == null or base_override != _tree_moss_base_override:
+			_tree_moss_base_override = base_override
+			_tree_moss_material = active.duplicate() as ShaderMaterial
+			_tree_moss_material.set_meta("ember_derived_tree_material", true)
+		visual.set_surface_override_material(0, _tree_moss_material)
+	_bind_moss(_tree_moss_material)
+
+
+func moss_surface_hit(first: Vector3, last: Vector3, physics_hit: Dictionary) -> Dictionary:
+	var visual := get_node("Mesh") as MeshInstance3D
+	if not _has_bark(visual): return physics_hit
+	if _moss_pick_source != visual.mesh:
+		_moss_pick_source = visual.mesh
+		_moss_pick_triangles = TriangleMesh.new()
+		if not _moss_pick_triangles.create_from_faces(ObjectMoss.bark_faces(visual.mesh)):
+			_moss_pick_triangles = null
+	if _moss_pick_triangles == null: return {}
+	var hit := _moss_pick_triangles.intersect_segment(visual.to_local(first), visual.to_local(last))
+	if hit.is_empty(): return {}
+	hit.position = visual.to_global(hit.position)
+	hit.normal = (visual.global_basis.inverse().transposed() * hit.normal).normalized()
+	return hit
+
+
+func _bind_moss(material: ShaderMaterial) -> void:
+	if material == null or (not material.get_meta("ember_derived_solid_material", false) and not _is_moss_bark_material(material)):
+		return
+	var bounds := moss_paint_bounds() if not moss_mask.is_empty() else AABB()
+	if bounds.has_volume() and _moss_texture == null:
+		_moss_texture = ObjectMoss.texture(moss_mask)
+	material.set_shader_parameter("object_moss_enabled", _moss_texture != null and bounds.has_volume())
+	material.set_shader_parameter("object_moss_mask", _moss_texture)
+	if bounds.has_volume():
+		material.set_shader_parameter("object_moss_origin", bounds.position)
+		material.set_shader_parameter("object_moss_extent", bounds.size)
+		var dark := ObjectMoss.preset.shadow_color.srgb_to_linear()
+		var light := ObjectMoss.preset.light_color.srgb_to_linear()
+		material.set_shader_parameter("object_moss_shadow", Vector3(dark.r, dark.g, dark.b))
+		material.set_shader_parameter("object_moss_light", Vector3(light.r, light.g, light.b))
+		add_to_group(ObjectMoss.PAINTED_GROUP)
+	_refresh_moss_tufts(bounds)
+
+
+func preview_moss_details(detail: Vector3) -> void:
+	_moss_preview = detail
+	if not moss_mask.is_empty(): _refresh_moss_tufts(moss_paint_bounds())
+
+
+func _refresh_moss_tufts(bounds: AABB) -> void:
+	if not bounds.has_volume():
+		if is_instance_valid(_moss_tufts):
+			_moss_tufts.free()
+			_moss_tufts = null
+		return
+	var visual := get_node("Mesh") as MeshInstance3D
+	var detail := _moss_preview if _moss_preview.x > 0.0 else ObjectMoss.saved_detail()
+	if visual.mesh == _moss_tuft_source and detail == _moss_tuft_detail: return
+	_moss_tuft_source = visual.mesh
+	_moss_tuft_detail = detail
+	var tuft_mesh := ObjectMoss.tuft_mesh(visual.mesh, bounds, moss_mask, detail, _has_bark(visual))
+	if tuft_mesh == null and _moss_tufts == null: return
+	if _moss_tufts == null:
+		_moss_tufts = MeshInstance3D.new()
+		_moss_tufts.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_moss_tufts.visibility_range_end = 12.0 * block_world_size
+		_moss_tufts.visibility_range_end_margin = 3.0 * block_world_size
+		_moss_tufts.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+		visual.add_child(_moss_tufts, false, Node.INTERNAL_MODE_BACK)
+	_moss_tufts.mesh = tuft_mesh
 
 
 func preview_solid_material_light(pattern: EmberCompactTerrainPattern,id: String) -> void:
@@ -637,6 +902,10 @@ func preview_solid_material_light(pattern: EmberCompactTerrainPattern,id: String
 
 
 func _invalidate_floor_faces() -> void:
+	restore_runtime_shadow_lod()
+	set_runtime_physics_active(true)
+	var map:=_owning_map()
+	if map!=null:map.invalidate_physics_activity()
 	_floor_faces=PackedVector3Array()
 	_floor_data_ready=false
 	_floor_grid.clear()
@@ -645,6 +914,11 @@ func _invalidate_floor_faces() -> void:
 	_notify_surface_change()
 
 func _exit_tree()->void:
+	packed_detail_path = ""
+	packed_detail_mesh = null
+	packed_detail_wanted = false
+	restore_runtime_shadow_lod()
+	set_runtime_physics_active(true)
 	_notify_surface_change()
 
 func _notify_surface_change()->void:
@@ -766,6 +1040,7 @@ func configure_voxel_scale(density: int, world_size: float) -> void:
 
 
 func _apply_voxel_scale() -> void:
+	restore_runtime_shadow_lod()
 	for child_name in ["Mesh", "ShadowBody"]:
 		var visual := get_node_or_null(child_name) as MeshInstance3D
 		if visual:

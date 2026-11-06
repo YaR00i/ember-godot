@@ -157,6 +157,13 @@ var _library_setup := {}
 
 var in_place_context: Dictionary = {}
 var entry_transition_active := false
+var _staff_action_playing := false
+
+func _exit_tree() -> void:
+	if _staff_action_playing:
+		var visual := in_place_context.get("miraStaffVisual") as Node3D
+		if is_instance_valid(visual):
+			visual.end_battle_staff_strike()
 signal presentation_ready
 
 func _ready() -> void:
@@ -1108,6 +1115,20 @@ func _reset_lab(reopen_deployment: bool = true, retry_confirmed: bool = false) -
 	if not in_place_context.is_empty():
 		_state = preload("res://scripts/ember_field_encounter.gd").with_initiative(_state, str(in_place_context.get("initiative", "player")))
 		_state = preload("res://scripts/ember_combat_world_items.gd").install(_state,in_place_context.get("worldItems",{}))
+		_state["fieldGeometry"] = in_place_context.get("fieldGeometry", {}).duplicate(true)
+		var wet_cells: Array = in_place_context.get("wetCells", [])
+		for cell: Vector2i in wet_cells:
+			var row: Dictionary = _state.grid.cells[EmberCombatTerrain.cell_key(cell)]
+			row["tags"] = ["wet"]
+			row["group"] = "field_puddle"
+			row["terrain"] = EmberBattlefieldResource.TerrainKind.WET
+		var leaves_key := EmberCombatTerrain.cell_key(in_place_context.get("dryLeavesCell", Vector2i(-1, -1)))
+		if _state.grid.cells.has(leaves_key):
+			var leaves: Dictionary = _state.grid.cells[leaves_key]
+			if leaves.get("tags", []).is_empty():
+				leaves["tags"] = ["dry_leaves"]
+		if not wet_cells.is_empty() and _authored_encounter != null and _authored_encounter.encounter_id == "tide_pressure":
+			_add_lab_effect_actions("mira", ["spark", "chill"])
 	if _authored_encounter == null and _is_grid_mode():
 		_add_lab_effect_actions("mira", ["earth_raise", "earth_wall", "wind_spread"])
 	var battle_inventory := (
@@ -1123,7 +1144,7 @@ func _reset_lab(reopen_deployment: bool = true, retry_confirmed: bool = false) -
 	)
 	_deployment_allowed_cells.clear()
 	if deployment_field != null:
-		_deployment_allowed_cells.assign(deployment_field.party_deployment_cells)
+		_deployment_allowed_cells.assign(in_place_context.get("fieldPartySlots", deployment_field.party_deployment_cells))
 	var defaults := Grid.deployment_default_placement(_state, _deployment_allowed_cells)
 	var customizable := Grid.deployment_enabled(_state, _deployment_allowed_cells)
 	_strategy_deployment = (
@@ -1190,8 +1211,7 @@ func finish_world_entry() -> void:
 
 
 func _add_lab_effect_actions(unit_id: String, action_ids: Array[String]) -> void:
-	## Standalone laboratory convenience only. Canonical hero Resources keep the
-	## approved roles until the player assigns a candidate through the editor.
+	## Local encounter and laboratory actions leave canonical hero Resources intact.
 	var units: Dictionary = _state.get("units", {})
 	if not units.has(unit_id):
 		return
@@ -1369,6 +1389,8 @@ func _focus_deployment_hero(hero_id: String) -> void:
 
 
 func _refresh() -> void:
+	if _staff_action_playing:
+		return
 	_invalidate_plan_cache()
 	_ensure_selection()
 	_invalidate_plan_cache()
@@ -1708,7 +1730,7 @@ func _approach_intent_copy(preview: Dictionary) -> String:
 
 
 func _on_external_field_gui_input(event: InputEvent, surface: Control) -> void:
-	if _external_3d_world == null:
+	if _staff_action_playing or _external_3d_world == null:
 		return
 	if bool(_external_3d_world.call("handle_camera_input", event)):
 		surface.accept_event()
@@ -1789,6 +1811,8 @@ func _rebuild_action_plan() -> void:
 
 
 func _on_grid_cell_hovered(cell: Vector2i) -> void:
+	if _staff_action_playing:
+		return
 	if _deployment_editing:
 		if _deployment_selecting_cell and cell != _hover_cell:
 			_hover_cell = cell
@@ -2927,11 +2951,33 @@ func _confirm_action() -> void:
 		_external_3d_world.call("finish_lift_presentation")
 	if not bool(_current_preview.get("ok", false)) or Combat.outcome(_state) != "active":
 		return
-	var committed := Combat.commit(_state, _current_preview)
+	var resolved := _current_preview
+	var committed := Combat.commit(_state, resolved)
 	if int(committed.get("turn", 0)) == int(_state.get("turn", 0)):
 		return
-	_queue_world_animation(_state, _current_preview)
-	_state = committed
+	var staff_visual := in_place_context.get("miraStaffVisual") as Node3D
+	var played_staff := false
+	if (
+		is_instance_valid(staff_visual) and is_instance_valid(_external_3d_world)
+		and _field_view_mode == "3d" and resolved.get("actorId") == "mira" and resolved.get("actionId") == "strike"
+	):
+		entry_transition_active = true
+		_staff_action_playing = true
+		played_staff = await _external_3d_world.begin_mira_staff_strike(staff_visual, resolved)
+		if played_staff:
+			while is_instance_valid(staff_visual) and not staff_visual.battle_staff_at_contact():
+				await get_tree().process_frame
+			_state = committed
+			_external_3d_world.show_mira_staff_impact(resolved, _state)
+			while is_instance_valid(staff_visual) and staff_visual.staff_action_active():
+				await get_tree().process_frame
+			if is_instance_valid(staff_visual):
+				staff_visual.end_battle_staff_strike()
+		entry_transition_active = false
+		_staff_action_playing = false
+	if not played_staff:
+		_queue_world_animation(_state, resolved)
+		_state = committed
 	_clear_selected_action_state()
 	_browsed_command_id = ""
 	_selection_origin_page = "root"
@@ -3225,6 +3271,8 @@ func _cancel_pending_move() -> void:
 
 
 func _on_grid_cell_chosen(cell: Vector2i, unit_id: String) -> void:
+	if _staff_action_playing:
+		return
 	if _deployment_active:
 		if not _deployment_editing:
 			return

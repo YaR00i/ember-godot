@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="EmberCompactTerrainPattern" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_compact_terrain_pattern.gd" id="1"]
+[ext_resource type="Texture2D" path="res://content/terrain_materials/textures/moss_albedo.res" id="2"]
+
+[resource]
+resource_name = "Мох"
+script = ExtResource("1")
+role_id = "soil"
+albedo_texture = ExtResource("2")
+albedo_relief_enabled = false
+albedo_periodic = true
+base_color = Color(0.50, 0.61, 0.30, 1)
+light_color = Color(0.573, 0.681, 0.356, 1)
+shadow_color = Color(0.403, 0.539, 0.245, 1)
+pixels = PackedByteArray("AAAAAAAAAQEAAAICAgIAAAEBAAAAAAAAAAACAgIAAAEBAQAAAAIAAAAAAAIAAAABAQEAAAICAgAAAAAAAAAAAQAAAAICAgIAAAEBAAAAAAAAAAACAgIAAAEBAQAAAAAAAAAAAgAAAAEBAQAAAAIAAAAAAAAAAAEBAQAAAgICAAAAAAAAAAABAQAAAgICAgAAAQEAAAAAAAAAAAICAgAAAQEBAAAAAgAAAAAAAgAAAAEBAQAAAgICAAAAAAAAAAABAAAAAgICAgAAAQEAAAAAAAAAAAICAgAAAQEBAAAAAAAAAAACAAAAAQEBAAAAAgAAAAAAAAAAAQEBAAACAgIAAA==")

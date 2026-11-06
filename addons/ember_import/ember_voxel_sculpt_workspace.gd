@@ -570,7 +570,7 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 		if event.keycode == KEY_ESCAPE:
-			_generator_panel._clear_preview()
+			if not _generator_panel.cancel_building_gesture():_generator_panel._clear_preview()
 			get_viewport().set_input_as_handled()
 			return
 	if is_instance_valid(_object_name_input) and _object_name_input.has_focus():
@@ -3488,6 +3488,9 @@ func _on_viewport_input(event: InputEvent) -> void:
 		return
 	if _generator_active():
 		# Camera remains live, but recipe preview is never a sculpt target.
+		if _resource!=null:
+			var frame:=Transform3D(Basis.IDENTITY,Vector3(_resource.size_blocks.x*.5,0,_resource.size_blocks.z*.5))
+			_generator_panel.forward_building_input(_camera,event,frame)
 		accept_event()
 		return
 	if is_instance_valid(_selection_interaction) and _selection_interaction.handle(event):
@@ -5766,10 +5769,14 @@ func _finish_live_changes(dirty: Dictionary, tool_id: int, relief_height: int) -
 func _finish_stroke() -> void:
 	if not _stroke_active:
 		return
-	_drain_volume_smooth(true)
-	var inherited:=_volume_smooth_owners.duplicate()
 	if _edit_trace != null:
 		_edit_trace.begin("pointer_up")
+		_edit_trace.begin("worker_completion")
+	_drain_volume_smooth(true)
+	if _edit_trace != null:
+		_edit_trace.end()
+	var inherited:=_volume_smooth_owners.duplicate()
+	if _edit_trace != null:
 		_edit_trace.begin("undo_snapshot_copy")
 	var before := _stroke_before
 	var after := _resource.voxels.duplicate() if _resource != null else PackedByteArray()
@@ -6715,6 +6722,7 @@ func _show_generator_preview(packed: PackedScene, source: EmberVoxelModelResourc
 	_generator_preview.name = "GeneratorRecipePreview"
 	_generator_preview.add_child(mesh)
 	_generator_preview.position = Vector3(_resource.size_blocks.x * 0.5, 0, _resource.size_blocks.z * 0.5)
+	_generator_preview.position -= _generator_panel.building_source_offset()
 	_viewport.add_child(_generator_preview)
 	prop.free()
 

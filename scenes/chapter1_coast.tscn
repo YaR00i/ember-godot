@@ -1,0 +1,365 @@
+[gd_scene format=4]
+
+[ext_resource type="PackedScene" path="res://prefabs/items/shared_world_water.tscn" id="shared_world_water"]
+
+[ext_resource type="PackedScene" path="res://prefabs/items/chapter1_fishing_stop.tscn" id="fishing_stop"]
+
+[ext_resource type="Script" path="res://scripts/world_canvas.gd" id="1_xyrq7"]
+[ext_resource type="Script" path="res://scripts/ember_map_loader.gd" id="2_fv3xw"]
+[ext_resource type="Resource" path="res://content/world_terrains/chapter1/chapter1_coast.res" id="3_4gado"]
+[ext_resource type="Material" path="res://materials/ember_compact_sky_reflection_study.tres" id="4_ywknv"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_painted_maple_autumn_palette.tscn" id="5_rui4p"]
+[ext_resource type="Script" path="res://scripts/ember_voxel_prop.gd" id="6_edxua"]
+[ext_resource type="Material" path="res://materials/ember_voxel_toon.tres" id="7_claw3"]
+[ext_resource type="Script" path="res://scripts/ember_region.gd" id="8_wlnrj"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_5344o"]
+sky_top_color = Color(0.24, 0.32, 0.48, 1)
+sky_horizon_color = Color(1, 0.6, 0.35, 1)
+ground_horizon_color = Color(0.68, 0.42, 0.33, 1)
+
+[sub_resource type="Sky" id="Sky_eecr5"]
+sky_material = SubResource("ProceduralSkyMaterial_5344o")
+
+[sub_resource type="Environment" id="Environment_3tc0p"]
+background_mode = 2
+sky = SubResource("Sky_eecr5")
+ambient_light_source = 2
+ambient_light_color = Color(0.5, 0.59, 0.78, 1)
+ambient_light_energy = 0.55
+tonemap_mode = 2
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_nonao"]
+_surfaces = [{
+"aabb": AABB(-11, -23, -15, 22, 46, 30),
+"attribute_data": PackedByteArray("d355/wAAAAAAAAAAd355/6uqKj8AAAAAd355/6uqqj4AAAAAd355/wAAgD8AAAAAd355/wAAAAAAAAA/d355/6uqKj8AAAA/d355/6uqqj4AAAA/d355/wAAgD8AAAA/d355/6uqqj4AAAAAd355/wAAAAAAAAA/d355/6uqKj8AAAAAd355/6uqqj4AAAA/d355/6uqqj4AAAA/d355/wAAAAAAAIA/d355/6uqKj8AAAA/d355/6uqqj4AAIA/d355/6uqqj4AAAA/d355/6uqKj8AAAA/d355/6uqKj8AAAA/d355/wAAgD8AAAA/d355/6uqqj4AAIA/d355/6uqKj8AAIA/d355/6uqKj8AAIA/d355/wAAgD8AAIA/"),
+"format": 34359742495,
+"index_count": 36,
+"index_data": PackedByteArray("AAACAAQAAgAGAAQAAQADAAUAAwAHAAUACAAKAAwACgAOAAwACQALAA0ACwAPAA0AEAASABQAEgAWABQAEQATABUAEwAXABUA"),
+"material": ExtResource("7_claw3"),
+"name": "chapter1_blockout",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 24,
+"vertex_data": PackedByteArray("AAAwwQAAuEEAAHBBAAAwQQAAuEEAAHDBAAAwQQAAuEEAAHBBAAAwwQAAuEEAAHDBAAAwwQAAuMEAAHBBAAAwQQAAuMEAAHDBAAAwQQAAuMEAAHBBAAAwwQAAuMEAAHDBAAAwQQAAuEEAAHBBAAAwwQAAuEEAAHDBAAAwQQAAuEEAAHDBAAAwwQAAuEEAAHBBAAAwQQAAuMEAAHBBAAAwwQAAuMEAAHDBAAAwQQAAuMEAAHDBAAAwwQAAuMEAAHBBAAAwQQAAuEEAAHBBAAAwwQAAuMEAAHBBAAAwwQAAuEEAAHBBAAAwQQAAuMEAAHBBAAAwQQAAuEEAAHDBAAAwwQAAuMEAAHDBAAAwwQAAuEEAAHDBAAAwQQAAuMEAAHDB/3//f////7//////AAD/v/9//3////+//////wAA/7//f/9/////v/////8AAP+//3//f////7//////AAD/v///AID/////AAAAgP9//7///wCA/////wAAAID/f/+///8AgP////8AAACA/3//v///AID/////AAAAgP9//78AgP//AAD/vwCAAAD///+/AID//wAA/78AgAAA////vwCA//8AAP+/AIAAAP///78AgP//AAD/vwCAAAD///+/")
+}]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_3q0ch"]
+size = Vector3(22, 46, 30)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_o0gx2"]
+size = Vector3(22, 46, 30)
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_hh0vy"]
+_surfaces = [{
+"aabb": AABB(-38, -8, -15, 76, 16, 30),
+"attribute_data": PackedByteArray("d355/wAAAAAAAAAAd355/6uqKj8AAAAAd355/6uqqj4AAAAAd355/wAAgD8AAAAAd355/wAAAAAAAAA/d355/6uqKj8AAAA/d355/6uqqj4AAAA/d355/wAAgD8AAAA/d355/6uqqj4AAAAAd355/wAAAAAAAAA/d355/6uqKj8AAAAAd355/6uqqj4AAAA/d355/6uqqj4AAAA/d355/wAAAAAAAIA/d355/6uqKj8AAAA/d355/6uqqj4AAIA/d355/6uqqj4AAAA/d355/6uqKj8AAAA/d355/6uqKj8AAAA/d355/wAAgD8AAAA/d355/6uqqj4AAIA/d355/6uqKj8AAIA/d355/6uqKj8AAIA/d355/wAAgD8AAIA/"),
+"format": 34359742495,
+"index_count": 36,
+"index_data": PackedByteArray("AAACAAQAAgAGAAQAAQADAAUAAwAHAAUACAAKAAwACgAOAAwACQALAA0ACwAPAA0AEAASABQAEgAWABQAEQATABUAEwAXABUA"),
+"material": ExtResource("7_claw3"),
+"name": "chapter1_blockout",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 24,
+"vertex_data": PackedByteArray("AAAYwgAAAEEAAHBBAAAYQgAAAEEAAHDBAAAYQgAAAEEAAHBBAAAYwgAAAEEAAHDBAAAYwgAAAMEAAHBBAAAYQgAAAMEAAHDBAAAYQgAAAMEAAHBBAAAYwgAAAMEAAHDBAAAYQgAAAEEAAHBBAAAYwgAAAEEAAHDBAAAYQgAAAEEAAHDBAAAYwgAAAEEAAHBBAAAYQgAAAMEAAHBBAAAYwgAAAMEAAHDBAAAYQgAAAMEAAHDBAAAYwgAAAMEAAHBBAAAYQgAAAEEAAHBBAAAYwgAAAMEAAHBBAAAYwgAAAEEAAHBBAAAYQgAAAMEAAHBBAAAYQgAAAEEAAHDBAAAYwgAAAMEAAHDBAAAYwgAAAEEAAHDBAAAYQgAAAMEAAHDB/3//f////7//////AAD/v/9//3////+//////wAA/7//f/9/////v/////8AAP+//3//f////7//////AAD/v///AID/////AAAAgP9//7///wCA/////wAAAID/f/+///8AgP////8AAACA/3//v///AID/////AAAAgP9//78AgP//AAD/vwCAAAD///+/AID//wAA/78AgAAA////vwCA//8AAP+/AIAAAP///78AgP//AAD/vwCAAAD///+/")
+}]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_j2f6d"]
+size = Vector3(76, 16, 30)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_mi3bn"]
+size = Vector3(28, 48, 28)
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_pay0k"]
+_surfaces = [{
+"aabb": AABB(-1.5, -12, -1.5, 3, 24, 3),
+"attribute_data": PackedByteArray("hpN1/wAAAAAAAAAAhpN1/6uqKj8AAAAAhpN1/6uqqj4AAAAAhpN1/wAAgD8AAAAAhpN1/wAAAAAAAAA/hpN1/6uqKj8AAAA/hpN1/6uqqj4AAAA/hpN1/wAAgD8AAAA/hpN1/6uqqj4AAAAAhpN1/wAAAAAAAAA/hpN1/6uqKj8AAAAAhpN1/6uqqj4AAAA/hpN1/6uqqj4AAAA/hpN1/wAAAAAAAIA/hpN1/6uqKj8AAAA/hpN1/6uqqj4AAIA/hpN1/6uqqj4AAAA/hpN1/6uqKj8AAAA/hpN1/6uqKj8AAAA/hpN1/wAAgD8AAAA/hpN1/6uqqj4AAIA/hpN1/6uqKj8AAIA/hpN1/6uqKj8AAIA/hpN1/wAAgD8AAIA/"),
+"format": 34359742495,
+"index_count": 36,
+"index_data": PackedByteArray("AAACAAQAAgAGAAQAAQADAAUAAwAHAAUACAAKAAwACgAOAAwACQALAA0ACwAPAA0AEAASABQAEgAWABQAEQATABUAEwAXABUA"),
+"material": ExtResource("7_claw3"),
+"name": "chapter1_blockout",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 24,
+"vertex_data": PackedByteArray("AADAvwAAQEEAAMA/AADAPwAAQEEAAMC/AADAPwAAQEEAAMA/AADAvwAAQEEAAMC/AADAvwAAQMEAAMA/AADAPwAAQMEAAMC/AADAPwAAQMEAAMA/AADAvwAAQMEAAMC/AADAPwAAQEEAAMA/AADAvwAAQEEAAMC/AADAPwAAQEEAAMC/AADAvwAAQEEAAMA/AADAPwAAQMEAAMA/AADAvwAAQMEAAMC/AADAPwAAQMEAAMC/AADAvwAAQMEAAMA/AADAPwAAQEEAAMA/AADAvwAAQMEAAMA/AADAvwAAQEEAAMA/AADAPwAAQMEAAMA/AADAPwAAQEEAAMC/AADAvwAAQMEAAMC/AADAvwAAQEEAAMC/AADAPwAAQMEAAMC//3//f////7//////AAD/v/9//3////+//////wAA/7//f/9/////v/////8AAP+//3//f////7//////AAD/v///AID/////AAAAgP9//7///wCA/////wAAAID/f/+///8AgP////8AAACA/3//v///AID/////AAAAgP9//78AgP//AAD/vwCAAAD///+/AID//wAA/78AgAAA////vwCA//8AAP+/AIAAAP///78AgP//AAD/vwCAAAD///+/")
+}]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_aowgg"]
+size = Vector3(3, 24, 3)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_j36xc"]
+size = Vector3(3, 24, 3)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_g2cub"]
+size = Vector3(28, 48, 28)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_kpjmb"]
+size = Vector3(3, 24, 3)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_mrwgi"]
+size = Vector3(3, 24, 3)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_le184"]
+size = Vector3(28, 48, 28)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_a2tru"]
+size = Vector3(28, 48, 28)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_1q4lv"]
+size = Vector3(28, 48, 28)
+
+[node name="chapter1_coast" type="Node3D" unique_id=97755606]
+script = ExtResource("1_xyrq7")
+sandbox_storage_root = "user://ember-chapter1-blockout"
+map_id = "chapter1_coast"
+metadata/chapter1_blockout = true
+metadata/blockout_title = "Дальний берег · рыбалка и пещера"
+
+[node name="Map" type="Node3D" parent="." unique_id=1066416864]
+script = ExtResource("2_fv3xw")
+map_id = "chapter1_coast"
+compact_smooth_study_column_limit = 1572864
+compact_terrain = ExtResource("3_4gado")
+compact_ground_style = 1
+compact_smooth_material_blend = true
+compact_water_visual_material = ExtResource("4_ywknv")
+compact_water_mesh_step = 8
+compact_water_volume_sides = true
+compact_material_light_mode = 1
+authored_size_blocks = Vector2i(40, 36)
+camera_distance = 170.0
+camera_polar = 0.88
+camera_yaw = 0.35
+camera_look_height = 5.0
+camera_far = 1600.0
+
+[node name="Look" type="Node3D" parent="Map" unique_id=1385768570]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="Map/Look" unique_id=367969392]
+environment = SubResource("Environment_3tc0p")
+
+[node name="Sun" type="DirectionalLight3D" parent="Map/Look" unique_id=1439816895]
+transform = Transform3D(0.57357645, 0.46984634, -0.6710101, 0, 0.81915206, 0.57357645, 0.81915206, -0.32898995, 0.46984634, 0, 0, 0)
+light_color = Color(1, 0.79, 0.59, 1)
+light_energy = 1.1
+shadow_enabled = true
+directional_shadow_max_distance = 600.0
+
+[node name="Terrain" type="Node3D" parent="Map" unique_id=1600583472]
+
+[node name="Props" type="Node3D" parent="Map" unique_id=1635989619]
+
+[node name="Maple0" type="Node3D" parent="Map/Props" unique_id=424303866 instance=ExtResource("5_rui4p")]
+transform = Transform3D(0.65, 0, 0, 0, 0.65, 0, 0, 0, 0.65, 112, 8, 144)
+script = ExtResource("6_edxua")
+model_id = "vox_painted_maple_autumn_palette"
+placement_id = "chapter1_coast_Maple0"
+metadata/ember_source_signature = "802017ebad60aeae8e176230727862c08ba5c4c3e1b8f1e838a124aaf50166fe"
+
+[node name="Maple1" type="Node3D" parent="Map/Props" unique_id=1421284097 instance=ExtResource("5_rui4p")]
+transform = Transform3D(0.65, 0, 0, 0, 0.65, 0, 0, 0, 0.65, 272, 8, 112)
+script = ExtResource("6_edxua")
+model_id = "vox_painted_maple_autumn_palette"
+placement_id = "chapter1_coast_Maple1"
+metadata/ember_source_signature = "802017ebad60aeae8e176230727862c08ba5c4c3e1b8f1e838a124aaf50166fe"
+
+[node name="Maple2" type="Node3D" parent="Map/Props" unique_id=458703397 instance=ExtResource("5_rui4p")]
+transform = Transform3D(0.65, 0, 0, 0, 0.65, 0, 0, 0, 0.65, 320, 8, 512)
+script = ExtResource("6_edxua")
+model_id = "vox_painted_maple_autumn_palette"
+placement_id = "chapter1_coast_Maple2"
+metadata/ember_source_signature = "802017ebad60aeae8e176230727862c08ba5c4c3e1b8f1e838a124aaf50166fe"
+
+[node name="FishingStop" parent="Map/Props" instance=ExtResource("fishing_stop")]
+position = Vector3(480, 8, 432)
+
+[node name="@Label3D@3" type="Label3D" parent="Map/Props" unique_id=952155655]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 176, 26, 480)
+pixel_size = 0.11
+billboard = 1
+modulate = Color(1, 0.95686275, 0.83137256, 1)
+text = "Загадочный торговец · место"
+outline_size = 8
+
+[node name="CaveMouth" type="Node3D" parent="Map/Props" unique_id=1936020717]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 448, 8, 64)
+metadata/presentation_id = "CaveMouth"
+
+[node name="LeftRock" type="MeshInstance3D" parent="Map/Props/CaveMouth" unique_id=572391327]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -27, 23, 0)
+mesh = SubResource("ArrayMesh_nonao")
+
+[node name="LeftRockCollision" type="StaticBody3D" parent="Map/Props/CaveMouth" unique_id=1484827307]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -27, 23, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/CaveMouth/LeftRockCollision" unique_id=144844301]
+shape = SubResource("BoxShape3D_3q0ch")
+
+[node name="RightRock" type="MeshInstance3D" parent="Map/Props/CaveMouth" unique_id=1257123160]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 27, 23, 0)
+mesh = SubResource("ArrayMesh_nonao")
+
+[node name="RightRockCollision" type="StaticBody3D" parent="Map/Props/CaveMouth" unique_id=2051195589]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 27, 23, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/CaveMouth/RightRockCollision" unique_id=521380365]
+shape = SubResource("BoxShape3D_o0gx2")
+
+[node name="CapRock" type="MeshInstance3D" parent="Map/Props/CaveMouth" unique_id=1475946833]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 47, 0)
+mesh = SubResource("ArrayMesh_hh0vy")
+
+[node name="CapRockCollision" type="StaticBody3D" parent="Map/Props/CaveMouth" unique_id=2135070623]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 47, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/CaveMouth/CapRockCollision" unique_id=775548409]
+shape = SubResource("BoxShape3D_j2f6d")
+
+[node name="ToWoodland" type="Node3D" parent="Map/Props" unique_id=1946470406]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 24, 8, 288)
+metadata/presentation_id = "ToWoodland"
+
+[node name="exit_from_woodland" type="Area3D" parent="Map/Props/ToWoodland" unique_id=1462955185]
+script = ExtResource("8_wlnrj")
+region_id = "exit_from_woodland"
+map_id = "chapter1_coast"
+target_map_id = "chapter1_woodland"
+target_region_id = "from_coast"
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/ToWoodland/exit_from_woodland" unique_id=803458046]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 16, 0)
+shape = SubResource("BoxShape3D_mi3bn")
+
+[node name="Label" type="Label3D" parent="Map/Props/ToWoodland" unique_id=733774302]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 22, 0)
+pixel_size = 0.11
+billboard = 1
+modulate = Color(0.84313726, 0.9137255, 0.7254902, 1)
+text = "← Опушка"
+outline_size = 8
+
+[node name="GateLeft" type="MeshInstance3D" parent="Map/Props/ToWoodland" unique_id=1532883331]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -19, 12, 0)
+mesh = SubResource("ArrayMesh_pay0k")
+
+[node name="GateLeftCollision" type="StaticBody3D" parent="Map/Props/ToWoodland" unique_id=2037654063]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -19, 12, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/ToWoodland/GateLeftCollision" unique_id=454062066]
+shape = SubResource("BoxShape3D_aowgg")
+
+[node name="GateRight" type="MeshInstance3D" parent="Map/Props/ToWoodland" unique_id=1842971890]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 12, 0)
+mesh = SubResource("ArrayMesh_pay0k")
+
+[node name="GateRightCollision" type="StaticBody3D" parent="Map/Props/ToWoodland" unique_id=1070279593]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 12, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/ToWoodland/GateRightCollision" unique_id=1572170429]
+shape = SubResource("BoxShape3D_j36xc")
+
+[node name="ToCave" type="Node3D" parent="Map/Props" unique_id=211969288]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 448, 8, 32)
+metadata/presentation_id = "ToCave"
+
+[node name="exit_from_tide_cave" type="Area3D" parent="Map/Props/ToCave" unique_id=2032559233]
+script = ExtResource("8_wlnrj")
+region_id = "exit_from_tide_cave"
+map_id = "chapter1_coast"
+target_map_id = "chapter1_tide_cave"
+target_region_id = "from_coast"
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/ToCave/exit_from_tide_cave" unique_id=2145038165]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 16, 0)
+shape = SubResource("BoxShape3D_g2cub")
+
+[node name="Label" type="Label3D" parent="Map/Props/ToCave" unique_id=1091672682]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 22, 0)
+pixel_size = 0.11
+billboard = 1
+modulate = Color(0.84313726, 0.9137255, 0.7254902, 1)
+text = "В пещеру →"
+outline_size = 8
+
+[node name="GateLeft" type="MeshInstance3D" parent="Map/Props/ToCave" unique_id=1404477294]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -19, 12, 0)
+mesh = SubResource("ArrayMesh_pay0k")
+
+[node name="GateLeftCollision" type="StaticBody3D" parent="Map/Props/ToCave" unique_id=335192394]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -19, 12, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/ToCave/GateLeftCollision" unique_id=1027022496]
+shape = SubResource("BoxShape3D_kpjmb")
+
+[node name="GateRight" type="MeshInstance3D" parent="Map/Props/ToCave" unique_id=652166252]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 12, 0)
+mesh = SubResource("ArrayMesh_pay0k")
+
+[node name="GateRightCollision" type="StaticBody3D" parent="Map/Props/ToCave" unique_id=134021333]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 12, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/ToCave/GateRightCollision" unique_id=1465974200]
+shape = SubResource("BoxShape3D_mrwgi")
+
+[node name="Regions" type="Node3D" parent="Map" unique_id=601819006]
+
+[node name="entry" type="Area3D" parent="Map/Regions" unique_id=1680846214]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 96, 8, 288)
+script = ExtResource("8_wlnrj")
+region_id = "entry"
+map_id = "chapter1_coast"
+kind = "player_start"
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Regions/entry" unique_id=2009649216]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 16, 0)
+shape = SubResource("BoxShape3D_le184")
+
+[node name="from_woodland" type="Area3D" parent="Map/Regions" unique_id=1110228046]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 8, 288)
+script = ExtResource("8_wlnrj")
+region_id = "from_woodland"
+map_id = "chapter1_coast"
+kind = "player_start"
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Regions/from_woodland" unique_id=1761380232]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 16, 0)
+shape = SubResource("BoxShape3D_a2tru")
+
+[node name="from_tide_cave" type="Area3D" parent="Map/Regions" unique_id=578643744]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 448, 8, 96)
+script = ExtResource("8_wlnrj")
+region_id = "from_tide_cave"
+map_id = "chapter1_coast"
+kind = "player_start"
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Regions/from_tide_cave" unique_id=2033065154]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 16, 0)
+shape = SubResource("BoxShape3D_1q4lv")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=617197516]
+
+[node name="Gate" type="Label" parent="CanvasLayer" unique_id=2070241674]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 16.0
+offset_bottom = 16.0
+
+[node name="BlockoutLegend" type="Label" parent="CanvasLayer" unique_id=1708276929]
+offset_left = 16.0
+offset_top = 104.0
+offset_right = 16.0
+offset_bottom = 104.0
+theme_override_font_sizes/font_size = 18
+text = "Дальний берег · рыбалка и пещера · ЧЕРНОВОЙ МАРШРУТ
+WASD — ходьба · F — дверь / разговор · Tab — лидер"
+
+[node name="PlanarReflection" parent="." instance=ExtResource("shared_world_water")]

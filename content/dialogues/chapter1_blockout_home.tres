@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="EmberDialogueResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_dialogue_resource.gd" id="1_dl5k4"]
+
+[resource]
+script = ExtResource("1_dl5k4")
+dialogue_id = "chapter1_blockout_home"
+document = {
+"id": "chapter1_blockout_home",
+"nameRu": "Мать · макет",
+"startStepId": "line",
+"steps": [{
+"id": "line",
+"nameRu": "Мать · макет",
+"next": "end",
+"textRu": "Это макет кухни и разговора. Утренняя сцена и вручение подарка будут добавлены позднее.",
+"type": "dialogue"
+}, {
+"id": "end",
+"type": "end"
+}],
+"use": "talk"
+}

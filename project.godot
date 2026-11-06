@@ -29,7 +29,7 @@ window/stretch/mode="canvas_items"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/ember_import/plugin.cfg", "res://addons/ember_surface_canvas/plugin.cfg", "res://addons/godot_mcp/plugin.cfg")
+enabled=PackedStringArray("res://addons/ember_import/plugin.cfg", "res://addons/ember_animation/plugin.cfg", "res://addons/ember_surface_canvas/plugin.cfg", "res://addons/godot_mcp/plugin.cfg")
 
 [ember]
 
@@ -43,8 +43,10 @@ save_slot=0
 
 [rendering]
 
+rendering_device/pipeline_cache/save_chunk_size_mb=64.0
 textures/vram_compression/import_etc2_astc=true
 lights_and_shadows/directional_shadow/16_bits=false
 lights_and_shadows/positional_shadow/soft_shadow_filter_quality=1
 anti_aliasing/quality/msaa_3d=2
+limits/global_shader_variables/buffer_size=524288
 lights_and_shadows/positional_shadow/atlas_quadrant_0_subdiv=3

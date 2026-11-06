@@ -14,7 +14,7 @@ varying flat vec3 surface_axis_y;
 varying flat vec3 surface_axis_z;
 #ifdef EMBER_TREE_HIT_SWAY
 // Per-instance cosmetic crown response; wood/collision and shared meshes stay fixed.
-instance uniform vec4 tree_hit_sway = vec4(0.0);
+instance uniform vec4 tree_hit_sway : instance_index(3) = vec4(0.0);
 #endif
 
 void vertex() {

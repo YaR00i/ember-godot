@@ -41,15 +41,22 @@ func _ready() -> void:
 	_add_quest_journal_ui()
 	_add_pause_ui()
 	_spawn_player(ts)
+	if map_id == "coastal_house_interior" and "--mira-motion-trial" in OS.get_cmdline_user_args():
+		_install_mira_trial_visual()
+	var incoming_cargo := EmberMapTransition.consume_cargo(map_id)
+	if progress: progress.adopt_carried_items(incoming_cargo, map_id, _player.global_position)
 	if progress:
 		progress.progress_changed.connect(_refresh_world_items)
 		_refresh_world_items()
 	_add_party_followers(ts)
+	if progress: progress.exploration_leader_changed.connect(_rebind_carried_world_items)
+	_restore_carried_world_items()
 	var recovery := preload("res://scripts/ember_world_recovery.gd").new()
 	recovery.name = "WorldRecovery"
 	recovery.floor_y = recovery_floor_y
 	recovery.character_return = _recover_fallen_character
 	add_child(recovery)
+	_map.set_physics_activity_source(recovery)
 	var focus := preload("res://scripts/ember_interaction_focus.gd").new()
 	focus.name = "InteractionFocus"
 	focus.player = _player
@@ -58,15 +65,23 @@ func _ready() -> void:
 	tracker.name = "QuestTrackerUI"
 	tracker.progress_state = progress
 	$CanvasLayer.add_child(tracker)
+	_player.quest_tracker_ui = tracker
+	var journal := _player.quest_journal_ui
+	journal.visibility_changed.connect(func(): tracker.visible = not journal.is_open())
 	_resume_combat_return_action()
 	_map.refresh_cutaway_runtime()
 	_add_benchmark_overlay()
 	_hud.text = _play_text()
+	if progress and not incoming_cargo.is_empty(): progress.save_autosave()
 	# Scene setup may include chunk hydration and party presentation. Start the
 	# short anti-bounce window from the usable arrival frame, not from the first
 	# spawn lookup before that work.
 	if not _arrival_guard_region.is_empty():
 		EmberMapTransition.guard_arrival(_arrival_guard_region)
+
+
+func _install_mira_trial_visual() -> void:
+	_player._ensure_mira_visual()
 
 
 func _physics_process(dt: float) -> void:
@@ -133,6 +148,7 @@ func _spawn_player(ts: float) -> void:
 	player.position = _map.safe_spawn_world(player.position)
 	add_child(player)
 	_player = player
+	_pause_ui.player = player
 	if progress:
 		progress.set_world_context(map_id, player, ts)
 	_map.refresh_omni_shadow_focus(player.global_position)
@@ -140,9 +156,7 @@ func _spawn_player(ts: float) -> void:
 	var cam := EmberFollowCamera.new()
 	cam.name = "FollowCamera"
 	cam.target = player
-	cam.fov = _map.camera_fov
-	cam.follow_distance = _map.camera_distance
-	cam.polar_angle = _map.camera_polar
+	cam.apply_exploration_framing(_map.camera_fov, _map.camera_distance, _map.camera_polar, _map.imported_tile_size)
 	cam.yaw = _map.camera_yaw
 	cam.look_height = _map.camera_look_height
 	cam.cam_near = _map.camera_near
@@ -232,7 +246,9 @@ func _refresh_world_items() -> void:
 	var existing := {}
 	for body in get_tree().get_nodes_in_group("ember_world_item_bodies"):
 		if not is_ancestor_of(body) or body.is_queued_for_deletion(): continue
-		if body.authored_pickup: _world_item_placements[body.pickup_id] = body.placement_settings()
+		if body.authored_pickup:
+			body.map_id = map_id
+			_world_item_placements[body.pickup_id] = body.placement_settings()
 		body.register_authored_item()
 		body.refresh_availability()
 		existing[body.pickup_id] = body
@@ -264,6 +280,7 @@ func _refresh_world_items() -> void:
 		body.break_effect = placement.get("breakEffect") as PackedScene
 		body.break_impact_speed = float(placement.get("breakImpactSpeed",36.0))
 		body.throw_damage = int(placement.get("throwDamage",8))
+		body.apply_portable_settings(row.get("physical", {}))
 		if not placement.is_empty(): body.transform = global_transform.affine_inverse()*placement.transform
 		else:
 			var origin := WorldItem.Records.vector(row.position)
@@ -271,6 +288,34 @@ func _refresh_world_items() -> void:
 			body.transform = global_transform.affine_inverse() * Transform3D(Basis.from_euler(WorldItem.Records.vector(row.rotation)), origin)
 		body.progress_state = progress
 		add_child(body)
+	_restore_carried_world_items()
+
+func _rebind_carried_world_items(_hero_id: String) -> void:
+	var progress := _progress()
+	if progress == null or progress.combat_party_locked: return
+	var held: Array[Dictionary] = []
+	for body in get_tree().get_nodes_in_group("ember_world_item_bodies"):
+		if not is_ancestor_of(body) or body.is_queued_for_deletion() or not body.is_carried() or body.combat_suspended: continue
+		held.append({"body":body,"hero":str(progress.world_items.get(body.pickup_id, {}).get("carrierHeroId", ""))})
+	# Player/follower presentation has already switched. Free all occupied sockets
+	# before restoring by stable hero identity (also handles two carriers swapping).
+	for entry in held: entry.body.restore_carrier(null)
+	for entry in held:
+		if entry.hero in progress.active_hero_ids:
+			progress.world_items[entry.body.pickup_id]["carrierHeroId"] = entry.hero
+	_restore_carried_world_items()
+
+func _restore_carried_world_items() -> void:
+	if _player == null: return
+	var progress := _progress()
+	if progress == null or progress.combat_party_locked: return
+	var actors: Dictionary = _party_followers.combat_world_actors() if is_instance_valid(_party_followers) else {}
+	actors[_player.controlled_hero_id] = _player
+	for body in get_tree().get_nodes_in_group("ember_world_item_bodies"):
+		if not is_ancestor_of(body) or body.is_queued_for_deletion() or body.is_carried() or body.combat_suspended: continue
+		var row: Dictionary = progress.world_items.get(body.pickup_id, {})
+		var actor := actors.get(str(row.get("carrierHeroId", ""))) as Node3D
+		if actor != null and str(row.get("mapId", "")) == map_id: body.restore_carrier(actor)
 
 
 func _add_quest_journal_ui() -> void:
@@ -289,6 +334,7 @@ func _add_pause_ui() -> void:
 	ui.blockers = [_interaction_ui, _inventory_ui, _quest_journal_ui]
 	$CanvasLayer.add_child(ui)
 	_pause_ui = ui
+	ui.map_loader = _map
 
 
 func _add_party_followers(ts: float) -> void:
@@ -333,7 +379,7 @@ func _play_text() -> String:
 	return "\n".join([
 		"Ember Godot — %s" % map_id,
 		"Пропы в сцене. Reimport из пака затирает сдвиги.",
-		"WASD ходить/толкать · Tab герой · F действие · G бросить · I сумка · Q задания · T строй отряда · Esc меню · RMB yaw камеры · F3/F4 тест света",
+		"WASD ходить/толкать · Tab герой · F действие · G бросить · I сумка · Q задания · T строй отряда · Esc меню · RMB yaw камеры · F2 геометрия · Shift+F2 LOD · F3/F4 тест света",
 	])
 
 

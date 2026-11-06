@@ -2,6 +2,7 @@
 extends VBoxContainer
 ## Common native-editor creation workflow; no private viewport or tree renderer.
 const Generator = preload("res://addons/ember_import/ember_voxel_generator.gd")
+const BuildingPlan = preload("res://addons/ember_import/ember_building_plan_field.gd")
 const Session = preload("res://addons/ember_import/ember_voxel_generation_session.gd")
 const Presets = preload("res://addons/ember_import/ember_voxel_generator_presets.gd")
 const VectorField = preload("res://addons/ember_import/ember_voxel_vector_field.gd")
@@ -11,6 +12,7 @@ var _provider: OptionButton
 var _creation_fields: VBoxContainer
 var _fields_provider := ""
 var _fields_contract:=""
+var _building_plan:Control
 signal assets_changed(model_id: String)
 signal edit_requested(model_id: String)
 signal close_requested
@@ -340,6 +342,12 @@ func _change_parameter(key: String, value: Variant) -> void:
 	if recipe.generator_id == Generator.LARGE_TREE and key == "foliage_style" and int(value) == 3: next.parameters.foliage_cloud_version = 2
 	if key == "bark_pattern" and bool(value): next.parameters.bark_pattern_version = 2
 	next.parameters = Generator.normalized_parameters(next.generator_id, next.parameters)
+	if next.generator_id == Generator.BUILDING:
+		var errors := Generator.validation_errors(next)
+		if not errors.is_empty():
+			_sync_controls()
+			_status.text = errors[0]
+			return
 	_change_recipe(next)
 
 
@@ -348,6 +356,13 @@ func _change_recipe(next: Resource) -> void:
 	history.add_do_method(_apply_recipe.bind(next))
 	history.add_undo_method(_apply_recipe.bind(recipe))
 	history.commit_action()
+
+func set_building_layout(parameters:Dictionary,structure:Dictionary)->void:
+	var normalized=Generator.normalized_parameters(Generator.BUILDING,parameters)
+	var errors=Generator.BuildingProvider.Layout.errors(structure,normalized)
+	if not errors.is_empty():_status.text=errors[0];_building_plan.cancel();return
+	var next=recipe.duplicate(true);next.parameters=normalized;next.structure=structure.duplicate(true)
+	_change_recipe(next)
 
 
 func _apply_recipe(next: Resource) -> void:
@@ -370,10 +385,15 @@ func _sync_controls() -> void:
 		controls.clear()
 		for descriptor in Generator.creation_fields(recipe.generator_id,recipe):
 			_make_field(_advanced if descriptor.get("advanced", false) else _creation_fields, descriptor)
+		_building_plan=null
+		if recipe.generator_id==Generator.BUILDING:
+			_building_plan=BuildingPlan.new();_building_plan.add_tools(_creation_fields,false)
+			_building_plan.changed.connect(set_building_layout)
 		_fields_provider = recipe.generator_id
 		_fields_contract=contract
 		_reload_presets()
 	_provider.select(PROVIDERS.find(recipe.generator_id))
+	if is_instance_valid(_building_plan):_building_plan.configure(recipe.parameters,recipe.structure)
 	for field in Generator.creation_fields(recipe.generator_id,recipe):
 		var control: Control = controls[field.key]
 		var value: Variant = recipe.parameters.get(field.key)
@@ -489,7 +509,12 @@ func _save_preset() -> void:
 	var next := recipe.duplicate(true)
 	next.seed = int(_seed.value)
 	var path := presets.save_preset(next, _preset_name.text)
-	_status.text = presets.error if path.is_empty() else "Пресет сохранён: только настройки, без каркаса и объектов."
+	if path.is_empty():
+		_status.text = presets.error
+	elif next.generator_id == Generator.BUILDING:
+		_status.text = "Пресет сохранён: план дома и настройки."
+	else:
+		_status.text = "Пресет сохранён: только настройки, без каркаса и объектов."
 	if not path.is_empty():
 		_reload_presets()
 		if Engine.is_editor_hint(): preload("res://addons/ember_import/ember_editor_filesystem.gd").request()

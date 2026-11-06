@@ -1,7 +1,7 @@
 // One world-space field, evaluated on the unchanged authored surface. No
 // clipping, time noise or second shell: the same triangles travel to the look.
-instance uniform vec4 ember_anomaly_sphere = vec4(0.0);
-instance uniform vec2 ember_anomaly_band_look = vec2(1.0, 1.0);
+instance uniform vec4 ember_anomaly_sphere : instance_index(0) = vec4(0.0);
+instance uniform vec2 ember_anomaly_band_look : instance_index(1) = vec2(1.0, 1.0);
 uniform bool ember_anomaly_prepared = false;
 uniform bool ember_anomaly_grow_cells = false;
 uniform bool ember_anomaly_shrink_cards = false;

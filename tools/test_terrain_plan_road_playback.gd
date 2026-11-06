@@ -1,7 +1,8 @@
 extends Node
 @export var result_file := ""
 func _ready() -> void:
-	if not ProjectSettings.globalize_path("res://").contains("ember-river-preview-") or result_file.is_empty(): return
+	var project_path := ProjectSettings.globalize_path("res://")
+	if result_file.is_empty() or not (project_path.contains("ember-river-preview-") or project_path.contains("ember-entry-")): return
 	var scene := get_parent(); var player: EmberPlayer
 	var deadline := Time.get_ticks_msec()+100000
 	while player == null and Time.get_ticks_msec() < deadline:
@@ -27,10 +28,11 @@ func _ready() -> void:
 			if player.is_on_floor(): floor_frames += 1
 		Input.action_release("move_east"); for i in 15: await get_tree().physics_frame
 		var moved := Vector2(player.global_position.x,player.global_position.z).distance_to(Vector2(start.x,start.z))
-		var soil: int = terrain.column_value("top_materials",index); var sea: int = terrain.column_value("water_levels",terrain.column_index(32,32))
+		var slot: int = terrain.column_value("top_materials",index); var sea: int = terrain.column_value("water_levels",terrain.column_index(32,32))
+		var finish := terrain.material_id_for_palette(slot)
 		var physics_same: bool = not hit.is_empty() and absf(Vector3(hit.position).y-ground.y) < 0.1
-		result = {"ok":player.is_on_floor() and moved > 80 and floor_frames >= 110 and height == 96 and terrain.surface_role_for_palette(soil) == "soil" and sea == 32 and physics_same,
-			"moved":moved,"start":str(start),"finish":str(player.global_position),"start_floor":start_floor,"floor":player.is_on_floor(),"floor_frames":floor_frames,"height":height,"soil":soil,"sea":sea,"physics_same":physics_same,"renderer":RenderingServer.get_current_rendering_method()}
+		result = {"ok":player.is_on_floor() and moved > 80 and floor_frames >= 110 and height == 96 and finish == "paving" and sea == 32 and physics_same,
+			"moved":moved,"start":str(start),"finish":str(player.global_position),"start_floor":start_floor,"floor":player.is_on_floor(),"floor_frames":floor_frames,"height":height,"surface":finish,"sea":sea,"physics_same":physics_same,"renderer":RenderingServer.get_current_rendering_method()}
 		var overview := Camera3D.new(); scene.add_child(overview)
 		overview.look_at_from_position(projection.to_global(Vector3(650,700,850)),projection.to_global(Vector3(384,120,384))); overview.far = 8000; overview.make_current()
 		for i in 8: await get_tree().process_frame

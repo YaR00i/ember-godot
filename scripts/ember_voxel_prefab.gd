@@ -382,6 +382,8 @@ static func _install_mesh_resource(built: ArrayMesh, path: String) -> ArrayMesh:
 
 
 static func _copy_mesh_surfaces(target: ArrayMesh, source: ArrayMesh) -> void:
+	if target.has_meta("ember_building_entry") and not source.has_meta("ember_building_entry"):
+		target.remove_meta("ember_building_entry")
 	if source.has_meta("tree_surface_contract") or source.has_meta("solid_surface_contract"):
 		target.set("_surfaces",source.get("_surfaces"))
 		for key in source.get_meta_list():target.set_meta(key,source.get_meta(key))
@@ -550,6 +552,7 @@ static func _make_tree(
 	var w := size.x * vw
 	var d := size.z * vw
 	var inner_pos := Vector3(-w * 0.5, 0.0, -d * 0.5)
+	inner_pos += Vector3(model.get("solidSurface", {}).get("building_offset", Vector3.ZERO)) * (vw * VoxMesher.voxels_per_block(model))
 	var root := EmberVoxelProp.new()
 	root.name = model_id
 	root.model_id = model_id
@@ -560,6 +563,8 @@ static func _make_tree(
 	var visual := MeshInstance3D.new()
 	visual.name = "Mesh"
 	visual.mesh = visual_mesh
+	var entry:Dictionary=model.get("solidSurface",{}).get("building_entry",{})
+	if not entry.is_empty():visual_mesh.set_meta("ember_building_entry",{"point":entry.point*vw,"normal":entry.normal})
 	# Published branch surfaces already use the centred trunk frame. The voxel
 	# collider keeps the positive-grid adapter below; both meet at the same trunk.
 	var visual_origin:=Vector3.ZERO if load("res://scripts/ember_tree_surface.gd").active(model) else inner_pos

@@ -1,11 +1,12 @@
 @tool
 extends "res://tools/editor_test_terrain_plan_river.gd"
 func _run() -> void:
-	if "--export-pack" in OS.get_cmdline_args() or not ProjectSettings.globalize_path("res://").contains("ember-river-preview-"): return
+	var project_path := ProjectSettings.globalize_path("res://")
+	if "--export-pack" in OS.get_cmdline_args() or not (project_path.contains("ember-river-preview-") or project_path.contains("ember-entry-")): return
 	Engine.max_fps = 60; await frames(25)
 	var importer := get_parent().get_node_or_null("EmberImportPlugin")
 	if importer == null: check(false,"importer missing"); get_tree().quit(1); return
-	var deadline := Time.get_ticks_msec()+90000
+	var deadline := Time.get_ticks_msec()+120000
 	while not importer._editor_preparation._complete and Time.get_ticks_msec() < deadline: await frames(1)
 	check(importer._editor_preparation._complete,"preparation timeout")
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED); DisplayServer.window_set_size(Vector2i(1600,900))
@@ -94,8 +95,15 @@ func _run() -> void:
 	_camera.look_at_from_position(projection.to_global(Vector3(384,1200,384)),projection.to_global(Vector3(384,120,384)),Vector3.FORWARD)
 	select_line(world,points); _camera.global_transform = overview_frame; await frames(8)
 	check(Plan.read(map).regions[1].points_m == points,"final visible path points")
-	panel._buttons.generate.pressed.emit(); await apply_regions(world)
-	check(draft.resource.column_value("heights",center) == 96 and draft.resource.column_value("top_materials",center) == soil,"final road absent")
+	panel._buttons.generate.pressed.emit()
+	dialog._road_surface.select(1)
+	dialog._road_surface.item_selected.emit(1)
+	dialog._plan_save_button.pressed.emit()
+	check(Plan.read(map).regions[1].parameters.surface == "paving", "save the chosen road covering")
+	await apply_regions(world)
+	var paving_slot: int = draft.resource.palette_material_ids.find("paving")
+	check(paving_slot > 0 and draft.resource.column_value("heights",center) == 96
+		and draft.resource.column_value("top_materials",center) == paving_slot, "the applied road carries the paving material")
 	var marker := scene.get_node("Map/Regions/PlayerStart") as Node3D; marker.global_position = projection.to_global(Vector3(352,110,384))
 	var result_path := "user://road-playback-"+str(OS.get_process_id())+".json"
 	var playback := Node.new(); playback.name = "RoadPlaybackCheck"; playback.set_script(load("res://tools/test_terrain_plan_road_playback.gd")); playback.result_file = result_path

@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="EmberCompactTerrainPattern" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_compact_terrain_pattern.gd" id="1"]
+[ext_resource type="Texture2D" path="res://content/material_studies/foliage/autumn_leaf_atlas_v2.res" id="2"]
+
+[resource]
+resource_name = "Ковёр листьев"
+script = ExtResource("1")
+role_id = "soil"
+albedo_texture = ExtResource("2")
+pixels = PackedByteArray("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==")

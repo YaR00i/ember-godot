@@ -27,8 +27,11 @@ func _ready() -> void:
 		if child.has_method("startup_preparation_status"):
 			_startup_participants.append(child)
 	var progress := _progress()
-	if progress != null:
+	var mira_trial := hoshi_test_character and "--mira-motion-trial" in OS.get_cmdline_user_args()
+	if progress != null and not EmberMapTransition.test_mode(progress):
 		var isolated_root := str(progress.get_meta("world_canvas_storage_root", sandbox_storage_root))
+		if mira_trial:
+			isolated_root = isolated_root.path_join("mira-motion-trial")
 		if progress.storage_root != isolated_root:
 			progress.storage_root = isolated_root
 			progress.legacy_storage_root = isolated_root.path_join("legacy-unused")
@@ -37,6 +40,8 @@ func _ready() -> void:
 			progress.reset_new_game()
 			progress.load_latest_available()
 		progress.set_active_hero_ids(["protagonist", "mira"], false)
+		if mira_trial:
+			progress.set_exploration_leader("mira")
 	# Bounded preparation needs a focus before the normal controller creates
 	# Player/FollowCamera. Keep saved/transition spawn consumption in its owner.
 	var projection = _map._visual_surface_projection
@@ -52,7 +57,10 @@ func _ready() -> void:
 	await get_tree().physics_frame
 	super._ready()
 	if not is_instance_valid(_player): return
-	if hoshi_test_character:_player.install_hoshi_test_visual()
+	if mira_trial:
+		_install_mira_trial_visual()
+	if hoshi_test_character:
+		_player.install_hoshi_test_visual()
 	var held: Array[Dictionary] = []
 	for node in [_player, _party_followers, _interaction_ui, _inventory_ui, _quest_journal_ui, _pause_ui]:
 		if is_instance_valid(node):
@@ -73,6 +81,9 @@ func _ready() -> void:
 			await get_tree().process_frame
 		if not is_inside_tree():return
 		await get_tree().physics_frame
+	if _map.world_look in [-1, 0] and get_tree().has_group(&"ember_solid_surface"):
+		_set_startup_text("Подготавливаем материалы скал")
+		preload("res://scripts/ember_solid_material_layers.gd").prepare_runtime_depth_programs()
 	# Keep the cover while camera/reflection transforms reach a rendered frame.
 	# process_frame works in native play and headless fixtures alike.
 	for frame in 2: await get_tree().process_frame

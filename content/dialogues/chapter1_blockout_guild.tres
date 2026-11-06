@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="EmberDialogueResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_dialogue_resource.gd" id="1_6ar0m"]
+
+[resource]
+script = ExtResource("1_6ar0m")
+dialogue_id = "chapter1_blockout_guild"
+document = {
+"id": "chapter1_blockout_guild",
+"nameRu": "Служащий · макет",
+"startStepId": "line",
+"steps": [{
+"id": "line",
+"nameRu": "Служащий · макет",
+"next": "end",
+"textRu": "Здесь будет выдача городских поручений. Сейчас проверяем вход, разговор и возвращение на площадь.",
+"type": "dialogue"
+}, {
+"id": "end",
+"type": "end"
+}],
+"use": "talk"
+}

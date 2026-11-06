@@ -6,6 +6,23 @@ import subprocess
 import time
 
 
+def local_cache_files(user_dir):
+    return {p.relative_to(user_dir): p.stat().st_size
+            for p in user_dir.glob('ember-*-cache/*')
+            if p.is_file()}
+
+
+def new_records_by_cache(before, after):
+    summary = {}
+    for path in sorted(after.keys() - before.keys()):
+        if path.suffix not in ('.edc', '.ewc'):
+            continue
+        entry = summary.setdefault(path.parent.name, {'count': 0, 'bytes': 0})
+        entry['count'] += 1
+        entry['bytes'] += after[path]
+    return summary
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--exe', type=Path, required=True)
@@ -15,12 +32,13 @@ def main():
     parser.add_argument('--timeout', type=int, default=600)
     parser.add_argument('--sphere', action='store_true')
     parser.add_argument('--require-empty', action='store_true')
+    parser.add_argument('--require-prepared', action='store_true',
+                        help='Require an empty initial derived cache and no new world records at exit.')
     args = parser.parse_args()
     exe = args.exe.resolve(strict=True)
     args.out.mkdir(parents=True, exist_ok=True)
-    before = {str(p.relative_to(args.user_dir)): p.stat().st_size
-              for p in args.user_dir.glob('ember-*-cache/*') if p.is_file()}
-    if args.require_empty and before:
+    before = local_cache_files(args.user_dir)
+    if (args.require_empty or args.require_prepared) and before:
         raise RuntimeError('Cold probe requires no local derived records; nothing was deleted.')
     previous = set((args.user_dir / 'startup-logs').glob('*.jsonl'))
     command = [str(exe), '--log-file', str((args.out / 'engine.log').resolve()), '--',
@@ -51,7 +69,9 @@ def main():
     # On Windows st_ctime is file creation time. The first log opens in the
     # world's _ready; keep this interval separate from in-world preparation.
     pre_log_seconds = log.stat().st_ctime - launch_unix
+    new_records = new_records_by_cache(before, local_cache_files(args.user_dir))
     result = {'exit': code, 'launch_to_exit_seconds': elapsed, 'local_records_before': len(before),
+              'new_local_derived_by_cache': new_records,
               'launch_to_log_open_seconds': pre_log_seconds,
               'approx_launch_to_world_enter_seconds': pre_log_seconds - begin_event.get('at_ms', 0) / 1000,
               'stages': [event for event in events if event['event'] in ('stage', 'world_revealed')],
@@ -69,6 +89,8 @@ def main():
     engine_log = (args.out / 'engine.log').read_text(encoding='utf-8', errors='replace')
     if 'ERROR:' in engine_log:
         raise RuntimeError('Runtime errors remain; inspect engine.log before accepting this build.')
+    if args.require_prepared and new_records:
+        raise RuntimeError(f'Packaged play created local world records: {new_records}. See result.json.')
 
 
 if __name__ == '__main__':

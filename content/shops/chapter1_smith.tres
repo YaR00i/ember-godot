@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="EmberShopResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_shop_resource.gd" id="1_xc85u"]
+
+[resource]
+script = ExtResource("1_xc85u")
+shop_id = "chapter1_smith"
+definition = {
+"id": "chapter1_smith",
+"listings": [{
+"buyPrice": 12,
+"itemId": "traveler_tunic",
+"sellPrice": 5,
+"stock": 2
+}],
+"nameRu": "Кузнец · макет ассортимента"
+}

@@ -39,8 +39,18 @@ func _run() -> void:
 	check(not large.carryable and large.pushable, "large crate role lost")
 	var inventory := state.inventory.duplicate(true); large.take(player)
 	check(not large.is_carried() and inventory == state.inventory, "large crate became a pickup")
+	small.rotation=Vector3(0.4,-0.6,0.3)
 	player._try_interact(); await frames(2)
 	check(small.is_carried(), "F did not lift small crate")
+	var hero_top:float=player.get_node("Shape").position.y+player.get_node("Shape").shape.height*0.5
+	check(Vector2(small.position.x,small.position.z).distance_to(Vector2(player.position.x,player.position.z))<0.01 and small.position.y>player.position.y+hero_top,"carried crate is not over the hero head")
+	check(absf(small.rotation.x)<0.001 and absf(small.rotation.z)<0.001,"carried crate retained pickup pitch/roll")
+	player._interaction_forward=Vector3.RIGHT;player.position+=Vector3(8,0,4);await frames(2)
+	check(small.global_basis.z.normalized().is_equal_approx(Vector3.RIGHT),"held crate did not follow hero heading")
+	check(Vector2(small.position.x,small.position.z).distance_to(Vector2(player.position.x,player.position.z))<0.01,"held anchor did not follow hero position")
+	small.suspend_for_combat();small.resume_after_combat(player.position,player);await frames(2)
+	check(small.is_carried() and small.position.y>player.position.y+hero_top,"combat return lost the overhead anchor")
+	player._interaction_forward=Vector3.FORWARD
 	player.set_physics_process(true)
 	Input.action_press("throw_item"); await frames(2); Input.action_release("throw_item")
 	player.set_physics_process(false)
@@ -49,7 +59,17 @@ func _run() -> void:
 	var thrown_at: Vector3 = small.global_position; await frames(12)
 	check(small.global_position.distance_to(thrown_at) > 3.0, "thrown crate did not fly")
 	large.recover_from_void(); player.position = Vector3(24, 0.1, 24)
+	await frames(12)
+	var before_push: Vector3 = large.global_position
+	var upright: Basis = large.global_basis
+	large.apply_torque_impulse(Vector3(0, 30, 20))
+	player.position.z = 18.7
 	player.set_physics_process(true); Input.action_press("move_north")
+	await frames(5); Input.action_release("move_north")
+	await frames(12)
+	check(large.global_position.distance_to(before_push) < 0.5, "brief contact shoved the heavy crate")
+	check(large.global_basis.is_equal_approx(upright), "heavy crate rotated from an impulse")
+	Input.action_press("move_north")
 	await frames(90); Input.action_release("move_north"); player.set_physics_process(false)
 	check(large.global_position.z < -2.0, "walking into large crate did not push it")
 	player.position = Vector3(-120, 0, 100)

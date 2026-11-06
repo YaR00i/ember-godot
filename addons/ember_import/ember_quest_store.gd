@@ -105,6 +105,7 @@ static func event_reference_entries(quest_id_filter := "") -> Array[Dictionary]:
 			var objective: Dictionary = raw_objective
 			var objective_id := str(objective.get("id", ""))
 			var flag_id := str(objective.get("flagId", ""))
+			if str(objective.get("progressMode", "")) == "world_action": continue
 			if objective_id.is_empty() or flag_id.is_empty():
 				continue
 			result.append({
@@ -161,6 +162,7 @@ static func action_for_event_in_document(token: String, quest_value: Dictionary)
 			var objective_id := str(parts[2]) if parts.size() > 2 else ""
 			for raw_objective in quest.objectives:
 				if typeof(raw_objective) == TYPE_DICTIONARY and str(raw_objective.get("id", "")) == objective_id:
+					if str(raw_objective.get("progressMode", "")) == "world_action": return {}
 					if str(raw_objective.get("progressMode", "")) == "handover":
 						return {"type": "handover_quest_items", "questId": quest_id, "objectiveId": objective_id, "rewards": {}}
 					return {
@@ -203,11 +205,14 @@ static func normalized_document(raw: Dictionary) -> Dictionary:
 			objectives.append({
 				"id": str(source.get("id", "")).strip_edges(),
 				"textRu": str(source.get("textRu", "")).strip_edges(),
+				"directionRu": str(source.get("directionRu", "")).strip_edges(),
 				"flagId": str(source.get("flagId", "")).strip_edges(),
 				"progressMode": (
-					str(source.get("progressMode", "flag")) if str(source.get("progressMode", "flag")) in ["counter", "purchase", "handover"] else "flag"
+					str(source.get("progressMode", "flag")) if str(source.get("progressMode", "flag")) in ["counter", "purchase", "handover", "world_action"] else "flag"
 				),
 				"counterEventId": str(source.get("counterEventId", "")).strip_edges(),
+				"worldAction": str(source.get("worldAction", "")).strip_edges(),
+				"worldTargetId": str(source.get("worldTargetId", "")).strip_edges(),
 				"purchaseShopId": str(source.get("purchaseShopId", "")).strip_edges(),
 				"purchaseItemId": str(source.get("purchaseItemId", "")).strip_edges(),
 				"handoverItemId": str(source.get("handoverItemId", "")).strip_edges(),
@@ -297,6 +302,9 @@ static func validation_errors(raw: Dictionary) -> Array[String]:
 			errors.append("Флаги выполнения целей не должны повторяться: %s." % objective.flagId)
 		else:
 			known_flags[str(objective.flagId)] = true
+		if str(objective.get("progressMode", "")) == "world_action":
+			var issue := preload("res://scripts/ember_quest_world_actions.gd").validation_error(str(objective.get("worldAction", "")), str(objective.get("worldTargetId", "")))
+			if not issue.is_empty(): errors.append("%s: %s." % [issue, objective_id])
 		if str(objective.get("progressMode", "")) == "handover":
 			var item := EmberItemCatalog.definition(str(objective.get("handoverItemId", "")))
 			if item.is_empty():

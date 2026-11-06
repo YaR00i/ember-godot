@@ -36,7 +36,14 @@ func run() -> void:
 	dialog.hide();dialog.parameters_panel.hide()
 	dialog.pattern_path_override = path
 	dialog.light_profile_previewed.connect(func(draft, id): Materials.set_terrain_depth_profiles(material, source.palette_surface_roles, source.palette_material_ids, {id:draft}))
+	dialog.pattern_scale_previewed.connect(func(draft, _id): Materials.update_terrain_pattern_scale(material, slot, draft))
 	check(dialog.open_variant("paving","stone"), "editor opens paving")
+	dialog._finish_sliders.pattern_size_m.value = 2.0
+	check(is_equal_approx(material.get_meta("ember_png_lookup_image").get_pixel(slot,0).g,2.0), "paving image size previews live")
+	check(is_equal_approx(material.get_meta("ember_surface_lookup_image").get_pixel(slot,0).r,2.0), "paving pattern size previews live")
+	dialog.undo_edit()
+	check(is_equal_approx(material.get_meta("ember_png_lookup_image").get_pixel(slot,0).g,pattern.pattern_size_m), "paving size Undo")
+	dialog.redo_edit()
 	dialog._change_depth({"depth_mm":12.0})
 	check(is_equal_approx(material.get_meta("ember_depth_profiles").get_pixel(slot,0).g,0.012), "editor depth previews on shared material")
 	dialog.undo_edit()
@@ -49,10 +56,13 @@ func run() -> void:
 	dialog.undo_edit()
 	check(dialog._draft.depth_texture == height, "height source Undo")
 	check(dialog._save(true), "material editor saves")
+	dialog._finish_sliders.pattern_size_m.value = 3.0
 	dialog._change_depth({"depth_mm":2.0})
 	dialog.cancel_edit()
+	check(is_equal_approx(material.get_meta("ember_png_lookup_image").get_pixel(slot,0).g,2.0), "discard restores saved paving size")
 	check(is_equal_approx(material.get_meta("ember_depth_profiles").get_pixel(slot,0).g,0.012), "discard restores material preview")
 	check(dialog.open_variant("paving","stone") and is_equal_approx(dialog._draft.depth_mm,12.0), "fresh material reopen preserves depth")
+	check(is_equal_approx(dialog._draft.pattern_size_m,2.0), "fresh material reopen preserves size")
 	check(dialog._draft.depth_texture.resource_path == height.resource_path, "height texture survives save/reopen")
 	dialog.cancel_edit()
 	var node := Node3D.new();root.add_child(node)

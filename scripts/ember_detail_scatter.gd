@@ -123,6 +123,9 @@ static func patch_address(point_m: Vector2) -> Vector2i:
 static func cell_address(point_m: Vector2) -> Vector2i:
 	return Vector2i(floori(point_m.x / CELL_M), floori(point_m.y / CELL_M))
 
+static func ground_cover_group(map_id: int, kind: int, address: Vector2i) -> StringName:
+	return StringName("ember_ground_cover_%d_%d_%d_%d" % [map_id, kind, address.x, address.y])
+
 static func sample_seed(cell: Vector2i, candidate: int, seed_value: int) -> int:
 	return hash([cell, candidate, seed_value])
 

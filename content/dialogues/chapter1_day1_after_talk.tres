@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="EmberDialogueResource" format=3]
+[ext_resource type="Script" path="res://scripts/ember_dialogue_resource.gd" id="1"]
+[resource]
+script = ExtResource("1")
+dialogue_id = "chapter1_day1_after_talk"
+document = {
+  "id": "chapter1_day1_after_talk",
+  "nameRu": "Мама",
+  "startStepId": "line",
+  "steps": [
+    {
+      "id": "line",
+      "type": "dialogue",
+      "nameRu": "Мама",
+      "textRu": "Подарок поставлю на полку. Спасибо вам обоим.",
+      "next": "end"
+    },
+    {
+      "id": "end",
+      "type": "end"
+    }
+  ]
+}

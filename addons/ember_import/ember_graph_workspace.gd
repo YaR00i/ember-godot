@@ -2654,6 +2654,7 @@ func _render_quest(document: Dictionary) -> void:
 		_add_quest_objective_line(
 			body, index, "Текст", "textRu", str(objective.get("textRu", ""))
 		)
+		_add_quest_objective_line(body, index, "Куда идти · необязательно", "directionRu", str(objective.get("directionRu", "")))
 		_add_quest_objective_progress(body, index, objective)
 		_add_quest_objective_toggle(
 			body, index, "Необязательная", bool(objective.get("optional", false))
@@ -2669,7 +2670,7 @@ func _render_quest(document: Dictionary) -> void:
 		next_goal.tooltip_text = "Новая цель откроется после выполнения этой. Связь создаётся автоматически; ↶ отменяет весь шаг."
 		next_goal.pressed.connect(_add_quest_objective.bind(objective_id))
 		body.add_child(next_goal)
-		var counter_mode := str(objective.get("progressMode", "flag")) in ["counter", "purchase"]
+		var counter_mode := str(objective.get("progressMode", "flag")) in ["counter", "purchase", "world_action"]
 		if not counter_mode:
 			var reach := Button.new()
 			reach.name = "CreateQuestReachZone_%d" % index
@@ -3758,7 +3759,9 @@ func _add_quest_objective_progress(
 	mode.set_item_metadata(2, "purchase")
 	mode.add_item("Собрать и передать")
 	mode.set_item_metadata(3, "handover")
-	mode.select(["flag", "counter", "purchase", "handover"].find(str(objective.get("progressMode", "flag"))))
+	mode.add_item("Действие в мире")
+	mode.set_item_metadata(4, "world_action")
+	mode.select(["flag", "counter", "purchase", "handover", "world_action"].find(str(objective.get("progressMode", "flag"))))
 	mode.tooltip_text = "Боевой счётчик обновляет итог встречи; объект и set_flag для него не нужны."
 	parent.add_child(mode)
 	var counter := OptionButton.new()
@@ -3794,12 +3797,19 @@ func _add_quest_objective_progress(
 		_set_quest_objective_field(item_id, index, "handoverItemId")
 		_commit_quest_inline_edit()
 	)
+	var world_action := preload("res://addons/ember_import/ember_quest_world_action_fields.gd").add(parent, objective, func(action: String, target: String) -> void:
+		_begin_quest_inline_edit()
+		_set_quest_objective_field(action, index, "worldAction")
+		_set_quest_objective_field(target, index, "worldTargetId")
+		_commit_quest_inline_edit()
+	)
 	var update_visibility := func() -> void:
 		var enabled := str(mode.get_selected_metadata()) == "counter"
 		counter.visible = enabled
 		purchase.visible = str(mode.get_selected_metadata()) == "purchase"
 		handover.visible = str(mode.get_selected_metadata()) == "handover"
-		required.visible = enabled or purchase.visible or handover.visible
+		world_action.visible = str(mode.get_selected_metadata()) == "world_action"
+		required.visible = enabled or purchase.visible or handover.visible or world_action.visible
 	mode.item_selected.connect(func(_selected: int) -> void:
 		_begin_quest_inline_edit()
 		_set_quest_objective_field(str(mode.get_selected_metadata()), index, "progressMode")

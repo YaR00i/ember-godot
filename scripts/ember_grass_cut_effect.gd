@@ -6,6 +6,9 @@ func _play_leaves(_size: float, direction: Vector3) -> void:
 	_wind = global_basis.inverse() * (direction * 18.0 + Vector3.RIGHT * 6.0)
 	for child in get_children():
 		if child is MultiMeshInstance3D:
+			var material := child.material_override as ShaderMaterial
+			if material != null and not material.shader.has_meta("ember_feature_base"):
+				EmberVoxelSurfaceMaterials.refresh_terrain_features(material)
 			child.multimesh = child.multimesh.duplicate()
 			_leaf_batches.append(child)
 	for index in leaf_transforms.size():

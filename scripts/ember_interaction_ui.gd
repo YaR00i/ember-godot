@@ -6,6 +6,11 @@ signal dialogue_closed(completed: bool)
 
 const MODE_DIALOGUE := "dialogue"
 const MODE_SHOP := "shop"
+const MODE_CRAFT := "craft"
+const CraftRecipe = preload("res://scripts/ember_craft_recipe_resource.gd")
+const FishingRound = preload("res://scripts/ember_fishing_round.gd")
+const MODE_FISHING := "fishing"
+const MODE_FISHING_RESULT := "fishing_result"
 const MODE_REWARD := "reward"
 const MODE_NOTICE := "notice"
 const MODE_WAIT := "wait"
@@ -30,6 +35,15 @@ var _wait_serial := 0
 var _wait_seconds := 0.0
 var _dialogue := EmberDialogueSession.new()
 var _shop: Dictionary = {}
+var _craft_station: WeakRef
+var _craft_index := 0
+var _craft_feedback := ""
+var _craft_controls: HBoxContainer
+var _craft_create: Button
+var _fishing_spot: WeakRef
+var _fishing_round: FishingRound
+var _fishing_meter: ProgressBar
+var _fishing_release_required := false
 var _panel: ColorRect
 var _title: Label
 var _body: RichTextLabel
@@ -52,7 +66,10 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_build_panel()
+	if economy_state != null:
+		economy_state.economy_changed.connect(_refresh_crafting)
 	visible = false
+	set_physics_process(false)
 
 
 func activate(area: EmberInteract) -> String:
@@ -152,6 +169,10 @@ func advance() -> void:
 	if is_history_open():
 		return
 	match _mode:
+		MODE_CRAFT:
+			_create_selected_recipe()
+		MODE_FISHING_RESULT:
+			_start_fishing_round()
 		MODE_DIALOGUE:
 			if _dialogue.current_kind() == "choice":
 				_dialogue.choose(_selected_choice)
@@ -167,6 +188,8 @@ func advance() -> void:
 					_advance_script_queue()
 				elif not _pending_shop_id.is_empty():
 					_open_shop(_pending_shop_id)
+				elif _fishing_spot != null:
+					_start_fishing_round()
 				else:
 					close()
 			else:
@@ -201,6 +224,10 @@ func choose(index: int) -> void:
 
 func close() -> void:
 	_cancel_presentation()
+	_show_fishing_bobber("", 0.0)
+	_fishing_spot = null
+	_fishing_round = null
+	set_physics_process(false)
 	if _mode == MODE_SHOP and _script_active:
 		_mode = ""
 		_shop.clear()
@@ -216,6 +243,8 @@ func close() -> void:
 	_wait_seconds = 0.0
 	_mode = ""
 	_pending_shop_id = ""
+	_craft_station = null
+	_craft_feedback = ""
 	_script_queue.clear()
 	_script_active = false
 	_script_mutated = false
@@ -243,6 +272,8 @@ func blocks_movement() -> bool:
 func view_state() -> Dictionary:
 	return {
 		"mode": _mode,
+		"craftIndex": _craft_index,
+		"craftFeedback": _craft_feedback,
 		"title": _title.text if _title else "",
 		"body": _body.text if _body else "",
 		"choices": _choices.text if _choices else "",
@@ -431,6 +462,15 @@ func _show_notice(message: String) -> void:
 	_help.text = "F — продолжить · Esc — закрыть"
 
 
+func show_companion_direction(speaker: String, direction: String) -> bool:
+	if is_open() or direction.is_empty():
+		return false
+	_show_notice(direction)
+	_title.text = speaker
+	_choices.text = ""
+	return true
+
+
 func _begin_wait(seconds: float) -> void:
 	_wait_serial += 1
 	var serial := _wait_serial
@@ -532,14 +572,204 @@ func _apply_dialogue_flags() -> String:
 
 func _open_dialogue(script_id: String) -> String:
 	var scene := EmberInteractionContent.dialogue_for_id(script_id)
+	return "" if _show_dialogue_document(scene) else "сцена не найдена: %s" % script_id
+
+
+func _show_dialogue_document(scene: Dictionary) -> bool:
 	if scene.is_empty() or not _dialogue.start(scene):
-		return "сцена не найдена: %s" % script_id
+		return false
 	_mode = MODE_DIALOGUE
 	_set_panel_visual(MODE_DIALOGUE)
 	_selected_choice = 0
 	visible = true
 	_refresh_dialogue()
+	return true
+
+
+func open_fishing(spot: EmberInteract) -> String:
+	if is_open() or economy_state == null or economy_state.combat_party_locked:
+		return "Сейчас нельзя рыбачить"
+	_fishing_spot = weakref(spot)
+	var flag := str(spot.get("caught_flag_id"))
+	var intro := str(spot.get("intro_dialogue_id"))
+	if not bool(economy_state.flags.get(flag, false)) and not intro.is_empty() and _open_dialogue(intro).is_empty():
+		return ""
+	return _start_fishing_round()
+
+
+func _start_fishing_round() -> String:
+	var spot: Node = _fishing_spot.get_ref() if _fishing_spot != null else null
+	if spot == null or economy_state == null or economy_state.combat_party_locked:
+		close()
+		return "Рыбалка недоступна"
+	var profile: Dictionary = spot.roll_catch()
+	if profile.is_empty():
+		close()
+		return "В этой точке пока нет рыбы"
+	_fishing_round = FishingRound.new(profile)
+	_fishing_release_required = Input.is_action_pressed("interact")
+	_mode = MODE_FISHING
+	_set_panel_visual(MODE_FISHING)
+	visible = true
+	_title.text = "Рыбалка"
+	_choices.text = "Подмотка"
+	_help.text = "F — подмотка · Esc — закончить"
+	_refresh_fishing()
+	set_physics_process(true)
 	return ""
+
+
+func _physics_process(delta: float) -> void:
+	if _mode != MODE_FISHING:
+		return
+	var holding := Input.is_action_pressed("interact")
+	if not holding:
+		_fishing_release_required = false
+	_step_fishing(delta, holding and not _fishing_release_required)
+
+
+func _step_fishing(delta: float, holding: bool) -> void:
+	var spot: Node = _fishing_spot.get_ref() if _fishing_spot != null else null
+	if spot == null or economy_state == null or economy_state.combat_party_locked:
+		close()
+		return
+	var outcome := _fishing_round.advance(delta, holding)
+	if outcome.is_empty():
+		_refresh_fishing()
+		return
+	_mode = MODE_FISHING_RESULT
+	_show_fishing_bobber("", 0.0)
+	set_physics_process(false)
+	_set_panel_visual(MODE_FISHING_RESULT)
+	_title.text = "Рыбалка"
+	_choices.text = ""
+	_help.text = "F — снова забросить · Esc — закончить"
+	if outcome == "escaped":
+		_body.text = "Рыба ушла. Можно попробовать ещё раз."
+		return
+	var profile := _fishing_round.species
+	var fish_id := str(profile.itemId)
+	var bonus := str(profile.get("bonusItemId", ""))
+	var rewards := {fish_id: 1}
+	var chance := float(profile.get("bonusChance", 0.0))
+	if chance >= 1.0 or (chance > 0.0 and randf() < chance):
+		rewards[bonus] = int(rewards.get(bonus, 0)) + 1
+	var result := economy_state.exchange_items({}, rewards, true, str(spot.get("caught_flag_id")))
+	if not result.ok:
+		_body.text = "Улов не помещается. Освободи место в сумке и попробуй снова."
+		return
+	_body.text = "Улов: " + str(EmberItemCatalog.definition(fish_id).get("nameRu", fish_id))
+	if rewards.has(bonus) and bonus != fish_id:
+		_body.text += "\nБонус: " + str(EmberItemCatalog.definition(bonus).get("nameRu", bonus))
+
+
+func _refresh_fishing() -> void:
+	var phase := _fishing_round.phase()
+	_show_fishing_bobber(phase, _fishing_round.elapsed)
+	var message: String = {
+		"wait": "ЖДИ ПОКЛЁВКУ",
+		"reel": "ДЕРЖИ F",
+		"warning": "СКОРО РЫВОК",
+		"tug": "ОТПУСТИ F",
+	}[phase]
+	if _body.text != message:
+		_body.text = message
+		var signal_color := Color("ffb5a6") if phase == "tug" else Color("ffe4a2") if phase == "warning" else Color("d4fff1")
+		_body.add_theme_color_override("default_color", signal_color)
+	_fishing_meter.value = _fishing_round.progress * 100.0
+	_fishing_meter.modulate = Color("f18f78") if phase == "tug" else Color("f4d283") if phase == "warning" else Color("84d4bd")
+
+
+func _show_fishing_bobber(phase: String, elapsed: float) -> void:
+	var spot: Node = _fishing_spot.get_ref() if _fishing_spot != null else null
+	if spot != null:
+		spot.show_bobber(phase, elapsed)
+
+
+func open_crafting(station: EmberInteract) -> String:
+	if is_open(): return "Сначала заверши текущее действие"
+	if economy_state == null or economy_state.combat_party_locked: return "Сейчас нельзя создавать предметы"
+	if not is_instance_valid(station) or not station.has_method("validation_errors"):
+		return "Рабочее место недоступно"
+	if not station.runtime_available() or not station.validation_errors().is_empty():
+		return "Рабочее место настроено неверно"
+	_clear_source_interact()
+	_craft_station = weakref(station)
+	_craft_index = 0
+	_craft_feedback = ""
+	_mode = MODE_CRAFT
+	_set_panel_visual(MODE_CRAFT)
+	visible = true
+	_refresh_crafting()
+	return ""
+
+
+func _current_craft_recipe() -> Resource:
+	var station: Node = _craft_station.get_ref() if _craft_station != null else null
+	if not is_instance_valid(station) or not station.is_inside_tree() or not station.runtime_available(): return null
+	var recipes: Array = station.get("recipes")
+	if _craft_index < 0 or _craft_index >= recipes.size(): return null
+	var recipe: Resource = recipes[_craft_index]
+	if not recipe is CraftRecipe or recipe.station_kind != station.get("station_kind"): return null
+	return recipe
+
+
+func _refresh_crafting() -> void:
+	if _mode != MODE_CRAFT: return
+	var recipe := _current_craft_recipe()
+	if recipe == null or economy_state == null:
+		close()
+		return
+	var station: Node = _craft_station.get_ref()
+	var preview := economy_state.preview_recipe(recipe)
+	_title.text = str(station.get("station_title")) + " · " + recipe.title
+	var lines: Array[String] = []
+	if not recipe.description.is_empty(): lines.append(recipe.description + "\n")
+	lines.append("Ингредиенты:")
+	for id in recipe.ingredients:
+		var item := EmberItemCatalog.definition(str(id))
+		lines.append("  %s — %d / %d" % [str(item.get("nameRu", id)), int(economy_state.inventory.get(id, 0)), int(recipe.ingredients[id])])
+	lines.append("\nРезультат:")
+	for id in recipe.results:
+		var item := EmberItemCatalog.definition(str(id))
+		lines.append("  %s ×%d" % [str(item.get("nameRu", id)), int(recipe.results[id])])
+	_body.text = "\n".join(lines)
+	_craft_create.text = "Приготовить" if station.get("station_kind") == "kitchen" else "Создать"
+	_craft_create.disabled = not bool(preview.ok)
+	var count: int = station.get("recipes").size()
+	_choices.text = "Рецепт %d / %d · %s" % [_craft_index + 1, count, "Готово к созданию" if preview.ok else _craft_failure(str(preview.get("reason", "")))]
+	if not _craft_feedback.is_empty(): _choices.text += "\n" + _craft_feedback
+	_help.text = "W/S — рецепт · F / Enter — создать · Esc — закрыть"
+
+
+func _move_craft_selection(delta: int) -> void:
+	var station: Node = _craft_station.get_ref() if _craft_station != null else null
+	if not is_instance_valid(station): close(); return
+	var count: int = station.get("recipes").size()
+	if count < 1: close(); return
+	_craft_index = posmod(_craft_index + delta, count)
+	_craft_feedback = ""
+	_refresh_crafting()
+
+
+func _create_selected_recipe() -> void:
+	var recipe := _current_craft_recipe()
+	if recipe == null or economy_state == null: close(); return
+	# Re-read inventory and validate at commit; an old green button is no authority.
+	var result := economy_state.craft_recipe(recipe)
+	if result.ok and recipe.completion_dialogue != null:
+		if _show_dialogue_document(recipe.completion_dialogue.to_document()):
+			return
+	_craft_feedback = "Получено: " + recipe.title if result.ok else _craft_failure(str(result.get("reason", "")))
+	_refresh_crafting()
+
+
+func _craft_failure(reason: String) -> String:
+	match reason:
+		"missing_items": return "Не хватает ингредиентов"
+		"stack_full": return "Нет места для результата"
+		"locked": return "Сейчас нельзя создавать предметы"
+		_: return "Рецепт недоступен"
 
 
 func _open_shop(shop_id: String) -> String:
@@ -826,6 +1056,18 @@ func _build_panel() -> void:
 		button.focus_mode = Control.FOCUS_NONE
 		button.pressed.connect(spec[1])
 		_dialogue_controls.add_child(button)
+	_craft_controls = HBoxContainer.new()
+	column.add_child(_craft_controls)
+	for spec in [["← Рецепт", _move_craft_selection.bind(-1)], ["Рецепт →", _move_craft_selection.bind(1)], ["Создать", _create_selected_recipe], ["Закрыть", close]]:
+		var button := Button.new()
+		button.focus_mode = Control.FOCUS_NONE
+		button.text = spec[0]
+		button.pressed.connect(spec[1])
+		_craft_controls.add_child(button)
+	_craft_create = _craft_controls.get_child(2)
+	_fishing_meter = ProgressBar.new()
+	_fishing_meter.custom_minimum_size.y = 22
+	column.add_child(_fishing_meter)
 
 	_help = Label.new()
 	_help.add_theme_font_size_override("font_size", 15)
@@ -839,12 +1081,16 @@ func _set_panel_visual(mode: String) -> void:
 	if _panel == null or _title == null:
 		return
 	var talking := mode == MODE_DIALOGUE
+	_body.add_theme_font_size_override("normal_font_size", 34 if mode == MODE_FISHING else 20)
+	_body.remove_theme_color_override("default_color")
+	_craft_controls.visible = mode == MODE_CRAFT
+	_fishing_meter.visible = mode == MODE_FISHING
 	_history_panel.hide()
 	_panel.show()
 	_dialogue_controls.visible = talking
 	_choice_buttons.visible = talking
 	_choices.visible = not talking
-	_panel.anchor_top = 0.50 if talking else 0.62
+	_panel.anchor_top = 0.25 if mode == MODE_CRAFT else (0.50 if talking else 0.62)
 	_body.scroll_to_line(0)
 	match mode:
 		MODE_REWARD:
@@ -872,6 +1118,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if key.physical_keycode == KEY_ESCAPE:
 		close()
+		get_viewport().set_input_as_handled()
+		return
+	if _mode == MODE_CRAFT:
+		if key.physical_keycode in [KEY_W, KEY_UP]: _move_craft_selection(-1)
+		elif key.physical_keycode in [KEY_S, KEY_DOWN]: _move_craft_selection(1)
+		elif key.physical_keycode in [KEY_ENTER, KEY_KP_ENTER]: _create_selected_recipe()
+		else: return
 		get_viewport().set_input_as_handled()
 		return
 	if _mode == MODE_SHOP:

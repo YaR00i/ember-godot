@@ -400,6 +400,19 @@ func create_quest_conversation(
 	giver.set("objective_scripts", {})
 	giver.set("completed_script_id", "")
 	giver.set("display_name", display_name.strip_edges())
+	var map := root as EmberMapLoader
+	if map == null:
+		map = root.get_node_or_null("Map") as EmberMapLoader
+	if map == null:
+		var ancestor := root.get_parent()
+		while ancestor != null and map == null:
+			map = ancestor as EmberMapLoader
+			ancestor = ancestor.get_parent()
+	if "model_preset" in giver:
+		var model := map.default_npc_model if map != null else null
+		if model == null:
+			model = EmberMapLoader.WorldPresets.default_npc_model
+		giver.set("model_preset", model)
 	if not bind_quest_conversation(npc, event_token, dialogue_id, root, quest_document, npc, world_position, handover_costs, choice_outcome, conversation_options):
 		npc.free()
 		return null

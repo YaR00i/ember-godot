@@ -27,7 +27,7 @@ func activate() -> String:
 func activate_from(actor: Node3D) -> String:
 	var progress:=_progress()
 	if progress==null or completion_flag_id.is_empty() or progress.flags.get(completion_flag_id,false):return "Ягоды уже собраны"
-	var result:=progress.exchange_items({},{item_id:harvest_count},true,completion_flag_id)
+	var result:=progress.harvest_world_items(item_id,harvest_count,completion_flag_id)
 	if not result.ok:return "Нет места в стопке" if result.reason=="stack_full" else "Сейчас нельзя собрать ягоды"
 	if is_instance_valid(actor):
 		var fruit:=get_node("Berries") as Node3D

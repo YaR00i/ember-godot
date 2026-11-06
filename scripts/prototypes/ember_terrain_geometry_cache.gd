@@ -21,8 +21,24 @@ static var _editor_trim_at: Dictionary = {}
 
 ## The editor caches CPU inputs before mesh packing. Re-uploading decoded GPU
 ## normals changes their quantization, and runtime entries lack brush layouts.
-func editor_job(snapshot: Terrain, tile: Vector2i, blend: bool, water_options:Dictionary={}) -> EditorSurfaceJob:
-	return EditorSurfaceJob.new(self,snapshot,tile,blend,water_options)
+class EditorFingerprintMemo extends RefCounted:
+	# The projection replaces this memo with its immutable terrain snapshot.
+	# Workers keep separate disk state but can reuse neighbouring tile keys.
+	var _mutex := Mutex.new()
+	var _values := {}
+	func read(key: Vector2i) -> String:
+		_mutex.lock()
+		var value: String = _values.get(key, "")
+		_mutex.unlock()
+		return value
+	func remember(key: Vector2i, value: String) -> void:
+		_mutex.lock()
+		_values[key] = value
+		_mutex.unlock()
+
+
+func editor_job(snapshot: Terrain, tile: Vector2i, blend: bool, water_options:Dictionary={}, memo: EditorFingerprintMemo = null) -> EditorSurfaceJob:
+	return EditorSurfaceJob.new(self,snapshot,tile,blend,water_options,memo)
 
 class EditorSurfaceJob extends RefCounted:
 	var result: Dictionary = {}
@@ -35,15 +51,16 @@ class EditorSurfaceJob extends RefCounted:
 	var _source: Terrain
 	var _tile: Vector2i
 	var _blend: bool
-	func _init(cache:RefCounted,snapshot:Terrain,tile:Vector2i,blend:bool,water_options:Dictionary)->void:
-		_cache=cache;_source=snapshot;_tile=tile;_blend=blend;_water_options=water_options
+	var _memo: EditorFingerprintMemo
+	func _init(cache:RefCounted,snapshot:Terrain,tile:Vector2i,blend:bool,water_options:Dictionary,memo: EditorFingerprintMemo)->void:
+		_cache=cache;_source=snapshot;_tile=tile;_blend=blend;_water_options=water_options;_memo=memo
 	func run(cancelled:Callable)->void:
 		var started:=Time.get_ticks_usec()
 		if cancelled.call():return
 		var input:=Mesher.editor_surface_input(_source,_tile.x*64,_tile.y*64,64)
 		var stride:int=int(_water_options.get("far_stride",1))
 		var policy:Array=["editor-top-native-lod-v1",_blend]
-		var key: String = "" if _cache.directory.is_empty() else _cache.tile_key(_source,_tile,0,policy,PackedVector4Array(),{})
+		var key: String = "" if _cache.directory.is_empty() else _cache.tile_key(_source,_tile,0,policy,PackedVector4Array(),{},_memo)
 		if cancelled.call():return
 		result=_cache.read_editor_surface(key,input.bounds)
 		cache_hit=not result.is_empty()
@@ -127,7 +144,7 @@ func _init() -> void:
 	disk.packaged_directory = Storage.PACKAGED_ROOT.path_join("geometry")
 	disk.packaged_for_directory = ROOT
 
-func tile_key(source: Terrain, tile: Vector2i, revision: int, policy: Array, swash: PackedVector4Array, sheet: Dictionary) -> String:
+func tile_key(source: Terrain, tile: Vector2i, revision: int, policy: Array, swash: PackedVector4Array, sheet: Dictionary, memo: EditorFingerprintMemo = null) -> String:
 	if _revision != revision:
 		_fingerprints.clear()
 		_revision = revision
@@ -138,15 +155,12 @@ func tile_key(source: Terrain, tile: Vector2i, revision: int, policy: Array, swa
 		for x in range(tile.x - 1, tile.x + 2):
 			var key := Vector2i(x, z)
 			if not _fingerprints.has(key):
-				var bounds := Rect2i(key * TILE_SIZE, Vector2i(TILE_SIZE, TILE_SIZE)).intersection(Rect2i(0, 0, source.width, source.depth))
-				if not bounds.has_area(): _fingerprints[key] = "outside"
-				else:
-					var part := source.dense_window(bounds)
-					var values: Array=[bounds.size, part.heights, part.top_materials,
-						part.base_materials, part.cap_depths, part.water_levels, part.water_materials, part.column_material_overrides]
-					if not part.surface_rules.is_empty():values.append(part.surface_rules)
-					if not part.column_material_overrides.is_empty():values.append("side-paint-2")
-					_fingerprints[key] = Storage.digest(values)
+				var fingerprint := memo.read(key) if memo != null else ""
+				if fingerprint.is_empty():
+					fingerprint = _tile_fingerprint(source, key)
+					if memo != null:
+						memo.remember(key, fingerprint)
+				_fingerprints[key] = fingerprint
 			dependencies.append([key, _fingerprints[key]])
 	var inputs := [VERSION, Engine.get_version_info().hex, source.is_sectioned(), tile,
 		source.origin_y, source.palette, policy, dependencies, swash, sheet]
@@ -159,6 +173,20 @@ func tile_key(source: Terrain, tile: Vector2i, revision: int, policy: Array, swa
 	# geometry/LOD entries instead of invalidating the entire landscape.
 	if not swash.is_empty(): inputs.append("shore-grid-1")
 	return Storage.digest(inputs)
+
+
+func _tile_fingerprint(source: Terrain, key: Vector2i) -> String:
+	var bounds := Rect2i(key * TILE_SIZE, Vector2i(TILE_SIZE, TILE_SIZE)).intersection(Rect2i(0, 0, source.width, source.depth))
+	if not bounds.has_area():
+		return "outside"
+	var part := source.dense_window(bounds)
+	var values: Array = [bounds.size, part.heights, part.top_materials, part.base_materials,
+		part.cap_depths, part.water_levels, part.water_materials, part.column_material_overrides]
+	if not part.surface_rules.is_empty():
+		values.append(part.surface_rules)
+	if not part.column_material_overrides.is_empty():
+		values.append("side-paint-2")
+	return Storage.digest(values)
 
 static func lod_key(geometry_key: String, kind: String) -> String:
 	return Storage.digest([VERSION, geometry_key, kind, "lod"])

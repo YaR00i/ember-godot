@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="512" viewBox="0 0 512 256">
+  <defs>
+    <linearGradient id="leaf" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#405838"/><stop offset=".53" stop-color="#798c4e"/><stop offset="1" stop-color="#9ca766"/></linearGradient>
+    <radialGradient id="petal"><stop stop-color="#842b39"/><stop offset=".4" stop-color="#c54742"/><stop offset="1" stop-color="#e77a59"/></radialGradient>
+  </defs>
+  <path d="M128 242 Q126 180 130 24 M128 210 Q72 172 83 129 Q106 138 129 167 Q149 104 163 76 Q178 123 146 164 Q153 173 178 163 Q172 205 128 222" fill="url(#leaf)" stroke="#627445" stroke-width="3" stroke-linecap="round"/>
+  <path d="M382 130 C316 143 264 110 280 61 C291 28 341 30 381 71 C396 21 448 15 473 49 C497 81 468 118 424 132 C480 150 488 196 454 219 C418 244 389 216 377 182 C350 228 306 237 282 202 C258 167 300 137 348 125Z" fill="url(#petal)"/>
+  <path d="M291 63 Q324 51 369 105 M454 50 Q457 86 410 117 M450 205 Q416 208 392 156 M295 199 Q315 167 356 146" fill="none" stroke="#ed9871" stroke-width="7" opacity=".28" stroke-linecap="round"/>
+  <path d="M353 112 Q375 96 399 109 Q419 128 400 148 Q378 163 354 146 Q341 128 353 112Z" fill="#493448"/>
+  <path d="M363 119 Q381 108 394 120 L391 136 L374 141 L361 131Z" fill="#a59c64"/>
+  <path d="M373 116 L382 138 M362 127 L396 125" stroke="#d2bd7a" stroke-width="2" opacity=".7"/>
+</svg>

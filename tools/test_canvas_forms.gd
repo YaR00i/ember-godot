@@ -146,11 +146,14 @@ func run()->void:
 		var reopened:=ResourceLoader.load(entry.path,"",ResourceLoader.CACHE_MODE_IGNORE_DEEP) as EmberVoxelModelResource
 		check(fields(reopened)==fields(entry.resource),"reopen retains each form and paint")
 	var saved_count:int=forms.bodies.size();var saved_data:=fields(view._resource)
+	var physical_shapes:Dictionary={}
+	for body in forms.bodies:physical_shapes[body.node]=body.node.get_node("Collision/Shape").shape
 	for look in 3:
 		for body in forms.bodies:
 			body.node.set_world_look(look)
 			var visual:=body.node.get_node("Mesh") as MeshInstance3D
-			check(body.node.get_node("Collision/Shape").shape.get_faces()==visual.mesh.get_faces(),"visible geometry equals physics look%d"%look)
+			check(body.node.get_node("Collision/Shape").shape==physical_shapes[body.node],"physical surface stable look%d"%look)
+			if look==1:check(physical_shapes[body.node].get_faces()==visual.mesh.get_faces(),"physics follows canonical hull")
 	check(forms.add_shape("block"),forms.error)
 	view.discard_changes()
 	check(forms.bodies.size()==saved_count and fields(view._resource)==saved_data and not view.has_unsaved_changes(),"Discard restores whole saved composition")
@@ -174,11 +177,15 @@ func lifecycle(view:Control,registry:RefCounted,history:UndoRedo)->void:
 	for body in forms.bodies:
 		check(not is_instance_valid(body.entry.preview),"saved presentation has no draft overlay")
 		var faces:Array=[]
+		var physical:Shape3D=body.node.get_node("Collision/Shape").shape
 		for look in 3:
 			body.node.set_world_look(look)
 			var mesh:ArrayMesh=body.node.get_node("Mesh").mesh
 			faces.append(mesh.get_faces())
-			check(body.node.get_node("Collision/Shape").shape.get_faces()==mesh.get_faces(),"saved look/physics %d"%look)
+			# Display cubes can differ from the published volume boundary.
+			# Player collision must keep the same canonical hull in every look.
+			check(body.node.get_node("Collision/Shape").shape==physical,"saved physical surface stable %d"%look)
+			if look==1:check(physical.get_faces()==mesh.get_faces(),"saved physics follows canonical hull")
 		check(faces[2]!=faces[0],"voxel and detailed positions are distinct")
 	var data:=fields(view._resource)
 	forms.set_position(forms.position_of(forms.active)+Vector3.RIGHT*0.25)

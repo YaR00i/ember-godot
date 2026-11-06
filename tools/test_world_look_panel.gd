@@ -266,6 +266,9 @@ func _run() -> void:
 	reopened.free()
 	panel.refresh()
 	assert(not panel._sliders["river_arc_opening"].editable, "closing the scene must disable stale settings")
+	if not _check_common_water(panel, history, scene, map, water):
+		_fail("common water publication differs")
+		return
 	panel.set_target(null, null, null)
 	history.clear_history()
 	history.free()
@@ -275,6 +278,44 @@ func _run() -> void:
 	opened = null
 	packed = null
 	quit()
+
+
+func _check_common_water(panel: Control, history: UndoRedo, scene: Node3D,
+		map: EmberMapLoader, old_water: Node) -> bool:
+	var path := "user://test-common-water-%d.tscn" % Time.get_ticks_usec()
+	var preset := load(PANEL.COMMON_WATER_PATH) as PackedScene
+	if ResourceSaver.save(preset, path) != OK:
+		return false
+	scene.remove_child(old_water)
+	old_water.free()
+	var water := (load(path) as PackedScene).instantiate()
+	scene.add_child(water)
+	water.owner = scene
+	panel.set_target(scene, map, history)
+	var original: float = water.object_foam_width_voxels
+	water.object_foam_width_voxels = 1.25
+	var ok: bool = panel.publish_common_water(path)
+	ok = ok and is_equal_approx(_saved_foam_width(path), 1.25)
+	history.undo()
+	ok = ok and is_equal_approx(_saved_foam_width(path), original)
+	history.redo()
+	ok = ok and is_equal_approx(_saved_foam_width(path), 1.25)
+	water.object_foam_width_voxels = 2.25
+	ok = ok and is_equal_approx(_saved_foam_width(path), 1.25)
+	var consumer := (load(path) as PackedScene).instantiate()
+	ok = ok and is_equal_approx(consumer.object_foam_width_voxels, 1.25)
+	consumer.free()
+	DirAccess.remove_absolute(path)
+	print("WORLD_LOOK_PANEL common_water_publish_undo_redo_discard=", ok)
+	return ok
+
+
+func _saved_foam_width(path: String) -> float:
+	var fresh := ResourceLoader.load(path, "PackedScene", ResourceLoader.CACHE_MODE_IGNORE) as PackedScene
+	var water := fresh.instantiate()
+	var width: float = water.object_foam_width_voxels
+	water.free()
+	return width
 
 
 func _fail(reason: String) -> void:

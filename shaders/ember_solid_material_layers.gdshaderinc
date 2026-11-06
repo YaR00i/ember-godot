@@ -44,20 +44,26 @@ vec3 stone_colour(vec3 p,float layer,float span){
 }
 
 float stone_weathering_weight(){return stone_profile_mode && stone_profile().y>0.0 ? stone_variation_profile().z*stone_profile().x*stone_profile().z*(1.0-ember_anomaly_weight(terrain_world_position)) : 0.0;}
-float stone_weathering_coverage(vec3 p, vec4 edge_context) {
+vec3 stone_weathering_axes() {
+ vec3 w=pow(abs(normalize(solid_form_local)),vec3(4.0));
+ return w/max(w.x+w.y+w.z,0.0001);
+}
+float stone_weathering_coverage_cached(vec3 p, vec4 edge_context, vec3 w, float width_factor) {
  vec3 q=p*solid_texture_unit_m/0.95;
- vec3 w=pow(abs(normalize(solid_form_local)),vec3(4.0));w/=max(w.x+w.y+w.z,0.0001);
  float m=texture(stone_weathering_mask,q.zy).r*w.x+texture(stone_weathering_mask,q.xz).r*w.y+texture(stone_weathering_mask,q.xy).r*w.z;
  // The nearest edge is cached once in fragment. No edge loop per POM sample.
  vec4 e=edge_context;
  float d=max(0.0,e.w+dot(p-terrain_position,e.xyz))*max(stone_model_scale,0.0001);
- d/=max(stone_profile().y/0.02,0.001);
+ d/=width_factor;
  // The angular painted flakes own the width; no broad constant-width rim.
  float width=0.012+0.05*smoothstep(0.04,0.65,m);
  float spine=smoothstep(0.015,0.18,m)*(1.0-smoothstep(max(0.0,width-0.009),width+0.009,d));
  float patches=smoothstep(0.04,0.28,m)*(1.0-smoothstep(0.004,0.018,d-m*0.10));
  float flecks=smoothstep(0.72,0.9,m)*(1.0-smoothstep(0.25,0.38,d))*0.35;
  return max(spine,max(patches,flecks));
+}
+float stone_weathering_coverage(vec3 p, vec4 edge_context) {
+ return stone_weathering_coverage_cached(p,edge_context,stone_weathering_axes(),max(stone_profile().y/0.02,0.001));
 }
 
 void stone_finish(vec3 p,mat3 normal_matrix,inout vec3 albedo,inout vec3 shading_normal,vec4 edge_context){

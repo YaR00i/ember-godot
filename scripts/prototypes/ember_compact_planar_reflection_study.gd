@@ -203,8 +203,7 @@ var _flow_texture: ImageTexture
 var _height_texture: ImageTexture
 var _shore_texture: ImageTexture
 var _contact_texture: ImageTexture
-var _contact_distance_image: Image
-var _contact_distance_ids := PackedInt64Array()
+var _contact_uniforms := preload("res://scripts/ember_water_surface_contacts.gd").new()
 var _phase_texture: ImageTexture
 var _water_regions: RefCounted
 var runtime_water_activity_enabled := true # Runtime experiment switch; no authored setting.
@@ -820,79 +819,30 @@ func _make_contact_texture(document: EmberTerrainPilotResource,
 func _upload_surface_contacts() -> void:
 	if _material == null:
 		return
-	var shapes := PackedVector4Array()
-	var metadata := PackedVector2Array()
-	var wakes := PackedVector4Array()
-	var wake_details := PackedVector4Array()
-	shapes.resize(8)
-	metadata.resize(8)
-	wakes.resize(12)
-	wake_details.resize(12)
-	var count := 0
-	var wake_count := 0
-	var distance_images: Array[Image] = []
-	distance_images.resize(8)
-	var distance_ids := PackedInt64Array()
-	distance_ids.resize(8)
 	var map := water_settings_map()
-	var visible_contacts := 0
-	for contact in _surface_contacts:
-		if is_instance_valid(contact) and is_instance_valid(contact.get_parent()) and contact.get_parent().is_visible_in_tree():
-			visible_contacts += 1
-	var wake_budget := maxi(1, 12 / maxi(1, visible_contacts))
-	for contact in _surface_contacts:
-		if not is_instance_valid(contact): continue
-		if not is_instance_valid(contact.get_parent()) or not contact.get_parent().is_visible_in_tree(): continue
-		var footprint := contact.water_interaction_shape(_water_height) if obstacle_wave_mode > 0 else (contact.foam_footprint_shape(_water_height) if contact.static_surface_foam_footprint else {})
-		if not footprint.is_empty() and count < 8:
-			var center: Vector2 = footprint["center"] / 16.0
-			var half: Vector2 = footprint.get("half", Vector2.ONE * float(footprint.get("radius", 0.0))) / 16.0
-			var kind := 1.0 if footprint["kind"] == "circle" else 0.0
-			if footprint["kind"] == "mesh":
-				kind = 2.0
-				half = Vector2(footprint.distance_half) / 16.0
-				distance_images[count] = footprint.distance
-				distance_ids[count] = footprint.distance.get_instance_id()
-			shapes[count] = Vector4(center.x, center.y, half.x, half.y)
-			metadata[count] = Vector2(kind, float(footprint.get("angle", 0.0)))
-			count += 1
-		if map == null or contact._projection != map._visual_surface_projection: continue
-		if obstacle_wave_mode == 2: continue
-		# The live field owns both the incoming-wave response and motion wake.
-		# Keep the legacy analytic path only where no live patch is available.
-		if _wave_obstacles != null and _wave_obstacles.dynamic_contacts and _wave_obstacles.ready and _wave_obstacles.mode == 2:
-			var shape := contact.water_interaction_shape(_water_height)
-			if not shape.is_empty():
-				shape.center -= Vector2(map._visual_surface_projection.global_position.x, map._visual_surface_projection.global_position.z)
-				if _wave_obstacles.covers_contact(shape): continue
-		# Reserve a share for every contact so a long leader trail cannot
-		# consume all shader slots before the companions are visited.
-		for sample in contact.surface_wake_samples(wake_budget):
-			if wake_count >= 12: break
-			var point: Vector3 = sample["position"]
-			var forward: Vector2 = sample["forward"]
-			wakes[wake_count] = Vector4(point.x / 16.0, point.z / 16.0, float(sample["age"]), float(sample.get("strength", 1.0)))
-			wake_details[wake_count] = Vector4(forward.x, forward.y, float(sample["life"]), float(sample["radius"]))
-			wake_count += 1
-	if _contact_texture == null or distance_ids != _contact_distance_ids:
-		_contact_distance_ids = distance_ids
-		if _contact_distance_image == null:
-			_contact_distance_image = Image.create_empty(64, 64 * 8, false, Image.FORMAT_RF)
-		_contact_distance_image.fill(Color(1000,0,0,1))
-		for i in range(8):
-			if distance_images[i] != null:
-				_contact_distance_image.blit_rect(distance_images[i], Rect2i(0,0,64,64), Vector2i(0,i*64))
-		if _contact_texture == null: _contact_texture = ImageTexture.create_from_image(_contact_distance_image)
-		else: _contact_texture.update(_contact_distance_image)
-	_set_water_parameter_if_changed("object_contact_distance_map", _contact_texture)
-	_set_water_parameter_if_changed("object_shapes", shapes)
-	_set_water_parameter_if_changed("object_shape_meta", metadata)
-	_set_water_parameter_if_changed("object_shape_count", count)
-	_set_water_parameter_if_changed("object_contact_available", 1.0 if visible_contacts > 0 else 0.0)
-	_set_water_parameter_if_changed("object_wave_interaction", 1.0 if obstacle_wave_mode > 0 else 0.0)
-	_set_water_parameter_if_changed("reaction_samples", wakes)
-	_set_water_parameter_if_changed("reaction_details", wake_details)
-	_set_water_parameter_if_changed("reaction_count", wake_count)
+	var projection := map._visual_surface_projection if map != null else null
+	_contact_uniforms.update(_surface_contacts, 16.0, obstacle_wave_mode > 0, _terrain_contact_footprint,
+		_terrain_contact_wake.bind(projection), _set_water_parameter_if_changed)
+	_contact_texture = _contact_uniforms.texture
+
+
+func _terrain_contact_footprint(contact: EmberWaterContact3D) -> Dictionary:
+	if is_instance_valid(contact._projection) and contact._projection.has_method("uses_integrated_water_contacts"):
+		return {}
+	if obstacle_wave_mode > 0:
+		return contact.water_interaction_shape(_water_height)
+	return contact.foam_footprint_shape(_water_height) if contact.static_surface_foam_footprint else {}
+
+
+func _terrain_contact_wake(contact: EmberWaterContact3D, projection: Node3D) -> bool:
+	if projection == null or contact._projection != projection or obstacle_wave_mode == 2:
+		return false
+	if _wave_obstacles != null and _wave_obstacles.dynamic_contacts and _wave_obstacles.ready and _wave_obstacles.mode == 2:
+		var shape := contact.water_interaction_shape(_water_height)
+		if not shape.is_empty():
+			shape.center -= Vector2(projection.global_position.x, projection.global_position.z)
+			if _wave_obstacles.covers_contact(shape): return false
+	return true
 
 
 func _set_water_parameter_if_changed(key: String, value: Variant, regional := true) -> void:
@@ -1017,6 +967,30 @@ func _refresh_sea_swash() -> void:
 	if _water_regions != null: _water_regions.set_water_parameter("sea_swash_time", simulation_time)
 
 
+func swimmer_swell_offset(point: Vector3, sample: Dictionary) -> float:
+	# Coastal displacement is already included in the sampled surface.
+	# Sample the broad open-water height from ember_compact_study_wave.gdshaderinc.
+	var weight := float(sample.get("open_swell_weight", 0.0))
+	if _material == null or weight <= 0.0 or wave_height_voxels <= 0.0: return 0.0
+	var scale := maxf(0.001, float(_material.get_shader_parameter("world_units_per_metre")))
+	var position := Vector2(point.x, point.z) / scale
+	var fixed_time: float = _material.get_shader_parameter("preview_time")
+	var seconds := fixed_time if fixed_time >= 0.0 else Time.get_ticks_msec() * 0.001
+	var travel := seconds * float(_material.get_shader_parameter("wave_speed"))
+	var irregularity := float(_material.get_shader_parameter("wave_irregularity"))
+	var drift := position + Vector2(0.17, -0.11) * travel
+	var local := (sin(drift.dot(Vector2(0.73, 0.42)) * 1.53) * cos(drift.dot(Vector2(-0.51, 0.86)) * 1.27) * 0.62
+		+ sin(drift.dot(Vector2(0.28, -0.96)) * 2.11) * sin(drift.dot(Vector2(0.94, 0.34)) * 0.91) * 0.38) * irregularity
+	var bend := (sin(position.dot(Vector2(0.37, 0.63)) * 0.73 + travel * 0.24) * 0.62
+		+ sin(position.dot(Vector2(-0.83, 0.18)) * 0.53 - travel * 0.17) * 0.37) * irregularity
+	var group := 0.76 + sin(position.dot(Vector2(-0.20, 0.98)) * 0.60 + bend * 0.3 + travel * 0.15) * 0.24 * irregularity
+	var first := position.dot(Vector2(0.78, 0.63).normalized()) * 1.71 + bend * 0.8 + local * 1.15 - travel
+	var second := position.dot(Vector2(-0.46, 0.89).normalized()) * 2.32 - bend * 0.55 - local * 0.82 - travel * 1.27 + 1.7
+	var third := position.dot(Vector2(0.65, -0.76).normalized()) * 3.45 + bend * 0.33 + local * 0.41 - travel * 1.66 + 0.8
+	var height := sin(first) * 0.58 * group + sin(second) * 0.24 + sin(third) * 0.07
+	return height * wave_height_voxels * weight * 0.65 * float(sample.get("block_world_size", scale)) / 16.0
+
+
 func _refresh_region_activity(fixed_time: float) -> void:
 	if _water_regions == null: return
 	if Engine.is_editor_hint() or fixed_time >= 0.0:
@@ -1065,7 +1039,7 @@ func _interaction_shapes(projection: EmberTerrainPilotProjection) -> Array[Dicti
 	var shapes: Array[Dictionary] = []
 	for contact in _surface_contacts:
 		if not is_instance_valid(contact): continue
-		var shape := contact.water_interaction_shape(_water_height)
+		var shape := _terrain_contact_footprint(contact)
 		if shape.is_empty(): continue
 		var point := Vector3(shape.center.x, _water_height, shape.center.y)
 		if not projection.water_surface_sample(point).get("wet", false): continue

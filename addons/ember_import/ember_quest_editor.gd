@@ -184,6 +184,8 @@ func _add_objective(value: Dictionary) -> void:
 		str(value.get("textRu", "")),
 	)
 	text.placeholder_text = "Например: поговорить с кузнецом"
+	var direction := _objective_field(body, "ObjectiveDirection", "Куда идти · необязательно", str(value.get("directionRu", "")))
+	direction.placeholder_text = "Ориентиры, которые можно перечитать в журнале"
 	var flag := _objective_field(
 		body,
 		"ObjectiveFlag",
@@ -202,7 +204,9 @@ func _add_objective(value: Dictionary) -> void:
 	progress_mode.set_item_metadata(2, "purchase")
 	progress_mode.add_item("Собрать и передать")
 	progress_mode.set_item_metadata(3, "handover")
-	progress_mode.select(["flag", "counter", "purchase", "handover"].find(str(value.get("progressMode", "flag"))))
+	progress_mode.add_item("Действие в мире")
+	progress_mode.set_item_metadata(4, "world_action")
+	progress_mode.select(["flag", "counter", "purchase", "handover", "world_action"].find(str(value.get("progressMode", "flag"))))
 	progress_mode.tooltip_text = "Флаг отмечается событием один раз. Боевой счётчик растёт автоматически после победы."
 	body.add_child(progress_mode)
 	var counter_picker := OptionButton.new()
@@ -238,12 +242,14 @@ func _add_objective(value: Dictionary) -> void:
 	body.add_child(counter_hint)
 	var purchase := preload("res://addons/ember_import/ember_quest_purchase_fields.gd").add(body, value, func(_shop: String, _item: String) -> void: pass)
 	var handover := preload("res://addons/ember_import/ember_quest_handover_fields.gd").add(body, value, func(_item: String) -> void: pass)
+	var world_action := preload("res://addons/ember_import/ember_quest_world_action_fields.gd").add(body, value, func(_action: String, _target: String) -> void: pass)
 	var update_counter_visibility := func() -> void:
 		var counter_mode := str(progress_mode.get_selected_metadata()) == "counter"
 		counter_picker.visible = counter_mode
 		purchase.visible = str(progress_mode.get_selected_metadata()) == "purchase"
 		handover.visible = str(progress_mode.get_selected_metadata()) == "handover"
-		required.visible = counter_mode or purchase.visible or handover.visible
+		world_action.visible = str(progress_mode.get_selected_metadata()) == "world_action"
+		required.visible = counter_mode or purchase.visible or handover.visible or world_action.visible
 		counter_hint.visible = counter_mode
 		flag.tooltip_text = (
 			"Собственный числовой прогресс этой цели. Боевое событие увеличивает его автоматически."
@@ -288,8 +294,11 @@ func _document() -> Dictionary:
 		objectives.append({
 			"id": (panel.find_child("ObjectiveId", true, false) as LineEdit).text,
 			"textRu": (panel.find_child("ObjectiveText", true, false) as LineEdit).text,
+			"directionRu": (panel.find_child("ObjectiveDirection", true, false) as LineEdit).text,
 			"flagId": (panel.find_child("ObjectiveFlag", true, false) as LineEdit).text,
 			"progressMode": progress_mode,
+			"worldAction": str((panel.find_child("WorldAction", true, false) as OptionButton).get_selected_metadata()),
+			"worldTargetId": str((panel.find_child("WorldActionTarget", true, false) as OptionButton).get_selected_metadata()),
 			"counterEventId": (
 				str((panel.find_child("ObjectiveCombatCounter", true, false) as OptionButton).get_selected_metadata())
 				if progress_mode == "counter"

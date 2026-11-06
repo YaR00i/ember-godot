@@ -1,10 +1,16 @@
 extends Node3D
+const FieldGeometry = preload("res://scripts/ember_field_geometry.gd")
 ## Presentation host for the existing combat shell. The world keeps its floor;
 ## CombatTransition and ExploreState retain all results, loot and saves.
 
 @export var encounter_id := "shore_boar"
 @export var field_corner := Vector3(-304, 12, 256)
+@export var field_corner_local := false
 @export var unit_visual_scenes: Dictionary = {}
+@export_node_path("Node3D") var pressure_circuit_path: NodePath
+@export_node_path("MeshInstance3D") var wet_surface_path: NodePath
+@export_node_path("Node3D") var dry_leaves_path: NodePath
+@export var pressure_gate_cell := Vector2i(-1, -1)
 
 var battle: Node3D
 var _held: Array[Dictionary] = []
@@ -26,10 +32,32 @@ var _hud: Control
 var _combat_scene: PackedScene
 var _world_items: Dictionary={}
 var _item_return: Dictionary={}
+var _pressure_circuit: Node3D
+var _entry_retry_at := 0
 
 func _ready() -> void:
+	if field_corner_local:
+		field_corner = to_global(field_corner)
 	# Load the existing shell during world preparation, before first contact.
 	_combat_scene = load(EmberCombatTransition.COMBAT_SCENE) as PackedScene
+	var entry := get_node_or_null("BattleEntry") as Area3D
+	if entry != null:
+		entry.body_entered.connect(_on_entry_body)
+
+
+func _on_entry_body(body: Node3D) -> void:
+	if body is EmberPlayer and Time.get_ticks_msec() >= _entry_retry_at:
+		_engage_at_entry.call_deferred()
+
+
+func _engage_at_entry() -> void:
+	var state := _progress()
+	var world := get_tree().current_scene
+	if state == null or state.combat_party_locked or world == null:
+		return
+	if world.has_method("_startup_status") and not world.get("_startup_complete"):
+		return
+	engage("player")
 
 static func with_initiative(state: Dictionary, advantage: String) -> Dictionary:
 	var result := state.duplicate(true)
@@ -43,32 +71,51 @@ static func with_initiative(state: Dictionary, advantage: String) -> Dictionary:
 
 func engage(advantage := "player") -> Error:
 	_initiative = advantage
-	return EmberCombatTransition.change_scene(get_tree(), encounter_id, _progress(), self)
+	last_error = ""
+	var error := EmberCombatTransition.change_scene(get_tree(), encounter_id, _progress(), self)
+	if error != OK and last_error.is_empty():
+		last_error = EmberCombatTransition.last_start_error
+	return error
 
 func _progress() -> EmberExploreState:
 	return get_node_or_null("/root/EmberExploreProgress") as EmberExploreState
 
 func begin_in_place(encounter: EmberEncounterResource) -> Error:
 	var world := get_tree().current_scene
+	if _combat_scene == null:
+		last_error = "Боевая сцена недоступна."
+		return ERR_UNAVAILABLE
 	if world == null or not world.get("_player") is EmberPlayer or battle != null:
 		return ERR_UNAVAILABLE
-	var heights: Array[float] = []
-	for z in encounter.battlefield.height:
-		for x in encounter.battlefield.width:
-			var at := field_corner + Vector3(x*16+8, 0, z*16+8)
-			var query := PhysicsRayQueryParameters3D.create(at+Vector3.UP*48, at-Vector3.UP*48, 1)
-			var hit := get_world_3d().direct_space_state.intersect_ray(query)
-			if hit.is_empty() or hit.normal.dot(Vector3.UP) < 0.98:
-				last_error = "На участке боя нет ровной опоры."
-				return ERR_INVALID_DATA
-			heights.append(hit.position.y)
-	if heights.max() - heights.min() > 2.0:
-		last_error = "Участок боя изменился: нужна ровная площадка."
+	var pressure_spec := _pressure_spec(encounter)
+	if not pressure_circuit_path.is_empty() and pressure_spec.is_empty():
+		last_error = "Не настроены плита и проход боевой площадки."
 		return ERR_INVALID_DATA
-	var ground: float = (heights.max() + heights.min()) * 0.5
+	var leader := world.get("_player") as EmberPlayer
+	var footprint := (leader.get_node("Shape") as CollisionShape3D).shape as CapsuleShape3D
+	var excluded: Array[RID] = []
+	if not pressure_spec.is_empty():
+		var circuit := get_node(pressure_circuit_path)
+		var door: Node = circuit.component("door")
+		var body := door.binding(door.target_path) as CollisionObject3D
+		if body != null: excluded.append(body.get_rid())
+	var initial := encounter.initial_state({}, 1, _progress().active_hero_ids)
+	var enemy_cells: Array[Vector2i] = []
+	for unit: Dictionary in initial.units.values():
+		if unit.get("team") == "enemy":
+			enemy_cells.append(unit.cell)
+	var placement := FieldGeometry.find_placement(get_world_3d().direct_space_state, field_corner,
+		encounter.battlefield, footprint, excluded, enemy_cells, _progress().active_hero_ids.size(),
+		not pressure_spec.is_empty())
+	if placement.is_empty():
+		last_error = "Рядом нет свободной расстановки для боя."
+		return ERR_INVALID_DATA
+	var active_corner: Vector3 = placement.corner
+	var geometry: Dictionary = placement.geometry
+	var party_slots: Array = placement.partySlots
+	var ground: float = geometry.ground
 	_camera = get_viewport().get_camera_3d()
 	_world_actors = world.get("_party_followers").combat_world_actors()
-	var leader := world.get("_player") as EmberPlayer
 	_world_actors[leader.controlled_hero_id] = leader
 	for enemy in get_tree().get_nodes_in_group("ember_field_enemies"):
 		if not is_ancestor_of(enemy): continue
@@ -77,7 +124,10 @@ func begin_in_place(encounter: EmberEncounterResource) -> Error:
 	var roster := Array(encounter.party_unit_ids) + Array(encounter.enemy_unit_ids)
 	for unit_id in _world_actors.keys():
 		if unit_id not in roster and unit_id not in encounter.enemy_instances().map(func(entry):return entry.id): _world_actors.erase(unit_id)
-	var item_snapshot:=_capture_world_items(encounter)
+	var item_snapshot:=_capture_world_items(encounter, active_corner, geometry.blocked)
+	if not pressure_spec.is_empty():
+		item_snapshot["pressureGate"] = pressure_spec
+		_pressure_circuit = get_node(pressure_circuit_path)
 	var held_nodes: Array = [world.get("_player"), world.get("_party_followers"), world.get_node_or_null("CanvasLayer"), world.get("_player").camera_rig]
 	held_nodes.append_array(get_tree().get_nodes_in_group("ember_field_enemies"))
 	for node in held_nodes:
@@ -100,8 +150,13 @@ func begin_in_place(encounter: EmberEncounterResource) -> Error:
 		if label != null: label_offsets[unit_id] = label.position.y/scale_factor-0.36
 	hud.in_place_context = {"initiative":_initiative, "unitVisuals":unit_visual_scenes,
 		"worldItems":item_snapshot,
+		"fieldGeometry": geometry, "fieldPartySlots": party_slots,
+		"wetCells": _wet_surface_cells(encounter, active_corner, geometry),
+		"dryLeavesCell": _dry_leaves_cell(active_corner),
 		"continuousEntry":true,"worldActorIds":_world_actors.keys(),"labelOffsets":label_offsets,
-		"transform":Transform3D(Basis.IDENTITY.scaled(Vector3.ONE*scale_factor),Vector3(field_corner.x,ground-0.32*scale_factor,field_corner.z))}
+		"transform":Transform3D(Basis.IDENTITY.scaled(Vector3.ONE*scale_factor),Vector3(active_corner.x,ground-0.32*scale_factor,active_corner.z))}
+	if leader.controlled_hero_id == "mira" and leader.uses_trial_staff():
+		hud.in_place_context["miraStaffVisual"] = leader.get("_hoshi_visual")
 	for path in ["Arena/WorldEnvironment", "Arena/CombatKeyLight"]:
 		var node := battle.get_node_or_null(path)
 		if node != null: node.free()
@@ -190,6 +245,8 @@ func _process(_dt: float) -> void:
 
 func _sync_world_actors() -> void:
 	if not is_instance_valid(_arena): return
+	if is_instance_valid(_pressure_circuit):
+		_pressure_circuit.set("combat_plate_signal", preload("res://scripts/ember_combat_world_items.gd").pressure_gate_open(_hud.get("_state")))
 	for unit_id in _world_actors:
 		var actor := _world_actors[unit_id] as Node3D
 		if not is_instance_valid(actor): continue
@@ -238,6 +295,10 @@ func prepare_return(combat_state: Dictionary) -> void:
 		_item_return[id]={"position":at,"carrier":carrier}
 
 func finish_in_place() -> void:
+	if is_instance_valid(_pressure_circuit):
+		_pressure_circuit.set("combat_plate_signal", null)
+	_pressure_circuit = null
+	_entry_retry_at = Time.get_ticks_msec() + 1200
 	_bindings_ready = false
 	_arena = null
 	if is_instance_valid(battle): battle.queue_free()
@@ -259,24 +320,75 @@ func finish_in_place() -> void:
 	var world := get_tree().current_scene
 	if world.has_method("_resume_combat_return_action"): world._resume_combat_return_action()
 
-func _capture_world_items(encounter: EmberEncounterResource) -> Dictionary:
+func _dry_leaves_cell(corner: Vector3) -> Vector2i:
+	var leaves := get_node_or_null(dry_leaves_path) as Node3D if not dry_leaves_path.is_empty() else null
+	if leaves == null:
+		return Vector2i(-1, -1)
+	var offset := (leaves.global_position - corner) / 16.0
+	return Vector2i(floori(offset.x), floori(offset.z))
+
+
+func _wet_surface_cells(encounter: EmberEncounterResource, corner: Vector3, geometry: Dictionary) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	if wet_surface_path.is_empty():
+		return cells
+	var surface := get_node_or_null(wet_surface_path) as MeshInstance3D
+	if surface == null or surface.mesh == null or not surface.is_visible_in_tree():
+		return cells
+	var bounds := surface.get_aabb()
+	var footprint := Rect2(Vector2(bounds.position.x, bounds.position.z), Vector2(bounds.size.x, bounds.size.z))
+	var blocked: Dictionary = geometry.get("blocked", {})
+	for y in encounter.battlefield.height:
+		for x in encounter.battlefield.width:
+			var cell := Vector2i(x, y)
+			if blocked.has(cell):
+				continue
+			var center := corner + Vector3(x + 0.5, 0.0, y + 0.5) * 16.0
+			var point := surface.to_local(center)
+			if footprint.has_point(Vector2(point.x, point.z)):
+				cells.append(cell)
+	return cells
+
+
+func _pressure_spec(encounter: EmberEncounterResource) -> Dictionary:
+	if pressure_circuit_path.is_empty():
+		return {}
+	var circuit := get_node_or_null(pressure_circuit_path)
+	if circuit == null or not circuit.has_method("component") or not circuit.get("diagnostics").is_empty():
+		return {}
+	var plate: Node = circuit.component("plate")
+	var door: Node = circuit.component("door")
+	if plate == null or door == null or plate.kind != "plate" or door.kind != "door" or plate.required_weight <= 0:
+		return {}
+	var target := plate.get_node_or_null(plate.target_path) as Node3D
+	if target == null:
+		return {}
+	var local := (target.global_position - field_corner) / 16.0
+	var plate_cell := Vector2i(floori(local.x), floori(local.z))
+	var bounds := Rect2i(Vector2i.ZERO, Vector2i(encounter.battlefield.width, encounter.battlefield.height))
+	if not bounds.has_point(plate_cell) or not bounds.has_point(pressure_gate_cell) or plate_cell == pressure_gate_cell:
+		return {}
+	return {"plateCell": plate_cell, "gateCell": pressure_gate_cell,
+		"requiredWeight": plate.required_weight, "characterWeight": plate.character_weight}
+
+
+func _capture_world_items(encounter: EmberEncounterResource, corner: Vector3, blocked: Dictionary) -> Dictionary:
 	var snapshot:={"units":{},"holds":{}}
 	var initial:=encounter.initial_state({},1,_progress().active_hero_ids)
 	var occupied: Array=[]
 	for unit: Dictionary in initial.units.values():occupied.append(unit.get("cell",Vector2i(-1,-1)))
 	for body in get_tree().get_nodes_in_group("ember_world_item_bodies"):
-		# First bridge covers carryable single-cell loads. Push-only scenery keeps
-		# its authored Battlefield semantics until the separate push/plate slice.
-		if body.is_queued_for_deletion() or body.progress_state!=_progress() or not body.is_item_available() or not body.carryable or body.visual_size>16.0:continue
+		if body.is_queued_for_deletion() or body.progress_state!=_progress() or not body.is_item_available() or body.visual_size>16.0:continue
+		if not body.carryable and not body.pushable: continue
 		if int(_progress().world_items.get(body.pickup_id,{}).get("count",0))<=0:continue
 		var carrier:=""
 		if body.is_carried():
 			var actor: Node3D=body.get("_carrier").get_ref()
 			for actor_id in _world_actors:
 				if _world_actors[actor_id]==actor:carrier=actor_id;break
-		var local: Vector3=(body.global_position-field_corner)/16.0
+		var local: Vector3=(body.global_position-corner)/16.0
 		var cell:=Vector2i(floori(local.x),floori(local.z))
-		if carrier.is_empty() and (cell.x<0 or cell.y<0 or cell.x>=encounter.battlefield.width or cell.y>=encounter.battlefield.height or cell in occupied):continue
+		if carrier.is_empty() and (cell.x<0 or cell.y<0 or cell.x>=encounter.battlefield.width or cell.y>=encounter.battlefield.height or cell in occupied or blocked.has(cell)):continue
 		var value:=preload("res://scripts/ember_combat_world_items.gd").unit(body,cell)
 		var id: String=value.id
 		snapshot.units[id]=value

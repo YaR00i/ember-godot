@@ -1,0 +1,17 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_world_preset_library.gd" id="1"]
+[ext_resource type="PackedScene" path="res://prefabs/items/shore_keeper_visual.tscn" id="2"]
+[ext_resource type="Sky" path="res://content/world_presets/sky_evening.tres" id="3"]
+[ext_resource type="Sky" path="res://content/world_presets/sky_day.tres" id="4"]
+[ext_resource type="Environment" path="res://content/world_presets/weather_clear.tres" id="5"]
+[ext_resource type="Environment" path="res://content/world_presets/weather_mist.tres" id="6"]
+
+[resource]
+script = ExtResource("1")
+skies = Array[Sky]([ExtResource("3"), ExtResource("4")])
+weather = Array[Environment]([ExtResource("5"), ExtResource("6")])
+npc_models = Array[PackedScene]([ExtResource("2")])
+default_sky = ExtResource("3")
+default_weather = ExtResource("5")
+default_npc_model = ExtResource("2")

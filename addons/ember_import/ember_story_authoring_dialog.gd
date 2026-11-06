@@ -11,6 +11,8 @@ var _movement: Array[SpinBox] = []
 var _talks: VBoxContainer
 var _error: Label
 var _shot: OptionButton
+var _clip_actor: OptionButton
+var _actor_clip: OptionButton
 
 
 func setup(scene: Node3D) -> void:
@@ -51,7 +53,26 @@ func setup(scene: Node3D) -> void:
 		selection_row.add_child(picker)
 		_pickers[pair[0]] = picker
 		_fill_targets(picker, "")
-		filter.text_changed.connect(func(text: String): _fill_targets(picker, text))
+		filter.text_changed.connect(func(text: String):
+			_fill_targets(picker, text)
+			if _actor_clip != null:
+				_fill_actor_clips())
+	var clip_label := Label.new()
+	clip_label.text = "Анимация участника"
+	column.add_child(clip_label)
+	_clip_actor = OptionButton.new()
+	_clip_actor.name = "StoryClipActor"
+	_clip_actor.add_item("Первый участник")
+	_clip_actor.add_item("Второй участник")
+	column.add_child(_clip_actor)
+	_actor_clip = OptionButton.new()
+	_actor_clip.name = "StoryActorClip"
+	_actor_clip.fit_to_longest_item = false
+	column.add_child(_actor_clip)
+	_clip_actor.item_selected.connect(func(_index: int): _fill_actor_clips())
+	for role in ["primary", "secondary"]:
+		_pickers[role].item_selected.connect(func(_index: int): _fill_actor_clips())
+	_fill_actor_clips()
 	var movement_label := Label.new()
 	movement_label.text = "Смещение предмета по осям мира"
 	column.add_child(movement_label)
@@ -108,6 +129,25 @@ func setup(scene: Node3D) -> void:
 	confirmed.connect(func(): create_requested.emit(values()))
 
 
+func _clip_role() -> String:
+	return "secondary" if _clip_actor.selected == 1 else "primary"
+
+
+func _fill_actor_clips() -> void:
+	_actor_clip.clear()
+	_actor_clip.add_item("Без клипа")
+	_actor_clip.set_item_metadata(0, {})
+	var scene: Node3D = _scene.get_ref()
+	var picker: OptionButton = _pickers[_clip_role()]
+	var path := str(picker.get_selected_metadata())
+	var actor := scene.get_node_or_null(NodePath(path)) as Node3D if scene != null and not path.is_empty() else null
+	if actor == null:
+		return
+	for entry in Authoring.actor_clips(actor):
+		_actor_clip.add_item("%s · %.2f сек. · %s" % [entry.name, entry.length, entry.player])
+		_actor_clip.set_item_metadata(_actor_clip.item_count - 1, entry)
+
+
 func _fill_targets(picker: OptionButton, filter: String) -> void:
 	var current := str(picker.get_item_metadata(picker.selected)) if picker.selected >= 0 else ""
 	picker.clear()
@@ -162,7 +202,8 @@ func show_error(message: String) -> void:
 func values() -> Dictionary:
 	var data := {"title": _title.text, "duration": _duration.value,
 		"movement": Vector3(_movement[0].value, _movement[1].value, _movement[2].value),
-		"shot": _shot.selected, "dialogues": []}
+		"shot": _shot.selected, "dialogues": [], "clipActor": _clip_role(),
+		"actorClip": _actor_clip.get_selected_metadata()}
 	for field in _pickers:
 		var picker: OptionButton = _pickers[field]
 		data[field] = str(picker.get_item_metadata(picker.selected)) if picker.selected >= 0 else ""

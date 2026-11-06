@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="512" viewBox="0 0 512 256">
+  <defs>
+    <linearGradient id="leaf"><stop stop-color="#767a45"/><stop offset=".5" stop-color="#b6ad66"/><stop offset="1" stop-color="#d8c987"/></linearGradient>
+    <linearGradient id="grain" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#a67b3e"/><stop offset=".5" stop-color="#ddbd70"/><stop offset="1" stop-color="#f1dc9c"/></linearGradient>
+  </defs>
+  <path d="M130 246 Q124 177 141 17 Q152 73 140 146 Q105 122 79 85 Q86 167 129 198Z" fill="url(#leaf)"/>
+  <path d="M128 247 Q128 180 128 24" fill="none" stroke="#b6ad66" stroke-width="5" stroke-linecap="round"/>
+  <path d="M384 248 L384 30 M375 82 L357 17 M394 77 L409 10 M370 119 L342 35 M399 112 L426 31 M366 155 L326 66 M402 151 L439 60 M369 190 L327 108 M399 188 L441 102 M373 220 L341 150 M396 219 L428 149" stroke="#d9bf7c" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <g fill="url(#grain)" stroke="#b59656" stroke-width="1.5">
+    <path d="M383 89 Q356 69 369 48 Q389 59 383 89Z M385 89 Q410 65 398 45 Q379 60 385 89Z"/>
+    <path d="M383 119 Q346 104 357 76 Q384 84 383 119Z M385 119 Q424 101 411 73 Q385 84 385 119Z"/>
+    <path d="M383 151 Q338 132 349 104 Q381 112 383 151Z M385 151 Q432 133 419 101 Q388 110 385 151Z"/>
+    <path d="M383 181 Q336 167 345 134 Q377 141 383 181Z M385 181 Q434 166 426 132 Q391 142 385 181Z"/>
+    <path d="M383 210 Q343 200 348 167 Q378 174 383 210Z M385 210 Q426 198 423 165 Q392 176 385 210Z"/>
+    <path d="M383 233 Q352 226 355 199 Q378 205 383 233Z M385 233 Q417 222 414 198 Q392 206 385 233Z"/>
+  </g>
+</svg>

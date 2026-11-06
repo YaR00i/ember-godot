@@ -1,0 +1,62 @@
+[gd_resource type="Resource" script_class="EmberQuestResource" format=3]
+[ext_resource type="Script" path="res://scripts/ember_quest_resource.gd" id="1"]
+[resource]
+script = ExtResource("1")
+quest_id = "chapter1_day1"
+definition = {
+  "id": "chapter1_day1",
+  "titleRu": "Маленькая вина",
+  "statusFlagId": "chapter1_day1_status",
+  "summaryRu": "Приготовь подарок для мамы вместе с Мирой.",
+  "objectives": [
+    {
+      "id": "guild",
+      "textRu": "Поговорить со служащим гильдии",
+      "flagId": "chapter1_day1_guild",
+      "requiresObjectiveIds": []
+    },
+    {
+      "id": "errand",
+      "textRu": "Забрать ленту у лавочника в лавке обычных товаров",
+      "directionRu": "Выйди из гильдии в центр и ищи на главной улице вывеску «Товары». Поговори с лавочником внутри.",
+      "flagId": "chapter1_day1_errand",
+      "requiresObjectiveIds": [
+        "guild"
+      ]
+    },
+    {
+      "id": "mira",
+      "textRu": "Поговорить с Мирой у верстака в саду усадьбы",
+      "directionRu": "Из центра вернись на Жилую улицу. Иди к выходу «К усадьбе Миры» и ищи верстак в саду, рядом с особняком.",
+      "flagId": "chapter1_day1_mira",
+      "requiresObjectiveIds": [
+        "errand"
+      ]
+    },
+    {
+      "id": "craft",
+      "textRu": "Собрать подарок на верстаке Миры",
+      "directionRu": "Подойди к верстаку рядом с Мирой. Выбери «Подарок для мамы» и используй ленту.",
+      "flagId": "chapter1_day1_craft",
+      "requiresObjectiveIds": [
+        "mira"
+      ],
+      "progressMode": "world_action",
+      "worldAction": "craft",
+      "worldTargetId": "chapter1_day1_gift",
+      "requiredCount": 1
+    },
+    {
+      "id": "home",
+      "textRu": "Вернуться домой и вручить подарок маме",
+      "directionRu": "Из усадьбы вернись на Жилую улицу и ищи вывеску «Дом Кая». Мама внутри.",
+      "flagId": "chapter1_day1_home",
+      "requiresObjectiveIds": [
+        "craft"
+      ],
+      "progressMode": "handover",
+      "handoverItemId": "chapter1_day1_gift",
+      "requiredCount": 1
+    }
+  ]
+}

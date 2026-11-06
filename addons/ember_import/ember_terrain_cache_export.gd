@@ -42,6 +42,7 @@ static func strip_authoring_plan(node: Node) -> bool:
 	return changed
 
 func _export_begin(_features: PackedStringArray, _debug: bool, _path: String, _flags: int) -> void:
+	_export_main_object_meshes()
 	if not FileAccess.file_exists(Bundle.ROOT.path_join("manifest.json")): return
 	var prepared := Bundle.inspect(Bundle.ROOT)
 	if not prepared.error.is_empty():
@@ -56,3 +57,34 @@ func _export_begin(_features: PackedStringArray, _debug: bool, _path: String, _f
 	for path in artwork:
 		if FileAccess.file_exists(path):add_file(path,FileAccess.get_file_as_bytes(path),false)
 	print("TERRAIN_EXPORT_READY files=", prepared.files.size(), " bytes=", prepared.manifest.total_bytes)
+
+func _export_main_object_meshes() -> void:
+	var source_path := str(ProjectSettings.get_setting("application/run/main_scene", ""))
+	if source_path.is_empty(): return
+	var source := ResourceLoader.load(source_path, "PackedScene", ResourceLoader.CACHE_MODE_IGNORE_DEEP) as PackedScene
+	if source == null: return
+	var scene := source.instantiate()
+	var map := scene.get_node_or_null("Map") as EmberMapLoader
+	if map != null:
+		var catalog := {}
+		var published := {}
+		var temp := "user://ember-export-mesh-%s-%s.res" % [OS.get_process_id(), Time.get_ticks_usec()]
+		for node in map.find_children("*", "Node3D", true, false):
+			var prop := node as EmberVoxelProp
+			if prop == null: continue
+			var mesh := prop.bake_packed_detail_mesh()
+			if mesh == null: continue
+			if ResourceSaver.save(mesh, temp, ResourceSaver.FLAG_BUNDLE_RESOURCES) != OK:
+				push_warning("Cannot pack detailed mesh for " + str(map.get_path_to(prop)))
+				continue
+			var bytes := FileAccess.get_file_as_bytes(temp)
+			var key := Bundle.Storage.checksum(bytes).hex_encode()
+			var path := "res://ember-prepared/objects/" + key + ".res"
+			if not published.has(path):
+				add_file(path, bytes, false)
+				published[path] = bytes.size()
+			catalog[str(map.get_path_to(prop))] = [prop.model_id, path]
+		if FileAccess.file_exists(temp): DirAccess.remove_absolute(temp)
+		add_file(EmberMapLoader.PACKED_OBJECT_INDEX, JSON.stringify({"scene":source.resource_path,"props":catalog}).to_utf8_buffer(), false)
+		print("OBJECT_MESH_EXPORT_READY instances=", catalog.size(), " meshes=", published.size())
+	scene.free()

@@ -249,6 +249,13 @@ static func _navigation_field(
 	var width := int(grid.get("width", WIDTH))
 	var height := int(grid.get("height", HEIGHT))
 	var cells := grid.get("cells", {}) as Dictionary
+	var gate: Dictionary = state.get("pressureGate", {})
+	var gate_cell: Vector2i = gate.get("gateCell", Combat.INVALID_CELL)
+	var gate_open := not gate.is_empty() and preload("res://scripts/ember_combat_world_items.gd").pressure_gate_open(state)
+	var physical_blocks: Dictionary = state.get("fieldGeometry", {}).get("blocked", {})
+	var physical_edges: Dictionary = state.get("fieldGeometry", {}).get("edges", {})
+	var physical_levels: Dictionary = state.get("fieldGeometry", {}).get("levels", {})
+	var walk_edges: Dictionary = state.get("fieldGeometry", {}).get("walkEdges", {})
 	var focus_cell: Vector2i = (grid.get("focus", {}) as Dictionary).get(
 		"cell", Combat.INVALID_CELL
 	)
@@ -266,7 +273,7 @@ static func _navigation_field(
 		var distance := int(result.get(cell, 0))
 		if max_distance >= 0 and distance >= max_distance:
 			continue
-		var cell_height := int((cells.get(cell_key(cell), {}) as Dictionary).get("elevation", 0))
+		var cell_height := int(physical_levels.get(cell, (cells.get(cell_key(cell), {}) as Dictionary).get("elevation", 0)))
 		for neighbor in _neighbors(cell):
 			var key := cell_key(neighbor)
 			if (
@@ -275,14 +282,17 @@ static func _navigation_field(
 				or neighbor.y < 0
 				or neighbor.x >= width
 				or neighbor.y >= height
+				or (not physical_edges.is_empty() and physical_edges.has(Terrain.world_edge_key(cell, neighbor)))
 			):
 				continue
 			visited[key] = true
 			var definition := cells.get(key, {}) as Dictionary
 			if (
-				bool(definition.get("blocked", true))
+				(not gate_open if neighbor == gate_cell else bool(definition.get("blocked", true)))
+				or physical_blocks.has(neighbor)
 				or neighbor == focus_cell
-				or int(definition.get("elevation", 0)) - cell_height > jump_height
+				or (int(physical_levels.get(neighbor, definition.get("elevation", 0))) - cell_height > jump_height
+					and (walk_edges.is_empty() or not walk_edges.has(Terrain.world_edge_key(cell, neighbor))))
 				or occupied.has(key)
 			):
 				continue

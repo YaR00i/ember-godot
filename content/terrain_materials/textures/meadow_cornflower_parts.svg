@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="512" viewBox="0 0 512 256">
+  <defs>
+    <linearGradient id="leaf"><stop stop-color="#4a6950"/><stop offset=".55" stop-color="#789b75"/><stop offset="1" stop-color="#a6b58b"/></linearGradient>
+    <radialGradient id="petal"><stop stop-color="#4c4786"/><stop offset=".45" stop-color="#687dc7"/><stop offset="1" stop-color="#91b7e5"/></radialGradient>
+  </defs>
+  <path d="M128 244 Q127 180 132 19 M129 208 Q82 172 89 109 Q117 134 130 174 Q143 109 161 59 Q169 137 132 195" fill="url(#leaf)" stroke="#799277" stroke-width="2"/>
+  <path d="M379 130 Q366 91 371 66 L359 32 L376 45 L385 19 L391 47 L410 34 L397 65 Q406 94 388 132Z" fill="url(#petal)"/>
+  <path d="M379 130 Q366 91 371 66 L359 32 L376 45 L385 19 L391 47 L410 34 L397 65 Q406 94 388 132Z" fill="url(#petal)" transform="rotate(45 384 128)"/>
+  <path d="M379 130 Q366 91 371 66 L359 32 L376 45 L385 19 L391 47 L410 34 L397 65 Q406 94 388 132Z" fill="url(#petal)" transform="rotate(90 384 128)"/>
+  <path d="M379 130 Q366 91 371 66 L359 32 L376 45 L385 19 L391 47 L410 34 L397 65 Q406 94 388 132Z" fill="url(#petal)" transform="rotate(135 384 128)"/>
+  <path d="M379 130 Q366 91 371 66 L359 32 L376 45 L385 19 L391 47 L410 34 L397 65 Q406 94 388 132Z" fill="url(#petal)" transform="rotate(180 384 128)"/>
+  <path d="M379 130 Q366 91 371 66 L359 32 L376 45 L385 19 L391 47 L410 34 L397 65 Q406 94 388 132Z" fill="url(#petal)" transform="rotate(225 384 128)"/>
+  <path d="M379 130 Q366 91 371 66 L359 32 L376 45 L385 19 L391 47 L410 34 L397 65 Q406 94 388 132Z" fill="url(#petal)" transform="rotate(270 384 128)"/>
+  <path d="M379 130 Q366 91 371 66 L359 32 L376 45 L385 19 L391 47 L410 34 L397 65 Q406 94 388 132Z" fill="url(#petal)" transform="rotate(315 384 128)"/>
+  <circle cx="384" cy="128" r="26" fill="#53437e"/>
+  <path d="M367 139 L370 116 M379 144 L382 105 M389 145 L391 111 M400 136 L398 118" stroke="#aa9ad5" stroke-width="4" stroke-linecap="round"/>
+</svg>

@@ -18,6 +18,7 @@ const GeometryCache = preload("res://scripts/prototypes/ember_terrain_geometry_c
 const WaterLOD = preload("res://scripts/prototypes/ember_terrain_water_lod.gd")
 const GroundLOD = preload("res://scripts/prototypes/ember_terrain_ground_lod.gd")
 const Materials = preload("res://scripts/ember_voxel_surface_materials.gd")
+const LeafCover = preload("res://scripts/ember_ground_leaf_cover.gd")
 const TerrainPattern = preload("res://scripts/ember_compact_terrain_pattern.gd")
 const SmoothSurface = preload("res://scripts/prototypes/ember_terrain_smooth_surface.gd")
 const LookBake = preload("res://scripts/prototypes/ember_terrain_look_bake.gd")
@@ -38,6 +39,7 @@ var _overviews:Dictionary={}
 var _overview_dirty:Dictionary={}
 var _overview_revision:Dictionary={}
 var _overview_sort_needed:=true
+var _opening_overview := false
 var _resident_tile_slots:Array[Node3D]=[] # Empty attached hosts, never cached geometry/physics.
 var _resident_slot_sequence:=0
 # Derived render inventory: dry terrain must not pay for a second full-size camera.
@@ -64,6 +66,7 @@ func _new_tile_host(host_name:String,resident_slot:=false)->Node3D:
 	var tile:=Node3D.new();tile.name=host_name
 	for label in ["Ground","Water"]:
 		var visual:=MeshInstance3D.new();visual.name=label
+		if label == "Ground": visual.layers |= LeafCover.GROUND_LAYER
 		visual.lod_bias=(RUNTIME_GROUND_LOD_BIAS if ground_style==1 else 0.25) if label=="Ground" else (1.0 if Engine.is_editor_hint() else RUNTIME_WATER_LOD_BIAS)
 		tile.add_child(visual)
 	var body:=StaticBody3D.new();body.name="GroundPhysics";tile.add_child(body)
@@ -134,7 +137,7 @@ func _clear_overviews()->void:
 	_overviews.clear()
 
 func _queue_overview(key:Vector2i)->void:
-	if not _editor_residency_allowed() or not document.sections.has(key):return
+	if (not _opening_overview and not _editor_residency_allowed()) or not document.sections.has(key):return
 	_overview_revision[key]=int(_overview_revision.get(key,0))+1
 	if _overview_jobs.has(key):_overview_jobs[key].cancellation.set_cancelled(true)
 	if key not in _overview_pending:_overview_pending.append(key)
@@ -154,12 +157,45 @@ func _overview_mesh(arrays:Array,patches:Dictionary,covered:Dictionary)->ArrayMe
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,visible_arrays)
 	return mesh
 
+func _update_overview_ground(entry:Dictionary,covered:Dictionary)->void:
+	var ground:MeshInstance3D=entry.node.get_node("Ground")
+	var state:Dictionary=entry.get("ground_coverage",{})
+	if state.is_empty() or state.revision!=entry.get("revision",0):
+		state={"mesh":ArrayMesh.new(),"revision":entry.get("revision",0),"mask":PackedByteArray()}
+		entry["ground_coverage"]=state
+	var upload:Dictionary=entry.data.get("index_upload",{})
+	if upload.is_empty():
+		upload=MeshBuilder.prepare_overview_indices(entry.data.arrays,entry.data.patches)
+		entry.data["index_upload"]=upload
+	var mask:=PackedByteArray();mask.resize(upload.keys.size())
+	var visible_patches:=0
+	for i in upload.keys.size():
+		mask[i]=1 if covered.has(upload.keys[i]) else 0
+		if mask[i]==0:visible_patches+=1
+	var mesh:ArrayMesh=state.mesh
+	if ground.mesh!=mesh:ground.mesh=mesh
+	ground.visible=visible_patches>0 and not upload.arrays[Mesh.ARRAY_VERTEX].is_empty()
+	if mask==state.mask:return
+	state.mask=mask
+	# Keep a fully covered region hidden; defer its vertex allocation until needed.
+	if not ground.visible:return
+	if mesh.get_surface_count()==0:
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,upload.arrays,[],{},Mesh.ARRAY_FLAG_USE_DYNAMIC_UPDATE)
+	var stride:=RenderingServer.mesh_surface_get_format_index_stride(mesh.surface_get_format(0),mesh.surface_get_array_len(0))
+	if stride!=upload.stride:
+		# An unexpected engine index format must not corrupt the render buffer.
+		ground.mesh=_overview_mesh(entry.data.arrays,entry.data.patches,covered)
+		entry.erase("ground_coverage");return
+	var bytes:=PackedByteArray()
+	for i in upload.keys.size():bytes.append_array(upload.hidden[i] if mask[i]!=0 else upload.chunks[i])
+	RenderingServer.mesh_surface_update_index_region(mesh.get_rid(),0,0,bytes)
+
 func _publish_overview(key:Vector2i,covered:Dictionary)->void:
 	var entry:Dictionary=_overviews[key]
 	var region:Dictionary=_water_regions.get(key,{})
 	var ground_material:=_region_ground_material(key)
 	var ground:MeshInstance3D=entry.node.get_node("Ground")
-	ground.mesh=_overview_mesh(entry.data.arrays,entry.data.patches,covered)
+	_update_overview_ground(entry,covered)
 	ground.material_override=_far_material(ground_material)
 	var join:=entry.node.get_node_or_null("ResidencyEdge") as MeshInstance3D
 	var closure:=MeshBuilder.overview_edge(document,entry.data,covered)
@@ -185,6 +221,9 @@ func _forget_fine_tile(key:Vector2i,restore_overview:=true)->void:
 	_profile_add("resident_tiles_released",1)
 
 func _publish_resident_overview(region:Vector2i)->void:
+	if _opening_overview:
+		_publish_overview(region, _tiles)
+		return
 	# Re-evaluate at commit, not when the camera requested a release. A quick
 	# reversal, brush edit or actor support can retain a formerly departing tile.
 	var covered:=_tiles.duplicate()
@@ -227,7 +266,7 @@ func _sync_ground_residency()->void:
 	_pending_needs_sort=not _pending.is_empty()
 
 func _poll_overviews(frame_started:int,budget_us:int)->void:
-	if not _editor_residency_allowed():return
+	if not _opening_overview and not _editor_residency_allowed():return
 	for key:Vector2i in _overview_jobs.keys():
 		var record:Dictionary=_overview_jobs[key]
 		if not WorkerThreadPool.is_task_completed(record.task):continue
@@ -239,6 +278,7 @@ func _poll_overviews(frame_started:int,budget_us:int)->void:
 			var node:=Node3D.new();node.name="TerrainOverview_%d_%d"%[key.x,key.y];add_child(node)
 			for name in ["Ground","Water"]:
 				var visual:=MeshInstance3D.new();visual.name=name;node.add_child(visual)
+				if name == "Ground": visual.layers |= LeafCover.GROUND_LAYER
 			var edge:=MeshInstance3D.new();edge.name="ResidencyEdge"
 			edge.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF;node.add_child(edge)
 			_overviews[key]={"node":node}
@@ -320,6 +360,10 @@ func _refresh_far_ground_materials()->void:
 func editor_detail_active() -> bool:
 	return detail_policy.enabled and _detail_observer_valid and ground_style==1
 
+
+func editor_ground_opening() -> bool:
+	return _opening_overview
+
 func detail_world_anchor() -> Vector3:
 	return to_global(Vector3(detail_policy.anchor.x,0,detail_policy.anchor.y))
 
@@ -370,6 +414,8 @@ func set_runtime_start_anchor(world_position:Vector3)->void:
 
 func _runtime_support_tiles(camera:Camera3D)->Dictionary:
 	var points:Array[Vector3]=[]
+	var map:=get_parent() as EmberMapLoader
+	if map!=null:points.append_array(map.runtime_physics_anchors())
 	if camera!=null and camera.get_parent() is EmberFollowCamera:
 		var actor:Node3D=camera.get_parent().target
 		if is_instance_valid(actor):
@@ -389,6 +435,17 @@ func _runtime_support_tiles(camera:Camera3D)->Dictionary:
 			for x in range(centre.x-1,centre.x+2):result[Vector2i(x,z)]=true
 	return result
 
+func prepare_runtime_body_support(world_position:Vector3)->void:
+	if Engine.is_editor_hint() or document==null:return
+	var point:=to_local(world_position)
+	var centre:=Vector2i(floori(point.x/TILE_SIZE),floori(point.z/TILE_SIZE))
+	var changed:=false
+	for z in range(centre.y-1,centre.y+2):
+		for x in range(centre.x-1,centre.x+2):
+			var key:=Vector2i(x,z)
+			if not _runtime_support.has(key):_runtime_support[key]=true;changed=true
+	if changed:_detail_poll_seconds=0.0;set_process(true)
+
 func _poll_detail_observer(delta:float,force:=false)->void:
 	if document==null or not is_inside_tree():return
 	_detail_poll_seconds-=delta
@@ -399,6 +456,9 @@ func _poll_detail_observer(delta:float,force:=false)->void:
 	if camera==null:
 		if Engine.is_editor_hint() or not _runtime_start_anchor.is_finite():return
 		target=to_local(_runtime_start_anchor)
+	elif not Engine.is_editor_hint() and camera.get_parent() is EmberFollowCamera and is_instance_valid(camera.get_parent().target):
+		# Orbit/zoom changes render visibility. Preparation follows the actor.
+		target=to_local(camera.get_parent().target.global_position)
 	else:
 		var ray_origin:=to_local(camera.global_position)
 		var ray_direction:=global_basis.inverse()*(-camera.global_basis.z)
@@ -434,6 +494,9 @@ var _look_pending: Array[Vector2i] = []
 func set_world_look(value: int) -> void:
 	if world_look == value: return
 	world_look = value
+	if value == 2 and _opening_overview:
+		_opening_overview = false
+		_clear_overviews()
 	_look_pending.assign(_tiles.keys())
 	_refresh_look_materials()
 	set_process(true)
@@ -467,7 +530,7 @@ func _bind_depth_material(material: ShaderMaterial) -> void:
 		if document != null:
 			Materials.set_compact_terrain_roles(material, document.palette_surface_roles, document.palette_material_ids, document.palette)
 	var unit: float = get_parent().imported_tile_size if get_parent() is EmberMapLoader else 16.0
-	material.set_shader_parameter("ember_texture_world_unit", unit if world_look>=0 else 1.0)
+	material.set_shader_parameter("ember_texture_world_unit", unit)
 	material.set_shader_parameter("terrain_world_look", world_look)
 	material.set_shader_parameter("look_study_mode", maxi(0,world_look))
 	material.set_shader_parameter("look_study_pixel_m", unit / 16.0)
@@ -552,6 +615,23 @@ var _smooth_fields := {}
 var _query_field:Dictionary={}
 var _query_field_key:=Vector2i(-1,-1)
 var _query_field_revision:=-1
+var _query_point:Dictionary={}
+var _query_point_tasks:Dictionary={}
+
+class PointQueryJob extends RefCounted:
+	var result:Dictionary={}
+	var _snapshot:Resource
+	var _cell:Vector2i
+	var _offset:Vector2i
+	func _init(source:Resource,cell:Vector2i)->void:
+		var halo:=SmoothSurface.HALO
+		var bounds:=Rect2i(cell-Vector2i.ONE*halo,Vector2i.ONE*(halo*2+2)).intersection(Rect2i(0,0,source.width,source.depth))
+		_snapshot=source.dense_window(bounds);_offset=bounds.position;_cell=cell-_offset
+	func run()->void:
+		# Private CPU Resource only: no live document, Nodes or rendering calls.
+		result=SmoothSurface.field(_snapshot,Rect2i(_cell,Vector2i.ONE))
+		result.start+=_offset
+		_snapshot=null
 var _editor_surface_layouts: Dictionary = {}
 var _editor_surface_jobs: Dictionary = {}
 var _editor_brush_epoch := 0
@@ -652,8 +732,13 @@ func _exit_tree() -> void:
 
 
 func _cancel_mesh_lods() -> void:
+	_preview_tiles_to_publish = {}
+	_opening_overview = false
+	_editor_fingerprint_memo = null
 	_clear_overviews()
-	_query_field.clear();_query_field_revision=-1
+	for task:int in _query_point_tasks:WorkerThreadPool.wait_for_task_completion(task)
+	_query_point_tasks.clear()
+	_query_field.clear();_query_field_revision=-1;_query_point.clear()
 	for job: Dictionary in _editor_surface_jobs.values():job.cancellation.set_cancelled(true)
 	for job: Dictionary in _editor_surface_jobs.values():
 		if job.task>=0:WorkerThreadPool.wait_for_task_completion(job.task)
@@ -896,7 +981,38 @@ func _smooth_field(key: Vector2i) -> Dictionary:
 
 
 func _smooth_height(point: Vector2) -> float:
-	return SmoothSurface.sample(_smooth_field(Vector2i(floori(point.x/TILE_SIZE),floori(point.y/TILE_SIZE))),point)
+	var key:=Vector2i(floori(point.x/TILE_SIZE),floori(point.y/TILE_SIZE))
+	if _smooth_fields.has(key):return SmoothSurface.sample(_smooth_fields[key],point)
+	if key==_query_field_key and _query_field_revision==_column_revision:return SmoothSurface.sample(_query_field,point)
+	# Streaming callers can prepare just these exact corners. Other callers
+	# retain full-tile caching, which is important for dense authoring/navigation.
+	var cell:=Vector2i(point.floor())
+	if not _query_point.is_empty() and _query_point.cell==cell and _query_point.revision==_column_revision and _query_point.document==document.get_instance_id():return SmoothSurface.sample(_query_point.field,point)
+	return SmoothSurface.sample(_smooth_field(key),point)
+
+func prepare_floor_query(global_point:Vector3)->bool:
+	# Streaming callers prepare a bounded CPU snapshot before their ordinary
+	# synchronous surface/object query. At most one point task per projection.
+	if document==null:return false
+	if ground_style!=1:return true
+	var local:=to_local(global_point);var cell:=Vector2i(floori(local.x),floori(local.z))
+	if cell.x<0 or cell.y<0 or cell.x>=document.width or cell.y>=document.depth:return false
+	var key:=Vector2i(cell.x/TILE_SIZE,cell.y/TILE_SIZE)
+	if _smooth_fields.has(key) or (key==_query_field_key and _query_field_revision==_column_revision):return true
+	var revision:=_column_revision;var document_id:=document.get_instance_id()
+	while not _query_point_tasks.is_empty():
+		await get_tree().process_frame
+		if document==null or document.get_instance_id()!=document_id or _column_revision!=revision:return false
+	if not _query_point.is_empty() and _query_point.cell==cell and _query_point.revision==revision and _query_point.document==document_id:return true
+	var job:=PointQueryJob.new(document,cell)
+	var task:=WorkerThreadPool.add_task(job.run,false,"Ember placement height")
+	_query_point_tasks[task]=job
+	while _query_point_tasks.has(task) and not WorkerThreadPool.is_task_completed(task):await get_tree().process_frame
+	if not _query_point_tasks.has(task):return false # Owner changed/closed and already joined it.
+	WorkerThreadPool.wait_for_task_completion(task);_query_point_tasks.erase(task)
+	if document==null or document.get_instance_id()!=document_id or _column_revision!=revision:return false
+	_query_point={"cell":cell,"revision":revision,"document":document_id,"field":job.result}
+	return true
 
 
 func set_shared_material_pattern(pattern: TerrainPattern) -> bool:
@@ -932,6 +1048,21 @@ func preview_shared_material_light(pattern: TerrainPattern, id: String) -> void:
 	if get_parent() is EmberMapLoader: get_parent().anomaly_materials_changed.emit()
 
 
+func preview_shared_material_scale(pattern: TerrainPattern, id: String) -> void:
+	if document == null or pattern == null:
+		return
+	var changed := false
+	for slot in document.palette_surface_roles.size():
+		if document.material_id_for_palette(slot) != id:
+			continue
+		Materials.update_terrain_pattern_scale(_ground_material as ShaderMaterial, slot, pattern)
+		for region: Dictionary in _water_regions.values():
+			Materials.update_terrain_pattern_scale(region.get("ground") as ShaderMaterial, slot, pattern)
+		changed = true
+	if changed:
+		_refresh_far_ground_materials()
+
+
 func _refresh_material_atlas() -> void:
 	if document != null:
 		Materials.set_compact_terrain_roles(_ground_material as ShaderMaterial, document.palette_surface_roles, document.palette_material_ids, document.palette)
@@ -944,6 +1075,37 @@ func _refresh_material_atlas() -> void:
 				Materials.set_terrain_depth_profiles(ground, document.palette_surface_roles, document.palette_material_ids)
 				ground.set_shader_parameter("smooth_surface_enabled",ground_style == 1)
 	_refresh_look_materials()
+
+
+var _staged_dry_preview := {}
+var _preview_tiles_to_publish := {}
+const MAX_REUSABLE_PREVIEW_TILES := 64
+
+
+func can_reuse_dry_preview(candidate: TerrainResource, keys: Array[Vector2i]) -> bool:
+	if document == null or keys.is_empty() or keys.size() > MAX_REUSABLE_PREVIEW_TILES:
+		return false
+	if not document.is_sectioned() or not candidate.is_sectioned():
+		return false
+	if ground_style != 1 or world_look != 0 or _editor_residency_allowed():
+		return false
+	if candidate.palette != document.palette or candidate.palette_material_ids != document.palette_material_ids or candidate.palette_surface_roles != document.palette_surface_roles:
+		return false
+	var swash: Dictionary = _staged_water_fields.pending_dry_tiles() if _staged_water_fields != null else (_sea_swash.dry_tiles if _sea_swash != null else {})
+	var fall: RefCounted = _staged_water_fields.waterfall if _staged_water_fields != null else _waterfall
+	for key in keys:
+		if swash.has(key) or (fall != null and fall.tiles.has(key)):
+			return false
+	return true
+
+
+func stage_dry_preview(candidate: TerrainResource, tiles: Dictionary) -> void:
+	# A one-shot handoff for the exact candidate; history keeps only Source.
+	_staged_dry_preview = {"candidate":candidate, "tiles":tiles}
+
+
+func clear_staged_dry_preview() -> void:
+	_staged_dry_preview.clear()
 
 
 func open_document(next_source: TerrainResource) -> bool:
@@ -1008,6 +1170,10 @@ func open_document(next_source: TerrainResource) -> bool:
 		for key:Vector2i in document.sections:_queue_overview(key)
 		_sync_ground_residency()
 	else:
+		_opening_overview = _startup_budget_allowed and document.is_sectioned() and ground_style == 1 and world_look != 2
+		if _opening_overview:
+			for key: Vector2i in document.sections:
+				_queue_overview(key)
 		for key in document.tile_keys(TILE_SIZE): _queue_tile(key, false)
 	_prioritize_pending()
 	_profile["queue_us"] = Time.get_ticks_usec() - stage_started
@@ -1104,6 +1270,8 @@ func open_resized_document(next_source: TerrainResource, previous_source: Terrai
 
 func _open_changed_sections(next_source: TerrainResource, shift: Vector2i) -> bool:
 	if not next_source.validation_errors().is_empty(): return false
+	var prepared: Dictionary = _staged_dry_preview.tiles if shift == Vector2i.ZERO and next_source == _staged_dry_preview.get("candidate") else {}
+	clear_staged_dry_preview()
 	var retained_fields:=_smooth_fields.duplicate()
 	var retained_layouts:=_editor_surface_layouts.duplicate()
 	_cancel_mesh_lods()
@@ -1121,7 +1289,10 @@ func _open_changed_sections(next_source: TerrainResource, shift: Vector2i) -> bo
 	# snapshots, but must invalidate only the small display tiles that differ.
 	var local_restore:=shift==Vector2i.ZERO and previous.width==next_source.width and previous.depth==next_source.depth and previous.origin_y==next_source.origin_y and not colors_changed and previous.surface_rules==next_source.surface_rules
 	var changed_tiles: Dictionary={}
-	if local_restore:
+	if local_restore and not prepared.is_empty():
+		for key: Vector2i in prepared:
+			changed_tiles[key] = true
+	elif local_restore:
 		for section: Vector2i in changed:
 			var start:=section*(TerrainResource.Sections.CELLS/TILE_SIZE)
 			var span:=TerrainResource.Sections.CELLS/TILE_SIZE
@@ -1155,7 +1326,8 @@ func _open_changed_sections(next_source: TerrainResource, shift: Vector2i) -> bo
 	source = next_source
 	document = next_source.working_copy()
 	_profile_reset("sections")
-	_refresh_material_atlas()
+	if colors_changed or previous.palette_surface_roles != document.palette_surface_roles or previous.palette_material_ids != document.palette_material_ids:
+		_refresh_material_atlas()
 	_reset_pending_flags()
 	if local_restore:
 		# Discard/Undo retains unchanged meshes. Retain their matching pick/layout
@@ -1189,12 +1361,15 @@ func _open_changed_sections(next_source: TerrainResource, shift: Vector2i) -> bo
 		for key: Vector2i in rule_keys:
 			for dz in [-1,0,1]:
 				for dx in [-1,0,1]:_queue_tile(key+Vector2i(dx,dz),false)
+	if local_restore:
+		_preview_tiles_to_publish = prepared
 	_prioritize_pending()
 	set_process(not _pending.is_empty())
 	return true
 
 
 var _startup_budget_allowed:=false
+var _editor_fingerprint_memo: GeometryCache.EditorFingerprintMemo
 
 func _publication_budget_us()->int:
 	# Initial opening may spend more of a frame attaching ready resources.
@@ -1239,6 +1414,16 @@ func _process(_delta: float) -> void:
 		_geometry_prepared.erase(key)
 		remaining -= 1
 		var index := key.x + key.y * _pending_tile_columns
+		if _preview_tiles_to_publish.has(key):
+			var generated: Dictionary = _preview_tiles_to_publish[key]
+			_preview_tiles_to_publish.erase(key)
+			_pending_flags[index] = 0
+			_pending_edit_flags[index] = 0
+			_detail_full_tiles[key] = true
+			_detail_requested[key] = true
+			_rebuild_tile(key, {}, {}, generated)
+			_profile_add("editor_preview_reused_tiles", 1)
+			continue
 		if _editor_surface_jobs.has(key):
 			_pending.append(key)
 			continue
@@ -1265,6 +1450,7 @@ func _process(_delta: float) -> void:
 			if _editor_surface_jobs.size()+_overview_jobs.size()<clampi(OS.get_processor_count()-4,1,4):
 				if _geometry_snapshot_revision!=_column_revision:
 					_geometry_snapshot=document.working_copy();_geometry_snapshot_revision=_column_revision
+					_editor_fingerprint_memo = GeometryCache.EditorFingerprintMemo.new()
 				var cache:=GeometryCache.new()
 				cache.directory=runtime_geometry_cache_directory if runtime_geometry_cache_enabled else ""
 				var swash_tiles:Dictionary=_staged_water_fields.pending_dry_tiles() if _staged_water_fields!=null else (_sea_swash.dry_tiles if _sea_swash!=null else {})
@@ -1273,7 +1459,7 @@ func _process(_delta: float) -> void:
 				water_options.far_stride=1 if _detail_full_requested(key) else 32
 				water_options.residency_edges=_editor_residency_allowed()
 				_detail_requested[key]=water_options.far_stride==1
-				var prepare_job:=cache.editor_job(_geometry_snapshot,key,smooth_material_blend_enabled,water_options)
+				var prepare_job:=cache.editor_job(_geometry_snapshot,key,smooth_material_blend_enabled,water_options,_editor_fingerprint_memo)
 				var cancellation:=MeshLOD.Cancellation.new()
 				var task:=WorkerThreadPool.add_task(prepare_job.run.bind(cancellation.is_cancelled),false,"Ember terrain preparation")
 				if task>=0:
@@ -1300,9 +1486,13 @@ func _process(_delta: float) -> void:
 	if not Engine.is_editor_hint(): _poll_mesh_lods(started)
 	while not _look_pending.is_empty() and Time.get_ticks_usec() - started < budget_us:
 		_apply_tile_look(_look_pending.pop_back())
+	if _opening_overview and _pending.is_empty():
+		_opening_overview = false
+		_clear_overviews()
 	if _pending.is_empty() and _overview_pending.is_empty() and _overview_jobs.is_empty() and _overview_dirty.is_empty():
 		if _editor_surface_jobs.is_empty():
 			_geometry_snapshot=null;_geometry_snapshot_revision=-1
+			_editor_fingerprint_memo = null
 		if all_tiles_ms < 0:
 			all_tiles_ms = Time.get_ticks_msec() - _started_ms
 			_startup_budget_allowed=false
@@ -1490,6 +1680,8 @@ func _rebuild_tile(key: Vector2i, prepared: Dictionary = {}, prepared_smooth: Di
 		generated.erase("residency_edge_upload")
 		edge.material_override=_far_material(_region_ground_material(_overview_section(key)))
 		_overview_dirty[_overview_section(key)]=true
+	elif _opening_overview and _overviews.has(_overview_section(key)):
+		_overview_dirty[_overview_section(key)] = true
 	tile.visible = not _editor_hidden_edge_keys.has(key)
 	_profile_add("collision_attach_us", Time.get_ticks_usec() - started)
 	_profile_add("tile_builds", 1)
@@ -1903,7 +2095,8 @@ func water_surface_sample(global_point: Vector3) -> Dictionary:
 					detail_surface = lerpf(base, detail_surface, _sea_swash.coastal_influence(float(swash.distance)))
 				if _wave_obstacles != null and not bool(swash.dry_bank): detail_surface += _wave_obstacles.sample(point).x
 				return {"wet": detail_surface > _smooth_height(point) + 0.02, "cell": cell,
-					"block_world_size": block_world_size, "position": to_global(Vector3(local.x,detail_surface,local.z)), "flow": Vector2.ZERO}
+					"block_world_size": block_world_size, "position": to_global(Vector3(local.x,detail_surface,local.z)), "flow": Vector2.ZERO,
+					"open_swell_weight": 0.0 if swash.dry_bank else 1.0 - _sea_swash.coastal_influence(float(swash.distance))}
 			if bool(swash.dry_bank) and float(swash.coverage) <= 0.05:
 				return {"wet": false, "cell": cell, "block_world_size": block_world_size}
 			var surface: float = _sea_swash.surface_height(Vector2(local.x, local.z))
@@ -1925,6 +2118,7 @@ func water_surface_sample(global_point: Vector3) -> Dictionary:
 			+ (_waterfall.displacement(Vector2(local.x, local.z)) if _waterfall != null and level == _waterfall.info.get("lower_level", -1) else 0.0), local.z)),
 		"block_world_size": block_world_size,
 		"flow": document.flow_at_cell(cell.x, cell.y),
+		"open_swell_weight": smoothstep(0.0, 12.0, float(level - document.column_value("heights", index))),
 	}
 
 
@@ -2244,6 +2438,7 @@ func tile_revision(key: Vector2i) -> int:
 
 
 func _queue_tile(key: Vector2i, front: bool) -> void:
+	_preview_tiles_to_publish.erase(key)
 	if key.x < 0 or key.y < 0 or key.x >= _pending_tile_columns or key.y >= _pending_tile_rows:
 		return
 	if document.is_sectioned() and not document.has_column(key.x * TILE_SIZE, key.y * TILE_SIZE): return

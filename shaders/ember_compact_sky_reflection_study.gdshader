@@ -28,6 +28,9 @@ uniform mat4 reflection_view_projection;
 uniform float planar_fresnel_power : hint_range(1.0, 8.0) = 3.0;
 uniform float water_level_world = 16.02;
 uniform float water_level_offset_voxels = 0.0;
+// Compact maps use 16 world units per metre. A metre-space map can use the
+// same local voxel mesh and optical model with a scaled MeshInstance3D.
+uniform float world_units_per_metre = 16.0;
 uniform float preview_time = -1.0;
 uniform sampler2D water_flow_map : repeat_disable, filter_linear;
 uniform sampler2D river_phase_map : repeat_disable, filter_linear;
@@ -545,7 +548,7 @@ float study_object_distance(vec2 point) {
 			local = vec2(local.x * c + local.y * s, -local.x * s + local.y * c);
 			vec2 uv = clamp(local / (shape.zw * 2.0) + vec2(0.5), vec2(0.5 / 64.0), vec2(63.5 / 64.0));
 			distance = textureLod(object_contact_distance_map, vec2(uv.x, (float(i) + uv.y) / 8.0), 0.0).r;
-			distance += length(max(abs(local) - shape.zw, vec2(0.0))) * 16.0;
+			distance += length(max(abs(local) - shape.zw, vec2(0.0))) * world_units_per_metre;
 			closest = min(closest, distance);
 			continue;
 		} else if (meta.x > 0.5) {
@@ -557,7 +560,7 @@ float study_object_distance(vec2 point) {
 			vec2 outside = abs(local) - shape.zw;
 			distance = length(max(outside, vec2(0.0))) + min(max(outside.x, outside.y), 0.0);
 		}
-		closest = min(closest, distance * 16.0);
+		closest = min(closest, distance * world_units_per_metre);
 	}
 	return closest;
 }
@@ -604,7 +607,7 @@ float study_object_foam(vec2 point, float seconds, float wave_height) {
 }
 
 void vertex() {
-	water_point = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xz / 16.0;
+	water_point = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xz / world_units_per_metre;
 	swash_cell_point = (MODEL_MATRIX * vec4(UV.x, 0.0, -UV.y - 1.0, 1.0)).xz;
 	float seconds = preview_time >= 0.0 ? preview_time : TIME;
 	// Wall feet stay on the seabed while the rim moves with the top mesh.
@@ -730,7 +733,7 @@ void fragment() {
 	float depth_blocks = max(clamp(COLOR.a, 0.0, 1.0) * 4.0 + water_level_offset_voxels / 16.0, 0.0);
 	float detail_begin = max(water_detail_begin_m, 0.0);
 	float detail_end = max(water_detail_end_m, detail_begin + 1.0);
-	float camera_distance_m = distance(water_world_position, INV_VIEW_MATRIX[3].xyz) / 16.0;
+	float camera_distance_m = distance(water_world_position, INV_VIEW_MATRIX[3].xyz) / world_units_per_metre;
 	float detail_weight = 1.0 - smoothstep(detail_begin, detail_end, camera_distance_m);
 	if (UV.y < -0.5) { depth_blocks = max((swash.r - coast.g) / 16.0, 0.0); }
 	float shore_coverage = 1.0;
@@ -814,9 +817,10 @@ void fragment() {
 	vec3 scene_view = scene_h.xyz / max(scene_h.w, 0.00001);
 	vec3 scene_world = (INV_VIEW_MATRIX * vec4(scene_view, 1.0)).xyz;
 	float water_view_z = (VIEW_MATRIX * vec4(water_world_position, 1.0)).z;
+	float voxel_world_size = world_units_per_metre / 16.0;
 	bool behind_water = sampled_depth > 0.00001
-		&& scene_view.z < water_view_z - 0.1
-		&& scene_world.y < water_world_position.y - 0.05;
+		&& scene_view.z < water_view_z - 0.1 * voxel_world_size
+		&& scene_world.y < water_world_position.y - 0.05 * voxel_world_size;
 	if (floor_camera_available < 0.5) {
 		// Native editor preview has no study camera. Read the opaque scene at
 		// the exact water pixel so bank edges cannot be dragged into the river.

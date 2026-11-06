@@ -9,6 +9,7 @@ signal mode_changed(mode: String, label: String)
 const PartyState := preload("res://scripts/ember_party_state.gd")
 const HeroScale := preload("res://scripts/ember_exploration_hero_scale.gd")
 const WaterContact := preload("res://scripts/ember_water_contact_3d.gd")
+const HeroVisual := preload("res://scripts/ember_hoshi_visual.gd")
 
 const MODE_TRAIN := "train"
 const MODE_FORMATION := "formation"
@@ -33,6 +34,10 @@ var _last_leader_position := Vector3.ZERO
 var _last_sample_position := Vector3.ZERO
 var _last_forward := Vector3(0.0, 0.0, -1.0)
 var _elapsed := 0.0
+var _hold_anchor: WeakRef
+var _hold_hero_id := ""
+var _hold_completion_flag := ""
+var _pipe_follower_basis: Dictionary = {}
 
 
 func _ready() -> void:
@@ -60,11 +65,25 @@ func _exit_tree() -> void:
 func _physics_process(delta: float) -> void:
 	if not is_instance_valid(leader) or _followers.is_empty():
 		return
+	if is_instance_valid(leader.get("zipline")):
+		return
 	_elapsed += maxf(0.0, delta)
 	_record_leader_position()
+	var hold_target := _valid_hold_target()
+	if hold_target == null:
+		release_hold()
 	var leader_moving := _horizontal_distance(leader.global_position, _last_leader_position) > 0.001
 	for index in _followers.size():
 		var follower := _followers[index]
+		var previous := follower.global_position
+		if hold_target != null and follower.get_meta("hero_id") == _hold_hero_id:
+			var destination := hold_target.global_position
+			if _formation_path_is_clear(follower.global_position, destination):
+				var moving := follower.global_position.distance_to(destination) > 0.25
+				follower.global_position = follower.global_position.move_toward(destination, tile_size * 3.2 * delta)
+				_animate_visual(follower, index, moving, delta, previous)
+				continue
+			release_hold()
 		var target := target_for(index)
 		var distance := follower.global_position.distance_to(target)
 		if distance > tile_size * 4.5:
@@ -79,8 +98,76 @@ func _physics_process(delta: float) -> void:
 		if horizontal_motion.length_squared() > 0.0001:
 			var desired_yaw := atan2(horizontal_motion.x, horizontal_motion.z)
 			follower.rotation.y = lerp_angle(follower.rotation.y, desired_yaw, 1.0 - exp(-9.0 * delta))
-		_animate_visual(follower, index, leader_moving, delta)
+		_animate_visual(follower, index, leader_moving, delta, previous)
 	_last_leader_position = leader.global_position
+
+
+func ride_zipline(route: Node3D, elapsed: float) -> int:
+	for index in _followers.size():
+		var rider_time := elapsed - float(index + 1) * float(route.FOLLOW_DELAY)
+		if rider_time >= 0.0:
+			var follower := _followers[index]
+			follower.global_position = route.rider_position(rider_time)
+			if route.is_pipe():
+				if not _pipe_follower_basis.has(follower):
+					_pipe_follower_basis[follower] = follower.global_basis
+				follower.global_basis = route.rider_basis(rider_time)
+	return _followers.size()
+
+
+func ride_vine_trail(samples: Array[Vector3], follow_delay: float) -> int:
+	for index in _followers.size():
+		var lag := roundi(float(index + 1) * follow_delay * Engine.physics_ticks_per_second)
+		var sample_index := samples.size() - 1 - lag
+		if sample_index >= 0:
+			_followers[index].global_position = samples[sample_index]
+	return _followers.size()
+
+
+func request_hold(anchor: Node3D, hero_id: String, completion_flag: String) -> bool:
+	var follower := _visuals.get(hero_id) as Node3D
+	if not is_instance_valid(follower) or follower not in _followers or progress_state == null:
+		return false
+	if progress_state.combat_party_locked or bool(progress_state.flags.get(completion_flag, false)):
+		return false
+	if not is_instance_valid(anchor) or follower.global_position.distance_to(anchor.global_position) > tile_size * 4.0:
+		return false
+	if not _formation_path_is_clear(follower.global_position, anchor.global_position):
+		return false
+	_hold_anchor = weakref(anchor)
+	_hold_hero_id = hero_id
+	_hold_completion_flag = completion_flag
+	return true
+
+
+func assigned_to(anchor: Node3D) -> bool:
+	return anchor != null and _valid_hold_target() == anchor
+
+
+func holding_at(anchor: Node3D) -> bool:
+	if not assigned_to(anchor):
+		return false
+	var follower := _visuals.get(_hold_hero_id) as Node3D
+	return follower.global_position.distance_to(anchor.global_position) <= 0.25
+
+
+func release_hold() -> void:
+	_hold_anchor = null
+	_hold_hero_id = ""
+	_hold_completion_flag = ""
+
+
+func _valid_hold_target() -> Node3D:
+	if _hold_anchor == null or not is_instance_valid(leader) or progress_state == null:
+		return null
+	var anchor := _hold_anchor.get_ref() as Node3D
+	if anchor == null or not anchor.is_inside_tree() or progress_state.combat_party_locked:
+		return null
+	if _hold_hero_id not in progress_state.active_hero_ids or _hold_hero_id == active_hero_id:
+		return null
+	if bool(progress_state.flags.get(_hold_completion_flag, false)):
+		return null
+	return anchor if leader.global_position.distance_to(anchor.global_position) <= tile_size * 8.0 else null
 
 
 func toggle_mode() -> String:
@@ -102,6 +189,7 @@ func set_active_hero(hero_id: String) -> String:
 	var clean_id := _normalized_hero_id(hero_id)
 	if clean_id == active_hero_id:
 		return active_hero_id
+	release_hold()
 	var previous_id := active_hero_id
 	var incoming := _visuals.get(clean_id) as Node3D
 	var swap_position := incoming.global_position if is_instance_valid(incoming) else leader.global_position
@@ -146,6 +234,11 @@ func target_for(index: int) -> Vector3:
 
 
 func reset_to_leader() -> void:
+	release_hold()
+	for follower in _pipe_follower_basis:
+		if is_instance_valid(follower):
+			follower.global_basis = _pipe_follower_basis[follower]
+	_pipe_follower_basis.clear()
 	if not is_instance_valid(leader):
 		return
 	_last_leader_position = leader.global_position
@@ -269,6 +362,37 @@ func _sync_active_roster() -> void:
 		visual.visible = hero_id != active_hero_id and (progress_state == null or hero_id in progress_state.active_hero_ids)
 		if visual.visible:
 			_followers.append(visual)
+	refresh_hero_models()
+
+
+func refresh_hero_models() -> void:
+	if not is_instance_valid(leader) or not leader.has_method("has_kai_test_visual"):
+		return
+	for hero_id in [PartyState.LEADER_ID, "mira"]:
+		var follower := _visuals.get(hero_id) as Node3D
+		if follower == null:
+			continue
+		var model := follower.get_node_or_null("HeroVisual") as HeroVisual
+		var outfit: bool = hero_id == "mira" and leader.mira_outfit_selected()
+		var eligible: bool = hero_id == "mira" or leader.has_kai_test_visual()
+		if model != null and (not eligible or model.get_meta("mira_outfit") != outfit):
+			follower.remove_child(model)
+			model.queue_free()
+			model = null
+		if eligible and follower.visible and model == null:
+			model = HeroVisual.new()
+			model.name = "HeroVisual"
+			model.set_meta("mira_outfit", outfit)
+			follower.add_child(model)
+			if not model.setup(follower, tile_size, null, outfit):
+				follower.remove_child(model)
+				model.queue_free()
+				model = null
+		if model != null:
+			model.follower_velocity = Vector3.ZERO
+			model.set_process(follower.visible)
+		follower.get_node("Body").visible = model == null
+		follower.get_node("Facing").visible = model == null
 
 
 func _normalized_hero_id(hero_id: String) -> String:
@@ -322,7 +446,11 @@ func _formation_path_is_clear(anchor: Vector3, candidate: Vector3) -> bool:
 	return get_world_3d().direct_space_state.intersect_ray(query).is_empty()
 
 
-func _animate_visual(follower: Node3D, index: int, moving: bool, delta: float) -> void:
+func _animate_visual(follower: Node3D, index: int, moving: bool, delta: float, previous: Vector3) -> void:
+	var model := follower.get_node_or_null("HeroVisual") as HeroVisual
+	if model != null:
+		model.follower_velocity = ((follower.global_position - previous) / maxf(delta, 0.001)).limit_length(tile_size * 3.2)
+		return
 	var body := follower.get_node_or_null("Body") as MeshInstance3D
 	if body == null:
 		return

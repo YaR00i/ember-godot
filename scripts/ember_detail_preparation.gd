@@ -283,6 +283,9 @@ func _poll_budget_waiters() -> void:
 	var frame:=Engine.get_process_frames()
 	var foreground_us:int=_foreground_us if _foreground_frame==frame else 0
 	_frame=frame;_deadline=Time.get_ticks_usec()+maxi(0,frame_budget_us()-foreground_us)
+	# Ordering also costs CPU: do not inspect a spatial queue after ground has
+	# exhausted this frame's existing allowance. Explicit cancellation stays synchronous.
+	if not available():return
 	_budget_dispatching=true
 	_order_budget_waiters()
 	var remaining:=_budget_waiters.size()
@@ -378,15 +381,28 @@ func _refresh_sleeping_candidates(projection:Node)->void:
 	var active:bool=projection.editor_detail_active()
 	var state:Array=[center,radius,active]
 	if not _sleeping_index_dirty and state==_sleeping_candidate_state:return
+	var previous:Array[int]=[]
+	if state==_sleeping_candidate_state:previous=_sleeping_candidates
+	var previous_cursor:=_sleeping_candidate_cursor
 	_sleeping_index_dirty=false;_sleeping_candidate_state=state;_sleeping_candidate_cursor=0
 	_sleeping_scan_epoch=-2 # New/reindexed hosts must join even within the same epoch.
-	_sleeping_candidates.clear()
-	if not active:_sleeping_candidates.assign(_sleeping_order);return
-	var wanted:Dictionary=_sleeping_large.duplicate()
-	for z in range(center.y-radius,center.y+radius+1):
-		for x in range(center.x-radius,center.x+radius+1):
-			if _sleeping_bins.has(Vector2i(x,z)):wanted.merge(_sleeping_bins[Vector2i(x,z)])
-	_sleeping_candidates.assign(wanted.keys())
+	_sleeping_candidates=[]
+	var wanted:Dictionary=_sleeping
+	if not active:_sleeping_candidates.assign(_sleeping_order)
+	else:
+		wanted=_sleeping_large.duplicate()
+		for z in range(center.y-radius,center.y+radius+1):
+			for x in range(center.x-radius,center.x+radius+1):
+				if _sleeping_bins.has(Vector2i(x,z)):wanted.merge(_sleeping_bins[Vector2i(x,z)])
+		_sleeping_candidates.assign(wanted.keys())
+	# Release/reindex inside the same window must not restart a budget-limited
+	# scan at its conservative far neighbours on every frame. Continue at the
+	# next surviving ID; genuinely changed windows still start a fresh scan.
+	for offset in previous.size():
+		var id:int=previous[(previous_cursor+offset)%previous.size()]
+		if wanted.has(id):
+			_sleeping_candidate_cursor=_sleeping_candidates.find(id)
+			break
 
 func poll_sleeping() -> void:
 	# Disposable admission index under the existing preparation owner. Exact
@@ -552,6 +568,11 @@ func _finish_material_digest(wait:=false)->void:
 		WorkerThreadPool.wait_for_task_completion(job.task);job.finished=true
 	if job.abandoned or _released:_material_digest_job=null
 	job.notify_ready()
+	# A completed payload still owns the single bounded slot until delivery.
+	# Dense nearer retries may exhaust every frame before its farther owner.
+	if _material_digest_job==job and not job.abandoned:
+		var host:Node=job.host.get_ref()
+		if is_instance_valid(host):prioritize(host)
 
 class MaterialDigestJob extends RefCounted:
 	signal ready
@@ -706,6 +727,10 @@ func _finish_cache_reads(wait:=false)->void:
 			for field:String in ["read_us","read_bytes","invalid","failures","packaged_hits"]:disk.set(field,int(disk.get(field))+int(job.result.get(field,0)))
 		if job.abandoned or _released:_cache_reads.erase(job)
 		job.notify_ready()
+		# Prefer releasing a completed bounded result over waiting for its slot.
+		if _cache_reads.has(job) and not job.abandoned:
+			var host:Node=job.host.get_ref()
+			if is_instance_valid(host):prioritize(host)
 
 class CacheReadJob extends RefCounted:
 	signal ready

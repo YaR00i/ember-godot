@@ -9,6 +9,8 @@ var output:="D:/aion2-grass-study-2026-10-26/main-map"
 var errors:Array[String]=[]
 var ordinary:Array[Node]=[]
 func _init()->void:
+	if not OS.get_environment("EMBER_GRASS_CAPTURE_DIR").is_empty():output=OS.get_environment("EMBER_GRASS_CAPTURE_DIR")
+	DirAccess.make_dir_recursive_absolute(output)
 	Fixture.prepare(self,"user://ember-tests/grass-cards-main-"+str(OS.get_process_id()))
 	run.call_deferred()
 func check(ok:bool,label:String)->void:
@@ -21,12 +23,12 @@ func settle()->bool:
 		var projection=map._visual_surface_projection
 		var busy:bool=projection==null
 		if projection!=null:busy=projection.pending_tile_count()>0 or not projection._look_pending.is_empty()
-		for p in ordinary:busy=busy or p._dirty or p._rebuilding
+		for p in ordinary:busy=busy or p.detail_preparation_pending()
 		if not busy:return true
 		if Time.get_ticks_msec()-last>20000:
 			var ready:=0
 			for p in ordinary:
-				if not p._dirty and not p._rebuilding:ready+=1
+				if not p.detail_preparation_pending():ready+=1
 			print("GRASS_CARDS_WAIT ",scene._startup_status()," ready=",ready,"/",ordinary.size());last=Time.get_ticks_msec()
 		await process_frame
 	check(false,"main terrain and ordinary grass settle");return false
@@ -70,12 +72,14 @@ func run()->void:
 		var material:ShaderMaterial=p._visual.material_override
 		check(material.get_shader_parameter("flower_atlas")==Patch.GRASS_CARD_ATLAS,"main patch binds accepted atlas")
 		check(material.get_shader_parameter("flower_palette_slot")==float(map._visual_surface_projection.document.palette_surface_roles.find("grass")),"main palette slot")
+		check(mm.mesh==Patch.grass_render_mesh(),"main detailed tuft uses shared native LOD contour")
 		check(mm.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX].size()==24,"main detailed tuft has 8 triangles")
 		var uv:PackedVector2Array=mm.mesh.surface_get_arrays(0)[Mesh.ARRAY_TEX_UV]
-		check(uv.has(Vector2(0,1)) and uv.has(Vector2(1,0)),"local artwork UV survives palette binding")
+		check(uv==Patch.GRASS_CARD_MESH.surface_get_arrays(0)[Mesh.ARRAY_TEX_UV],"local artwork UV survives palette binding")
 	check(total>1000 and populated>0,"real map has substantial grass coverage")
 	if target==null:quit(1);return
 	print("GRASS_CARDS_MAIN_READY patches=",ordinary.size()," populated=",populated," tufts=",total)
+	var gameplay_camera:=root.get_camera_3d()
 	camera=Camera3D.new();camera.far=4000;camera.fov=58;scene.add_child(camera);camera.make_current()
 	var mm:MultiMesh=target._visual.multimesh
 	var focus:=Vector3.ZERO
@@ -86,6 +90,15 @@ func run()->void:
 	for i in 30:
 		camera.position.x+=0.18;await process_frame
 	await capture("main-grass-motion")
+	var harvest:Node3D=map.get_node("Props/CuttableGrass")
+	check(harvest.get_node("PileVisual").cast_shadow==GeometryInstance3D.SHADOW_CASTING_SETTING_ON,"main high grass keeps shadows")
+	var harvest_focus:=harvest.global_position+Vector3.UP*8.0
+	camera.look_at_from_position(harvest_focus+Vector3(-54,40,30),harvest_focus)
+	await capture("main-cuttable-contour")
+	# Capturing other areas changes residency. Compare return buffers at the
+	# original gameplay view, rather than treating newly resident patches as loss.
+	gameplay_camera.make_current()
+	if not await settle():quit(1);return
 	for look in [1,2,0]:
 		for p in ordinary:p.set_world_look(look)
 		if not await settle():break
@@ -94,7 +107,8 @@ func run()->void:
 			var mat:ShaderMaterial=p._visual.material_override
 			if look==0:
 				check(mat.get_shader_parameter("flower_atlas")==Patch.GRASS_CARD_ATLAS,"detailed material restored")
-				check(p._visual.multimesh.buffer==buffers.get(str(p.get_path())),"scatter return exact")
+				if buffers.has(str(p.get_path())):
+					check(p._visual.multimesh.buffer==buffers[str(p.get_path())],"scatter return exact "+str(p.get_path()))
 			else:check(not mat.shader.code.contains("#define EMBER_FLOWER_COVER"),"other looks retain opaque grass")
 	for p in ordinary:
 		check(authored[str(p.get_path())]==hash([p.density_mask,p.size_blocks,p.scatter_seed,p.tuft_size,p.tufts_per_block,p.global_transform]),"authored density and placement retained")

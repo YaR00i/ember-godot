@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="EmberDialogueResource" format=3]
+[ext_resource type="Script" path="res://scripts/ember_dialogue_resource.gd" id="1"]
+[resource]
+script = ExtResource("1")
+dialogue_id = "chapter1_fishing_cast"
+document = {
+  "id": "chapter1_fishing_cast",
+  "nameRu": "Мира",
+  "startStepId": "line",
+  "steps": [
+    {
+      "id": "line",
+      "type": "dialogue",
+      "nameRu": "Мира",
+      "textRu": "Здесь у кромки воды тихо. Давай забросим и немного подождём.",
+      "next": "end"
+    },
+    {
+      "id": "end",
+      "type": "end"
+    }
+  ]
+}

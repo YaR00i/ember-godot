@@ -5,7 +5,7 @@ extends Resource
 const Math = preload("res://scripts/prototypes/ember_terrain_generation_math.gd")
 const Influence = preload("res://scripts/prototypes/ember_terrain_plan_math.gd")
 const META := &"_ember_terrain_plan"
-const VERSION := 12
+const VERSION := 13
 const GROVE_MEMBER_META := &"_ember_grove_member"
 const GROVE_GROUP_META := &"_ember_grove_group"
 const MAX_GROVE_MEMBERS := 256
@@ -61,7 +61,7 @@ func working_copy() -> Resource:
 func data() -> Dictionary: return {"version": schema_version, "regions": regions.duplicate(true), "patches": patches.duplicate(true), "object_layers":object_layers.duplicate(true),"paint_locks":paint_locks.duplicate(true)}
 
 static func from_data(value: Variant) -> Resource:
-	if not value is Dictionary or value.get("version") not in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, VERSION] or not value.get("regions") is Array or not value.get("patches", []) is Array or not value.get("object_layers",{}) is Dictionary or not value.get("paint_locks",{}) is Dictionary: return null
+	if not value is Dictionary or value.get("version") not in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, VERSION] or not value.get("regions") is Array or not value.get("patches", []) is Array or not value.get("object_layers",{}) is Dictionary or not value.get("paint_locks",{}) is Dictionary: return null
 	for region in value.regions:
 		if not region is Dictionary: return null
 	var result := load("res://scripts/ember_terrain_plan_resource.gd").new() as Resource
@@ -81,7 +81,7 @@ static func same(a: Variant, b: Variant) -> bool:
 
 func validation_errors(extent := Vector2i.ZERO) -> Array[String]:
 	var errors: Array[String] = []
-	if schema_version not in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, VERSION]: errors.append("Неподдерживаемая версия плана областей.")
+	if schema_version < 1 or schema_version > VERSION: errors.append("Неподдерживаемая версия плана областей.")
 	if not paint_locks.is_empty() and schema_version<10:errors.append("Защита ручной покраски требует план версии 10.")
 	var paint_axis:=MAX_WORLD_M*16/PAINT_TILE
 	if paint_locks.size()>paint_axis*paint_axis:errors.append("Слишком большой слой защиты покраски.")
@@ -99,6 +99,32 @@ func validation_errors(extent := Vector2i.ZERO) -> Array[String]:
 	if regions.size() > MAX_REGIONS: errors.append("Слишком много областей в плане.")
 	var ids := {}
 	for region in regions:
+		if region.has("road_join"):
+			var join: Variant = region.road_join
+			if region.get("kind") != "road" or region.has("support_placement_id") or not join is Dictionary or not join.get("host") is String or not (join.get("fraction") is float or join.get("fraction") is int) or not (float(join.fraction) > 0.0 and float(join.fraction) < 1.0):
+				errors.append("Некорректная привязка ответвления.")
+			elif not ids.has(join.host):
+				errors.append("Сначала укажите главную дорогу выше ответвления в плане.")
+			else:
+				var host: Dictionary = regions[index_of(join.host)]
+				if host.get("kind") != "road" or host.has("support_placement_id") or host.has("road_join") or (region.get("enabled", true) and not host.get("enabled", true)):
+					errors.append("Ответвлению нужна включённая главная дорога. Сначала отключите или удалите ответвление.")
+		if region.has("bridge_over_gap") and (not region.has("support_placement_id") or not region.bridge_over_gap is bool):
+			errors.append("Мост через разрыв требует дороги с выбранной опорой.")
+		if region.has("bridge_rise_m"):
+			var rise: Variant = region.bridge_rise_m
+			if not region.get("bridge_over_gap", false) or not (rise is float or rise is int) or not is_finite(float(rise)) or float(rise) < 0.0 or float(rise) > 4.0:
+				errors.append("Подъём дуги моста должен быть от 0 до 4 м.")
+		if region.has("bridge_supports") and (not region.get("bridge_over_gap", false) or region.bridge_supports not in ["none", "wood", "stone", "arch"]):
+			errors.append("Выберите известный вид опор моста.")
+		if region.has("bridge_plank_roughness"):
+			var roughness: Variant = region.bridge_plank_roughness
+			if not region.get("bridge_over_gap", false) or not (roughness is float or roughness is int) or not (float(roughness) >= 0.0 and float(roughness) <= 1.0):
+				errors.append("Неровность досок моста должна быть от 0 до 100%.")
+		if region.has("bridge_railing") and (not region.get("bridge_over_gap", false) or region.bridge_railing not in ["stone", "lattice"]):
+			errors.append("Выберите каменные или решётчатые перила моста.")
+		if region.has("support_placement_id") and (region.get("kind") != "road" or not region.support_placement_id is String or region.support_placement_id.is_empty()):
+			errors.append("Привязка к уступу требует идентификатор опоры дороги.")
 		if not region.get("id") is String or region.id.is_empty() or ids.has(region.id):
 			errors.append("Идентификатор области отсутствует или повторяется."); continue
 		ids[region.id] = true
@@ -108,10 +134,20 @@ func validation_errors(extent := Vector2i.ZERO) -> Array[String]:
 		if not bounds is Rect2i or not bounds.has_area() or bounds.position.x < 0 or bounds.position.y < 0 or bounds.end.x > MAX_WORLD_M or bounds.end.y > MAX_WORLD_M:
 			errors.append("Границы области должны находиться в пределах карты.")
 		elif extent != Vector2i.ZERO and not Rect2i(Vector2i.ZERO, extent).encloses(bounds): errors.append("Область выходит за границу карты.")
+		if region.has("plot_frame") or region.has("plot_size_m"):
+			var frame: Variant = region.get("plot_frame")
+			var size: Variant = region.get("plot_size_m")
+			if region.get("kind") != "construction" or not frame is Transform2D or not frame.is_finite() \
+					or not size is Vector2i or size.x < 1 or size.y < 1 or size.x > MAX_WORLD_M or size.y > MAX_WORLD_M:
+				errors.append("У локальной сетки участка должны быть положение и размер в метрах.")
+			elif not frame.x.is_normalized() or not frame.y.is_equal_approx(frame.x.orthogonal() * -1.0) \
+					or bounds != Influence.plot_bounds(frame, size):
+				errors.append("Локальная сетка участка должна сохранять метровый шаг и прямой угол.")
 		if not region.get("parameters") is Dictionary: errors.append("Нет параметров рельефа области.")
 		else:
 			var kind: Variant = region.get("kind", "generation")
-			if kind not in ["generation", "plateau", "lake", "river", "mountain", "road", "grove", "placement", "coast"]: errors.append("Неизвестный тип области.")
+			if kind not in ["generation", "plateau", "lake", "river", "mountain", "road", "grove", "placement", "coast", "construction"]: errors.append("Неизвестный тип области.")
+			if kind == "construction" and (schema_version < 13 or not region.parameters.is_empty()): errors.append("Строительный участок требует план версии 13 без настроек рельефа.")
 			if region.get("kind", "generation") == "plateau" and schema_version < 2: errors.append("Плато требует план версии 2.")
 			if kind == "coast" and schema_version < 12: errors.append("Область моря требует план версии 12.")
 			if kind == "lake" and schema_version < 3: errors.append("Озеро требует план версии 3.")
@@ -130,7 +166,11 @@ func validation_errors(extent := Vector2i.ZERO) -> Array[String]:
 				for key in Math.ZONE_DEFAULTS:
 					if key!="coverage_profile" and region.parameters.has(key):errors.append("Настройки крупных зон требуют план версии 10.");break
 			if typeof(region.get("enabled", true)) != TYPE_BOOL: errors.append("Некорректное включение области.")
-			var error := Influence.parameter_error(region.parameters,kind) if kind in ["plateau","lake","river","mountain","road","grove","placement","coast"] else Math.parameter_error(region.parameters)
+			var error := ""
+			if kind in ["plateau","lake","river","mountain","road","grove","placement","coast"]:
+				error = Influence.parameter_error(region.parameters,kind)
+			elif kind == "generation":
+				error = Math.parameter_error(region.parameters)
 			if not error.is_empty(): errors.append(error)
 			elif kind=="generation" and bounds is Rect2i:
 				error=Math.surface_bounds_error(bounds,region.parameters)
@@ -220,8 +260,14 @@ func translated(offset_m: Vector2i) -> Resource:
 			if mask[bit/8]&(1<<(bit%8)):_write_paint_lock(shifted_locks,key*PAINT_TILE+Vector2i(bit%PAINT_TILE,bit/PAINT_TILE)+offset_m*16,true)
 	result.paint_locks=shifted_locks
 	for region: Dictionary in result.regions:
-		region.bounds = Rect2i(region.bounds.position + offset_m, region.bounds.size)
-		if region.get("kind") in ["river","road","coast"]:
+		if region.has("plot_frame"):
+			var frame: Transform2D = region.plot_frame
+			frame.origin += Vector2(offset_m)
+			region.plot_frame = frame
+			region.bounds = Influence.plot_bounds(frame, region.plot_size_m)
+		else:
+			region.bounds = Rect2i(region.bounds.position + offset_m, region.bounds.size)
+		if Influence.plan_is_path(region):
 			var shifted_points := PackedVector2Array()
 			for point in region.points_m: shifted_points.append(point+Vector2(offset_m))
 			region.points_m = shifted_points

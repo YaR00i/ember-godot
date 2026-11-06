@@ -40,6 +40,7 @@ varying float voxel_object_light_weight;
 #endif
 #ifdef EMBER_OBJECT_PAINTED_BARK_STUDY
 #include "res://shaders/ember_painted_bark_study.gdshaderinc"
+#include "res://shaders/ember_object_moss.gdshaderinc"
 #endif
 
 void fragment() {
@@ -100,6 +101,7 @@ void fragment() {
 		ALBEDO=ember_painted_bark_colour(bark_position,COLOR.rgb);
 		ROUGHNESS=0.93;
 	}
+	ember_object_moss(surface_local_position, ALBEDO, ROUGHNESS, SPECULAR);
 #endif
 #ifdef EMBER_OBJECT_BARK_STUDY
 	bark_study_shadow = 1.0;

@@ -1,6 +1,7 @@
 extends SceneTree
 const Fixture=preload("res://tools/fixtures/ember_mixed_editor_test_fixture.gd")
 const LeafGate=preload("res://tools/test_leaf_pile.gd")
+const Plot = preload("res://addons/ember_import/ember_plot_construction.gd")
 const FLAG:="fruit_tree_apple_dropped"
 const PICKUP:="fruit_tree_apple"
 var host: Node3D
@@ -106,6 +107,22 @@ func _run() -> void:
 	check(ResourceSaver.save(packed,"user://fruit-tree-roundtrip.scn")==OK,"fruit tree scene save")
 	var reopened: Node3D=load("user://fruit-tree-roundtrip.scn").instantiate()
 	check(reopened.dropped_flag_id==reopened.get_node("ApplePickup").available_flag_id and reopened.get_node("ApplePickup").pickup_id==PICKUP,"fruit bindings lost on reopen");reopened.free()
+	state.persistence_enabled = false
+	var first := Plot.make_apple_tree(Vector3(-120, 0, 12))
+	var second := Plot.make_apple_tree(Vector3(130, 0, 12))
+	var first_id: String = first.get("orchard_pickup_id")
+	var second_id: String = second.get("orchard_pickup_id")
+	host.add_child(first)
+	host.add_child(second)
+	await frames(5)
+	check(first_id != second_id and state.world_items.has(first_id) and state.world_items.has(second_id),
+		"placed orchard trees did not register independent apple records")
+	check(first.call("receive_world_hit", player, Vector3.FORWARD), "first orchard tree could not release its apple")
+	await frames(5)
+	check(not first.get_node("HangingFruit").visible and second.get_node("HangingFruit").visible
+		and not state.flags.get(second_id + "_dropped", false), "one strike changed the neighboring apple")
+	check(state.pickup_world_item(first_id).ok and second.get_node("HangingFruit").visible,
+		"collecting one orchard apple changed the neighboring tree")
 	var icon: Dictionary=EmberItemCatalog.icon_definitions().get("apple",{})
 	check(icon.get("rows",[]).size()==16 and icon.get("rows",[]).all(func(row):return row.length()==16),"apple inventory icon invalid")
 	if not OS.get_environment("EMBER_FRUIT_CAPTURE_DIR").is_empty():

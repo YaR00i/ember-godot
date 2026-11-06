@@ -79,6 +79,52 @@ static func build(mesh: ArrayMesh, transform: Transform3D, water_y: float, origi
 			image.set_pixel(x, z, Color(-distances[i] if inside[i] else distances[i], 0, 0, 1))
 	return {"center_offset": center, "half": half, "distance_half": extent * 0.5, "distance": image}
 
+static func build_rig(segments: Array[Vector4], water_y: float, origin: Vector2) -> Dictionary:
+	const GRID := 32
+	const MARGIN := 3.0
+	var minimum := Vector2.INF
+	var maximum := -Vector2.INF
+	var discs := PackedVector3Array()
+	for index in range(0, segments.size(), 2):
+		var start := segments[index]
+		var end := segments[index + 1]
+		var radius := start.w
+		if water_y < minf(start.y, end.y) - radius or water_y > maxf(start.y, end.y) + radius:
+			continue
+		var steps := maxi(1, ceili(start.distance_to(end) / (radius * 0.5)))
+		for step in range(steps + 1):
+			var point := start.lerp(end, float(step) / steps)
+			var depth := water_y - point.y
+			if absf(depth) >= radius:
+				continue
+			var section_radius := sqrt(radius * radius - depth * depth)
+			var center := Vector2(point.x, point.z) - origin
+			discs.append(Vector3(center.x, center.y, section_radius))
+			minimum = minimum.min(center - Vector2.ONE * section_radius)
+			maximum = maximum.max(center + Vector2.ONE * section_radius)
+	if discs.is_empty():
+		return {}
+	var bounds := Rect2(minimum, maximum - minimum).grow(MARGIN)
+	var cell := bounds.size / GRID
+	var distances := PackedFloat32Array()
+	distances.resize(GRID * GRID)
+	distances.fill(MARGIN)
+	for disc in discs:
+		var center := Vector2(disc.x, disc.y)
+		var reach := Vector2.ONE * (disc.z + MARGIN)
+		var first := Vector2i(((center - reach - bounds.position) / cell).floor()).max(Vector2i.ZERO)
+		var last := Vector2i(((center + reach - bounds.position) / cell).ceil()).min(Vector2i.ONE * (GRID - 1))
+		for z in range(first.y, last.y + 1):
+			for x in range(first.x, last.x + 1):
+				var point := bounds.position + (Vector2(x, z) + Vector2.ONE * 0.5) * cell
+				var index := x + z * GRID
+				distances[index] = minf(distances[index], point.distance_to(center) - disc.z)
+	var image := Image.create_from_data(GRID, GRID, false, Image.FORMAT_RF, distances.to_byte_array())
+	image.resize(SIZE, SIZE, Image.INTERPOLATE_BILINEAR)
+	return {"center_offset": bounds.get_center(), "half": (maximum - minimum) * 0.5,
+		"distance_half": bounds.size * 0.5, "distance": image}
+
+
 static func sample(point: Vector2, shape: Dictionary) -> float:
 	var local := (point - Vector2(shape.center)).rotated(-float(shape.angle))
 	var half: Vector2 = shape.distance_half

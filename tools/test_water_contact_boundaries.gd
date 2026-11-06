@@ -2,6 +2,8 @@ extends SceneTree
 
 const SurfaceProjection = preload("res://scripts/ember_voxel_surface_projection.gd")
 const Contact = preload("res://scripts/ember_water_contact_3d.gd")
+const LocalWater = preload("res://scripts/ember_local_water_surface.gd")
+const WaterMaterial = preload("res://materials/ember_compact_sky_reflection_study.tres")
 var errors: Array[String] = []
 
 
@@ -82,6 +84,7 @@ func _run() -> void:
 	contact.refresh_now()
 	_check(not contact.is_contact_visible(), "freed projection retained a contact")
 	_check(unrelated != null, "isolated preview fixture disappeared")
+	await _check_basin(host, actor, contact)
 	host.free()
 	other_view.free()
 	if errors.is_empty():
@@ -111,6 +114,35 @@ func _projection(parent: Node, at: Vector3) -> Node3D:
 	projection.configure(surface, 16.0, Vector2i.ONE, null)
 	projection.set_process(false)
 	return projection
+
+
+func _check_basin(host: Node3D, actor: Node3D, contact: EmberWaterContact3D) -> void:
+	var basin := LocalWater.new()
+	var plane := PlaneMesh.new()
+	plane.size = Vector2(20, 20)
+	plane.material = WaterMaterial
+	basin.mesh = plane
+	basin.water_depth = 5.0
+	basin.position = Vector3(180, 15, 0)
+	host.add_child(basin)
+	actor.position = basin.position - Vector3.UP * 2.0
+	var shape := MeshInstance3D.new()
+	shape.mesh = BoxMesh.new()
+	shape.position.y = 2.0
+	actor.add_child(shape)
+	contact.refresh_now()
+	await process_frame
+	await process_frame
+	_check(contact._projection == basin and contact.is_contact_visible(), "actor did not select the local basin")
+	_check(not contact._visual.visible, "basin displayed the legacy contact ring")
+	_check(basin.material_override.get_shader_parameter("object_shape_count") == 1, "basin did not upload the contact")
+	_check(not basin.water_surface_sample(basin.position + Vector3(10, 0, 10)).wet, "basin water leaked past the bowl rim")
+	_check(not basin.water_surface_sample(basin.position - Vector3.UP * 8.0).wet, "basin water leaked below the floor")
+	actor.position.x += 12.0
+	contact.refresh_now()
+	await process_frame
+	await process_frame
+	_check(basin.material_override.get_shader_parameter("object_shape_count") == 0, "basin retained the contact after leaving")
 
 
 func _check(condition: bool, message: String) -> void:

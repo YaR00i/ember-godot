@@ -12,15 +12,24 @@ func _init() -> void:
 	# Existing material binder loads this PNG; seed its cache without editor import.
 	coverage.take_over_path("res://content/terrain_materials/textures/grass-edge-coverage.png")
 	var material := Materials.compact_flower_material()
-	Materials.set_compact_terrain_roles(material,PackedStringArray(["","grass"]),PackedStringArray(["","grass"]),PackedColorArray([Color.TRANSPARENT,Color("73884b")]))
+	# Match the main meadow's authored pigment/profile instead of a second tint.
+	var terrain := load("res://content/world_terrains/landscape_compact.res") as EmberTerrainPilotResource
+	assert(terrain != null)
+	var slot := terrain.palette_surface_roles.find("grass")
+	assert(slot >= 0)
+	# This asset only needs grass. Do not embed the entire map's soil/stone banks.
+	var material_id := terrain.palette_material_ids[slot] if slot < terrain.palette_material_ids.size() else ""
+	Materials.set_compact_terrain_roles(material,PackedStringArray(["","grass"]),PackedStringArray(["",material_id]),PackedColorArray([Color.TRANSPARENT,terrain.palette[slot]]))
 	material.set_shader_parameter("flower_atlas",artwork.artwork("res://content/terrain_materials/textures/grass-cards-runtime.png",true))
 	material.set_shader_parameter("material_grass_coverage",ImageTexture.create_from_image(coverage.get_image()))
 	material.set_shader_parameter("flower_palette_slot",1.0)
-	material.set_shader_parameter("flower_tint",Color(0.75,0.75,0.75,1.0))
+	material.set_shader_parameter("flower_tint",Color.WHITE)
+	material.set_shader_parameter("smooth_surface_enabled",true)
+	material.set_shader_parameter("ember_texture_world_unit",16.0)
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(MATERIAL.get_base_dir()))
 	assert(ResourceSaver.save(material,MATERIAL,ResourceSaver.FLAG_COMPRESS)==OK)
 	material=load(MATERIAL)
-	var full := Fixture.grass_card_mesh()
+	var full := load("res://prefabs/voxels/meshes/grass_card_contour.res") as ArrayMesh
 	var lower := clip(full,false)
 	var standing := SurfaceTool.new(); standing.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var stubble := SurfaceTool.new(); stubble.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -86,8 +95,11 @@ func single_blade(variant: int) -> ArrayMesh:
 	assert(indices.size()%8==0)
 	var count := indices.size()/8
 	var surface := SurfaceTool.new(); surface.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for j in range(variant*count,(variant+1)*count):
-		var i := indices[j]
+	# Root -> upper bend -> tip: one quad and one triangle. The short cosmetic
+	# flight needs no middle bend or duplicate back faces (cull_disabled material).
+	assert(count==30)
+	for local in [0,13,2,0,24,13,24,25,26]:
+		var i := indices[variant*count+local]
 		surface.set_normal(arrays[Mesh.ARRAY_NORMAL][i]); surface.set_color(arrays[Mesh.ARRAY_COLOR][i])
 		surface.set_uv(arrays[Mesh.ARRAY_TEX_UV][i]); surface.set_uv2(arrays[Mesh.ARRAY_TEX_UV2][i])
 		surface.add_vertex(arrays[Mesh.ARRAY_VERTEX][i])

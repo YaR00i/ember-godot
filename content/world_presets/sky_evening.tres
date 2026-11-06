@@ -1,0 +1,12 @@
+[gd_resource type="Sky" format=3]
+
+[sub_resource type="ProceduralSkyMaterial" id="evening_material"]
+sky_top_color = Color(0.24, 0.32, 0.48, 1)
+sky_horizon_color = Color(1, 0.6, 0.35, 1)
+ground_bottom_color = Color(0.32156864, 0.34901962, 0.4, 1)
+ground_horizon_color = Color(0.68, 0.42, 0.33, 1)
+sun_angle_max = 10.0
+
+[resource]
+resource_name = "Вечернее небо"
+sky_material = SubResource("evening_material")

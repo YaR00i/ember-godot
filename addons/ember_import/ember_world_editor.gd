@@ -23,6 +23,7 @@ const TerrainGeneration = preload("res://addons/ember_import/ember_compact_terra
 const TerrainGenerationPanel = preload("res://addons/ember_import/ember_compact_terrain_generation_dialog.gd")
 const TerrainPlan = preload("res://scripts/ember_terrain_plan_resource.gd")
 const TerrainPlanPanel = preload("res://addons/ember_import/ember_terrain_plan_dialog.gd")
+const Plot = preload("res://addons/ember_import/ember_plot_construction.gd")
 const TerrainComposition = preload("res://addons/ember_import/ember_terrain_plan_composition.gd")
 const GrovePlanner = preload("res://addons/ember_import/ember_grove_planner.gd")
 const GrovePreview = preload("res://addons/ember_import/ember_grove_preview.gd")
@@ -196,11 +197,62 @@ var _plan_selection := "" # Empty/new/bounds: only active while selecting in 3D.
 var _path_points := PackedVector2Array()
 var _path_hover := Vector2(-1,-1)
 var _path_draw_cache := {}
+const PATH_POINT_RADIUS := 9.0
+const PATH_HIT_RADIUS := 21.0
+var _plan_hover_index := -1
+var _plan_insert_hover := Vector2.INF
 var _plan_selected_id := ""
+var _street_preview := {}
 var _plan_target: WeakRef
 var _plan_point_mode:="move"
 var _plan_point_index:=-1
 var _plan_drag:Dictionary={}
+var _plot_tool := ""
+var _plot_street_front := {}
+var _street_bridge := {}
+var _surface_road_support := ""
+var _surface_road_preview := {}
+var _surface_bridge_offer := {}
+var _road_join := {}
+var _branch_edit := {}
+var _plot_house_id := ""
+var _plot_wall_opening := Plot.WALL_SOLID
+var _plot_opening_options: Dictionary = {}
+var _plot_entry_portico := false
+var _plot_entry_canopy := 3.0
+var _plot_wall_color := Color("e1c9a2")
+var _plot_wall_finish := 0
+var _plot_pilaster_hit: Dictionary = {}
+var _plot_roof_options: Dictionary = {}
+var _plot_window_name := ""
+var _plot_finish_name := ""
+var _plot_finish_group := Plot.FINISH_SURFACE
+var _plot_balcony_depth := 2.25
+var _plot_balcony_columns := false
+var _plot_railing_style := Plot.RAIL_METAL
+var _plot_edge_anchors := PackedVector2Array()
+var _plot_edge_style := Plot.EDGE_STONE
+var _plot_edge_depth := 1.5
+var _plot_hedge_height := Plot.HEDGE_HEIGHT_M
+var _plot_hedge_leaf_scale := 1.0
+var _plot_hedge_autumn := false
+var _plot_fountain_style := Plot.FOUNTAIN_GARDEN
+var _plot_level := 0
+var _plot_anchor := Vector2.INF
+var _plot_arc_through := Vector2.INF
+var _plot_arc_walk := false
+var _plot_tower_ports := 0
+var _plot_floor_shape := ""
+var _plot_corner_cuts := Vector4.ZERO
+var _plot_follow_floor := false
+var _plot_wall_depth := Plot.WALL_DEPTH_M
+var _plot_walk_width := Plot.ARC_WALK_WIDTH_M
+var _plot_tower_height := 0.0
+var _plot_docking := false
+var _plot_docks: Array[Dictionary] = []
+var _plot_start_dock := {}
+var _plot_hover_dock := {}
+var _plot_cursor := Vector2.INF
 var _panel_host := preload("res://addons/ember_import/ember_world_panel_host.gd").new()
 # Mode queries below are views of the single route, never separate lifecycle state.
 var _terrain_workspace: VBoxContainer
@@ -297,6 +349,7 @@ func can_leave_panel() -> bool:
 func _prepare_parameter_panel() -> void:
 	if plugin != null: plugin._stop_scene_object_brush()
 	cancel_stroke(); cancel_section_selection(); _plan_selection = ""; selecting = false; region_preview = Rect2i()
+	_reset_plot_tool()
 	clear_terrain_generation_preview(); clear_compact_extension_preview()
 	if is_instance_valid(_generation_panel) and _generation_panel.visible:
 		_generation_panel.set_pending("Предпросмотр закрыт. Обновите его перед применением.")
@@ -403,6 +456,7 @@ func _show_workspace(terrain: bool) -> void:
 	_workspace_terrain_button.set_pressed_no_signal(terrain)
 	if not terrain:
 		_plan_cancel_drag()
+		_reset_plot_tool()
 		cancel_section_selection()
 		if not _plan_selection.is_empty():
 			_plan_selection = ""; selecting = false; region_preview = Rect2i()
@@ -425,6 +479,8 @@ func _open_terrain_plan() -> void:
 	if not _compact_active(): return
 	cancel_section_selection()
 	cancel_stroke()
+	_reset_plot_tool()
+	_clear_street_preview()
 	_plan_selection = ""; selecting = false; region_preview = Rect2i()
 	_plan_drag.clear();_path_points=PackedVector2Array()
 	hover.clear()
@@ -442,65 +498,256 @@ func _open_terrain_plan() -> void:
 
 func _refresh_terrain_plan(reveal := false) -> void:
 	if not is_instance_valid(_plan_panel) or _plan_target == null: return
+	_clear_street_preview()
 	var target: EmberMapLoader = _plan_target.get_ref()
 	if not is_instance_valid(target) or target != map: _plan_panel.hide(); return
 	var plan: Resource = TerrainPlan.read(target)
 	_plan_panel.show_plan(plan if plan != null else TerrainPlan.new(), _plan_selected_id, reveal)
 	_plan_selected_id = _plan_panel.selected_id()
+	var roofs: Array[Node3D] = []
+	var props := target.get_node_or_null("Props")
+	if props != null:
+		for node in props.get_children():
+			if node is Node3D and node.has_meta(Plot.ROOF_META) and node.get_meta(Plot.META, "") == _plan_selected_id:
+				roofs.append(node)
+	_plan_panel.show_roofs(roofs)
+	_refresh_plot_window()
+	_refresh_plot_finish()
 	var selected_index:int=plan.index_of(_plan_selected_id) if plan!=null else -1
 	if selected_index>=0 and not TerrainPlan.Influence.plan_is_path(plan.regions[selected_index]) and _plan_point_mode in ["insert","remove"]:_plan_point_mode="move"
 	_plan_panel.set_point_mode(_plan_point_mode)
+	_plan_panel.set_branch_pending(not _branch_edit.is_empty())
 	_update_overlay()
 
-func commit_terrain_plan(target: EmberMapLoader, plan: Resource) -> String:
+func commit_terrain_plan(target: EmberMapLoader, plan: Resource, prepared_road: Node3D = null, street_fronts: Array[Node3D] = []) -> String:
 	if not is_instance_valid(target) or scene == null: return "Карта была закрыта."
 	var draft := sessions.open_map(target, scene)
 	if draft.is_empty(): return sessions.error
 	if plan != null:
-		var errors: Array[String] = plan.validation_errors(Vector2i(draft.resource.width / 16, draft.resource.depth / 16))
+		var extent := Vector2i(draft.resource.width / 16, draft.resource.depth / 16)
+		for branch: Dictionary in plan.regions:
+			if not branch.get("road_join") is Dictionary or not branch.get("points_m") is PackedVector2Array or branch.points_m.is_empty():
+				continue
+			var host_index: int = plan.index_of(str(branch.road_join.get("host", "")))
+			var fraction: Variant = branch.road_join.get("fraction")
+			if host_index < 0 or not fraction is float or not (fraction > 0.0 and fraction < 1.0) or not branch.get("parameters") is Dictionary or branch.get("kind") != "road":
+				continue
+			var host: Dictionary = plan.regions[host_index]
+			if not host.get("points_m") is PackedVector2Array:
+				continue
+			var curve := TerrainPlan.Influence.path_curve(host.points_m)
+			branch.points_m[0] = curve.sample_baked(curve.get_baked_length() * branch.road_join.fraction)
+			branch.bounds = _plan_path_bounds(branch, branch.parameters, extent)
+		var errors: Array[String] = plan.validation_errors(extent)
 		if not errors.is_empty(): return errors[0]
 	var before: Resource = TerrainPlan.read(target)
-	if TerrainPlan.same(before, plan): return ""
+	if TerrainPlan.same(before, plan) and prepared_road == null: return ""
+	var baked := _surface_road_delta(target, before, plan, prepared_road)
+	if baked.has("error"):
+		return baked.error
+	baked.added.append_array(street_fronts)
 	var history: Object = sessions.undo
 	if history is EditorUndoRedoManager:
 		(history as EditorUndoRedoManager).create_action("Изменить план областей", UndoRedo.MERGE_DISABLE, scene)
-		Callable(history, "add_do_method").callv([self, "_apply_terrain_plan", draft, plan])
-		Callable(history, "add_undo_method").callv([self, "_apply_terrain_plan", draft, before])
+		Callable(history, "add_do_method").callv([self, "_apply_terrain_plan", draft, plan, baked.added, baked.removed])
+		Callable(history, "add_undo_method").callv([self, "_apply_terrain_plan", draft, before, baked.removed, baked.added])
+		for node in baked.added: history.add_do_reference(node)
+		for node in baked.removed: history.add_undo_reference(node)
 		(history as EditorUndoRedoManager).commit_action()
 	else:
 		(history as UndoRedo).create_action("Изменить план областей", UndoRedo.MERGE_DISABLE)
-		(history as UndoRedo).add_do_method(_apply_terrain_plan.bind(draft, plan))
-		(history as UndoRedo).add_undo_method(_apply_terrain_plan.bind(draft, before))
+		(history as UndoRedo).add_do_method(_apply_terrain_plan.bind(draft, plan, baked.added, baked.removed))
+		(history as UndoRedo).add_undo_method(_apply_terrain_plan.bind(draft, before, baked.removed, baked.added))
+		for node in baked.added: history.add_do_reference(node)
+		for node in baked.removed: history.add_undo_reference(node)
 		(history as UndoRedo).commit_action()
 	return ""
 
-func _apply_terrain_plan(draft: Dictionary, plan: Resource) -> void:
+func _apply_terrain_plan(draft: Dictionary, plan: Resource, added: Array[Node3D] = [], removed: Array[Node3D] = []) -> void:
+	_clear_street_preview()
 	sessions.set_plan(draft, plan)
+	if not added.is_empty() or not removed.is_empty():
+		var props: Node = draft.target.get_ref().get_node("Props")
+		_swap_plot_nodes(scene, props, removed, added)
 	clear_terrain_generation_preview()
 	if is_instance_valid(_generation_panel) and _generation_panel.visible and not _generation_context.get("plan_id", "").is_empty():
 		_generation_panel.set_pending("План изменился. Откройте область снова и обновите предпросмотр.")
 	_refresh_terrain_plan()
 	_sync_plan_context()
 
+
+func _surface_road_prop(target: EmberMapLoader, id: String) -> EmberVoxelProp:
+	var support: EmberVoxelProp
+	for prop in target.get_tree().get_nodes_in_group(&"ember_solid_surface"):
+		if not target.is_ancestor_of(prop) or prop.placement_id != id:
+			continue
+		if support != null:
+			return null
+		support = prop
+	return support
+
+
+func _build_surface_road(target: EmberMapLoader, region: Dictionary) -> Dictionary:
+	var support := _surface_road_prop(target, region.support_placement_id)
+	var projection := target._visual_surface_projection as EmberTerrainPilotProjection
+	var props := target.get_node_or_null("Props") as Node3D
+	if support == null or projection == null or props == null:
+		return {"error": "Опора дороги не найдена. Выберите объёмный уступ на этой карте."}
+	var rect := Rect2(region.bounds)
+	var low := projection.to_global(Vector3(rect.position.x * 16.0, 0, rect.position.y * 16.0))
+	var high := projection.to_global(Vector3(rect.end.x * 16.0, 0, rect.end.y * 16.0))
+	if not projection.detail_area_ready(Rect2(Vector2(low.x, low.z), Vector2(high.x - low.x, high.z - low.z))):
+		return {"error": "Подождите, пока загрузится точная земля вдоль дороги."}
+	var bridge_requested: bool = region.get("bridge_over_gap", false)
+	var sample := func(point: Vector2) -> Dictionary:
+		var world := projection.to_global(Vector3(point.x * 16.0, 0, point.y * 16.0))
+		var hit := target.surface_floor_sample_with_candidates(world, [support])
+		if hit.get("solid", false):
+			hit.position = props.to_local(hit.position)
+		if bridge_requested and hit.get("submerged", false):
+			var water := projection.water_surface_sample(world)
+			if water.get("wet", false):
+				hit.road_water_y = props.to_local(water.position).y
+		return hit
+	var place := func(point: Vector2) -> Vector3:
+		return props.to_local(projection.to_global(Vector3(point.x * 16.0, 0, point.y * 16.0)))
+	return Plot.make_surface_road(region, sample, target.imported_tile_size, place)
+
+
+func _surface_road_delta(target: EmberMapLoader, before: Resource, after: Resource, prepared: Node3D) -> Dictionary:
+	var added: Array[Node3D] = []
+	var removed: Array[Node3D] = []
+	var props := target.get_node_or_null("Props")
+	var current := {}
+	if props != null:
+		for child in props.get_children():
+			if child.owner != null and child.has_meta(Plot.SURFACE_ROAD_META):
+				current[child.get_meta(Plot.SURFACE_ROAD_META)] = child
+	for region: Dictionary in after.regions if after != null else []:
+		if not region.has("support_placement_id") or not region.get("enabled", true):
+			continue
+		var old_index: int = before.index_of(region.id) if before != null else -1
+		if current.has(region.id) and old_index >= 0 and region == before.regions[old_index] and (prepared == null or prepared.get_meta(Plot.SURFACE_ROAD_META) != region.id):
+			current.erase(region.id)
+			continue
+		var built: Dictionary = {"node": prepared} if prepared != null and prepared.get_meta(Plot.SURFACE_ROAD_META, "") == region.id else _build_surface_road(target, region)
+		if built.has("error"):
+			for node in added:
+				if node != prepared: node.free()
+			return built
+		added.append(built.node)
+	removed.assign(current.values())
+	return {"added": added, "removed": removed}
+
 func _terrain_plan_action(action: String, id: String, value: String) -> void:
 	if _plan_target == null or _plan_target.get_ref() != map: return
+	if action in ["extend_branch", "preview_branch"]:
+		var plan: Resource = TerrainPlan.read(map)
+		var index: int = plan.index_of(id) if plan != null else -1
+		if index < 0 or not plan.regions[index].has("road_join"):
+			return
+		if action == "preview_branch":
+			_preview_branch_edits()
+			return
+		var branch: Dictionary = _branch_edit.get("region", plan.regions[index])
+		_plan_selection = "extend_road_branch"
+		selecting = true
+		_plan_selected_id = id
+		_path_points = branch.points_m.duplicate()
+		_path_hover = Vector2(-1,-1)
+		_plan_panel.set_branch_pending(false)
+		_plan_panel.set_status("Щёлкайте после последней точки. Enter оставит новые точки в черновике · Esc отменит продолжение.")
+		_update_overlay()
+		return
+	if _plan_selection == "extend_road_branch":
+		_plan_panel.set_status("Завершите продолжение клавишей Enter или отмените его клавишей Esc.")
+		return
+	if not _branch_edit.is_empty() and action not in ["point_mode", "generate"]:
+		_plan_panel.set_status("Сначала примерьте правки ответвления или отмените их клавишей Esc.")
+		return
+	if action == "generate" and not _branch_edit.is_empty():
+		_preview_branch_edits()
+		return
+	if action == "surface_bridge_preview":
+		if _surface_bridge_offer.is_empty():
+			return
+		var offer := _surface_bridge_offer.duplicate()
+		if not TerrainPlan.same(TerrainPlan.read(map), offer.original):
+			_clear_surface_road_preview()
+			_plan_panel.set_status("План изменился. Enter обновит профиль.")
+			return
+		offer.region.bridge_over_gap = true
+		offer.region.bridge_rise_m = _plan_panel.bridge_profile_rise()
+		offer.region.bridge_supports = _plan_panel.bridge_profile_supports()
+		offer.region.bridge_railing = _plan_panel.bridge_profile_railing()
+		var planks: Variant = _plan_panel.bridge_plank_roughness()
+		if planks == null:
+			offer.region.erase("bridge_plank_roughness")
+		else:
+			offer.region.bridge_plank_roughness = planks
+		_preview_surface_road(offer.plan, offer.region, offer.original)
+		var focus := get_viewport().gui_get_focus_owner()
+		if is_instance_valid(focus):
+			focus.release_focus()
+		_update_overlay()
+		return
+	if action.begins_with("street_"):
+		_street_plot_action(action, id, value)
+		return
+	if action in ["plot_grid", "plot_round_radius"]:
+		_update_overlay()
+		return
+	_clear_street_preview()
 	if action=="point_mode":
-		_plan_point_mode=value;_plan_point_index=-1;_plan_drag.clear();_path_points=PackedVector2Array();_update_overlay();return
+		if _branch_edit.is_empty():
+			_reset_plot_tool()
+		_plan_point_mode=value;_plan_point_index=-1;_plan_hover_index=-1;_plan_insert_hover=Vector2.INF;_plan_drag.clear();_path_points=PackedVector2Array();_update_overlay();return
+	_reset_plot_tool()
 	if action not in ["compose","groves"]: _plan_selected_id = id
 	var original: Resource = TerrainPlan.read(map)
 	var plan: Resource = original.working_copy() if original != null else TerrainPlan.new()
 	var index: int = plan.index_of(id)
-	if action in ["add", "add_plateau", "add_lake", "add_coast", "add_river", "add_mountain", "add_road", "add_grove", "add_placement", "bounds"]:
+	var supported: bool = index >= 0 and plan.regions[index].has("support_placement_id")
+	if action == "generate" and supported:
+		if is_instance_valid(_generation_panel): _generation_panel.hide()
+		_plan_selection = ""
+		selecting = false
+		_path_points.clear()
+		_plan_panel.set_compact(false)
+		_plan_panel.set_status("Дорога следует земле и уступу. «Линия и профиль» открывает правку.")
+		return
+	if action in ["add", "add_plateau", "add_lake", "add_coast", "add_river", "add_mountain", "add_road", "add_surface_road", "add_road_branch", "add_grove", "add_placement", "add_plot", "bounds"]:
 		if action == "bounds" and index < 0: return
+		if action == "bounds" and plan.regions[index].has("plot_frame"):
+			_plan_point_mode = "move"
+			_plan_panel.set_point_mode("move")
+			_plan_panel.set_status("Потяните угол участка. Границы двигаются по его сетке.")
+			_update_overlay()
+			return
+		if action == "add_road_branch" and (index < 0 or plan.regions[index].get("kind") != "road" or not plan.regions[index].get("enabled", true) or supported or plan.regions[index].has("road_join")):
+			return
 		clear_terrain_generation_preview(); cancel_stroke()
 		_plan_panel.set_status("Выделите область в 3D · Esc отменяет.")
 		_plan_selection = action; selecting = true; create_region = false
 		region_anchor = Vector2i(-1, -1); region_preview = Rect2i()
 		_path_points = PackedVector2Array(); _path_hover = Vector2(-1,-1)
-		if action in ["add_river","add_road","add_coast"] or (action == "bounds" and plan.regions[index].get("kind") in ["river","road","coast"]):
-			_plan_selection = action if action in ["add_river","add_road","add_coast"] else "path_line"
+		if action in ["add_river","add_road","add_surface_road","add_road_branch","add_coast"] or (action == "bounds" and plan.regions[index].get("kind") in ["river","road","coast"]):
+			_plan_selection = action if action != "bounds" else "path_line"
+			if supported and action == "bounds":
+				_surface_road_support = plan.regions[index].support_placement_id
+				_path_points = plan.regions[index].points_m.duplicate()
 			var path_hint := "Кликайте точки берега: море будет справа по ходу линии." if _plan_path_kind()=="coast" else "Кликайте точки дороги по суше." if _plan_path_kind() == "road" else "Кликайте точки от одного водоёма к другому."
-			_plan_panel.set_status(path_hint+" Enter — сохранить линию, Backspace — убрать точку, Esc — отменить. Камера работает как обычно.")
+			if action == "add_surface_road":
+				path_hint = "Сначала щёлкните по объёмному уступу, затем наметьте дорогу."
+			elif action == "add_road_branch":
+				path_hint = "Щёлкните по выбранной дороге, затем наметьте ответвление."
+			elif supported:
+				path_hint = "Измените линию дороги. Enter примеряет полотно по земле и уступу."
+			var focus := get_viewport().gui_get_focus_owner()
+			if is_instance_valid(focus):
+				focus.release_focus()
+			var enter_hint := " Enter — предпросмотр." if supported or action in ["add_surface_road","add_road_branch"] else " Enter — сохранить линию."
+			_plan_panel.set_status(path_hint+enter_hint+" Backspace — убрать точку, Esc — отменить.")
 			_status(path_hint+" Enter завершает · Esc отменяет.")
 			_update_overlay(); return
 		_status("Потяните прямоугольник области плана в 3D · Esc отменяет.")
@@ -517,6 +764,158 @@ func _terrain_plan_action(action: String, id: String, value: String) -> void:
 		_generation_panel.open_influence(Rect2i(), TerrainPlan.Influence.DEFAULTS, "plateau", false)
 		return
 	if index < 0: return
+	if plan.regions[index].get("kind") == "construction" and action in ["generate", "plot_house", "plot_apple_tree", "plot_fountain", "plot_fence", "plot_street_front", "plot_wall", "plot_arc_wall", "plot_round_corner", "plot_floor", "plot_column", "plot_entry", "plot_edge", "plot_cornice", "plot_pilaster", "plot_balcony", "plot_railing", "plot_roof", "plot_roof_select", "plot_roof_apply", "plot_window_pick", "plot_window_apply", "plot_finish_pick", "plot_finish_apply", "plot_finish_reset", "plot_level"]:
+		if is_instance_valid(_generation_panel): _generation_panel.hide()
+		_generation_context = {}
+		_plan_panel.set_compact(false)
+		if action == "generate":
+			_plan_panel.set_status("Жёлтый контур — граница участка. Выберите этаж и инструмент строительства.")
+		elif action == "plot_level":
+			_plan_panel.set_status("Выбран этаж %d." % (int(value) + 1))
+		elif action in ["plot_roof_select", "plot_roof_apply"]:
+			_plan_panel.set_status(_edit_plot_roof(value, action == "plot_roof_apply"))
+		elif action == "plot_window_apply":
+			_plan_panel.set_status(_apply_plot_window())
+		elif action in ["plot_finish_apply", "plot_finish_reset"]:
+			_plan_panel.set_status(_apply_plot_finish(action == "plot_finish_reset"))
+		elif action == "plot_finish_pick":
+			_plot_tool = action
+			_plot_level = _plan_panel._buttons.plot_level.selected
+			_plot_finish_name = ""
+			_refresh_plot_finish()
+			_plan_panel.set_status("Этаж %d. Щёлкните по нужной поверхности, дверному полотну или раме проёма." % (_plot_level + 1))
+		else:
+			_plot_tool = action
+			_plot_wall_depth = _plan_panel._buttons.plot_wall_depth.value
+			_plot_walk_width = _plan_panel._buttons.plot_walk_width.value
+			if action in ["plot_wall", "plot_arc_wall", "plot_round_corner", "plot_floor", "plot_column", "plot_cornice", "plot_pilaster", "plot_balcony", "plot_railing", "plot_roof", "plot_window_pick"]:
+				_plot_level = _plan_panel._buttons.plot_level.selected
+				if action == "plot_floor" and value == "fortress":
+					_plot_level = 0
+				var props := map.get_node_or_null("Props") as Node3D
+				if (_plot_level > 0 or action in ["plot_column", "plot_cornice", "plot_roof"]) and (props == null or not is_finite(_plot_level_y(props))):
+					_reset_plot_tool()
+					_plan_panel.set_status("Положите перекрытие или проведите стену первого этажа.")
+					_update_overlay()
+					return
+			match action:
+				"plot_house":
+					_plot_house_id = value
+					_plan_panel.set_status("Щёлкните по земле внутри участка.")
+				"plot_apple_tree":
+					_plan_panel.set_status("Щёлкните по земле, чтобы посадить яблоню.")
+				"plot_fountain":
+					_plot_fountain_style = _plan_panel._buttons.fountain_style.selected
+					_plan_panel.set_status("Щёлкните по ровной земле внутри участка. Контур показывает край чаши.")
+				"plot_fence":
+					_plan_panel.set_status("Отметьте начало и конец ограды. Проход 1,5 м будет посередине.")
+				"plot_street_front":
+					_plan_panel.set_status("Щёлкните по соседней дороге. Enter ставит ограду и подход · Esc отменяет.")
+				"plot_wall":
+					_plot_wall_opening = int(value)
+					_plot_wall_color = _plan_panel._buttons.wall_color.color
+					_plot_wall_finish = _plan_panel._buttons.wall_finish.selected
+					_plot_opening_options = _plan_panel.opening_options(_plot_wall_opening)
+					if not Plot.opening_fits(_plot_opening_options):
+						var error := _plot_opening_error(_plot_opening_options)
+						_reset_plot_tool()
+						_plan_panel.set_status(error)
+					else:
+						_plan_panel.set_status("Этаж %d. Отметьте два конца стены. Esc отменяет." % (_plot_level + 1))
+				"plot_floor":
+					if value == "chamfer":
+						_plot_floor_shape = value
+						var controls: Dictionary = _plan_panel._buttons
+						_plot_corner_cuts = Vector4(controls.plot_cut_СЗ.value, controls.plot_cut_СВ.value,
+							controls.plot_cut_ЮВ.value, controls.plot_cut_ЮЗ.value)
+						_plan_panel.set_status("Этаж %d. Отметьте два угла прямоугольника. Срезы видны на контуре." % (_plot_level + 1))
+					elif value in ["round", "half"]:
+						_plot_floor_shape = value
+						_plan_panel.set_status("Отметьте центр и край площадки (радиус 1,5–12 м). Для полукруга край задаёт выпуклую сторону.")
+					elif value in ["tower", "fortress"]:
+						for option in [_plan_panel._buttons.plot_tower_port_0, _plan_panel._buttons.plot_tower_port_1]:
+							if option.selected > 0:
+								_plot_tower_ports |= 1 << (option.selected - 1)
+						if _plot_tower_ports == 0:
+							_reset_plot_tool()
+							_plan_panel.set_status("Выберите хотя бы одну грань для прохода башни.")
+						elif value == "fortress":
+							_plot_tower_height = _plan_panel._buttons.plot_tower_height.value
+							_plot_wall_color = _plan_panel._buttons.wall_color.color
+							_plot_wall_finish = _plan_panel._buttons.wall_finish.selected
+							_plan_panel.set_status("Башня %.2f м. Отметьте два угла основания." % _plot_tower_height)
+						else:
+							_plan_panel.set_status("Этаж %d. Отметьте два угла площадки башни." % (_plot_level + 1))
+					else:
+						_plan_panel.set_status("Этаж %d. Отметьте два противоположных угла перекрытия." % (_plot_level + 1))
+				"plot_arc_wall":
+					_plot_wall_color = _plan_panel._buttons.wall_color.color
+					_plot_wall_finish = _plan_panel._buttons.wall_finish.selected
+					_plot_arc_walk = _plan_panel._buttons.plot_arc_walk.button_pressed
+					_plot_docking = _plot_arc_walk and _plan_panel._buttons.plot_arc_dock.button_pressed
+					if _plot_arc_walk and not _plot_docking and _plot_level >= 2:
+						_reset_plot_tool()
+						_plan_panel.set_status("Для хода выберите первый или второй этаж стены.")
+					elif _plot_arc_walk:
+						if _plot_docking:
+							_plot_docks = _plot_available_docks()
+							_plan_panel.set_status("Выберите отмеченный проход первой башни. Он задаст ширину и высоту хода.")
+						else:
+							_plan_panel.set_status("Ход на уровне %d-го этажа. Начните внутри площадки первой башни." % (_plot_level + 2))
+					else:
+						_plan_panel.set_status("Этаж %d. Отметьте начало дуговой стены." % (_plot_level + 1))
+				"plot_round_corner":
+					_plot_cursor = Vector2.INF
+					_plan_panel.set_status("Этаж %d. Задайте радиус и наведите на верхний край стыка двух глухих стен." % (_plot_level + 1))
+				"plot_entry":
+					_plot_entry_portico = _plan_panel._buttons.entry_portico.button_pressed
+					_plot_entry_canopy = _plan_panel._buttons.entry_canopy.value
+					_plan_panel.set_status("Отметьте два конца крыльца вдоль стены. Ступени будут справа по направлению линии.")
+				"plot_column":
+					_plot_wall_color = _plan_panel._buttons.wall_color.color
+					_plan_panel.set_status("Этаж %d. Щёлкните по узлу сетки на перекрытии." % (_plot_level + 1))
+				"plot_edge":
+					_plot_edge_style = _plan_panel._buttons.edge_style.selected
+					_plot_edge_depth = _plan_panel._buttons.edge_depth.value
+					_plot_hedge_height = _plan_panel._buttons.hedge_height.value
+					_plot_hedge_leaf_scale = _plan_panel._buttons.hedge_leaf_size.value / 100.0
+					_plot_hedge_autumn = _plan_panel._buttons.hedge_season.selected == 1
+					if _plan_panel._buttons.edge_snap.button_pressed:
+						_plot_edge_anchors = _plot_entry_anchors()
+					_plan_panel.set_status("Отметьте два конца вдоль стены. Полоса ляжет справа от линии.")
+				"plot_cornice":
+					_plan_panel.set_status("Этаж %d. Отметьте два конца вдоль верха стены. Выступ будет справа." % (_plot_level + 1))
+				"plot_pilaster":
+					_plan_panel.set_status("Этаж %d. Щёлкните по глухой части стены со стороны фасада." % (_plot_level + 1))
+				"plot_balcony":
+					if _plot_level == 0:
+						_reset_plot_tool()
+						_plan_panel.set_status("Для балкона выберите второй или третий этаж.")
+					else:
+						_plot_balcony_depth = _plan_panel._buttons.balcony_depth.value
+						_plot_balcony_columns = _plan_panel._buttons.balcony_columns.button_pressed
+						_plan_panel.set_status("Отметьте два конца вдоль фасада. Балкон выступит вправо по направлению линии.")
+				"plot_railing":
+					_plot_railing_style = _plan_panel._buttons.railing_style.selected
+					_plot_follow_floor = value == "round"
+					_plan_panel.set_status("Щёлкните у края круглой площадки там, где нужен вход." if _plot_follow_floor
+						else "Этаж %d. Отметьте два конца перил на перекрытии." % (_plot_level + 1))
+				"plot_window_pick":
+					_plot_window_name = ""
+					_refresh_plot_window()
+					_plan_panel.set_status("Этаж %d. Щёлкните по стене с окном или дверью." % (_plot_level + 1))
+				"plot_roof":
+					var props := map.get_node_or_null("Props") as Node3D
+					if not _plot_has_floor(props):
+						_reset_plot_tool()
+						_plan_panel.set_status("Сначала проведите стену или положите перекрытие на выбранном этаже.")
+					else:
+						_plot_roof_options = _plan_panel.roof_options()
+						_plot_follow_floor = value == "round"
+						_plan_panel.set_status("Щёлкните внутри круглой, полукруглой или гранёной площадки." if _plot_follow_floor
+							else "Крыша над этажом %d. Отметьте два противоположных угла." % (_plot_level + 1))
+		_update_overlay()
+		return
 	if action == "generate":
 		edit_region = plan.regions[index].bounds; _refresh_scope()
 		_plan_panel.hide(); _ensure_generation_panel()
@@ -542,11 +941,294 @@ func _terrain_plan_action(action: String, id: String, value: String) -> void:
 	_plan_panel.set_status(error if not error.is_empty() else "План изменён · Ctrl+Z отменяет · Ctrl+S сохраняет сцену.")
 	_refresh_terrain_plan()
 
+func _clear_street_preview() -> void:
+	if _street_preview.is_empty():
+		return
+	for front: Node3D in _street_preview.fronts.values():
+		front.free()
+	_street_preview.clear()
+	if is_instance_valid(_plan_panel):
+		_plan_panel.show_street_preview(0, 0)
+	_update_overlay()
+
+
+func _street_plot_obstacles(props: Node3D, projection: Node3D) -> Dictionary:
+	var occupied := PackedVector2Array()
+	for child in props.get_children():
+		if child is Node3D:
+			occupied.append(_plot_local_grid(projection, child.global_position))
+	var solids: Array[Rect2] = []
+	for prop in props.get_tree().get_nodes_in_group(&"ember_solid_surface"):
+		if prop is not EmberVoxelProp or not props.is_ancestor_of(prop):
+			continue
+		var box: AABB = prop.surface_floor_bounds()
+		if not box.has_volume():
+			continue
+		var foot := Rect2(_plot_local_grid(projection, box.position), Vector2.ZERO)
+		for corner in [box.position + Vector3(box.size.x, 0, 0), box.position + Vector3(0, 0, box.size.z), box.end]:
+			foot = foot.expand(_plot_local_grid(projection, corner))
+		solids.append(foot)
+	return {"anchors": occupied, "solids": solids}
+
+
+func _prepare_street_plots(plan: Resource, road: Dictionary, options: Dictionary, props: Node3D, projection: EmberTerrainPilotProjection, block := {}) -> Dictionary:
+	var source: EmberTerrainPilotResource = entry.resource
+	var cell_size := EmberTerrainPilotResource.CELLS_PER_BLOCK
+	var extent := Vector2i(source.width / cell_size, source.depth / cell_size)
+	var occupied := _street_plot_obstacles(props, projection)
+	var fronts := {}
+	var layouts := {}
+	var corridors := {}
+	var accepted: Array[PackedVector2Array] = []
+	var outline: PackedVector2Array = block.get("outline", PackedVector2Array())
+	var reserved: Array[PackedVector2Array] = []
+	if options.entries:
+		for solid: Rect2 in occupied.solids:
+			reserved.append(PackedVector2Array([solid.position, Vector2(solid.end.x, solid.position.y), solid.end, Vector2(solid.position.x, solid.end.y)]))
+	for region: Dictionary in plan.regions:
+		var kind: String = region.get("kind", "")
+		if kind == "construction" or (region.get("enabled", true) and kind in ["lake", "grove", "placement"]):
+			reserved.append(TerrainPlan.Influence.plan_controls(region))
+		elif options.entries and region.get("enabled", true) and kind in ["road", "river"]:
+			var line := TerrainPlan.Influence.path_curve(region.points_m)
+			var edge := float(region.parameters.edge_m if kind == "road" else region.parameters.shore_m)
+			var radius := float(region.parameters.width_m) * 0.5 + edge
+			corridors[region.id] = Geometry2D.offset_polyline(line.get_baked_points(), radius, Geometry2D.JOIN_ROUND, Geometry2D.END_ROUND)
+	var surface := _plot_ground.bind(props)
+	var available := func(lot: Dictionary, access: Dictionary, outside: bool) -> bool:
+		var bounds: Rect2i = lot.bounds
+		var frame := TerrainPlan.Influence.plot_frame(lot)
+		var area := TerrainPlan.Influence.plot_rect(lot).grow(0.5)
+		var corners := TerrainPlan.Influence.plan_controls(lot)
+		var inverse := frame.affine_inverse()
+		if not outline.is_empty():
+			if not TerrainPlan.Influence.street_block_fits(corners, outline, outside):
+				return false
+			var clearance := TerrainPlan.Influence.rectangle_points(TerrainPlan.Influence.plot_rect(lot).grow(options.gap), frame)
+			for prior in accepted:
+				if not Geometry2D.intersect_polygons(clearance, prior).is_empty():
+					return false
+		for point in occupied.anchors:
+			if area.has_point(inverse * point):
+				return false
+		for solid: Rect2 in occupied.solids:
+			if solid.intersects(Rect2(bounds)) and not Geometry2D.intersect_polygons(corners, TerrainPlan.Influence.rectangle_points(solid)).is_empty():
+				return false
+		if not EmberTerrainPilotResource.Sections.is_dry_rectangle(source, Rect2i(bounds.position * cell_size, bounds.size * cell_size)):
+			return false
+		if not options.entries:
+			accepted.append(corners)
+			return true
+		var layout := TerrainPlan.Influence.street_frontage(access, lot)
+		if layout.is_empty():
+			return false
+		var envelope := TerrainPlan.Influence.street_plot_envelope(lot, layout)
+		if not outline.is_empty() and not TerrainPlan.Influence.street_block_fits(envelope, outline, outside):
+			return false
+		for road_id in corridors:
+			if road_id == access.id:
+				continue
+			for corridor: PackedVector2Array in corridors[road_id]:
+				if not Geometry2D.intersect_polygons(corridor, envelope).is_empty():
+					return false
+		for prior in reserved:
+			if not Geometry2D.intersect_polygons(prior, envelope).is_empty():
+				return false
+		for point in occupied.anchors:
+			if Geometry2D.is_point_in_polygon(point, envelope):
+				return false
+		var front := Plot.make_street_front(layout, surface, map.imported_tile_size)
+		if front == null:
+			return false
+		reserved.append(envelope)
+		accepted.append(corners)
+		fronts[frame.origin] = front
+		layouts[frame.origin] = layout
+		return true
+	var inside_seeds: Array = block.get("seeds", [{"road": road, "side": options.side}])
+	var outside_seeds: Array = block.get("outside_seeds", [])
+	var scope: String = options.get("scope", "inside") if not block.is_empty() else "inside"
+	var sides := [false, true] if scope == "both" else [scope == "outside"]
+	var lots: Array[Dictionary] = []
+	var capacity: int = TerrainPlan.MAX_REGIONS - plan.regions.size()
+	for outside: bool in sides:
+		# Leave room for the outside in a combined preview even near the map limit.
+		var limit := mini(20, capacity - lots.size())
+		if scope == "both" and not outside:
+			limit = mini(limit, ceili(capacity * 0.5))
+		var stop := lots.size() + limit
+		for seed: Dictionary in (outside_seeds if outside else inside_seeds):
+			lots.append_array(TerrainPlan.Influence.street_plot_candidates(seed.road, plan.regions, extent, options.size, seed.side,
+				options.gap, options.setback, stop - lots.size(), available.bind(seed.road, outside), options.get("anchor", Vector2.INF)))
+			if lots.size() >= stop:
+				break
+	return {"lots": lots, "fronts": fronts, "layouts": layouts, "occupied": occupied, "revision": projection.column_revision()}
+
+
+func _street_plot_action(action: String, id: String, value := "", point := Vector2.INF) -> void:
+	if action in ["street_select_all", "street_deselect_all"]:
+		if _street_preview.is_empty() or _street_preview.id != id:
+			return
+		var excluded: Dictionary = _street_preview.excluded
+		var count: int = _street_preview.lots.size()
+		excluded.clear()
+		if action == "street_deselect_all":
+			for slot in count:
+				excluded[slot] = true
+		_plan_panel.show_street_preview(count - excluded.size(), count)
+		_update_overlay()
+		return
+	if action == "street_clear":
+		if not _street_preview.is_empty():
+			_clear_street_preview()
+			_plan_panel.set_status("Предпросмотр убран.")
+		return
+	var plan: Resource = TerrainPlan.read(map)
+	var index: int = plan.index_of(id) if plan != null else -1
+	if index < 0 or plan.regions[index].get("kind") != "road" or entry.is_empty():
+		return
+	var road: Dictionary = plan.regions[index]
+	if action in ["street_bridge_style", "street_bridge_deck", "street_bridge_rail", "street_bridge_snap"]:
+		if not _street_bridge.is_empty():
+			if action == "street_bridge_style":
+				_street_bridge.style = value
+			_street_bridge.options = _plan_panel.bridge_options()
+			var preview: StaticBody3D = _street_bridge.get("node")
+			if is_instance_valid(preview):
+				if action == "street_bridge_snap":
+					if _plot_tool == "street_bridge_edit":
+						_plan_panel.set_status(_preview_street_bridge_style(Vector2.ZERO, _street_bridge.get("previous")))
+					else:
+						_clear_street_bridge_preview()
+						_plan_panel.set_status("Стык изменён. Щёлкните по второй дороге ещё раз.")
+				else:
+					Plot.style_street_bridge(preview, _street_bridge.style, map.imported_tile_size, _street_bridge.options)
+		return
+	if action in ["street_bridge", "street_bridge_edit"]:
+		if not _plan_selection.is_empty():
+			_plan_panel.set_status("Завершите текущий контур или отмените его Esc.")
+			return
+		if action == "street_bridge" and not road.get("enabled", true):
+			_plan_panel.set_status("Включите дорогу, чтобы поставить мост.")
+			return
+		clear_terrain_generation_preview()
+		_clear_street_preview()
+		_reset_plot_tool()
+		_plan_cancel_drag()
+		_generation_context.clear()
+		if is_instance_valid(_generation_panel):
+			_generation_panel.hide()
+		_plan_panel.set_compact(true)
+		var style: OptionButton = _plan_panel._buttons.street_bridge_style
+		_plot_tool = action
+		_street_bridge = {"first_road": id, "style": style.get_selected_metadata(), "options": _plan_panel.bridge_options()}
+		_plan_panel.set_status("Щёлкните по готовому мосту. Enter применяет облик · Esc отменяет." if action == "street_bridge_edit" else
+			"Щёлкните по выбранной дороге, затем по второй. Enter ставит мост · Esc отменяет.")
+		_update_overlay()
+		return
+	if action == "street_panel":
+		clear_terrain_generation_preview()
+		_generation_context.clear()
+		if is_instance_valid(_generation_panel):
+			_generation_panel.hide()
+		_plan_panel.set_compact(false)
+		_plan_panel.set_status("Задайте сторону и размеры, затем нажмите «Показать участки».")
+		return
+	if not road.get("enabled", true):
+		_clear_street_preview()
+		_plan_panel.set_status("Включите дорогу, чтобы разметить участки.")
+		return
+	if action in ["street_preview", "street_block_preview", "street_place"]:
+		if not _plan_selection.is_empty():
+			_plan_panel.set_status("Завершите текущий контур или отмените его Esc.")
+			return
+		_clear_street_preview()
+		_reset_plot_tool()
+		_plan_cancel_drag()
+		var manual := action == "street_place"
+		if manual and not point.is_finite():
+			_plan_selected_id = id
+			_plot_tool = action
+			_plan_panel.set_status("Щёлкните с нужной стороны улицы. Esc отменяет.")
+			return
+		var props := map.get_node_or_null("Props") as Node3D
+		var projection := map._visual_surface_projection as EmberTerrainPilotProjection
+		if props == null or not is_instance_valid(projection):
+			_plan_panel.set_status("Дождитесь загрузки поверхности улицы.")
+			return
+		var options: Dictionary = _plan_panel.street_plot_options()
+		if manual:
+			options.anchor = point
+		var block := {}
+		if action == "street_block_preview":
+			block = TerrainPlan.Influence.street_block(id, plan.regions)
+			if block.is_empty():
+				_plan_panel.set_status("Не найдено одно кольцо улиц. Соедините концы улиц точка в точку и выберите улицу на кольце.")
+				return
+		var draft := _prepare_street_plots(plan, road, options, props, projection, block)
+		var lots: Array[Dictionary] = draft.lots
+		if lots.is_empty():
+			if manual:
+				_plot_tool = action
+				_plan_panel.set_status("Здесь участок не помещается. Щёлкните в другом месте или уменьшите размеры.")
+				return
+			_plan_panel.set_status("На выбранной стороне квартала нет места. Уменьшите размеры участков или отступ." if not block.is_empty()
+				else "Нет свободных участков с таким отступом и входом. Измените размеры, сторону или отключите входы." if options.entries
+				else "На этой стороне нет свободного места. Попробуйте меньшие размеры или другую сторону.")
+			return
+		draft.merge({"id": id, "original": plan.working_copy(), "excluded": {}})
+		_street_preview = draft
+		_plan_panel.show_street_preview(lots.size(), lots.size())
+		_plan_panel.set_status("Участок привязан к улице. Нажмите «Создать участки» или Esc." if manual
+			else "Квартал · доступных мест: %d. Щелчок меняет выбор." % lots.size() if not block.is_empty()
+			else "Щёлкните по лишнему участку, чтобы исключить его. Затем нажмите «Создать участки».")
+		_update_overlay()
+	elif action == "street_apply" and _street_preview.get("id") == id:
+		var proposed: Array[Dictionary] = _street_preview.lots
+		var excluded: Dictionary = _street_preview.excluded
+		var props := map.get_node_or_null("Props") as Node3D
+		var projection := map._visual_surface_projection as EmberTerrainPilotProjection
+		if props == null or not is_instance_valid(projection) or projection.column_revision() != _street_preview.revision \
+				or not TerrainPlan.same(plan, _street_preview.original) or _street_plot_obstacles(props, projection) != _street_preview.occupied:
+			_clear_street_preview()
+			_plan_panel.set_status("Дорога или свободное место изменились. Постройте предпросмотр заново.")
+			return
+		var next: Resource = plan.working_copy()
+		next.upgrade_local_layers()
+		var prefix := "street_%s_%s" % [OS.get_process_id(), Time.get_ticks_usec()]
+		var added := 0
+		var fronts: Array[Node3D] = []
+		for slot in proposed.size():
+			if excluded.has(slot):
+				continue
+			var plot_id := "%s_%d" % [prefix, slot]
+			var lot := proposed[slot].duplicate()
+			lot.merge({"id": plot_id, "name": "Участок у дороги %d" % (next.regions.size() + 1),
+				"kind": "construction", "parameters": {}})
+			next.regions.append(lot)
+			var key: Vector2 = lot.plot_frame.origin
+			var front: Node3D = _street_preview.fronts.get(key)
+			if front != null:
+				front.set_meta(Plot.META, plot_id)
+				front.set_meta(Plot.STREET_FRONT_META, _street_preview.layouts[key].road)
+				fronts.append(front)
+				_street_preview.fronts.erase(key)
+			added += 1
+		if added > 0:
+			var error := commit_terrain_plan(map, next, null, fronts)
+			if not error.is_empty():
+				for front in fronts:
+					front.free()
+				_clear_street_preview()
+			_plan_panel.set_status("Создано участков: %d. Входов к улице: %d. Выберите участок, чтобы строить." % [added, fronts.size()] if error.is_empty() else error)
+
+
 func _finish_terrain_plan_selection(bounds_m: Rect2i) -> void:
 	if _plan_selection.is_empty(): return
 	var original: Resource = TerrainPlan.read(map)
 	var plan: Resource = original.working_copy() if original != null else TerrainPlan.new()
-	if _plan_selection in ["add", "add_plateau", "add_lake", "add_mountain", "add_grove", "add_placement"]:
+	var added_plot := _plan_selection == "add_plot"
+	if _plan_selection in ["add", "add_plateau", "add_lake", "add_mountain", "add_grove", "add_placement", "add_plot"]:
 		var id := "area_%s_%s" % [OS.get_process_id(), Time.get_ticks_usec()]
 		plan.regions.append({"id": id, "name": "Область %d" % (plan.regions.size() + 1), "bounds": bounds_m, "parameters": TerrainGeneration.Math.DEFAULTS.duplicate(true)})
 		if _plan_selection in ["add_plateau","add_lake"]:
@@ -570,6 +1252,11 @@ func _finish_terrain_plan_selection(bounds_m: Rect2i) -> void:
 			plan.upgrade_local_layers(); plan.regions[-1].kind = "placement"; plan.regions[-1].enabled = true
 			plan.regions[-1].name = "Объекты %d"%plan.regions.size()
 			plan.regions[-1].parameters = TerrainPlan.Influence.PLACEMENT_DEFAULTS.duplicate(true)
+		elif added_plot:
+			plan.upgrade_local_layers()
+			plan.regions[-1].kind = "construction"
+			plan.regions[-1].name = "Строительный участок %d" % plan.regions.size()
+			plan.regions[-1].parameters = {}
 		if _plan_selection in ["add","add_plateau","add_lake","add_mountain"]:
 			plan.upgrade_local_layers();plan.regions[-1].parameters.terrain_sampling="fine16"
 			if _plan_selection=="add_mountain":plan.regions[-1].parameters.merge({"mountain_shape":"massif","shape_seed":7},true)
@@ -580,11 +1267,1150 @@ func _finish_terrain_plan_selection(bounds_m: Rect2i) -> void:
 	_plan_selection = ""
 	var error := commit_terrain_plan(map, plan)
 	_refresh_terrain_plan(true)
-	_plan_panel.set_status(error if not error.is_empty() else "Область добавлена в план. Земля не изменена.")
+	var index: int = plan.index_of(_plan_selected_id)
+	var plot_resized: bool = not added_plot and index >= 0 and plan.regions[index].get("kind") == "construction"
+	var message := "Границы изменены. Дома и ограды остались на своих местах." if plot_resized else "Область добавлена в план. Земля не изменена."
+	_plan_panel.set_status(error if not error.is_empty() else message)
+	if added_plot and error.is_empty():
+		_terrain_plan_action("generate", _plan_selected_id, "")
+
+
+func _reset_plot_tool() -> void:
+	_branch_edit.clear()
+	_road_join.clear()
+	_clear_surface_road_preview()
+	_surface_road_support = ""
+	_clear_plot_street_front()
+	_clear_street_bridge_preview()
+	_street_bridge.clear()
+	_plot_tool = ""
+	_plot_house_id = ""
+	_plot_wall_opening = Plot.WALL_SOLID
+	_plot_opening_options = {}
+	_plot_entry_portico = false
+	_plot_edge_anchors.clear()
+	_plot_pilaster_hit.clear()
+	_plot_roof_options.clear()
+	_plot_level = 0
+	_plot_anchor = Vector2.INF
+	_plot_arc_through = Vector2.INF
+	_plot_arc_walk = false
+	_plot_tower_ports = 0
+	_plot_floor_shape = ""
+	_plot_follow_floor = false
+	_plot_tower_height = 0.0
+	_plot_docking = false
+	_plot_docks.clear()
+	_plot_start_dock = {}
+	_plot_hover_dock = {}
+	_plot_cursor = Vector2.INF
+
+
+func _clear_plot_street_front() -> void:
+	var preview: Node3D = _plot_street_front.get("node")
+	if is_instance_valid(preview):
+		if preview.get_parent() != null:
+			preview.get_parent().remove_child(preview)
+		preview.queue_free()
+	_plot_street_front.clear()
+
+
+func _preview_plot_street_front(point: Vector2) -> String:
+	_clear_plot_street_front()
+	var plan: Resource = TerrainPlan.read(map)
+	var index: int = plan.index_of(_plan_selected_id) if plan != null else -1
+	var props := map.get_node_or_null("Props") as Node3D
+	var projection := map._visual_surface_projection as EmberTerrainPilotProjection
+	if index < 0 or props == null or projection == null or plan.regions[index].kind != "construction":
+		return "Выберите строительный участок."
+	var road := {}
+	var closest := INF
+	for region: Dictionary in plan.regions:
+		if region.get("kind") != "road" or not region.get("enabled", true):
+			continue
+		var curve := TerrainPlan.Influence.path_curve(region.points_m)
+		var distance := curve.get_closest_point(point).distance_to(point)
+		if distance <= float(region.parameters.width_m) * 0.5 + 0.25 and distance < closest:
+			road = region
+			closest = distance
+	if road.is_empty():
+		return "Щёлкните по полотну соседней дороги."
+	var layout := TerrainPlan.Influence.street_frontage(road, plan.regions[index])
+	if layout.is_empty():
+		return "Здесь ограда не стыкуется с обочиной. Выберите другую дорогу или поправьте границы участка."
+	var neighbors: Array[PackedVector2Array] = []
+	for region: Dictionary in plan.regions:
+		if region.id != _plan_selected_id and region.get("kind") == "construction":
+			neighbors.append(TerrainPlan.Influence.plan_controls(region))
+	var surface := func(sample: Vector2) -> Vector3:
+		for bounds in neighbors:
+			if Geometry2D.is_point_in_polygon(sample, bounds):
+				return Vector3.INF
+		return _plot_ground(sample, props)
+	var node := Plot.make_street_front(layout, surface, map.imported_tile_size)
+	if node == null:
+		return "Для ограды и подхода нужна сухая земля без резких перепадов и свободное место между участками."
+	var previous: Node3D
+	for child in props.get_children():
+		if child is Node3D and child.get_meta(Plot.META, "") == _plan_selected_id and child.has_meta(Plot.STREET_FRONT_META):
+			previous = child
+			break
+	_plot_street_front = {"node":node, "previous":previous,
+		"road":road.id, "regions":plan.regions.duplicate(true), "revision":projection.column_revision()}
+	node.process_mode = Node.PROCESS_MODE_DISABLED
+	props.add_child(node)
+	return "Вход к дороге «%s». Enter — поставить · Esc — отменить." % road.name
+
+
+func _commit_plot_street_front() -> String:
+	if _plot_street_front.is_empty():
+		return "Сначала щёлкните по соседней дороге."
+	var plan: Resource = TerrainPlan.read(map)
+	var projection := map._visual_surface_projection as EmberTerrainPilotProjection
+	if plan == null or projection == null or plan.regions != _plot_street_front.regions or projection.column_revision() != _plot_street_front.revision:
+		_clear_plot_street_front()
+		return "План или земля изменились. Выберите дорогу снова."
+	var node: Node3D = _plot_street_front.node
+	var props := node.get_parent() as Node3D
+	var previous: Node3D = _plot_street_front.previous
+	var road_id: String = _plot_street_front.road
+	props.remove_child(node)
+	node.process_mode = Node.PROCESS_MODE_INHERIT
+	node.set_meta(Plot.META, _plan_selected_id)
+	node.set_meta(Plot.STREET_FRONT_META, road_id)
+	_plot_street_front.erase("node")
+	_reset_plot_tool()
+	_commit_plot_node(props, node, "Поставить ограду и вход к дороге", previous)
+	return "Ограда и подход поставлены · Ctrl+Z отменяет · Ctrl+S сохраняет."
+
+
+func _clear_street_bridge_preview() -> void:
+	var previous: StaticBody3D = _street_bridge.get("previous")
+	if is_instance_valid(previous):
+		_show_street_bridge_source(previous, true)
+	_street_bridge.erase("previous")
+	var preview: Node3D = _street_bridge.get("node")
+	if is_instance_valid(preview):
+		if preview.get_parent() != null:
+			preview.get_parent().remove_child(preview)
+		preview.queue_free()
+	_street_bridge.erase("node")
+
+
+func _show_street_bridge_source(body: StaticBody3D, show_source: bool) -> void:
+	for part in body.get_children():
+		if part is MeshInstance3D:
+			RenderingServer.instance_set_visible(part.get_instance(), show_source and part.is_visible_in_tree())
+
+
+func _street_bridge_at(pixel: Vector2, props: Node3D) -> StaticBody3D:
+	if not is_instance_valid(camera):
+		return null
+	var origin := camera.project_ray_origin(pixel)
+	var ray := camera.project_ray_normal(pixel)
+	var previous: StaticBody3D
+	var nearest := INF
+	for piece in props.get_children():
+		if piece is not StaticBody3D or not piece.has_meta(Plot.STREET_BRIDGE_META) or not piece.is_visible_in_tree():
+			continue
+		for part in piece.get_children():
+			if part is not MeshInstance3D or not part.is_visible_in_tree():
+				continue
+			var inverse: Transform3D = part.global_transform.affine_inverse()
+			var hit: Variant = part.get_aabb().intersects_ray(inverse * origin, inverse.basis * ray)
+			if hit != null:
+				var distance := origin.distance_squared_to(part.to_global(hit))
+				if distance < nearest:
+					nearest = distance
+					previous = piece
+	return previous
+
+
+func _preview_street_bridge_style(pixel: Vector2, previous: StaticBody3D = null) -> String:
+	_clear_street_bridge_preview()
+	var props := map.get_node_or_null("Props") as Node3D
+	if props == null:
+		return "Щёлкните по готовому мосту."
+	if not is_instance_valid(previous):
+		previous = _street_bridge_at(pixel, props)
+	if previous == null or previous.get_parent() != props:
+		return "Щёлкните по готовому мосту."
+	var preview: StaticBody3D
+	var plan: Resource = TerrainPlan.read(map)
+	var projection := map._visual_surface_projection as EmberTerrainPilotProjection
+	var snap: String = _street_bridge.options.snap
+	if snap != "keep" and snap != previous.get_meta(Plot.BRIDGE_SNAP_META, "axis"):
+		var deck := previous.get_node_or_null("DeckShape") as CollisionShape3D
+		if plan == null or projection == null or deck == null or not deck.shape is BoxShape3D:
+			return "Не удалось прочитать стыки моста."
+		var ids: PackedStringArray = previous.get_meta(Plot.STREET_BRIDGE_META)
+		var saved_axes: PackedVector2Array = previous.get_meta(Plot.BRIDGE_AXES_META, PackedVector2Array())
+		var docks: Array[Dictionary] = []
+		for index in ids.size():
+			var road_index: int = plan.index_of(ids[index])
+			if road_index < 0 or not plan.regions[road_index].get("enabled", true):
+				return "Обе дороги должны быть в плане и включены."
+			var road: Dictionary = plan.regions[road_index]
+			var side := -1.0 if index == 0 else 1.0
+			var end := previous.to_global(Vector3(0.0, 0.0, deck.shape.size.z * side * 0.5))
+			var curve := TerrainPlan.Influence.path_curve(road.points_m)
+			var anchor := saved_axes[index] if saved_axes.size() == 2 else _plot_local_grid(projection, end)
+			docks.append({"point": curve.get_closest_point(anchor), "curve": curve,
+				"width": road.parameters.width_m, "id": road.id})
+		if docks.size() != 2:
+			return "Для перестыковки нужны две дороги."
+		var result := _build_street_bridge_candidate(docks[0], docks[1], props, projection)
+		preview = _street_bridge.get("node")
+		if preview == null:
+			return result
+		if _street_bridge.style == "broken":
+			preview.set_meta(Plot.BRIDGE_MATERIAL_META, previous.get_meta(Plot.BRIDGE_MATERIAL_META, previous.get_meta(Plot.BRIDGE_STYLE_META, "wood")))
+			if _street_bridge.options.deck == "preset" and previous.has_meta(Plot.BRIDGE_DECK_META):
+				preview.set_meta(Plot.BRIDGE_DECK_META, previous.get_meta(Plot.BRIDGE_DECK_META))
+			if _street_bridge.options.rail == "preset" and previous.has_meta(Plot.BRIDGE_RAIL_META):
+				preview.set_meta(Plot.BRIDGE_RAIL_META, previous.get_meta(Plot.BRIDGE_RAIL_META))
+			Plot.style_street_bridge(preview, "broken", map.imported_tile_size, _street_bridge.options)
+	else:
+		preview = previous.duplicate() as StaticBody3D
+		if not Plot.style_street_bridge(preview, _street_bridge.style, map.imported_tile_size, _street_bridge.options):
+			preview.free()
+			return "Не удалось прочитать размеры настила."
+	preview.remove_meta(Plot.STREET_BRIDGE_META)
+	preview.process_mode = Node.PROCESS_MODE_DISABLED
+	_show_street_bridge_source(previous, false)
+	if preview.get_parent() == null:
+		props.add_child(preview, true)
+	_street_bridge.node = preview
+	_street_bridge.previous = previous
+	_street_bridge.previous_transform = previous.transform
+	_street_bridge.edit_regions = plan.regions.duplicate(true) if plan != null else []
+	_street_bridge.edit_revision = projection.column_revision() if projection != null else -1
+	return "Разрыв настила примерен. Enter — применить · Esc — отменить." if _street_bridge.style == "broken" else "Облик примерен. Enter — применить · Esc — отменить."
+
+
+func _pick_street_bridge_point(point: Vector2) -> String:
+	var plan: Resource = TerrainPlan.read(map)
+	var props := map.get_node_or_null("Props") as Node3D
+	var projection := map._visual_surface_projection as EmberTerrainPilotProjection
+	if plan == null or props == null or projection == null or _street_bridge.is_empty():
+		return "Откройте план дорог."
+	var first: Dictionary = _street_bridge.get("start", {})
+	var dock := {}
+	var nearest := INF
+	for road: Dictionary in plan.regions:
+		if road.get("kind") != "road" or not road.get("enabled", true):
+			continue
+		if (road.id == _street_bridge.first_road) != first.is_empty():
+			continue
+		var curve := TerrainPlan.Influence.path_curve(road.points_m)
+		var center := curve.get_closest_point(point)
+		var distance := point.distance_to(center)
+		var width := float(road.parameters.width_m)
+		if distance <= width * 0.5 + 0.25 and distance < nearest:
+			nearest = distance
+			dock = {"id": road.id, "point": center, "width": width, "curve": curve}
+	if dock.is_empty():
+		return "Щёлкните по выбранной дороге." if first.is_empty() else "Щёлкните по полотну другой дороги."
+	var dock_grid: Vector2 = dock.point * 16.0
+	var dock_world := projection.to_global(Vector3(dock_grid.x, 0, dock_grid.y))
+	var dock_xz := Vector2(dock_world.x, dock_world.z)
+	if not projection.detail_area_ready(Rect2(dock_xz, Vector2.ZERO)):
+		return "Дождитесь точной земли у стыка и щёлкните снова."
+	if not _plot_ground(dock.point, props).is_finite():
+		return "Стык должен опираться на сухую часть дороги."
+	if first.is_empty():
+		_street_bridge.start = dock
+		_street_bridge.regions = plan.regions.duplicate(true)
+		_street_bridge.revision = projection.column_revision()
+		return "Первый стык отмечен. Щёлкните по второй дороге."
+	_clear_street_bridge_preview()
+	if plan.regions != _street_bridge.regions or projection.column_revision() != _street_bridge.revision:
+		_street_bridge.erase("start")
+		return "План или земля изменились. Выберите первый стык заново."
+	return _build_street_bridge_candidate(first, dock, props, projection)
+
+
+func _build_street_bridge_candidate(first: Dictionary, dock: Dictionary, props: Node3D, projection: EmberTerrainPilotProjection) -> String:
+	var a_point: Vector2 = first.point
+	var b_point: Vector2 = dock.point
+	var snap: String = _street_bridge.options.snap
+	if snap != "axis":
+		snap = "edge"
+		a_point = TerrainPlan.Influence.bridge_road_edge(first.curve, first.point, dock.point, first.width * 0.5)
+		b_point = TerrainPlan.Influence.bridge_road_edge(dock.curve, dock.point, first.point, dock.width * 0.5)
+	if not a_point.is_finite() or not b_point.is_finite():
+		return "По этому направлению нет двух свободных краёв дороги. Выберите другие точки."
+	var length := a_point.distance_to(b_point)
+	if length < 2.0 or length > 32.0:
+		return "Для моста нужен пролёт от 2 до 32 м."
+	var width := minf(3.0, minf(first.width, dock.width))
+	var tile := map.imported_tile_size
+	var first_world := projection.to_global(Vector3(a_point.x * 16.0, 0, a_point.y * 16.0))
+	var last_world := projection.to_global(Vector3(b_point.x * 16.0, 0, b_point.y * 16.0))
+	var a := Vector2(first_world.x, first_world.z)
+	var b := Vector2(last_world.x, last_world.z)
+	var footprint := Rect2(a.min(b), (a - b).abs()).grow(width * tile * 0.5)
+	if not projection.detail_area_ready(footprint):
+		return "Дождитесь точной земли под пролётом и щёлкните снова."
+	var start := _plot_ground(a_point, props) + Vector3.UP * tile * 0.05
+	var end := _plot_ground(b_point, props) + Vector3.UP * tile * 0.05
+	if not start.is_finite() or not end.is_finite():
+		return "Стыкам нужна сухая земля."
+	if absf(end.y - start.y) > length * tile * 0.2:
+		return "Перепад слишком большой. Выберите стыки ближе по высоте."
+	var axis := a_point.direction_to(b_point)
+	var side := Vector2(-axis.y, axis.x)
+	var spans_gap := false
+	var rows := ceili(length / 0.25)
+	for row in range(rows + 1):
+		var ratio := float(row) / rows
+		var sample := a_point.lerp(b_point, ratio)
+		var deck := lerpf(start.y, end.y, ratio)
+		for offset: float in [-width * 0.5, 0.0, width * 0.5]:
+			var grid := (sample + side * offset) * 16.0
+			var world := projection.to_global(Vector3(grid.x, 0, grid.y))
+			var floor := projection.floor_surface_sample(world)
+			if not floor.get("solid", false):
+				return "Пролёт выходит за пределы подготовленной земли."
+			var ground := props.to_local(floor.position).y
+			var water := projection.water_surface_sample(world)
+			var wet: bool = water.get("wet", false)
+			var clearance := deck - ground
+			if row in [0, rows] and (wet or absf(clearance) > tile * 0.22):
+				return "По всей ширине въезда нужна сухая ровная опора."
+			if clearance < -tile * 0.08 or (wet and deck < props.to_local(water.position).y + tile * 0.08):
+				return "Настил пересекает землю или воду. Сдвиньте стыки."
+			if wet or clearance > tile * 0.35:
+				spans_gap = true
+	if not spans_gap:
+		return "Между выбранными точками нет воды или перепада под настилом."
+	var node := Plot.make_street_bridge(start, end, width, tile, _street_bridge.style, _street_bridge.options)
+	node.set_meta(Plot.BRIDGE_SNAP_META, snap)
+	node.set_meta(Plot.BRIDGE_AXES_META, PackedVector2Array([first.point, dock.point]))
+	node.process_mode = Node.PROCESS_MODE_DISABLED
+	props.add_child(node, true)
+	_street_bridge.node = node
+	_street_bridge.second_road = dock.id
+	return "Мост примерен. Enter — поставить · другой щелчок — сменить второй стык · Esc — отменить."
+
+
+func _commit_street_bridge() -> String:
+	var node: Node3D = _street_bridge.get("node")
+	if not is_instance_valid(node):
+		return "Щёлкните по готовому мосту." if _plot_tool == "street_bridge_edit" else "Выберите оба стыка для предпросмотра моста."
+	if _plot_tool == "street_bridge_edit":
+		var previous: StaticBody3D = _street_bridge.get("previous")
+		var parent := node.get_parent() as Node3D
+		var edited_plan: Resource = TerrainPlan.read(map)
+		var edited_projection := map._visual_surface_projection as EmberTerrainPilotProjection
+		if not is_instance_valid(previous) or previous.get_parent() != parent or previous.transform != _street_bridge.previous_transform \
+			or edited_plan == null or edited_projection == null or edited_plan.regions != _street_bridge.edit_regions \
+			or edited_projection.column_revision() != _street_bridge.edit_revision:
+			_reset_plot_tool()
+			return "Мост изменился. Примерьте облик заново."
+		node.set_meta(Plot.STREET_BRIDGE_META, previous.get_meta(Plot.STREET_BRIDGE_META))
+		parent.remove_child(node)
+		node.name = previous.name
+		node.process_mode = previous.process_mode
+		_street_bridge.erase("node")
+		_reset_plot_tool()
+		_commit_plot_node(parent, node, "Изменить облик моста", previous)
+		if node.get_meta(Plot.BRIDGE_STYLE_META) == "broken":
+			return "Мост разрушен, проход разорван · Ctrl+Z отменяет · Ctrl+S сохраняет."
+		return "Облик моста обновлён · Ctrl+Z отменяет · Ctrl+S сохраняет."
+	var plan: Resource = TerrainPlan.read(map)
+	var projection := map._visual_surface_projection as EmberTerrainPilotProjection
+	if plan == null or projection == null or plan.regions != _street_bridge.regions or projection.column_revision() != _street_bridge.revision:
+		_reset_plot_tool()
+		return "План или земля изменились. Включите инструмент моста заново."
+	var props := node.get_parent() as Node3D
+	props.remove_child(node)
+	node.process_mode = Node.PROCESS_MODE_INHERIT
+	node.set_meta(Plot.STREET_BRIDGE_META, PackedStringArray([_street_bridge.first_road, _street_bridge.second_road]))
+	_street_bridge.erase("node")
+	_reset_plot_tool()
+	_commit_plot_node(props, node, "Поставить мост между дорогами")
+	return "Мост поставлен · Ctrl+Z отменяет · Ctrl+S сохраняет."
+
+
+func _plot_ground(point: Vector2, parent: Node3D) -> Vector3:
+	var projection := map._visual_surface_projection as EmberTerrainPilotProjection
+	if not is_instance_valid(projection) or entry.is_empty():
+		return Vector3.INF
+	var source: EmberTerrainPilotResource = entry.resource
+	var grid := point * 16.0
+	var cell := Vector2i(grid.floor())
+	if not source.has_column(cell.x, cell.y):
+		return Vector3.INF
+	var index := source.column_index(cell.x, cell.y)
+	if source.column_value("water_levels", index) > source.column_value("heights", index):
+		return Vector3.INF
+	var hit := projection.floor_surface_sample(projection.to_global(Vector3(grid.x, 0, grid.y)))
+	return parent.to_local(hit.position) if hit.get("solid", false) else Vector3.INF
+
+
+func _plot_level_y(props: Node3D) -> float:
+	return Plot.level_origin(props, _plan_selected_id, map.imported_tile_size) + _plot_level * Plot.WALL_HEIGHT_M * map.imported_tile_size
+
+
+func _plot_has_floor(props: Node3D) -> bool:
+	for member in props.get_children():
+		if member.get_meta(Plot.META, "") == _plan_selected_id and int(member.get_meta(Plot.LEVEL_META, 0)) == _plot_level:
+			if member.has_node("Wall") or member.has_node("Slab"):
+				return true
+	return false
+
+
+func _plot_entry_anchors() -> PackedVector2Array:
+	var props := map.get_node_or_null("Props")
+	var points := PackedVector2Array()
+	if props == null:
+		return points
+	var projection := map._visual_surface_projection as EmberTerrainPilotProjection
+	if not is_instance_valid(projection):
+		return points
+	for node in props.get_children():
+		if node is Node3D and node.get_meta(Plot.META, "") == _plan_selected_id and node.has_node("Entry"):
+			for corner in Plot.entry_corners(node):
+				var local := projection.to_local(corner)
+				points.append(Vector2(local.x, local.z) / 16.0)
+	return points
+
+
+func _plot_plane_y(props: Node3D) -> float:
+	var offset := Plot.WALL_HEIGHT_M * map.imported_tile_size if _plot_tool in ["plot_cornice", "plot_roof"] else 0.0
+	if _plot_tool in ["plot_column", "plot_railing"]:
+		offset = Plot.BALCONY_TOP * map.imported_tile_size
+	return _plot_level_y(props) + offset
+
+
+func _plot_click(point: Vector2) -> String:
+	var plan: Resource = TerrainPlan.read(map)
+	var index: int = plan.index_of(_plan_selected_id) if plan != null else -1
+	if index < 0 or plan.regions[index].get("kind") != "construction":
+		return "Выберите строительный участок."
+	var region: Dictionary = plan.regions[index]
+	var frame := TerrainPlan.Influence.plot_frame(region)
+	var inverse := frame.affine_inverse()
+	var bounds := TerrainPlan.Influence.plot_rect(region)
+	if not point.is_finite() or not bounds.has_point(inverse * point):
+		return "Выберите точку внутри участка."
+	var props := map.get_node_or_null("Props") as Node3D
+	if props == null or not is_instance_valid(scene):
+		return "На карте нет контейнера объектов."
+	if _plot_tool == "plot_round_corner":
+		return _round_plot_corner(props, point, bounds, inverse)
+	var ground := _plot_ground(point, props)
+	if not ground.is_finite():
+		return "Здесь нужна сухая земля."
+	var node: Node3D
+	var label := "Поставить дом на участке"
+	if _plot_tool == "plot_house":
+		var path := EmberVoxelPrefab.prefab_path(_plot_house_id)
+		var packed := ResourceLoader.load(path) as PackedScene if ResourceLoader.exists(path) else null
+		if packed == null or not EmberVoxelPrefab.validate_packed(_plot_house_id, packed).get("ok", false):
+			return "Готовый шаблон дома не найден."
+		var prop := EmberSceneAuthoring.make_model_instance(scene, packed, _plot_house_id, ground)
+		if prop == null:
+			return "Не удалось открыть шаблон дома."
+		prop.configure_voxel_scale(prop.voxels_per_block, map.imported_tile_size)
+		prop.rotation.y -= frame.get_rotation()
+		node = prop
+	elif _plot_tool == "plot_apple_tree":
+		node = Plot.make_apple_tree(ground)
+		label = "Поставить яблоню"
+	elif _plot_tool == "plot_fountain":
+		var radius: float = Plot.FOUNTAIN_RADII[_plot_fountain_style]
+		if not bounds.encloses(Rect2(inverse * point - Vector2.ONE * radius, Vector2.ONE * radius * 2.0)):
+			return "Чаша фонтана должна целиком поместиться на участке."
+		node = Plot.make_fountain(point, _plot_fountain_style, _plot_ground.bind(props), map.imported_tile_size)
+		if node == null:
+			return "Для чаши нужна ровная сухая площадка."
+		label = "Поставить фонтан"
+	elif _plot_follow_floor:
+		var roof := _plot_tool == "plot_roof"
+		var target := _plot_contour_target(props, point, roof)
+		if target.is_empty():
+			return "Выберите круглую, полукруглую или гранёную площадку." if roof else "Щёлкните у края круглой площадки."
+		var floor: Node3D = target.floor
+		var profile: Dictionary = target.profile
+		var tile := map.imported_tile_size
+		if roof:
+			if not _plot_outline_fits(bounds, target.center, Plot.contour_roof_outline(profile), inverse):
+				return "Крыша со свесом должна поместиться на участке."
+			node = Plot.make_contour_roof(profile, _plot_roof_options.height, _plot_roof_options.color, tile)
+			label = "Поставить крышу по контуру"
+		else:
+			node = Plot.make_round_railing(profile, point - target.center, tile, _plot_railing_style)
+			label = "Поставить перила с входом"
+		node.position = floor.position + Vector3.UP * (Plot.WALL_HEIGHT_M * tile if roof else 0.0)
+	elif _plot_tool == "plot_column":
+		if not _plot_floor_supports_segment(props, ground, ground):
+			return "Выберите узел на перекрытии этого этажа."
+		node = Plot.make_column(ground, _plot_level_y(props), map.imported_tile_size, _plot_wall_color)
+		label = "Поставить колонну"
+	elif _plot_tool in ["plot_fence", "plot_wall", "plot_arc_wall", "plot_floor", "plot_entry", "plot_edge", "plot_cornice", "plot_roof", "plot_balcony", "plot_railing"]:
+		if not _plot_anchor.is_finite():
+			if _plot_docking:
+				_plot_start_dock = _plot_dock_at(point)
+				if _plot_start_dock.is_empty():
+					return "Выберите свободный проход площадки башни на уровне настила."
+				_plot_anchor = _plot_start_dock.point
+			else:
+				_plot_anchor = point
+			return "Отметьте точку на изгибе." if _plot_tool == "plot_arc_wall" else "Начало отмечено. Выберите вторую точку."
+		if not bounds.has_point(inverse * _plot_anchor):
+			return "Первая точка оказалась за границей участка. Отмените линию Esc."
+		if _plot_tool == "plot_wall":
+			var minimum := Plot.minimum_wall_length(_plot_wall_opening, _plot_opening_options)
+			if _plot_anchor.distance_to(point) < minimum or _plot_anchor.distance_to(point) > Plot.MAX_FENCE_M:
+				return "Длина стены должна быть от %s до 48 м." % minimum
+			node = Plot.make_wall(_plot_anchor, point, _plot_wall_opening, _plot_ground.bind(props), map.imported_tile_size,
+				_plot_level_y(props), _plot_level == 0, _plot_wall_neighbors(props), _plot_opening_options, _plot_wall_color, _plot_wall_finish, _plot_wall_depth)
+			if node == null:
+				return "Для стены нужна сухая ровная площадка."
+			label = "Провести стену"
+		elif _plot_tool == "plot_arc_wall":
+			if not _plot_arc_through.is_finite():
+				if _plot_anchor.distance_to(point) < 0.5:
+					return "Отметьте изгиб хотя бы в 0,5 м от начала."
+				_plot_arc_through = point
+				return "Выберите отмеченный проход второй башни." if _plot_docking else "Отметьте конец дуги. Esc отменяет построение."
+			var arc := _plot_arc_layout(point)
+			if arc.is_empty():
+				if _plot_docking:
+					var dock := _plot_dock_at(point)
+					if dock.is_empty():
+						return "Выберите свободный проход другой башни."
+					if not _plot_docks_match(dock):
+						return "Выберите проход той же ширины и на той же высоте."
+					return "Ход не помещается между гранями. Перенесите точку изгиба дальше от входов."
+				if _plot_arc_walk:
+					return "Для хода нужен более широкий поворот. Дуга до 180° и длиной до 48 м."
+				return "Выберите конец, чтобы получилась дуга до 180° и длиной до 48 м."
+			for edge: PackedVector2Array in [arc.left, arc.right]:
+				for edge_point in edge:
+					if not bounds.has_point(inverse * edge_point):
+						return "Стена должна целиком поместиться на участке."
+			var base_y := Plot.level_origin(props, _plan_selected_id, map.imported_tile_size) if _plot_arc_walk else _plot_level_y(props)
+			var walk_height := Plot.WALL_HEIGHT_M * (_plot_level + 1) if _plot_arc_walk else 0.0
+			if _plot_docking:
+				walk_height = (_plot_start_dock.y - base_y) / map.imported_tile_size - Plot.FLOOR_TOP_M
+			node = Plot.make_arc_wall(arc, _plot_ground.bind(props), map.imported_tile_size, base_y,
+				_plot_arc_walk or _plot_level == 0, _plot_wall_neighbors(props), _plot_wall_color, _plot_wall_finish, walk_height)
+			if node == null:
+				return "Для дуги нужна сухая ровная площадка."
+			if _plot_docking:
+				node.set_meta(Plot.DOCKED_WALK_META, true)
+			label = "Провести дуговую стену с ходом" if _plot_arc_walk else "Провести дуговую стену"
+		elif _plot_tool == "plot_floor":
+			var tile := map.imported_tile_size
+			var pose := _plot_frame_pose(frame, props)
+			var surface := _plot_frame_ground.bind(frame, pose.affine_inverse(), props)
+			if not _plot_floor_shape.is_empty():
+				var layout := _plot_contour_layout(point)
+				if layout.profile.is_empty():
+					if _plot_floor_shape == "chamfer":
+						return "Уменьшите срезы или увеличьте площадку. На каждой стороне должно остаться 0,5 м."
+					return "Выберите радиус от 1,5 до 12 м."
+				if not _plot_outline_fits(bounds, layout.center, Plot.floor_outline(layout.profile), inverse):
+					return "Вся площадка должна поместиться на участке."
+				node = Plot.make_contour_floor(layout.center, layout.profile, _plot_ground.bind(props), tile, _plot_level_y(props))
+				if node == null:
+					return "Нужна сухая земля без выступов над площадкой."
+				label = "Положить площадку по контуру"
+			elif _plot_tower_height > 0.0:
+				node = Plot.make_fortress_tower(inverse * _plot_anchor, inverse * point, surface, tile, _plot_level_y(props),
+					_plot_tower_height, _plot_wall_depth, _plot_walk_width, _plot_tower_ports, _plot_wall_color, _plot_wall_finish)
+				if node == null:
+					return "Башне нужна ровная сухая земля и место для стен и проходов."
+				node.transform = pose * node.transform
+				label = "Построить башню"
+			else:
+				node = Plot.make_floor(inverse * _plot_anchor, inverse * point, surface, tile, _plot_level_y(props))
+				if node == null:
+					return "Нужно сухое основание и стороны перекрытия от 1 до 48 м."
+				label = "Положить перекрытие"
+				if _plot_tower_ports != 0 and not Plot.add_tower_ports(node, _plot_tower_ports, tile, _plot_walk_width):
+					node.free()
+					return "Стороны площадки должны быть хотя бы на 1 м шире хода."
+				node.transform = pose * node.transform
+		elif _plot_tool == "plot_entry":
+			for corner in Plot.entry_outline(_plot_anchor, point):
+				if not bounds.has_point(inverse * corner):
+					return "Крыльцо и ступени должны целиком поместиться на участке."
+			node = Plot.make_entry(_plot_anchor, point, _plot_ground.bind(props), map.imported_tile_size, _plot_entry_portico, _plot_entry_canopy)
+			if node == null:
+				return "Для крыльца нужна сухая ровная площадка и ширина от 2 до 12 м."
+			label = "Поставить крыльцо"
+		elif _plot_tool == "plot_edge":
+			for corner in Plot.strip_outline(_plot_anchor, point, _plot_edge_depth):
+				if not bounds.has_point(inverse * corner):
+					return "Вся полоса должна поместиться на участке."
+			node = Plot.make_edge(_plot_anchor, point, _plot_edge_depth, _plot_edge_style, _plot_ground.bind(props),
+				map.imported_tile_size, _plot_hedge_height, _plot_hedge_leaf_scale, _plot_hedge_autumn)
+			if node == null:
+				return "Нужна сухая ровная площадка и длина от 1 до 48 м."
+			label = "Провести полосу у дома"
+		elif _plot_tool == "plot_cornice":
+			var first := _plot_ground(_plot_anchor, props)
+			if not first.is_finite():
+				return "Выберите сухое место под фасадом."
+			node = Plot.make_cornice(first, ground, _plot_plane_y(props), map.imported_tile_size)
+			if node == null:
+				return "Длина карниза должна быть от 1 до 48 м."
+			label = "Провести карниз"
+		elif _plot_tool == "plot_balcony":
+			for corner in Plot.strip_outline(_plot_anchor, point, _plot_balcony_depth):
+				if not bounds.has_point(inverse * corner):
+					return "Балкон должен целиком поместиться на участке."
+			var first := _plot_ground(_plot_anchor, props)
+			if not first.is_finite() or not _plot_balcony_wall(props, first, ground):
+				return "Отметьте концы вдоль стены выбранного этажа."
+			node = Plot.make_balcony(_plot_anchor, point, _plot_balcony_depth, _plot_balcony_columns,
+				_plot_ground.bind(props), _plot_level_y(props), map.imported_tile_size)
+			if node == null:
+				return "Ширина балкона от 2,5 до 18 м. Под колоннами нужна сухая опора."
+			label = "Поставить балкон"
+		elif _plot_tool == "plot_railing":
+			if _plot_anchor.distance_to(point) < 0.5 or _plot_anchor.distance_to(point) > Plot.MAX_FENCE_M:
+				return "Длина перил от 0,5 до 48 м."
+			var first := _plot_ground(_plot_anchor, props)
+			if not first.is_finite() or not _plot_floor_supports_segment(props, first, ground):
+				return "Вся линия перил должна идти по перекрытию выбранного этажа."
+			node = Plot.make_railing(first, ground, _plot_level_y(props), map.imported_tile_size, _plot_railing_style)
+			if node == null:
+				return "Не удалось поставить перила на эту линию."
+			label = "Поставить перила"
+		elif _plot_tool == "plot_roof":
+			var first_point := inverse * _plot_anchor
+			var last_point := inverse * point
+			var size := (first_point - last_point).abs()
+			var outline := Plot.roof_outline(size, _plot_roof_options.bay)
+			outline.position += first_point.min(last_point)
+			if not bounds.encloses(outline):
+				return "Крыша со свесом должна поместиться на участке."
+			var first := _plot_ground(_plot_anchor, props)
+			if not first.is_finite():
+				return "Под первым углом нужна сухая земля."
+			node = Plot.make_roof(size, _plot_roof_options.shape, _plot_roof_options.height, _plot_roof_options.color, map.imported_tile_size, _plot_roof_options.bay)
+			if node == null:
+				return "Стороны крыши от 2 до 48 м. Для выступа нужен скат и запас 1 м с каждой стороны."
+			var pose := _plot_frame_pose(frame, props)
+			var reverse := pose.affine_inverse()
+			var a := reverse * first
+			var b := reverse * ground
+			node.position = Vector3(minf(a.x, b.x), _plot_plane_y(props), minf(a.z, b.z))
+			node.transform = pose * node.transform
+			label = "Поставить крышу"
+		else:
+			var points := Plot.fence_points(_plot_anchor, point)
+			if points.is_empty():
+				return "Длина ограды с проходом должна быть от 3,5 до 48 м."
+			node = Plot.make_fence(points, _plot_ground.bind(props), map.imported_tile_size)
+			if node == null:
+				return "Проведите ограду по сухой земле без резких перепадов."
+			label = "Провести ограду с проходом"
+	else:
+		return "Выберите инструмент строительства."
+	node.set_meta(Plot.META, _plan_selected_id)
+	if _plot_tool in ["plot_wall", "plot_arc_wall", "plot_floor", "plot_column", "plot_cornice", "plot_roof", "plot_balcony", "plot_railing"]:
+		node.set_meta(Plot.LEVEL_META, 0 if _plot_arc_walk else _plot_level)
+	_commit_plot_node(props, node, label)
+	_reset_plot_tool()
+	return "Готово · Ctrl+Z отменяет · Ctrl+S сохраняет."
+
+
+func _plot_wall_neighbors(props: Node3D) -> Array[Node3D]:
+	var neighbors: Array[Node3D] = []
+	for other in props.get_children():
+		if other is Node3D and other.has_node("Wall") and not other.has_node("Railing") and other.get_meta(Plot.META, "") == _plan_selected_id and int(other.get_meta(Plot.LEVEL_META, 0)) == _plot_level:
+			neighbors.append(other)
+	return neighbors
+
+
+func _plot_available_docks() -> Array[Dictionary]:
+	var props := map.get_node_or_null("Props") as Node3D
+	var projection: Node3D = map._visual_surface_projection
+	var docks: Array[Dictionary] = []
+	if props == null or not is_instance_valid(projection):
+		return docks
+	var occupied := PackedVector3Array()
+	var towers: Array[Node3D] = []
+	var tile := map.imported_tile_size
+	for piece in props.get_children():
+		if piece is not Node3D or piece.get_meta(Plot.META, "") != _plan_selected_id:
+			continue
+		if piece.has_meta(Plot.TOWER_PORTS_META):
+			towers.append(piece)
+		elif piece.has_meta(Plot.DOCKED_WALK_META):
+			var mesh := piece.get_node("Wall/ArcSurface") as MeshInstance3D
+			var deck_y: float = piece.position.y + mesh.get_aabb().end.y
+			var ends := Plot.wall_ends(piece)
+			for index in [0, 2]:
+				var point := _plot_local_grid(projection, piece.to_global(ends[index]))
+				occupied.append(Vector3(point.x, deck_y, point.y))
+	for tower in towers:
+		var corners := Plot.tower_faces(tower)
+		var deck_y := tower.position.y + Plot.FLOOR_TOP_M * tile
+		var width := float(tower.get_meta(Plot.WALK_WIDTH_META, Plot.ARC_WALK_WIDTH_M))
+		for side in 4:
+			if not (int(tower.get_meta(Plot.TOWER_PORTS_META)) & (1 << side)):
+				continue
+			var a := corners[side]
+			var b := corners[(side + 1) % 4]
+			var center := (a + b) * 0.5
+			var tangent := a.direction_to(b)
+			var point := _plot_local_grid(projection, tower.to_global(Vector3(center.x, 0, center.y)))
+			var taken := false
+			for used in occupied:
+				if Vector2(used.x, used.z).distance_to(point) < 0.01 and absf(used.y - deck_y) <= 0.003 * tile:
+					taken = true
+					break
+			if taken:
+				continue
+			var outside := tower.to_global(Vector3(center.x - tangent.y, 0, center.y + tangent.x))
+			docks.append({"tower": tower, "point": point, "y": deck_y, "width": width,
+				"direction": (_plot_local_grid(projection, outside) - point).normalized()})
+	return docks
+
+
+func _plot_local_grid(projection: Node3D, world: Vector3) -> Vector2:
+	var local := projection.to_local(world)
+	return Vector2(local.x, local.z) / 16.0
+
+
+func _selected_plot_frame() -> Transform2D:
+	var plan: Resource = TerrainPlan.read(map)
+	var index: int = plan.index_of(_plan_selected_id) if plan != null else -1
+	return TerrainPlan.Influence.plot_frame(plan.regions[index]) if index >= 0 else Transform2D.IDENTITY
+
+
+func _plot_frame_pose(frame: Transform2D, props: Node3D) -> Transform3D:
+	if frame == Transform2D.IDENTITY:
+		return Transform3D.IDENTITY
+	var origin := props.to_local(_plot_grid_world(map._visual_surface_projection, props, frame.origin, 0.0))
+	return Transform3D(Basis(Vector3.UP, -frame.get_rotation()), origin)
+
+
+func _plot_frame_ground(point: Vector2, frame: Transform2D, inverse: Transform3D, props: Node3D) -> Vector3:
+	var ground := _plot_ground(frame * point, props)
+	return inverse * ground if ground.is_finite() else Vector3.INF
+
+
+func _plot_dock_at(point: Vector2) -> Dictionary:
+	if _plot_hover_dock.get("point", Vector2.INF) == point and point.is_finite():
+		return _plot_hover_dock
+	return {}
+
+
+func _plot_dock_under_pointer(pixel: Vector2, props: Node3D) -> Dictionary:
+	var nearest := {}
+	var limit := 16.0 * 16.0
+	for dock in _plot_docks:
+		if not is_instance_valid(dock.tower) or dock.tower.get_parent() == null or dock.tower == _plot_start_dock.get("tower"):
+			continue
+		var distance := pixel.distance_squared_to(_plot_dock_pixel(dock, props))
+		if distance < limit:
+			limit = distance
+			nearest = dock
+	return nearest
+
+
+func _plot_dock_pixel(dock: Dictionary, props: Node3D) -> Vector2:
+	var world := _plot_grid_world(map._visual_surface_projection, props, dock.point, dock.y)
+	return Vector2.INF if camera.is_position_behind(world) else camera.unproject_position(world)
+
+
+func _plot_docks_match(dock: Dictionary) -> bool:
+	return is_equal_approx(dock.width, _plot_start_dock.width) and absf(dock.y - _plot_start_dock.y) < 0.01
+
+
+func _plot_arc_layout(point: Vector2) -> Dictionary:
+	if _plot_docking:
+		var dock := _plot_dock_at(point)
+		if dock.is_empty() or _plot_start_dock.is_empty() or not _plot_docks_match(dock):
+			return {}
+		return Plot.docked_wall_arc(_plot_anchor, _plot_arc_through, dock.point, _plot_start_dock.direction, dock.direction, dock.width)
+	var width := _plot_walk_width if _plot_arc_walk else _plot_wall_depth
+	return Plot.wall_arc(_plot_anchor, _plot_arc_through, point, width)
+
+
+func _plot_corner_layout(props: Node3D, point: Vector2, bounds: Rect2, inverse := Transform2D.IDENTITY) -> Dictionary:
+	if not point.is_finite() or not bounds.has_point(inverse * point):
+		return {}
+	var projection: Node3D = map._visual_surface_projection
+	if not is_instance_valid(projection):
+		return {}
+	var walls := []
+	var corner := Vector2.INF
+	var nearest := 0.45 * 0.45
+	for wall in _plot_wall_neighbors(props):
+		var ends := Plot.wall_ends(wall)
+		if ends.is_empty():
+			continue
+		var points := PackedVector2Array()
+		for index in [0, 2]:
+			var local := projection.to_local(wall.to_global(ends[index]))
+			var grid := Vector2(local.x, local.z) / 16.0
+			points.append(grid)
+			var distance := point.distance_squared_to(grid)
+			if distance < nearest:
+				nearest = distance
+				corner = grid
+		walls.append({"wall": wall, "points": points})
+	if not corner.is_finite():
+		return {}
+	var sides := []
+	for piece in walls:
+		var wall: Node3D = piece.wall
+		var points: PackedVector2Array = piece.points
+		var curved := wall.has_meta(Plot.ARC_ENDS_META)
+		var at_start := points[0].distance_to(corner) < 0.001
+		var at_end := points[1].distance_to(corner) < 0.001
+		if not at_start and not at_end:
+			if not curved and Geometry2D.get_closest_point_to_segment(corner, points[0], points[1]).distance_to(corner) < 0.001:
+				return {"error": "На развилке можно скруглить угол только после разделения стен."}
+			continue
+		if curved or not wall.has_node("Wall/Plaster") or not wall.has_node("Wall/PlasterShape"):
+			return {"error": "Нужен стык двух прямых глухих стен."}
+		sides.append({"wall": wall, "at_start": at_start, "far": points[1 if at_start else 0]})
+	if sides.size() != 2:
+		return {"error": "Нужен стык ровно двух стен без развилки."}
+	var a: Vector2 = sides[0].far - corner
+	var b: Vector2 = sides[1].far - corner
+	if absf(a.normalized().cross(b.normalized())) < 0.01:
+		return {"error": "Выберите стык, на котором стены меняют направление."}
+	var depth := Plot.wall_depth(sides[0].wall)
+	if not is_equal_approx(depth, Plot.wall_depth(sides[1].wall)):
+		return {"error": "Для скругления выберите две стены одинаковой толщины."}
+	var arc := Plot.rounded_wall_corner(sides[0].far, corner, sides[1].far, _plan_panel._buttons.plot_round_radius.value, depth)
+	if arc.is_empty():
+		return {"error": "Уменьшите радиус или выберите угол с более длинными стенами."}
+	var floor_y: float = sides[0].wall.position.y
+	var tolerance := map.imported_tile_size * 0.125
+	if not is_equal_approx(floor_y, sides[1].wall.position.y):
+		return {"error": "Стены должны стоять на одной высоте."}
+	for edge: PackedVector2Array in [arc.left, arc.right]:
+		for sample in edge:
+			if not bounds.has_point(inverse * sample):
+				return {"error": "Скругление должно целиком лежать внутри участка."}
+			var ground := _plot_ground(sample, props)
+			if not ground.is_finite() or (_plot_level == 0 and absf(ground.y - floor_y) > tolerance):
+				return {"error": "Для скругления нужна сухая ровная земля."}
+	return {"arc": arc, "sides": sides, "floor_y": floor_y, "corner": corner}
+
+
+func _round_plot_corner(props: Node3D, point: Vector2, bounds: Rect2, inverse: Transform2D) -> String:
+	var layout := _plot_corner_layout(props, point, bounds, inverse)
+	if not layout.has("arc"):
+		return layout.get("error", "Щёлкните по общему концу двух глухих стен.")
+	var tile := map.imported_tile_size
+	var curve := Plot.make_arc_wall(layout.arc, _plot_ground.bind(props), tile, layout.floor_y, _plot_level == 0, [], Color.WHITE, 0)
+	if curve == null:
+		return "Не удалось построить дугу на выбранном этаже."
+	var original: Array[Node3D] = []
+	var replacement: Array[Node3D] = []
+	for side in layout.sides:
+		original.append(side.wall)
+		replacement.append(Plot.shorten_solid_wall(side.wall, side.at_start, layout.arc.cut * tile, tile))
+	var wall_face := original[0].get_node("Wall/Plaster") as MeshInstance3D
+	var curved_face := curve.get_node("Wall/ArcSurface") as MeshInstance3D
+	curved_face.mesh.surface_set_material(0, wall_face.get_active_material(0))
+	curve.set_meta(Plot.META, _plan_selected_id)
+	curve.set_meta(Plot.LEVEL_META, _plot_level)
+	replacement.append(curve)
+	_commit_plot_nodes(props, replacement, "Скруглить угол стены", original)
+	_reset_plot_tool()
+	return "Угол скруглён · Ctrl+Z отменяет · Ctrl+S сохраняет."
+
+
+func _plot_floor_supports_segment(props: Node3D, first: Vector3, last: Vector3) -> bool:
+	var spans: Array[Vector2] = []
+	var level_y := _plot_level_y(props)
+	var tolerance := 0.001 * map.imported_tile_size
+	for piece in props.get_children():
+		if not piece is Node3D or piece.get_meta(Plot.META, "") != _plan_selected_id or int(piece.get_meta(Plot.LEVEL_META, 0)) != _plot_level:
+			continue
+		if absf(piece.position.y - level_y) > tolerance:
+			continue
+		if piece.has_meta(Plot.CONTOUR_FLOOR_META):
+			var inverse: Transform3D = piece.transform.affine_inverse()
+			var from := inverse * first / map.imported_tile_size
+			var to := inverse * last / map.imported_tile_size
+			var radial := Plot.contour_floor_span(piece.get_meta(Plot.CONTOUR_FLOOR_META), Vector2(from.x, from.z), Vector2(to.x, to.z))
+			if radial.x <= radial.y:
+				spans.append(radial)
+			continue
+		var slab := piece.get_node_or_null("Slab/FloorShape") as CollisionShape3D
+		if slab == null or not slab.shape is BoxShape3D:
+			continue
+		var inverse: Transform3D = (piece.transform * slab.transform).affine_inverse()
+		var start := inverse * first
+		var delta := inverse.basis * (last - first)
+		var half := (slab.shape as BoxShape3D).size * 0.5 + Vector3.ONE * tolerance
+		var span := Vector2(0, 1)
+		for axis in [Vector3.AXIS_X, Vector3.AXIS_Z]:
+			if is_zero_approx(delta[axis]):
+				if absf(start[axis]) > half[axis]:
+					span = Vector2(1, 0)
+					break
+				continue
+			var enter: float = (-half[axis] - start[axis]) / delta[axis]
+			var leave: float = (half[axis] - start[axis]) / delta[axis]
+			span.x = maxf(span.x, minf(enter, leave))
+			span.y = minf(span.y, maxf(enter, leave))
+		if span.x <= span.y:
+			spans.append(span)
+	spans.sort()
+	var covered := 0.0
+	for span in spans:
+		if span.x > covered:
+			break
+		covered = maxf(covered, span.y)
+	return covered >= 1.0
+
+
+func _plot_contour_target(props: Node3D, point: Vector2, roof: bool) -> Dictionary:
+	var projection: Node3D = map._visual_surface_projection
+	var target := {}
+	var nearest := INF
+	for piece in props.get_children():
+		if piece is not Node3D or not piece.has_meta(Plot.CONTOUR_FLOOR_META) or piece.get_meta(Plot.META, "") != _plan_selected_id \
+				or int(piece.get_meta(Plot.LEVEL_META, 0)) != _plot_level:
+			continue
+		var profile: Dictionary = piece.get_meta(Plot.CONTOUR_FLOOR_META)
+		if not roof and (profile.has("points") or profile.half):
+			continue
+		var center := _plot_local_grid(projection, piece.global_position)
+		var offset := point - center
+		var distance := offset.length() if roof else absf(offset.length() - profile.radius)
+		var inside: bool = Plot.contour_floor_span(profile, offset, offset).x == 0 if roof else distance <= 0.65
+		if inside and distance < nearest:
+			target = {"floor": piece, "profile": profile, "center": center}
+			nearest = distance
+	return target
+
+
+func _plot_contour_layout(point: Vector2) -> Dictionary:
+	if _plot_floor_shape == "chamfer":
+		var frame := _selected_plot_frame()
+		var profile := Plot.chamfer_profile(frame.affine_inverse().basis_xform(point - _plot_anchor).abs(), _plot_corner_cuts)
+		if profile.has("points"):
+			frame.origin = Vector2.ZERO
+			profile.points = frame * profile.points
+		return {"center": (_plot_anchor + point) * 0.5, "profile": profile}
+	return {"center": _plot_anchor, "profile": Plot.round_profile(_plot_anchor, point, _plot_floor_shape == "half")}
+
+
+func _plot_outline_fits(bounds: Rect2, center: Vector2, outline: PackedVector2Array, inverse := Transform2D.IDENTITY) -> bool:
+	for offset in outline:
+		if not bounds.has_point(inverse * (center + offset)):
+			return false
+	return true
+
+
+func _plot_balcony_wall(props: Node3D, first: Vector3, last: Vector3) -> bool:
+	var start := Vector2(first.x, first.z)
+	var delta := Vector2(last.x, last.z) - start
+	if delta.is_zero_approx():
+		return false
+	var direction := delta.normalized()
+	var tolerance := map.imported_tile_size * 0.01
+	var runs := PackedVector2Array()
+	for node in props.get_children():
+		if node is not Node3D or node.get_meta(Plot.META, "") != _plan_selected_id or int(node.get_meta(Plot.LEVEL_META, 0)) != _plot_level:
+			continue
+		var span := Plot.wall_end(node)
+		if span <= 0.0:
+			continue
+		var end: Vector3 = node.transform * Vector3(span, 0, 0)
+		var a := Vector2(node.position.x, node.position.z) - start
+		var b := Vector2(end.x, end.z) - start
+		if maxf(absf(a.cross(direction)), absf(b.cross(direction))) <= tolerance:
+			runs.append(Vector2(minf(a.dot(direction), b.dot(direction)), maxf(a.dot(direction), b.dot(direction))))
+	runs.sort()
+	var covered := 0.0
+	for run in runs:
+		if run.x > covered + tolerance:
+			break
+		covered = maxf(covered, run.y)
+	return covered >= delta.length() - tolerance
+
+
+func _edit_plot_roof(name: String, apply: bool) -> String:
+	_plan_panel._buttons.plot_roof_apply.disabled = true
+	if name.is_empty():
+		return "Выберите крышу участка."
+	var props := map.get_node_or_null("Props") as Node3D
+	var original := props.get_node_or_null(NodePath(name)) as Node3D if props != null else null
+	if original == null or not original.has_meta(Plot.ROOF_META) or original.get_meta(Plot.META, "") != _plan_selected_id:
+		return "Крыша больше не доступна."
+	_plan_panel._buttons.plot_roof_apply.disabled = false
+	var before: Dictionary = original.get_meta(Plot.ROOF_META)
+	if not apply:
+		_plan_panel.set_roof_options(before)
+		return "Измените высоту или цвет крыши по контуру." if before.has("round") else "Измените форму, высоту или цвет выбранной крыши."
+	var after: Dictionary = _plan_panel.roof_options()
+	var projection := map._visual_surface_projection as EmberTerrainPilotProjection
+	var origin := _plot_local_grid(projection, original.global_position)
+	var plan: Resource = TerrainPlan.read(map)
+	var region: Dictionary = plan.regions[plan.index_of(_plan_selected_id)]
+	var bounds := TerrainPlan.Influence.plot_rect(region)
+	var inverse := TerrainPlan.Influence.plot_frame(region).affine_inverse()
+	var replacement: Node3D
+	if before.has("round"):
+		if before.height == after.height and before.color == after.color:
+			return "Параметры крыши уже совпадают."
+		if not _plot_outline_fits(bounds, origin, Plot.contour_roof_outline(before.round), inverse):
+			return "Крыша со свесом должна поместиться на участке."
+		replacement = Plot.make_contour_roof(before.round, after.height, after.color, map.imported_tile_size)
+	else:
+		if before == after.merged({"size": before.size}):
+			return "Параметры крыши уже совпадают."
+		var footprint := Plot.roof_outline(before.size, after.bay)
+		footprint.position += inverse * origin
+		if not bounds.encloses(footprint):
+			return "Крыша со свесом должна поместиться на участке."
+		replacement = Plot.make_roof(before.size, after.shape, after.height, after.color, map.imported_tile_size, after.bay)
+	if replacement == null:
+		return "Для выступа нужен скат, высота от 0,75 м и запас 1 м с каждой стороны."
+	Plot.copy_piece_finish(original, replacement, Plot.FINISH_SURFACE)
+	Plot.copy_piece_finish(original, replacement, Plot.FINISH_FRAME)
+	replacement.name = original.name
+	replacement.transform = original.transform
+	replacement.set_meta(Plot.META, _plan_selected_id)
+	replacement.set_meta(Plot.LEVEL_META, original.get_meta(Plot.LEVEL_META, 0))
+	_commit_plot_node(props, replacement, "Изменить крышу", original)
+	return "Крыша обновлена · Ctrl+Z отменяет · Ctrl+S сохраняет."
+
+
+func _plot_window_wall() -> Node3D:
+	if _plot_window_name.is_empty() or not is_instance_valid(map):
+		return null
+	var wall := map.get_node_or_null(NodePath("Props/" + _plot_window_name)) as Node3D
+	if wall == null or wall.get_meta(Plot.META, "") != _plan_selected_id or Plot.placed_opening_kind(wall) == Plot.WALL_SOLID:
+		return null
+	return wall
+
+
+func _refresh_plot_window() -> void:
+	var wall := _plot_window_wall()
+	if wall == null:
+		_plot_window_name = ""
+		_plan_panel.show_window({}, {}, 0.0)
+		return
+	var tile := map.imported_tile_size
+	_plan_panel.show_window(Plot.placed_opening_options(wall, tile), Plot.window_wall_finish(wall), Plot.wall_end(wall) / tile)
+
+
+func _plot_opening_error(options: Dictionary) -> String:
+	if options.get("double_leaf", false) and float(options.width) < Plot.DOUBLE_DOOR_MIN_WIDTH:
+		return "Для двух створок нужна ширина проёма от 1,5 м."
+	return "Верх проёма должен быть не выше 2,875 м."
+
+
+func _apply_plot_window() -> String:
+	var wall := _plot_window_wall()
+	if wall == null:
+		return "Выберите окно или дверь участка."
+	var tile := map.imported_tile_size
+	var kind := Plot.placed_opening_kind(wall)
+	var options: Dictionary = _plan_panel.opening_options(kind)
+	if options.is_empty() or _plan_panel._buttons.wall_opening.selected != kind:
+		return "Включите «Настроить проём»."
+	if not Plot.opening_fits(options):
+		return _plot_opening_error(options)
+	options.center = _plan_panel._buttons.window_center.value if kind == Plot.WALL_WINDOW else Plot.placed_opening_options(wall, tile).center
+	var half := float(options.width) * 0.5 * tile
+	var center := float(options.center) * tile
+	var props := wall.get_parent() as Node3D
+	var inverse := wall.transform.affine_inverse()
+	for node in props.get_children():
+		if node is Node3D and node.has_node("Pilaster"):
+			var local: Vector3 = inverse * node.position
+			if absf(local.y) < 0.01 and is_equal_approx(absf(local.z), tile * Plot.WALL_DEPTH_M * 0.5):
+				if absf(center - local.x) < half + tile * Plot.PILASTER_HALF_WIDTH:
+					return "Проём пересекает пилястру."
+	var next := Plot.remake_opening_wall(wall, options, _plan_panel._buttons.wall_color.color, _plan_panel._buttons.wall_finish.selected, tile)
+	if next == null:
+		return "Оставьте по 0,25 м стены по краям проёма."
+	_commit_plot_node(props, next, "Изменить проём и стену", wall)
+	return "Проём обновлён · Ctrl+Z отменяет · Ctrl+S сохраняет."
+
+
+func _plot_finish_piece() -> Node3D:
+	if _plot_finish_name.is_empty() or not is_instance_valid(map):
+		return null
+	var piece := map.get_node_or_null(NodePath("Props/" + _plot_finish_name)) as Node3D
+	if piece == null or piece.get_meta(Plot.META, "") != _plan_selected_id:
+		return null
+	return piece
+
+
+func _refresh_plot_finish() -> void:
+	var piece := _plot_finish_piece()
+	if piece == null:
+		_plot_finish_name = ""
+		_plan_panel.show_piece_finish("", {})
+		return
+	var title := Plot.finish_title(piece, _plot_finish_group)
+	_plan_panel.show_piece_finish("%s · %s" % [title, piece.name], Plot.piece_finish(piece, map.imported_tile_size, _plot_finish_group))
+
+
+func _apply_plot_finish(reset: bool) -> String:
+	var piece := _plot_finish_piece()
+	if piece == null or Plot.finish_parts(piece, _plot_finish_group).is_empty():
+		return "Выберите деталь для отделки."
+	var material: StandardMaterial3D
+	var tile := map.imported_tile_size
+	if not reset:
+		var buttons: Dictionary = _plan_panel._buttons
+		material = Plot.wall_finish(buttons.finish_color.color, buttons.finish_texture.selected, tile)
+		if material.albedo_texture != null:
+			material.uv1_scale *= buttons.finish_scale.value
+	var replacement := piece.duplicate() as Node3D
+	Plot.set_piece_finish(replacement, material, _plot_finish_group)
+	_commit_plot_node(piece.get_parent() as Node3D, replacement, "Изменить отделку", piece)
+	return "Исходная отделка восстановлена." if reset else "Отделка обновлена · Ctrl+Z отменяет · Ctrl+S сохраняет."
+
+
+func _commit_plot_node(props: Node3D, node: Node3D, label: String, previous: Node3D = null) -> void:
+	var removed: Array[Node3D] = []
+	if previous != null:
+		removed.append(previous)
+	_commit_plot_nodes(props, [node], label, removed)
+
+
+func _commit_plot_nodes(props: Node3D, added: Array[Node3D], label: String, removed: Array[Node3D]) -> void:
+	var history: Object = sessions.undo
+	if history is EditorUndoRedoManager:
+		history.create_action(label, UndoRedo.MERGE_DISABLE, scene)
+		history.add_do_method(self, "_swap_plot_nodes", scene, props, removed, added)
+		history.add_undo_method(self, "_swap_plot_nodes", scene, props, added, removed)
+	else:
+		history.create_action(label)
+		history.add_do_method(_swap_plot_nodes.bind(scene, props, removed, added))
+		history.add_undo_method(_swap_plot_nodes.bind(scene, props, added, removed))
+	for node in added:
+		history.add_do_reference(node)
+	for node in removed:
+		history.add_undo_reference(node)
+	history.commit_action()
+
+
+func _swap_plot_nodes(root: Node, props: Node, removed: Array[Node3D], added: Array[Node3D]) -> void:
+	for node in removed:
+		if node.get_parent() == props:
+			props.remove_child(node)
+	for node in added:
+		if node.get_parent() != props:
+			Plot.attach(root, props, node)
+	sessions.changed.emit()
 
 func _plan_path_kind() -> String:
 	if _plan_selection == "add_coast":return "coast"
-	if _plan_selection == "add_road": return "road"
+	if _plan_selection in ["add_road","add_surface_road","add_road_branch","extend_road_branch"]: return "road"
 	if _plan_selection == "add_river": return "river"
 	var plan: Resource = TerrainPlan.read(map)
 	var index: int = plan.index_of(_plan_selected_id) if plan != null else -1
@@ -595,6 +2421,22 @@ func _plan_path_bounds(region: Dictionary, parameters: Dictionary, extent: Vecto
 	return TerrainPlan.Influence.path_bounds(region.points_m,parameters.width_m,parameters.edge_m if region.kind == "road" else parameters.shore_m,extent)
 
 func _finish_plan_path() -> void:
+	if _plan_selection == "extend_road_branch":
+		var error := _stage_branch_points(_path_points)
+		if not error.is_empty():
+			_plan_panel.set_status(error)
+			return
+		_plan_point_index = _path_points.size() - 1
+		_plan_panel.set_point_selection(_plan_point_index, _path_points.size())
+		_plan_selection = ""
+		selecting = false
+		_path_points.clear()
+		_path_hover = Vector2(-1,-1)
+		_plan_panel.set_status("Продолжение в черновике. Можно править точки или открыть предпросмотр.")
+		return
+	if not _surface_road_preview.is_empty():
+		_apply_surface_road_preview()
+		return
 	var extent := Vector2i(entry.resource.width/16,entry.resource.depth/16)
 	var error := TerrainPlan.Influence.path_error(_path_points,extent)
 	if not error.is_empty(): _plan_panel.set_status(error); return
@@ -603,21 +2445,205 @@ func _finish_plan_path() -> void:
 	plan.upgrade_local_layers()
 	var index: int = plan.index_of(_plan_selected_id)
 	var kind := _plan_path_kind()
-	if _plan_selection in ["add_river","add_road","add_coast"]:
-		_plan_selected_id = "%s_%s_%s" % [kind,OS.get_process_id(),Time.get_ticks_usec()]
-		plan.regions.append({"id":_plan_selected_id,"name":("Море %d" if kind=="coast" else "Дорога %d" if kind == "road" else "Река %d") % (plan.regions.size()+1),"kind":kind,"enabled":true,"parameters":(TerrainPlan.Influence.COAST_DEFAULTS if kind=="coast" else TerrainPlan.Influence.ROAD_DEFAULTS if kind == "road" else TerrainPlan.Influence.RIVER_DEFAULTS).duplicate()})
+	if _plan_selection in ["add_river","add_road","add_surface_road","add_road_branch","add_coast"]:
+		var new_id := "%s_%s_%s" % [kind,OS.get_process_id(),Time.get_ticks_usec()]
+		plan.regions.append({"id":new_id,"name":("Море %d" if kind=="coast" else "Дорога %d" if kind == "road" else "Река %d") % (plan.regions.size()+1),"kind":kind,"enabled":true,"parameters":(TerrainPlan.Influence.COAST_DEFAULTS if kind=="coast" else TerrainPlan.Influence.ROAD_DEFAULTS if kind == "road" else TerrainPlan.Influence.RIVER_DEFAULTS).duplicate()})
 		index = plan.regions.size()-1
 		plan.regions[index].parameters.terrain_sampling="fine16"
+		if _plan_selection == "add_road_branch":
+			var host_index: int = original.index_of(_road_join.get("host", ""))
+			if host_index < 0:
+				_plan_panel.set_status("Сначала выберите точку на главной дороге.")
+				return
+			var host: Dictionary = original.regions[host_index]
+			var direction_error := _branch_direction_error(host, _road_join.fraction, _path_points)
+			if not direction_error.is_empty():
+				_plan_panel.set_status(direction_error)
+				return
+			plan.regions[index].road_join = _road_join.duplicate()
+			plan.regions[index].name = "Ответвление · " + host.name.left(100)
+			plan.regions[index].parameters = host.parameters.duplicate(true)
+			plan.regions[index].parameters.width_m = minf(3.0, host.parameters.width_m)
+			plan.regions[index].parameters.terrain_sampling = "fine16"
 		if kind=="coast":
 			plan.regions[index].parameters.water_m=TerrainPlan.Influence.existing_water_level_m(entry.resource)
+		if _plan_selection == "add_surface_road":
+			if _surface_road_support.is_empty():
+				_plan_panel.set_status("Сначала выберите объёмный уступ.")
+				return
+			plan.regions[index].support_placement_id = _surface_road_support
+			plan.regions[index].parameters.width_m = 2.0
+			plan.regions[index].parameters.surface = "paving"
 	if index < 0: return
+	if plan.regions[index].get("points_m") != _path_points:
+		plan.regions[index].erase("bridge_over_gap")
+		plan.regions[index].erase("bridge_rise_m")
+		plan.regions[index].erase("bridge_supports")
+		plan.regions[index].erase("bridge_plank_roughness")
+		plan.regions[index].erase("bridge_railing")
 	plan.regions[index].points_m = _path_points.duplicate()
 	plan.regions[index].bounds = _plan_path_bounds(plan.regions[index],plan.regions[index].parameters,extent)
+	if _plan_selection == "add_road_branch":
+		_preview_road_branch(plan, plan.regions[index], original)
+		return
+	if plan.regions[index].has("support_placement_id") and plan.regions[index].get("enabled", true):
+		_preview_surface_road(plan, plan.regions[index], original)
+		return
+	_plan_selected_id = plan.regions[index].id
 	error = commit_terrain_plan(map,plan)
 	if not error.is_empty(): _plan_panel.set_status(error); return
 	_plan_selection = ""; selecting = false; _path_points = PackedVector2Array(); _path_hover = Vector2(-1,-1)
 	_refresh_terrain_plan(true)
 	_plan_panel.set_status("Линия сохранена в плане. Откройте параметры, затем предпросмотр и применение. Земля пока не изменена.")
+
+
+func _preview_road_branch(plan: Resource, branch: Dictionary, original: Resource) -> void:
+	_ensure_generation_panel()
+	_plan_selection = ""
+	selecting = false
+	_path_points.clear()
+	_road_join.clear()
+	_branch_edit.clear()
+	_plan_panel.hide()
+	_generation_context = {"target": weakref(map), "area": branch.bounds, "composition": true,
+		"plan_version": original.data(), "input_plan": plan, "branch_id": branch.id}
+	_generation_panel.open_road_branch(branch.bounds, branch.parameters)
+	_prepare_terrain_generation(branch.parameters)
+
+
+func _branch_direction_error(host: Dictionary, fraction: float, points: PackedVector2Array) -> String:
+	var axis := TerrainPlan.Influence.path_curve(host.points_m)
+	var station := axis.get_baked_length() * fraction
+	var tangent := axis.sample_baked(station - 0.25).direction_to(axis.sample_baked(station + 0.25))
+	if absf(tangent.dot(points[0].direction_to(points[1]))) > 0.75 or points[-1].distance_to(axis.get_closest_point(points[-1])) <= float(host.parameters.width_m) * 0.5 + 0.5:
+		return "Выведите ответвление в сторону от главной дороги."
+	return ""
+
+
+func _stage_branch_points(points: PackedVector2Array) -> String:
+	var plan: Resource = TerrainPlan.read(map)
+	var index: int = plan.index_of(_plan_selected_id) if plan != null else -1
+	if index < 0 or not plan.regions[index].has("road_join"):
+		return "Выберите ответвление."
+	if not _branch_edit.is_empty() and plan.data() != _branch_edit.version:
+		return "План изменился. Отмените черновик и повторите правку."
+	var branch: Dictionary = plan.regions[index].duplicate(true)
+	var extent := Vector2i(entry.resource.width / 16, entry.resource.depth / 16)
+	var error := TerrainPlan.Influence.path_error(points, extent)
+	if not error.is_empty():
+		return error
+	branch.points_m = points.duplicate()
+	branch.points_m[0] = plan.regions[index].points_m[0]
+	if branch.points_m == plan.regions[index].points_m:
+		_branch_edit.clear()
+		_plan_panel.set_branch_pending(false)
+		_update_overlay()
+		return ""
+	var host_index: int = plan.index_of(branch.road_join.host)
+	if host_index < 0:
+		return "Главная дорога больше недоступна."
+	error = _branch_direction_error(plan.regions[host_index], branch.road_join.fraction, branch.points_m)
+	if not error.is_empty():
+		return error
+	for point in TerrainPlan.Influence.path_curve(branch.points_m).get_baked_points():
+		if not Rect2(Vector2.ZERO, Vector2(extent)).has_point(point):
+			return "Изгиб линии выходит за карту."
+	branch.bounds = _plan_path_bounds(branch, branch.parameters, extent)
+	_branch_edit = {"region": branch, "version": plan.data()}
+	_plan_panel.set_branch_pending(true)
+	_update_overlay()
+	return ""
+
+
+func _preview_branch_edits() -> void:
+	if _branch_edit.is_empty():
+		return
+	var original: Resource = TerrainPlan.read(map)
+	if original == null or original.data() != _branch_edit.version:
+		_plan_panel.set_status("План изменился. Отмените черновик и повторите правку.")
+		return
+	var branch: Dictionary = _branch_edit.region
+	var next: Resource = original.working_copy()
+	next.regions[next.index_of(branch.id)] = branch
+	_preview_road_branch(next, branch, original)
+
+
+func _clear_surface_road_preview() -> void:
+	_surface_bridge_offer.clear()
+	if is_instance_valid(_plan_panel):
+		_plan_panel.set_road_profile({})
+	var previous: Node3D = _surface_road_preview.get("previous")
+	if is_instance_valid(previous):
+		_show_surface_road_source(previous, true)
+	var node: Node3D = _surface_road_preview.get("node")
+	if is_instance_valid(node):
+		node.free()
+	_surface_road_preview.clear()
+
+
+func _show_surface_road_source(node: Node3D, shown: bool) -> void:
+	if node is MeshInstance3D:
+		RenderingServer.instance_set_visible(node.get_instance(), shown and node.is_visible_in_tree())
+	for part in node.find_children("*", "MeshInstance3D", true, false):
+		RenderingServer.instance_set_visible(part.get_instance(), shown and part.is_visible_in_tree())
+
+
+func _preview_surface_road(plan: Resource, region: Dictionary, original: Resource) -> void:
+	_clear_surface_road_preview()
+	var built := _build_surface_road(map, region)
+	var profile: Dictionary = built.get("profile", {})
+	var offer: bool = profile.get("spans", []).size() == 1
+	if offer:
+		_surface_bridge_offer = {"plan": plan, "region": region, "original": original}
+	var problem: String = built.get("error", "") if region.get("bridge_over_gap", false) or not offer else ""
+	_plan_panel.set_road_profile(profile, problem, offer, float(region.get("bridge_rise_m", 0.0)), region.get("bridge_supports", "none"), region.get("bridge_plank_roughness"), region.get("bridge_railing", "stone"))
+	if built.has("error"):
+		_plan_panel.set_status(built.error)
+		return
+	var support := _surface_road_prop(map, region.support_placement_id)
+	var node: Node3D = built.node
+	var props := map.get_node("Props")
+	var previous: Node3D
+	for child in props.get_children():
+		if child is Node3D and child.get_meta(Plot.SURFACE_ROAD_META, "") == region.id:
+			previous = child
+			_show_surface_road_source(previous, false)
+			break
+	node.process_mode = Node.PROCESS_MODE_DISABLED
+	props.add_child(node)
+	_surface_road_preview = {"node": node, "plan": plan, "original": original,
+		"previous": previous,
+		"support": weakref(support), "signature": support.detail_surface_signature(),
+		"revision": map._visual_surface_projection.column_revision(), "id": region.id}
+	_plan_panel.set_status("Мост примерен. Enter — поставить · Esc — отменить." if region.get("bridge_over_gap", false) else "Опора по всей линии. Enter — применить · Esc — отменить.")
+
+
+func _apply_surface_road_preview() -> void:
+	var draft := _surface_road_preview.duplicate()
+	var support: EmberVoxelProp = draft.support.get_ref()
+	var projection := map._visual_surface_projection as EmberTerrainPilotProjection
+	if support == null or not is_instance_valid(projection) or _surface_road_prop(map, support.placement_id) != support or support.detail_surface_signature() != draft.signature or projection.column_revision() != draft.revision or not TerrainPlan.same(TerrainPlan.read(map), draft.original):
+		_clear_surface_road_preview()
+		_plan_panel.set_status("Земля или уступ изменились. Enter обновит примерку.")
+		return
+	var node: Node3D = draft.node
+	node.get_parent().remove_child(node)
+	node.name = "SurfaceRoad"
+	node.process_mode = Node.PROCESS_MODE_INHERIT
+	var bridge := node.has_node("StreetBridge")
+	_surface_road_preview.erase("node")
+	_clear_surface_road_preview()
+	var error := commit_terrain_plan(map, draft.plan, node)
+	if not error.is_empty():
+		node.free()
+		_plan_panel.set_status(error)
+		return
+	_plan_selected_id = draft.id
+	_plan_selection = ""
+	selecting = false
+	_path_points.clear()
+	_refresh_terrain_plan(true)
+	_plan_panel.set_status(("Мост и подходы поставлены" if bridge else "Дорога по уступу поставлена") + " · Ctrl+Z отменяет · Ctrl+S сохраняет.")
 
 func _save_terrain_plan_parameters(parameters: Dictionary) -> void:
 	var target: EmberMapLoader = _generation_context.get("target").get_ref() if _generation_context.get("target") is WeakRef else null
@@ -756,6 +2782,9 @@ func _set_paint_protection(locked: bool) -> void:
 func _prepare_terrain_generation(parameters: Dictionary) -> void:
 	if _generation_context.get("grove",false): _prepare_grove(parameters); return
 	var context := {"target": _generation_context.get("target"), "area": _generation_context.get("area", Rect2i()), "addition": _generation_context.get("addition", false), "plan_id": _generation_context.get("plan_id", ""), "plan_version": _generation_context.get("plan_version", {}), "composition": _generation_context.get("composition", false)}
+	if _generation_context.has("input_plan"):
+		context.input_plan = _generation_context.input_plan
+		context.branch_id = _generation_context.branch_id
 	clear_terrain_generation_preview()
 	_generation_context = context
 	var target: EmberMapLoader = context.target.get_ref() if context.get("target") is WeakRef else null
@@ -772,14 +2801,24 @@ func _prepare_terrain_generation(parameters: Dictionary) -> void:
 		var plan: Resource = TerrainPlan.read(target)
 		if plan == null or plan.data() != context.plan_version:
 			_generation_panel.set_pending("План изменился. Откройте его снова."); return
-		var input: Resource = plan.working_copy()
+		var input: Resource = context.get("input_plan", plan).working_copy()
+		var selected_road := {}
+		if context.has("branch_id"):
+			var branch: Dictionary = input.regions[input.index_of(context.branch_id)]
+			branch.parameters = parameters.duplicate(true)
+			branch.bounds = _plan_path_bounds(branch, branch.parameters, Vector2i(draft.resource.width/16,draft.resource.depth/16))
+			var old_index: int = plan.index_of(branch.id)
+			selected_road = (plan.regions[old_index] if old_index >= 0 else branch).duplicate()
+			selected_road.branch_edit = true
 		if not context.plan_id.is_empty():
 			var index: int = input.index_of(context.plan_id)
+			if input.regions[index].get("kind") == "road":
+				selected_road = input.regions[index].duplicate()
 			input.regions[index].parameters = parameters.duplicate(true)
 			if parameters.has("terrain_sampling") or parameters.has("mountain_shape") or parameters.get("land_shape","island")=="mainland":input.upgrade_local_layers()
 			if input.regions[index].get("kind") in ["river","road","coast"]: input.regions[index].bounds = _plan_path_bounds(input.regions[index],parameters,Vector2i(draft.resource.width/16,draft.resource.depth/16))
 		_generation_job = TerrainComposition.new()
-		prepared = _generation_job.begin(draft.resource, input)
+		prepared = _generation_job.begin(draft.resource, input, selected_road)
 	else:
 		_generation_job = TerrainGeneration.new()
 		prepared = _generation_job.begin(draft.resource, context.area, parameters, context.addition,TerrainPlan.read(target))
@@ -830,14 +2869,20 @@ func _process_terrain_generation() -> void:
 	var profile_ms := float(_generation_job.elapsed_us) / 1000.0
 	_generation_context.protected_paint_columns=_generation_job.protected_paint_columns if not _generation_context.get("composition",false) else 0
 	var preview_tiles: Array[Vector2i] = []
+	var reuse_road_tiles := false
 	if _generation_context.get("composition", false):
+		reuse_road_tiles = _generation_job.local_road
 		_generation_context.output_plan = _generation_job.output_plan
 		_generation_context.validated_sections = _generation_job.validated_sections
 		_generation_context.protected_blocks = _generation_job.protected_blocks.keys()
 		var tiles := {}
 		for key: Vector2i in _generation_job.changed_tiles:
-			for delta in [Vector2i.ZERO, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
-				if (key + delta).x >= 0 and (key + delta).y >= 0 and (key + delta).x * 64 < candidate.width and (key + delta).y * 64 < candidate.depth: tiles[key + delta] = true
+			for z in range(key.y - 1, key.y + 2):
+				for x in range(key.x - 1, key.x + 2):
+					if not reuse_road_tiles and absi(x - key.x) + absi(z - key.y) > 1:
+						continue
+					if x >= 0 and z >= 0 and x * 64 < candidate.width and z * 64 < candidate.depth:
+						tiles[Vector2i(x,z)] = true
 		preview_tiles.assign(tiles.keys())
 		for key in preview_tiles:
 			bounds = bounds.merge(Rect2i(key * 64, Vector2i.ONE * 64).intersection(Rect2i(0, 0, candidate.width, candidate.depth)))
@@ -850,7 +2895,8 @@ func _process_terrain_generation() -> void:
 	_generation_context["candidate"] = candidate
 	var preview := CompactExtensionPreview.new() as Node3D
 	target.add_child(preview, false, Node.INTERNAL_MODE_BACK)
-	if not preview.show_area(target, candidate, bounds, _generation_context.selection.get("offset", Vector2i.ZERO), preview_tiles,_generation_context.get("composition",false)):
+	var prepare_water: bool = _generation_context.get("composition", false) and not _generation_context.has("branch_id")
+	if not preview.show_area(target, candidate, bounds, _generation_context.selection.get("offset", Vector2i.ZERO), preview_tiles, prepare_water, reuse_road_tiles):
 		preview.queue_free()
 		_generation_panel.set_pending("3D-предпросмотр пока недоступен. Дождитесь открытия карты.")
 		return
@@ -876,9 +2922,17 @@ func _submit_terrain_generation() -> void:
 		var plan: Resource = TerrainPlan.read(target) if is_instance_valid(target) else null
 		if plan == null or plan.data() != context.plan_version:
 			_generation_panel.set_pending("План изменился. Подготовьте предпросмотр заново."); clear_terrain_generation_preview(); return
+	var projection := target._visual_surface_projection as EmberTerrainPilotProjection if is_instance_valid(target) else null
+	var prepared: Dictionary = _generation_preview.take_prepared_tiles() if is_instance_valid(projection) and is_instance_valid(_generation_preview) else {}
 	clear_terrain_generation_preview()
+	if not prepared.is_empty():
+		projection.stage_dry_preview(context.candidate, prepared)
 	var message := commit_terrain_composition(target, context) if context.get("composition", false) else commit_selected_sections(target, context) if context.get("addition", false) else commit_terrain_generation(target, context.draft, context.version, context.candidate,context.get("paint_plan_version"))
+	if is_instance_valid(projection):
+		projection.clear_staged_dry_preview()
 	if message.is_empty():
+		if context.has("branch_id"):
+			_plan_selected_id = context.branch_id
 		_close_generation_panel()
 	else:
 		_generation_panel.set_pending(message)
@@ -1664,6 +3718,7 @@ func build_sidebar() -> Control:
 	settings.add_child(look_toggle)
 	look_panel = WorldLookPanel.new()
 	settings.add_child(look_panel)
+	look_panel.terrain_materials_requested.connect(_open_material_pattern)
 	look_toggle.toggled.connect(func(open: bool): look_panel.visible = open; look_toggle.text = "Вид мира ▾" if open else "Вид мира ▸")
 	var title := Label.new()
 	title.text = "EMBER · МИР"
@@ -1766,6 +3821,7 @@ func build_sidebar() -> Control:
 	material_pattern_dialog = MaterialPatternDialog.new()
 	material_pattern_dialog.pattern_saved.connect(_on_material_pattern_saved)
 	material_pattern_dialog.light_profile_previewed.connect(_on_material_light_previewed)
+	material_pattern_dialog.pattern_scale_previewed.connect(_on_material_scale_previewed)
 	material_pattern_dialog.pattern_created.connect(_on_material_pattern_created)
 	material_pattern_dialog.edit_closed.connect(_close_material_workspace)
 	material_pattern_dialog.variant_opened.connect(_on_material_variant_opened)
@@ -2217,6 +4273,7 @@ func _toggle(value: bool) -> void:
 
 func _deactivate() -> void:
 	_plan_selection = ""
+	_reset_plot_tool()
 	if is_instance_valid(_plan_panel): _plan_panel.hide()
 	if is_instance_valid(_generation_panel): _generation_panel.hide()
 	clear_terrain_generation_preview()
@@ -2254,6 +4311,9 @@ func _deactivate() -> void:
 
 func scene_changed(root: Node) -> void:
 	_plan_drag.clear();_path_points=PackedVector2Array();_plan_point_index=-1
+	_plot_window_name = ""
+	_plot_finish_name = ""
+	_reset_plot_tool()
 	_panel_host.scene_changed()
 	cancel_section_selection()
 	clear_terrain_generation_preview()
@@ -2580,9 +4640,19 @@ func _refresh_palette_swatch() -> void:
 
 
 func _open_material_pattern() -> void:
-	if not _compact_active() or palette.selected < 0 or not is_instance_valid(material_pattern_dialog) or plugin == null: return
+	if not _compact_active() or not is_instance_valid(material_pattern_dialog) or plugin == null: return
 	if not _material_mode and not can_leave_panel(): return
-	var index := int(palette.get_selected_metadata())
+	var index := int(palette.get_selected_metadata()) if palette.selected >= 0 else -1
+	if index < 0 or entry.resource.surface_role_for_palette(index).is_empty():
+		index = entry.resource.palette_surface_roles.find("grass")
+		if index <= 0:
+			for slot in range(1, entry.resource.palette.size()):
+				if not entry.resource.surface_role_for_palette(slot).is_empty():
+					index = slot
+					break
+	if index <= 0:
+		_status("Назначьте общий материал одному из слотов земли.")
+		return
 	var role: String = entry.resource.surface_role_for_palette(index)
 	var id: String = entry.resource.material_id_for_palette(index)
 	if not _material_mode:
@@ -2593,6 +4663,13 @@ func _open_material_pattern() -> void:
 			var slot_id: String = entry.resource.material_id_for_palette(slot)
 			if not slot_role.is_empty() and not _material_choices.any(func(choice): return choice.id == slot_id):
 				_material_choices.append({"id": slot_id, "role": slot_role, "index": slot})
+		var defaults := EmberVoxelSurfaceMaterials.WORLD_GROUND_MATERIALS
+		for material_role: String in defaults:
+			var material_id: String = defaults[material_role]
+			if not _material_choices.any(func(choice): return choice.id == material_id):
+				_material_choices.append({"id":material_id, "role":material_role, "index":-1})
+		if not _material_choices.any(func(choice): return choice.id == "paving"):
+			_material_choices.append({"id":"paving", "role":"stone", "index":-1})
 		material_pattern_dialog.set_variant_choices(_material_choices)
 	material_pattern_dialog.cheap_ground_profile=true
 	if role.is_empty() or not material_pattern_dialog.open_variant(id, role):
@@ -2601,6 +4678,8 @@ func _open_material_pattern() -> void:
 
 
 func _on_material_pattern_saved(pattern: TerrainPattern, id: String) -> void:
+	if id == "moss":
+		preload("res://scripts/ember_object_moss.gd").preset = pattern.duplicate()
 	var projection := map._visual_surface_projection as EmberTerrainPilotProjection if is_instance_valid(map) else null
 	if projection != null:
 		projection.set_shared_material_pattern(pattern)
@@ -2609,6 +4688,12 @@ func _on_material_pattern_saved(pattern: TerrainPattern, id: String) -> void:
 func _on_material_light_previewed(pattern: TerrainPattern, id: String) -> void:
 	var projection:=map._visual_surface_projection as EmberTerrainPilotProjection if is_instance_valid(map) else null
 	if projection!=null:projection.preview_shared_material_light(pattern,id)
+
+
+func _on_material_scale_previewed(pattern: TerrainPattern, id: String) -> void:
+	var projection := map._visual_surface_projection as EmberTerrainPilotProjection if is_instance_valid(map) else null
+	if projection != null:
+		projection.preview_shared_material_scale(pattern, id)
 
 
 func _on_material_pattern_created(id: String, role: String) -> void:
@@ -2813,7 +4898,7 @@ func save_all(defer_scene_save := false) -> bool:
 			workspace._set_status(message,true)
 			return false
 		if workspace != null and not workspace._world_entry.is_empty(): workspace._commit_object_name()
-	if dragging or job != null or not grab.is_empty() or not _plan_drag.is_empty() or (plugin != null and plugin._object_brush._dragging):
+	if dragging or job != null or not grab.is_empty() or not _plan_drag.is_empty() or _plot_anchor.is_finite() or (plugin != null and plugin._object_brush._dragging):
 		_status("Завершите мазок или отмените его Esc перед сохранением.")
 		return false
 	if scene == null: return false
@@ -3073,9 +5158,14 @@ func _forward_compact(event: InputEvent) -> int:
 	var focused := get_viewport().gui_get_focus_owner()
 	if event is InputEventKey and (focused is LineEdit or focused is TextEdit):
 		return EditorPlugin.AFTER_GUI_INPUT_PASS
-	if _plan_selection in ["add_river","add_road","add_coast","path_line"]: return _forward_plan_path(event)
+	if _plan_selection in ["add_river","add_road","add_surface_road","add_road_branch","extend_road_branch","add_coast","path_line"]:
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and is_instance_valid(focused):
+			focused.release_focus()
+		return _forward_plan_path(event)
 	if _plan_map_active():
 		if event is InputEventMouseButton and event.pressed and event.button_index==MOUSE_BUTTON_LEFT and is_instance_valid(focused):focused.release_focus()
+		if not _street_preview.is_empty(): return _forward_street_preview(event)
+		if not _plot_tool.is_empty(): return _forward_plot(event)
 		return _forward_plan_map(event)
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.is_command_or_control_pressed() and event.keycode in [KEY_Z,KEY_Y]:
@@ -3749,9 +5839,14 @@ func _draw_section_selection(overlay: Control) -> void:
 
 
 func _path_pick(position: Vector2) -> Vector2:
+	var projection := map._visual_surface_projection as EmberTerrainPilotProjection
+	if not _surface_road_support.is_empty() and is_instance_valid(camera):
+		var surface_hit := _path_physics_pick(position)
+		var prop := EmberObjectInspectorModel.voxel_owner(surface_hit.get("collider"))
+		if prop != null and prop.placement_id == _surface_road_support:
+			return _plot_local_grid(projection, surface_hit.position).snapped(Vector2.ONE * 0.25)
 	var hit := _pick_compact(position)
 	if hit.is_empty(): return Vector2(-1,-1)
-	var projection := map._visual_surface_projection as EmberTerrainPilotProjection
 	var cell: Vector2i = hit.cell
 	var local: Vector3 = projection.to_local(hit.world)
 	# Pick the visible water plane rather than a shifted point on the bed.
@@ -3766,36 +5861,104 @@ func _path_pick(position: Vector2) -> Vector2:
 		var next := Vector2i(floori(point.x),floori(point.z))
 		if not entry.resource.has_column(next.x,next.y): break
 		local = point; cell = next
-	return (Vector2(local.x,local.z)/16.0).snapped(Vector2.ONE*0.5)
+	var spacing := 0.5 if _surface_road_support.is_empty() else 0.25
+	return (Vector2(local.x,local.z)/16.0).snapped(Vector2.ONE*spacing)
+
+
+func _path_physics_pick(pixel: Vector2) -> Dictionary:
+	if not is_instance_valid(camera):
+		return {}
+	var origin := camera.project_ray_origin(pixel)
+	var ray := PhysicsRayQueryParameters3D.create(origin, origin + camera.project_ray_normal(pixel) * camera.far, 1)
+	return camera.get_world_3d().direct_space_state.intersect_ray(ray)
+
+
+func _road_branch_anchor(point: Vector2) -> Dictionary:
+	var plan: Resource = TerrainPlan.read(map)
+	var index: int = plan.index_of(_plan_selected_id) if plan != null else -1
+	if index < 0 or point.x < 0.0:
+		return {}
+	var host: Dictionary = plan.regions[index]
+	var axis := TerrainPlan.Influence.path_curve(host.points_m)
+	var station := axis.get_closest_offset(point)
+	var anchor := axis.sample_baked(station)
+	var length := axis.get_baked_length()
+	var margin := maxf(1.0, float(host.parameters.width_m) * 0.5)
+	if anchor.distance_to(point) > margin + 0.3 or station < margin or station > length - margin:
+		return {}
+	return {"point": anchor, "host": host.id, "fraction": station / length}
+
 
 func _forward_plan_path(event: InputEvent) -> int:
-	if event is InputEventMouse and (event.alt_pressed or event.button_mask & (MOUSE_BUTTON_MASK_RIGHT|MOUSE_BUTTON_MASK_MIDDLE)): return EditorPlugin.AFTER_GUI_INPUT_PASS
+	if event is InputEventMouse and (event.alt_pressed or event.button_mask & (MOUSE_BUTTON_MASK_RIGHT|MOUSE_BUTTON_MASK_MIDDLE)):
+		if _path_hover.x >= 0.0:
+			_path_hover = Vector2(-1,-1)
+			_update_overlay()
+		return EditorPlugin.AFTER_GUI_INPUT_PASS
 	if event is InputEventMouseButton and event.button_index in [MOUSE_BUTTON_RIGHT,MOUSE_BUTTON_MIDDLE]: return EditorPlugin.AFTER_GUI_INPUT_PASS
 	if event is InputEventKey:
 		if event.alt_pressed or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) or Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE): return EditorPlugin.AFTER_GUI_INPUT_PASS
 		if not event.pressed or event.echo: return EditorPlugin.AFTER_GUI_INPUT_PASS
 		if event.is_command_or_control_pressed() and event.keycode in [KEY_Z,KEY_Y]: _open_terrain_plan(); return EditorPlugin.AFTER_GUI_INPUT_PASS
-		if event.keycode == KEY_ESCAPE: _open_terrain_plan(); return EditorPlugin.AFTER_GUI_INPUT_STOP
+		if event.keycode == KEY_ESCAPE:
+			if _plan_selection == "extend_road_branch":
+				_plan_selection = ""
+				selecting = false
+				_path_points.clear()
+				_path_hover = Vector2(-1,-1)
+				_plan_panel.set_branch_pending(not _branch_edit.is_empty())
+				_plan_panel.set_status("Продолжение отменено.")
+				_update_overlay()
+			else:
+				_open_terrain_plan()
+			return EditorPlugin.AFTER_GUI_INPUT_STOP
 		if event.keycode in [KEY_ENTER,KEY_KP_ENTER]: _finish_plan_path(); _update_overlay(); return EditorPlugin.AFTER_GUI_INPUT_STOP
 		if event.keycode == KEY_BACKSPACE:
-			if not _path_points.is_empty(): _path_points.resize(_path_points.size()-1)
+			_clear_surface_road_preview()
+			var minimum := 0
+			if _plan_selection == "extend_road_branch":
+				var plan: Resource = TerrainPlan.read(map)
+				var region: Dictionary = _branch_edit.get("region", plan.regions[plan.index_of(_plan_selected_id)])
+				minimum = region.points_m.size()
+			if _path_points.size() > minimum: _path_points.resize(_path_points.size()-1)
 			_update_overlay(); return EditorPlugin.AFTER_GUI_INPUT_STOP
 		return EditorPlugin.AFTER_GUI_INPUT_PASS
 	if event is InputEventMouseMotion:
-		_path_hover = _path_pick(event.position); _update_overlay(); return EditorPlugin.AFTER_GUI_INPUT_STOP
+		_path_hover = _path_pick(event.position)
+		if _plan_selection == "add_road_branch" and _path_points.is_empty():
+			_path_hover = _road_branch_anchor(_path_hover).get("point", Vector2(-1,-1))
+		_update_overlay()
+		return EditorPlugin.AFTER_GUI_INPUT_STOP
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
+			if _plan_selection == "add_surface_road" and _surface_road_support.is_empty():
+				var picked := EmberObjectInspectorModel.voxel_owner(_path_physics_pick(event.position).get("collider"))
+				if picked == null or picked.placement_id.is_empty() or _surface_road_prop(map, picked.placement_id) != picked:
+					_plan_panel.set_status("Щёлкните по объёмному уступу с физической поверхностью.")
+				else:
+					_surface_road_support = picked.placement_id
+					_plan_panel.set_status("Уступ выбран. Наметьте дорогу с земли на его верх.")
+				return EditorPlugin.AFTER_GUI_INPUT_STOP
+			_clear_surface_road_preview()
 			var point := _path_pick(event.position)
 			if point.x < 0: _plan_panel.set_status("На этом месте нет земли. Намечайте линию внутри созданных участков."); return EditorPlugin.AFTER_GUI_INPUT_STOP
+			if _plan_selection == "add_road_branch" and _path_points.is_empty():
+				var anchor := _road_branch_anchor(point)
+				if anchor.is_empty():
+					_plan_panel.set_status("Выберите точку внутри проезжей части, вдали от концов дороги.")
+					return EditorPlugin.AFTER_GUI_INPUT_STOP
+				_road_join = {"host": anchor.host, "fraction": anchor.fraction}
+				point = anchor.point
 			if _path_points.size() >= 32: _plan_panel.set_status("Не больше 32 точек; Enter завершает линию."); return EditorPlugin.AFTER_GUI_INPUT_STOP
 			if not _path_points.is_empty() and point.distance_to(_path_points[-1]) < 1: return EditorPlugin.AFTER_GUI_INPUT_STOP
 			_path_points.append(point); _path_hover = Vector2(-1,-1)
-			_plan_panel.set_status("Точек: %d · Enter — сохранить, Backspace — убрать последнюю, Esc — отменить." % _path_points.size())
+			var enter_action := "в черновик" if _plan_selection == "extend_road_branch" else "предпросмотр" if _plan_selection == "add_road_branch" else "профиль" if not _surface_road_support.is_empty() else "сохранить"
+			_plan_panel.set_status("Точек: %d · Enter — %s, Backspace — убрать последнюю, Esc — отменить." % [_path_points.size(), enter_action])
 			_update_overlay()
 		return EditorPlugin.AFTER_GUI_INPUT_STOP
 	return EditorPlugin.AFTER_GUI_INPUT_PASS
 
-func _draw_plan_path(overlay: Control, points: PackedVector2Array, color: Color, cache_key: String, direction := true) -> void:
+func _draw_plan_path(overlay: Control, points: PackedVector2Array, color: Color, cache_key: String, direction := true, support: EmberVoxelProp = null) -> void:
 	if points.is_empty(): return
 	var cached: Dictionary = _path_draw_cache.get(cache_key,{})
 	if cached.get("points") != points:
@@ -3806,7 +5969,8 @@ func _draw_plan_path(overlay: Control, points: PackedVector2Array, color: Color,
 		if not entry.resource.has_column(cell.x,cell.y): continue
 		var index: int = entry.resource.column_index(cell.x,cell.y)
 		var height: int = maxi(entry.resource.column_value("heights",index),entry.resource.column_value("water_levels",index))+entry.resource.origin_y
-		var world := map._visual_surface_projection.to_global(Vector3(point.x*16.0,height+2,point.y*16.0))
+		var world := _path_surface_world(point, support) if is_instance_valid(support) else map._visual_surface_projection.to_global(Vector3(point.x*16.0,height+0.15,point.y*16.0))
+		if not world.is_finite(): continue
 		if camera.is_position_behind(world): pixels.clear(); break
 		pixels.append(camera.unproject_position(world))
 	if pixels.size() >= 2:
@@ -3819,10 +5983,590 @@ func _draw_plan_path(overlay: Control, points: PackedVector2Array, color: Color,
 		if not entry.resource.has_column(cell.x,cell.y): continue
 		var index: int = entry.resource.column_index(cell.x,cell.y)
 		var height: int = maxi(entry.resource.column_value("heights",index),entry.resource.column_value("water_levels",index))+entry.resource.origin_y
-		var world := map._visual_surface_projection.to_global(Vector3(point.x*16,height+2,point.y*16))
-		if not camera.is_position_behind(world): overlay.draw_circle(camera.unproject_position(world),4,color)
+		var world := _path_surface_world(point, support) if is_instance_valid(support) else map._visual_surface_projection.to_global(Vector3(point.x*16,height+0.15,point.y*16))
+		if world.is_finite() and not camera.is_position_behind(world): overlay.draw_circle(camera.unproject_position(world),4,color)
 
-func _draw_terrain_plan(overlay: Control) -> void:
+func _path_surface_world(point: Vector2, support: EmberVoxelProp = null) -> Vector3:
+	if entry.is_empty() or not is_instance_valid(map):
+		return Vector3.INF
+	var projection := map._visual_surface_projection as EmberTerrainPilotProjection
+	if not is_instance_valid(projection):
+		return Vector3.INF
+	var world := projection.to_global(Vector3(point.x * 16.0, 0.0, point.y * 16.0))
+	var floor_hit := map.surface_floor_sample_with_candidates(world, [support]) if is_instance_valid(support) else projection.floor_surface_sample(world)
+	var cell: Vector2i = floor_hit.get("cell", Vector2i(-1,-1))
+	var source: EmberTerrainPilotResource = entry.resource
+	if not source.has_column(cell.x, cell.y):
+		return Vector3.INF
+	var index := source.column_index(cell.x, cell.y)
+	var level := source.column_value("water_levels", index)
+	if level > source.column_value("heights", index):
+		var water := projection.to_global(Vector3(point.x * 16.0, source.origin_y + level, point.y * 16.0))
+		if not floor_hit.get("solid", false) or water.y > floor_hit.position.y:
+			return water
+	return floor_hit.get("position", Vector3.INF)
+
+
+func _path_surface_pixel(point: Vector2, support: EmberVoxelProp = null) -> Vector2:
+	var world := _path_surface_world(point, support)
+	return camera.unproject_position(world) if world.is_finite() and not camera.is_position_behind(world) else Vector2.INF
+
+
+func _draw_path_handle(overlay: Control, pixel: Vector2, color: Color, emphasized := false) -> void:
+	if not pixel.is_finite():
+		return
+	var radius := PATH_POINT_RADIUS + (2.0 if emphasized else 0.0)
+	overlay.draw_circle(pixel, radius + 2.0, Color(0.03, 0.08, 0.12, 0.9), true, -1, true)
+	overlay.draw_circle(pixel, radius, color, false, 2.0, true)
+	overlay.draw_circle(pixel, 3.0, color, true, -1, true)
+
+
+func _draw_path_snap(overlay: Control, point: Vector2, step: float, support: EmberVoxelProp, on_axis := false) -> void:
+	var pixel := _path_surface_pixel(point, support)
+	if not pixel.is_finite():
+		return
+	var grid_center := point.snapped(Vector2.ONE * step)
+	var grid := PackedVector2Array()
+	for z in range(-1, 2):
+		for x in range(-1, 2):
+			grid.append(_path_surface_pixel(grid_center + Vector2(x, z) * step, support))
+	for row in 3:
+		for col in 3:
+			var i := row * 3 + col
+			if not grid[i].is_finite():
+				continue
+			for next in [i + 1 if col < 2 else -1, i + 3 if row < 2 else -1]:
+				if next >= 0 and grid[next].is_finite():
+					overlay.draw_line(grid[i], grid[next], Color(0.03, 0.08, 0.12, 0.85), 3.0, true)
+					overlay.draw_line(grid[i], grid[next], Color(0.50, 0.88, 1.0, 0.76), 1.0, true)
+	var color := Color("ffd477") if on_axis else Color("76ecff")
+	_draw_path_handle(overlay, pixel, color, true)
+	var font := ThemeDB.fallback_font
+	var caption := "%.2f / %.2f м · %s" % [point.x, point.y, "ось дороги" if on_axis else "шаг %.2f м" % step]
+	var size := font.get_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 13) + Vector2(12, 7)
+	var position := (pixel + Vector2(16, -29)).clamp(Vector2.ZERO, (overlay.size - size).max(Vector2.ZERO))
+	overlay.draw_rect(Rect2(position, size), Color(0.03, 0.08, 0.12, 0.92))
+	overlay.draw_string(font, position + Vector2(6, font.get_ascent(13) + 3), caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, color)
+
+
+func _forward_plot(event: InputEvent) -> int:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if _plot_tool in ["street_bridge", "street_bridge_edit"] and event.keycode in [KEY_ENTER, KEY_KP_ENTER]:
+			_plan_panel.set_status(_commit_street_bridge())
+			_update_overlay()
+			return EditorPlugin.AFTER_GUI_INPUT_STOP
+		if _plot_tool == "plot_street_front" and event.keycode in [KEY_ENTER, KEY_KP_ENTER]:
+			_plan_panel.set_status(_commit_plot_street_front())
+			_update_overlay()
+			return EditorPlugin.AFTER_GUI_INPUT_STOP
+		if event.keycode == KEY_ESCAPE or (event.is_command_or_control_pressed() and event.keycode == KEY_Z and
+			(_plot_anchor.is_finite() or _street_bridge.has("node"))):
+			_reset_plot_tool()
+			_plan_panel.set_status("Действие отменено.")
+			_update_overlay()
+			return EditorPlugin.AFTER_GUI_INPUT_STOP
+		if event.is_command_or_control_pressed() and event.keycode == KEY_S:
+			if _plot_anchor.is_finite():
+				_plan_panel.set_status("Завершите линию или отмените её Esc.")
+			else:
+				save_all()
+			return EditorPlugin.AFTER_GUI_INPUT_STOP
+	if not event is InputEventMouse or event.alt_pressed or event.button_mask & (MOUSE_BUTTON_MASK_RIGHT | MOUSE_BUTTON_MASK_MIDDLE):
+		return EditorPlugin.AFTER_GUI_INPUT_PASS
+	if event is InputEventMouseButton and event.button_index != MOUSE_BUTTON_LEFT:
+		return EditorPlugin.AFTER_GUI_INPUT_PASS
+	if _plot_tool == "street_place":
+		if event is InputEventMouseButton and event.pressed:
+			var point := _path_pick(event.position)
+			if point.x >= 0.0 and point.y >= 0.0:
+				_street_plot_action("street_place", _plan_selected_id, "", point)
+		return EditorPlugin.AFTER_GUI_INPUT_STOP
+	if _plot_tool == "street_bridge_edit":
+		if event is InputEventMouseButton and event.pressed:
+			_plan_panel.set_status(_preview_street_bridge_style(event.position))
+		return EditorPlugin.AFTER_GUI_INPUT_STOP
+	if _plot_tool == "street_bridge":
+		if event is InputEventMouseButton and event.pressed:
+			var hit := _pick_compact(event.position)
+			var projection := map._visual_surface_projection as Node3D
+			var message := _pick_street_bridge_point(_plot_local_grid(projection, hit.world)) if not hit.is_empty() else "Щёлкните по полотну дороги."
+			_plan_panel.set_status(message)
+			_update_overlay()
+		return EditorPlugin.AFTER_GUI_INPUT_STOP
+	if _plot_tool == "plot_street_front":
+		if event is InputEventMouseButton and event.pressed:
+			var hit := _pick_compact(event.position)
+			var projection := map._visual_surface_projection as Node3D
+			var message := _preview_plot_street_front(_plot_local_grid(projection, hit.world)) if not hit.is_empty() else "Щёлкните по соседней дороге."
+			_plan_panel.set_status(message)
+			_update_overlay()
+		return EditorPlugin.AFTER_GUI_INPUT_STOP
+	if _plot_tool == "plot_window_pick":
+		if event is InputEventMouseButton and event.pressed:
+			var wall := _find_plot_wall_face(event.position).get("wall") as Node3D
+			if wall != null and Plot.placed_opening_kind(wall) != Plot.WALL_SOLID:
+				_plot_window_name = str(wall.name)
+				_reset_plot_tool()
+				_refresh_plot_window()
+				_plan_panel.set_status("Измените параметры проёма или материал стены и примените.")
+			else:
+				_plan_panel.set_status("Щёлкните по стене с окном или дверью на выбранном этаже.")
+		return EditorPlugin.AFTER_GUI_INPUT_STOP
+	if _plot_tool == "plot_finish_pick":
+		if event is InputEventMouseButton and event.pressed:
+			var selection := _find_plot_finish_piece(event.position)
+			if not selection.is_empty():
+				_plot_finish_name = str(selection.piece.name)
+				_plot_finish_group = selection.group
+				_reset_plot_tool()
+				_refresh_plot_finish()
+				_plan_panel.set_status("Выберите текстуру, оттенок и частоту рисунка, затем примените отделку.")
+			else:
+				_plan_panel.set_status("На выбранном этаже здесь нет поверхности для отделки.")
+		return EditorPlugin.AFTER_GUI_INPUT_STOP
+	if _plot_tool == "plot_pilaster":
+		_plot_pilaster_hit = _find_plot_wall_face(event.position)
+		if event is InputEventMouseButton and event.pressed:
+			_plan_panel.set_status(_place_plot_pilaster())
+		_update_overlay()
+		return EditorPlugin.AFTER_GUI_INPUT_STOP
+	_plot_cursor = Vector2.INF
+	var world_point := Vector3.INF
+	var props := map.get_node_or_null("Props") as Node3D
+	if _plot_docking and props != null and (not _plot_anchor.is_finite() or _plot_arc_through.is_finite()):
+		_plot_hover_dock = _plot_dock_under_pointer(event.position, props)
+		_plot_cursor = _plot_hover_dock.get("point", Vector2.INF)
+		if event is InputEventMouseButton and event.pressed:
+			_plan_panel.set_status(_plot_click(_plot_cursor) if _plot_cursor.is_finite() else "Выберите отмеченный свободный проход.")
+		_update_overlay()
+		return EditorPlugin.AFTER_GUI_INPUT_STOP
+	var height := _plot_pointer_y(props)
+	if is_finite(height):
+		var inverse := props.global_transform.affine_inverse()
+		var hit = Plane(Vector3.UP, height).intersects_ray(
+			inverse * camera.project_ray_origin(event.position), inverse.basis * camera.project_ray_normal(event.position))
+		if hit != null:
+			world_point = props.to_global(hit)
+	elif _plot_level == 0 and _plot_tool not in ["plot_column", "plot_cornice", "plot_roof", "plot_railing"]:
+		var hit := _pick_compact(event.position)
+		if not hit.is_empty():
+			world_point = hit.world
+	if world_point.is_finite():
+		var local: Vector3 = map._visual_surface_projection.to_local(world_point)
+		var point := Vector2(local.x, local.z) / 16.0
+		var frame := _selected_plot_frame()
+		_plot_cursor = frame * (frame.affine_inverse() * point).snapped(Vector2.ONE * Plot.GRID_SNAP_M)
+		var nearest := 0.375 * 0.375
+		for anchor in _plot_edge_anchors:
+			var distance := anchor.distance_squared_to(point)
+			if distance < nearest:
+				_plot_cursor = anchor
+				nearest = distance
+	if event is InputEventMouseButton and event.pressed:
+		_plan_panel.set_status(_plot_click(_plot_cursor))
+	_update_overlay()
+	return EditorPlugin.AFTER_GUI_INPUT_STOP
+
+
+func _find_plot_finish_piece(pixel: Vector2) -> Dictionary:
+	var props := map.get_node_or_null("Props") as Node3D
+	if props == null or not is_instance_valid(camera):
+		return {}
+	var origin := camera.project_ray_origin(pixel)
+	var ray := camera.project_ray_normal(pixel)
+	var nearest := {}
+	var distance := INF
+	for piece in props.get_children():
+		if piece is not Node3D or piece.get_meta(Plot.META, "") != _plan_selected_id or int(piece.get_meta(Plot.LEVEL_META, 0)) != _plot_level:
+			continue
+		for group in [Plot.FINISH_SURFACE, Plot.FINISH_FRAME, Plot.FINISH_DOOR]:
+			for part in Plot.finish_parts(piece, group):
+				var inverse := part.global_transform.affine_inverse()
+				var local_origin := inverse * origin
+				var local_ray := inverse.basis * ray
+				var hit = part.get_aabb().intersects_ray(local_origin, local_ray)
+				if hit != null and part.mesh is not BoxMesh:
+					hit = _nearest_finish_face(part.mesh, local_origin, local_ray)
+				if hit != null:
+					var depth := origin.distance_squared_to(part.to_global(hit))
+					if depth < distance:
+						distance = depth
+						nearest = {"piece": piece, "group": group}
+	return nearest
+
+
+func _nearest_finish_face(mesh: Mesh, origin: Vector3, ray: Vector3) -> Variant:
+	var faces := mesh.get_faces()
+	var nearest: Variant = null
+	var distance := INF
+	for index in range(0, faces.size(), 3):
+		var hit = Geometry3D.ray_intersects_triangle(origin, ray, faces[index], faces[index + 1], faces[index + 2])
+		if hit != null and origin.distance_squared_to(hit) < distance:
+			distance = origin.distance_squared_to(hit)
+			nearest = hit
+	return nearest
+
+
+func _find_plot_wall_face(pixel: Vector2) -> Dictionary:
+	var props := map.get_node_or_null("Props") as Node3D
+	if props == null or not is_instance_valid(camera):
+		return {}
+	var origin := camera.project_ray_origin(pixel)
+	var ray := camera.project_ray_normal(pixel)
+	var nearest := {}
+	for node in props.get_children():
+		if node is not Node3D or node.get_meta(Plot.META, "") != _plan_selected_id or int(node.get_meta(Plot.LEVEL_META, 0)) != _plot_level:
+			continue
+		var hit := Plot.wall_face_hit(node, origin, ray, map.imported_tile_size)
+		if not hit.is_empty() and hit.distance < nearest.get("distance", INF):
+			nearest = hit
+	return nearest
+
+
+func _place_plot_pilaster() -> String:
+	if not _plot_pilaster_hit.get("fits", false):
+		return "Нужен глухой участок стены шириной не менее 0,75 м на выбранном этаже."
+	var props := map.get_node_or_null("Props") as Node3D
+	var plan: Resource = TerrainPlan.read(map)
+	var index: int = plan.index_of(_plan_selected_id) if plan != null else -1
+	if props == null or index < 0 or plan.regions[index].get("kind") != "construction":
+		return "Выберите строительный участок."
+	var point: Vector3 = _plot_pilaster_hit.point
+	var local: Vector3 = map._visual_surface_projection.to_local(props.to_global(point))
+	if not TerrainPlan.Influence.plot_has_point(plan.regions[index], Vector2(local.x, local.z) / 16.0):
+		return "Пилястра должна быть внутри участка."
+	var angle: float = _plot_pilaster_hit.angle
+	var outward := Vector3.BACK.rotated(Vector3.UP, angle)
+	var width := Plot.PILASTER_HALF_WIDTH * 2.0 * map.imported_tile_size
+	for node in props.get_children():
+		if node is Node3D and node.has_node("Pilaster") and node.basis.z.dot(outward) > 0.99 and node.position.distance_to(point) < width:
+			return "На этом месте уже есть пилястра."
+	var node := Plot.make_pilaster(point, angle, map.imported_tile_size)
+	node.set_meta(Plot.META, _plan_selected_id)
+	node.set_meta(Plot.LEVEL_META, _plot_level)
+	_commit_plot_node(props, node, "Поставить пилястру")
+	_reset_plot_tool()
+	return "Готово · Ctrl+Z отменяет · Ctrl+S сохраняет."
+
+
+func _plot_pointer_y(props: Node3D) -> float:
+	if props == null:
+		return INF
+	if _plot_follow_floor:
+		return _plot_level_y(props) + Plot.FLOOR_TOP_M * map.imported_tile_size
+	if _plot_tool == "plot_arc_wall" and _plot_arc_walk:
+		if not _plot_start_dock.is_empty():
+			return _plot_start_dock.y
+		return _plot_level_y(props) + (Plot.WALL_HEIGHT_M + Plot.FLOOR_TOP_M) * map.imported_tile_size
+	if _plot_tool == "plot_round_corner":
+		return _plot_level_y(props) + Plot.WALL_HEIGHT_M * map.imported_tile_size
+	if _plot_tool in ["plot_wall", "plot_arc_wall", "plot_floor"]:
+		return _plot_level_y(props) + Plot.BALCONY_TOP * map.imported_tile_size
+	if _plot_level > 0 or _plot_tool in ["plot_column", "plot_cornice", "plot_roof", "plot_railing"]:
+		return _plot_plane_y(props)
+	return INF
+
+
+func _plot_grid_world(projection: Node3D, props: Node3D, point: Vector2, height: float) -> Vector3:
+	var local := props.to_local(projection.to_global(Vector3(point.x, 0, point.y) * 16.0))
+	local.y = height
+	return props.to_global(local)
+
+
+func _plot_point_pixel(point: Vector2) -> Vector2:
+	if not point.is_finite() or not is_instance_valid(camera):
+		return Vector2.INF
+	var props := map.get_node_or_null("Props") as Node3D
+	var height := _plot_pointer_y(props)
+	if not is_finite(height):
+		return _plan_point_pixel(point) if _plot_level == 0 else Vector2.INF
+	var projection := map._visual_surface_projection as EmberTerrainPilotProjection
+	if not is_instance_valid(projection):
+		return Vector2.INF
+	var world := _plot_grid_world(projection, props, point, height)
+	return Vector2.INF if camera.is_position_behind(world) else camera.unproject_position(world)
+
+
+func _draw_plot_grid(overlay: Control, region: Dictionary) -> void:
+	if not is_instance_valid(_plan_panel) or not _plan_panel.visible or not _plan_panel._buttons.plot_grid.button_pressed:
+		return
+	var props := map.get_node_or_null("Props") as Node3D
+	var projection := map._visual_surface_projection as EmberTerrainPilotProjection
+	if props == null or not is_instance_valid(projection) or not is_instance_valid(camera):
+		return
+	var level: int = _plan_panel._buttons.plot_level.selected
+	var bounds := TerrainPlan.Influence.plot_rect(region)
+	var frame := TerrainPlan.Influence.plot_frame(region)
+	var origin := Plot.level_origin(props, _plan_selected_id, map.imported_tile_size)
+	if not is_finite(origin) and level == 0:
+		origin = _plot_ground(frame * bounds.get_center(), props).y
+	if not is_finite(origin):
+		return
+	var height := origin + (level * Plot.WALL_HEIGHT_M + Plot.BALCONY_TOP) * map.imported_tile_size
+	# Keep the meter lines aligned to the snap origin, even on very large plots.
+	var step := maxi(1, ceili(maxi(bounds.size.x, bounds.size.y) / 48.0))
+	for x in range(ceili(bounds.position.x / step) * step, floori(bounds.end.x) + 1, step):
+		_draw_plot_grid_line(overlay, projection, props, frame * Vector2(x, bounds.position.y), frame * Vector2(x, bounds.end.y), height)
+	for z in range(ceili(bounds.position.y / step) * step, floori(bounds.end.y) + 1, step):
+		_draw_plot_grid_line(overlay, projection, props, frame * Vector2(bounds.position.x, z), frame * Vector2(bounds.end.x, z), height)
+	if _plot_tool not in ["plot_wall", "plot_arc_wall", "plot_floor", "plot_column", "plot_railing"] or not _plot_cursor.is_finite():
+		return
+	var cursor := frame.affine_inverse() * _plot_cursor
+	if not bounds.has_point(cursor):
+		return
+	var center := _plot_grid_world(projection, props, _plot_cursor, height)
+	var x_neighbor := _plot_grid_world(projection, props, frame * (cursor + Vector2.RIGHT * Plot.GRID_SNAP_M), height)
+	var z_neighbor := _plot_grid_world(projection, props, frame * (cursor + Vector2.DOWN * Plot.GRID_SNAP_M), height)
+	if camera.is_position_behind(center) or camera.is_position_behind(x_neighbor) or camera.is_position_behind(z_neighbor):
+		return
+	var pixel := camera.unproject_position(center)
+	if minf(pixel.distance_to(camera.unproject_position(x_neighbor)), pixel.distance_to(camera.unproject_position(z_neighbor))) < 8.0:
+		return
+	var lo := (cursor - Vector2.ONE * 2.0).max(bounds.position)
+	var hi := (cursor + Vector2.ONE * 2.0).min(bounds.end)
+	for x in range(roundi(lo.x / Plot.GRID_SNAP_M), roundi(hi.x / Plot.GRID_SNAP_M) + 1):
+		var line := x * Plot.GRID_SNAP_M
+		_draw_plot_grid_line(overlay, projection, props, frame * Vector2(line, lo.y), frame * Vector2(line, hi.y), height, 0.18)
+	for z in range(roundi(lo.y / Plot.GRID_SNAP_M), roundi(hi.y / Plot.GRID_SNAP_M) + 1):
+		var line := z * Plot.GRID_SNAP_M
+		_draw_plot_grid_line(overlay, projection, props, frame * Vector2(lo.x, line), frame * Vector2(hi.x, line), height, 0.18)
+
+
+func _draw_plot_grid_line(overlay: Control, projection: Node3D, props: Node3D, from: Vector2, to: Vector2, height: float, opacity := 0.3) -> void:
+	var a := camera.to_local(_plot_grid_world(projection, props, from, height))
+	var b := camera.to_local(_plot_grid_world(projection, props, to, height))
+	var near_z := -camera.near * 1.01
+	if a.z > near_z and b.z > near_z:
+		return
+	if a.z > near_z:
+		a = a.lerp(b, (near_z - a.z) / (b.z - a.z))
+	elif b.z > near_z:
+		b = b.lerp(a, (near_z - b.z) / (a.z - b.z))
+	overlay.draw_line(camera.unproject_position(camera.to_global(a)), camera.unproject_position(camera.to_global(b)),
+		Color(0.56, 0.86, 0.91, opacity), 1.0, true)
+
+
+func _draw_plot_corner(overlay: Control, region: Dictionary) -> void:
+	var props := map.get_node_or_null("Props") as Node3D
+	if props == null:
+		return
+	var layout := _plot_corner_layout(props, _plot_cursor, TerrainPlan.Influence.plot_rect(region),
+		TerrainPlan.Influence.plot_frame(region).affine_inverse())
+	if not layout.has("arc"):
+		return
+	var color := Color(1.0, 0.7, 0.32)
+	var ring: PackedVector2Array = layout.arc.left.duplicate()
+	var other: PackedVector2Array = layout.arc.right.duplicate()
+	other.reverse()
+	ring.append_array(other)
+	ring.append(ring[0])
+	for index in ring.size() - 1:
+		var a := _plot_point_pixel(ring[index])
+		var b := _plot_point_pixel(ring[index + 1])
+		if a.is_finite() and b.is_finite():
+			overlay.draw_line(a, b, color, 3.0, true)
+	var corner := _plot_point_pixel(layout.corner)
+	if corner.is_finite():
+		overlay.draw_circle(corner, 5.0, color, false, 2.0, true)
+
+
+func _draw_contour_attachment(overlay: Control, region: Dictionary) -> void:
+	var props := map.get_node_or_null("Props") as Node3D
+	if props == null or not _plot_cursor.is_finite():
+		return
+	var roof := _plot_tool == "plot_roof"
+	var target := _plot_contour_target(props, _plot_cursor, roof)
+	if target.is_empty():
+		return
+	var outline := Plot.contour_roof_outline(target.profile) if roof else Plot.round_rail_path(target.profile, _plot_cursor - target.center, _plot_railing_style)
+	if roof and not _plot_outline_fits(TerrainPlan.Influence.plot_rect(region), target.center, outline,
+			TerrainPlan.Influence.plot_frame(region).affine_inverse()):
+		return
+	var height: float = target.floor.position.y + (Plot.WALL_HEIGHT_M if roof else Plot.FLOOR_TOP_M) * map.imported_tile_size
+	var projection: Node3D = map._visual_surface_projection
+	for index in outline.size() if roof else outline.size() - 1:
+		var a := _plot_grid_world(projection, props, target.center + outline[index], height)
+		var b := _plot_grid_world(projection, props, target.center + outline[(index + 1) % outline.size()], height)
+		if not camera.is_position_behind(a) and not camera.is_position_behind(b):
+			overlay.draw_line(camera.unproject_position(a), camera.unproject_position(b), Color(1.0, 0.7, 0.32), 3.0, true)
+
+
+func _forward_street_preview(event: InputEvent) -> int:
+	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+		_street_plot_action("street_clear", _plan_selected_id)
+		return EditorPlugin.AFTER_GUI_INPUT_STOP
+	if event is not InputEventMouseButton or event.button_index != MOUSE_BUTTON_LEFT or event.alt_pressed \
+			or event.button_mask & (MOUSE_BUTTON_MASK_RIGHT | MOUSE_BUTTON_MASK_MIDDLE):
+		return EditorPlugin.AFTER_GUI_INPUT_PASS
+	if event.pressed:
+		var point := _path_pick(event.position)
+		var lots: Array[Dictionary] = _street_preview.lots
+		var excluded: Dictionary = _street_preview.excluded
+		for slot in lots.size():
+			if not TerrainPlan.Influence.plot_has_point(lots[slot], point):
+				continue
+			if excluded.has(slot):
+				excluded.erase(slot)
+			else:
+				excluded[slot] = true
+			_plan_panel.show_street_preview(lots.size() - excluded.size(), lots.size())
+			_update_overlay()
+			break
+	return EditorPlugin.AFTER_GUI_INPUT_STOP
+
+
+func _draw_street_preview(overlay: Control) -> void:
+	var lots: Array[Dictionary] = _street_preview.lots
+	for slot in lots.size():
+		var lot := lots[slot]
+		var pixels := PackedVector2Array()
+		for point in TerrainPlan.Influence.plan_controls(lot):
+			var pixel := _plan_point_pixel(point)
+			if not pixel.is_finite():
+				break
+			pixels.append(pixel)
+		if pixels.size() != 4:
+			continue
+		var included: bool = not _street_preview.excluded.has(slot)
+		var color := Color("74f4d3") if included else Color("a7a9af")
+		overlay.draw_colored_polygon(pixels, Color(color, 0.21 if included else 0.08))
+		pixels.append(pixels[0])
+		overlay.draw_polyline(pixels, Color(0.05, 0.12, 0.13, 0.9), 5.0, true)
+		overlay.draw_polyline(pixels, color, 2.0, true)
+		var key: Vector2 = lot.plot_frame.origin
+		if included and _street_preview.layouts.has(key):
+			var layout: Dictionary = _street_preview.layouts[key]
+			for run: PackedVector2Array in layout.runs:
+				var line := PackedVector2Array()
+				for point in run:
+					var pixel := _plan_point_pixel(point)
+					if pixel.is_finite():
+						line.append(pixel)
+				if line.size() >= 2:
+					overlay.draw_polyline(line, color, 3.0, true)
+			var gate := _plan_point_pixel(layout.approach[0])
+			var road := _plan_point_pixel(layout.approach[1])
+			if gate.is_finite() and road.is_finite():
+				var entrance := Color("ffd18a")
+				overlay.draw_line(gate, road, entrance, 3.0, true)
+				overlay.draw_circle(gate, 5.0, entrance, true, -1.0, true)
+		var center := _plan_point_pixel(TerrainPlan.Influence.plan_anchor(lot))
+		if center.is_finite():
+			overlay.draw_circle(center, 12.0, Color(0.05, 0.12, 0.13, 0.9), true, -1.0, true)
+			overlay.draw_string(ThemeDB.fallback_font, center + Vector2(-5, 5), str(slot + 1) if included else "×",
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 17, color)
+
+
+func _draw_terrain_plan(overlay: Control) -> bool:
+	if not _street_preview.is_empty():
+		_draw_street_preview(overlay)
+	if _plot_pilaster_hit.get("fits", false) and is_instance_valid(camera):
+		var props := map.get_node_or_null("Props") as Node3D
+		if props != null:
+			var a := props.to_global(_plot_pilaster_hit.point)
+			var b := a + props.global_basis.y * Plot.WALL_HEIGHT_M * map.imported_tile_size
+			if not camera.is_position_behind(a) and not camera.is_position_behind(b):
+				overlay.draw_line(camera.unproject_position(a), camera.unproject_position(b), Color(1.0, 0.7, 0.32), 4.0, true)
+	if _plot_anchor.is_finite() and _plot_cursor.is_finite():
+		var points: PackedVector2Array
+		if _plot_tool == "plot_roof":
+			points = PackedVector2Array()
+			var frame := _selected_plot_frame()
+			var inverse := frame.affine_inverse()
+			var a := inverse * _plot_anchor
+			var b := inverse * _plot_cursor
+			var origin := a.min(b)
+			var border := Plot.roof_border((a - b).abs(), _plot_roof_options.bay)
+			for index in border.size():
+				points.append(frame * (origin + border[index]))
+				points.append(frame * (origin + border[(index + 1) % border.size()]))
+		elif _plot_tool == "plot_floor":
+			if _plot_floor_shape.is_empty():
+				var frame := _selected_plot_frame()
+				var inverse := frame.affine_inverse()
+				var a := inverse * _plot_anchor
+				var b := inverse * _plot_cursor
+				var corners := TerrainPlan.Influence.rectangle_points(Rect2(a.min(b), (a - b).abs()), frame)
+				points = PackedVector2Array([corners[0], corners[1], corners[1], corners[2], corners[2], corners[3], corners[3], corners[0]])
+			else:
+				var layout := _plot_contour_layout(_plot_cursor)
+				points = PackedVector2Array()
+				if not layout.profile.is_empty():
+					var rim := Plot.floor_outline(layout.profile)
+					for index in rim.size():
+						points.append(layout.center + rim[index])
+						points.append(layout.center + rim[(index + 1) % rim.size()])
+		elif _plot_tool in ["plot_wall", "plot_cornice", "plot_railing"]:
+			points = PackedVector2Array([_plot_anchor, _plot_cursor])
+		elif _plot_tool == "plot_arc_wall":
+			points = PackedVector2Array([_plot_anchor, _plot_cursor])
+			if _plot_arc_through.is_finite():
+				var arc := _plot_arc_layout(_plot_cursor)
+				points = PackedVector2Array([_plot_anchor, _plot_arc_through, _plot_arc_through, _plot_cursor])
+				if _plot_docking and arc.is_empty():
+					points = PackedVector2Array([_plot_anchor, _plot_arc_through])
+				if not arc.is_empty():
+					points.clear()
+					for edge: PackedVector2Array in [arc.left, arc.right]:
+						for index in edge.size() - 1:
+							points.append(edge[index])
+							points.append(edge[index + 1])
+					points.append_array(PackedVector2Array([arc.left[0], arc.right[0], arc.left[-1], arc.right[-1]]))
+		elif _plot_tool in ["plot_entry", "plot_edge", "plot_balcony"]:
+			var depth := _plot_balcony_depth if _plot_tool == "plot_balcony" else _plot_edge_depth
+			var corners := Plot.entry_outline(_plot_anchor, _plot_cursor) if _plot_tool == "plot_entry" else Plot.strip_outline(_plot_anchor, _plot_cursor, depth)
+			points = PackedVector2Array([corners[0], corners[1], corners[1], corners[2], corners[2], corners[3], corners[3], corners[0]])
+		else:
+			points = Plot.fence_points(_plot_anchor, _plot_cursor)
+		var props := map.get_node_or_null("Props") as Node3D
+		var projection := map._visual_surface_projection as EmberTerrainPilotProjection
+		var height := _plot_pointer_y(props)
+		if _plot_tool == "plot_arc_wall" and props != null and not is_finite(height) and _plot_level == 0:
+			height = _plot_ground(_plot_anchor, props).y
+		if is_instance_valid(camera) and projection != null and is_finite(height):
+			for start in range(0, points.size(), 2):
+				var a := _plot_grid_world(projection, props, points[start], height)
+				var b := _plot_grid_world(projection, props, points[start + 1], height)
+				if not camera.is_position_behind(a) and not camera.is_position_behind(b):
+					overlay.draw_line(camera.unproject_position(a), camera.unproject_position(b), Color(1.0, 0.7, 0.32), 3.0, true)
+		else:
+			for start in range(0, points.size(), 2):
+				var a := _plot_point_pixel(points[start])
+				var b := _plot_point_pixel(points[start + 1])
+				if a.is_finite() and b.is_finite():
+					overlay.draw_line(a, b, Color(1.0, 0.7, 0.32), 3.0, true)
+	if _plot_tool == "plot_fountain" and _plot_cursor.is_finite():
+		var radius: float = Plot.FOUNTAIN_RADII[_plot_fountain_style]
+		var points := PackedVector2Array()
+		for index in 25:
+			var edge := _plot_cursor + Vector2.from_angle(TAU * float(index) / 24.0) * radius
+			var pixel := _plot_point_pixel(edge)
+			if pixel.is_finite():
+				points.append(pixel)
+		if points.size() == 25:
+			overlay.draw_polyline(points, Color(1.0, 0.7, 0.32), 2.0, true)
+	if _plot_tool in ["plot_wall", "plot_arc_wall", "plot_floor", "plot_column", "plot_apple_tree", "plot_fountain", "plot_fence", "plot_railing"]:
+		var anchor := _plot_point_pixel(_plot_anchor)
+		var cursor := _plot_point_pixel(_plot_cursor)
+		if anchor.is_finite():
+			overlay.draw_circle(anchor, 5.0, Color(1.0, 0.7, 0.32), true, -1.0, true)
+		if _plot_arc_through.is_finite():
+			var through := _plot_point_pixel(_plot_arc_through)
+			if through.is_finite():
+				overlay.draw_circle(through, 5.0, Color(1.0, 0.7, 0.32), true, -1.0, true)
+		if cursor.is_finite():
+			overlay.draw_circle(cursor, 6.0, Color(0.13, 0.17, 0.21), true, -1.0, true)
+			overlay.draw_circle(cursor, 4.0, Color.WHITE, false, 2.0, true)
+	if _plot_docking and (not _plot_anchor.is_finite() or _plot_arc_through.is_finite()):
+		var target := _plot_dock_at(_plot_cursor)
+		var props := map.get_node_or_null("Props") as Node3D
+		for dock in _plot_docks:
+			if props == null or not is_instance_valid(dock.tower) or dock.tower == _plot_start_dock.get("tower"):
+				continue
+			var pixel := _plot_dock_pixel(dock, props)
+			if pixel.is_finite():
+				var compatible := _plot_start_dock.is_empty() or _plot_docks_match(dock)
+				overlay.draw_circle(pixel, 7.0, Color(0.34, 0.95, 0.84) if compatible else Color(0.9, 0.45, 0.35), dock == target, 2.0, true)
 	if _generation_context.has("candidate"):
 		var candidate: EmberTerrainPilotResource = _generation_context.candidate
 		for point: Vector2i in _generation_context.get("protected_blocks", []):
@@ -3833,19 +6577,44 @@ func _draw_terrain_plan(overlay: Control) -> void:
 			var pixel := camera.unproject_position(world)
 			overlay.draw_line(pixel + Vector2(-3, -3), pixel + Vector2(3, 3), Color(1, 0.75, 0.3), 2)
 			overlay.draw_line(pixel + Vector2(-3, 3), pixel + Vector2(3, -3), Color(1, 0.75, 0.3), 2)
-	if _plan_selection in ["add_river","add_road","add_coast","path_line"]:
+	var snap_point := Vector2.INF
+	var snap_support: EmberVoxelProp
+	var snap_axis := false
+	if _plan_selection in ["add_river","add_road","add_surface_road","add_road_branch","extend_road_branch","add_coast","path_line"] and _surface_road_preview.is_empty():
 		var points := _path_points.duplicate()
-		if _path_hover.x >= 0 and (points.is_empty() or _path_hover.distance_to(points[-1]) >= 1): points.append(_path_hover)
-		_draw_plan_path(overlay,points,Color(0.3,0.9,1),"draft",_plan_path_kind() == "river")
+		if not _surface_road_support.is_empty():
+			snap_support = _surface_road_prop(map, _surface_road_support)
+		if _path_hover.x >= 0 and (points.is_empty() or _path_hover.distance_to(points[-1]) >= 1) and not (_plan_selection == "add_surface_road" and snap_support == null):
+			snap_point = _path_hover
+			snap_axis = _plan_selection == "add_road_branch" and points.is_empty()
+			points.append(_path_hover)
+		_draw_plan_path(overlay,points,Color(0.3,0.9,1),"draft",_plan_path_kind() == "river",snap_support)
+		for point in _path_points:
+			_draw_path_handle(overlay, _path_surface_pixel(point, snap_support), Color("76ecff"))
 	var plan: Resource = TerrainPlan.read(map)
-	if plan == null: return
+	if plan == null: return false
+	var bridge_start: Dictionary = _street_bridge.get("start", {})
+	if not bridge_start.is_empty():
+		_draw_plan_path(overlay, PackedVector2Array([bridge_start.point]), Color(0.3, 0.9, 1.0), "bridge")
+	var plot_outline := false
 	for saved: Dictionary in plan.regions:
 		var selected:bool=saved.id==_plan_selected_id
-		var region:Dictionary=_plan_drag.ghost if selected and not _plan_drag.is_empty() else saved
+		if selected and _plan_selection == "extend_road_branch":
+			continue
+		var region:Dictionary=_plan_drag.ghost if selected and not _plan_drag.is_empty() else _branch_edit.get("region", saved) if selected else saved
+		if selected and region.get("kind") == "construction":
+			plot_outline = true
+			if _plan_drag.is_empty() and _plan_selection.is_empty():
+				_draw_plot_grid(overlay, region)
+				if _plot_tool == "plot_round_corner":
+					_draw_plot_corner(overlay, region)
+				if _plot_follow_floor:
+					_draw_contour_attachment(overlay, region)
 		var path:=TerrainPlan.Influence.plan_is_path(region)
+		var support: EmberVoxelProp = _plan_path_support(region) if path and selected else null
 		var color:=Color(1,0.75,0.3) if selected else Color(0.4,0.75,0.9,0.65)
 		if path:
-			_draw_plan_path(overlay,region.points_m,color,region.id,region.kind in ["river","coast"])
+			_draw_plan_path(overlay,region.points_m,color,region.id,region.kind in ["river","coast"] or (selected and not _street_preview.is_empty()),support)
 		else:
 			var pixels:=PackedVector2Array()
 			for point in TerrainPlan.Influence.plan_controls(region):
@@ -3865,11 +6634,26 @@ func _draw_terrain_plan(overlay: Control) -> void:
 		else:
 			var points:=TerrainPlan.Influence.plan_controls(region)
 			for i in points.size():
-				var pixel:=_plan_point_pixel(points[i])
+				var pixel := _path_surface_pixel(points[i], support) if path else _plan_point_pixel(points[i])
 				if not pixel.is_finite():continue
-				if path:overlay.draw_circle(pixel,7 if i==_plan_point_index else 5,Color.WHITE)
-				else:overlay.draw_rect(Rect2(pixel-Vector2.ONE*5,Vector2.ONE*10),Color.WHITE)
-				overlay.draw_circle(pixel,3,Color(0.1,0.7,1))
+				if path:
+					var locked := i == 0 and region.has("road_join")
+					var emphasized := i == _plan_hover_index or i == _plan_point_index
+					var ink := Color("ffd477") if locked else Color("76ecff") if emphasized else Color.WHITE
+					_draw_path_handle(overlay, pixel, ink, emphasized)
+					if i == _plan_hover_index and _plan_point_mode != "insert" or (not _plan_drag.is_empty() and i == _plan_drag.index):
+						snap_point = points[i]
+						snap_support = support
+						snap_axis = locked
+				else:
+					overlay.draw_rect(Rect2(pixel-Vector2.ONE*5,Vector2.ONE*10),Color.WHITE)
+					overlay.draw_circle(pixel,3,Color(0.1,0.7,1))
+			if path and _plan_point_mode == "insert" and _plan_insert_hover.is_finite():
+				snap_point = _plan_insert_hover
+				snap_support = support
+	if snap_point.is_finite():
+		_draw_path_snap(overlay, snap_point, 0.25 if is_instance_valid(snap_support) else 0.5, snap_support, snap_axis)
+	return plot_outline
 
 func draw_overlay(overlay: Control) -> void:
 	if not active or not is_instance_valid(camera): return
@@ -3877,9 +6661,9 @@ func draw_overlay(overlay: Control) -> void:
 		_draw_section_selection(overlay)
 		return
 	if _compact_active():
-		_draw_terrain_plan(overlay)
+		var plot_outline := _draw_terrain_plan(overlay)
 		var selected_rect := region_preview if selecting and region_preview.has_area() else edit_region
-		if selected_rect.has_area():
+		if selected_rect.has_area() and (selecting or not plot_outline or not _plan_map_active()):
 			var outline := PackedVector2Array()
 			for corner in [selected_rect.position,Vector2i(selected_rect.end.x,selected_rect.position.y),selected_rect.end,Vector2i(selected_rect.position.x,selected_rect.end.y),selected_rect.position]:
 				var frame_point := _region_frame()*Vector3(corner.x,_region_height(),corner.y)
@@ -4090,7 +6874,24 @@ func _plan_parameters_active()->bool:
 	return is_instance_valid(_generation_panel) and _generation_panel.visible and not _generation_context.get("plan_id","").is_empty()
 
 func _select_plan_region(id:String)->void:
+	if not _branch_edit.is_empty() and id != _plan_selected_id:
+		_refresh_terrain_plan(true)
+		_plan_panel.set_status("Сначала примерьте правки ответвления или отмените их клавишей Esc.")
+		return
 	_plan_selected_id=id;_plan_point_index=-1;_plan_cancel_drag()
+	_plan_hover_index = -1
+	_plan_insert_hover = Vector2.INF
+	var plan: Resource = TerrainPlan.read(map)
+	var index: int = plan.index_of(id) if plan != null else -1
+	if index >= 0 and plan.regions[index].has("road_join"):
+		_plan_point_mode = "move"
+		clear_terrain_generation_preview()
+		if is_instance_valid(_generation_panel):
+			_generation_panel.hide()
+		_generation_context = {}
+		_refresh_terrain_plan(true)
+		_plan_panel.set_status("Жёлтая точка закреплена на главной дороге. Остальные точки можно двигать.")
+		return
 	_refresh_terrain_plan()
 	if not id.is_empty():_terrain_plan_action("generate",id,"")
 	_update_overlay()
@@ -4125,10 +6926,15 @@ func _plan_point_pixel(point:Vector2)->Vector2:
 	var p:=_plan_handle_world(point)
 	return Vector2.INF if not p.is_finite() or camera.is_position_behind(p) else camera.unproject_position(p)
 
-func _plan_point_at(points:PackedVector2Array,pixel:Vector2)->int:
-	var found:=-1;var nearest:=13.0
+func _plan_path_support(region: Dictionary) -> EmberVoxelProp:
+	var id: String = region.get("support_placement_id", "")
+	return _surface_road_prop(map, id) if not id.is_empty() else null
+
+
+func _plan_point_at(points:PackedVector2Array,pixel:Vector2,path := false,support: EmberVoxelProp = null)->int:
+	var found:=-1;var nearest:=PATH_HIT_RADIUS if path else 13.0
 	for i in points.size():
-		var p:=_plan_point_pixel(points[i])
+		var p := _path_surface_pixel(points[i], support) if path else _plan_point_pixel(points[i])
 		if p.is_finite() and p.distance_to(pixel)<nearest:nearest=p.distance_to(pixel);found=i
 	return found
 
@@ -4145,7 +6951,7 @@ func _plan_region_at(pixel:Vector2)->String:
 	if point.x<0:return ""
 	var area:=INF
 	for region:Dictionary in plan.regions:
-		if not Rect2(region.bounds).has_point(point):continue
+		if not TerrainPlan.Influence.plot_has_point(region, point):continue
 		if region.get("kind")=="coast":
 			if not TerrainPlan.Influence.coast_sample(TerrainPlan.Influence.path_curve(region.points_m),point,region.parameters).is_empty():return region.id
 		elif not TerrainPlan.Influence.plan_is_path(region) and region.bounds.get_area()<area:area=region.bounds.get_area();closest=region.id
@@ -4154,15 +6960,32 @@ func _plan_region_at(pixel:Vector2)->String:
 func _plan_path_hit(region:Dictionary,pixel:Vector2)->Dictionary:
 	var result:Dictionary={"distance":INF,"point":Vector2.INF}
 	var samples:PackedVector2Array=TerrainPlan.Influence.path_curve(region.points_m).get_baked_points()
+	if samples.is_empty():
+		return result
+	var support := _plan_path_support(region)
+	var a := _path_surface_pixel(samples[0], support)
 	for i in range(1,samples.size()):
-		var a:=_plan_point_pixel(samples[i-1]);var b:=_plan_point_pixel(samples[i])
-		if not a.is_finite() or not b.is_finite():continue
-		var projected:=Geometry2D.get_closest_point_to_segment(pixel,a,b)
-		var distance:=pixel.distance_to(projected)
-		if distance>=result.distance:continue
-		var fraction:=0.0 if a.distance_squared_to(b)<0.00001 else a.distance_to(projected)/a.distance_to(b)
-		result={"distance":distance,"point":samples[i-1].lerp(samples[i],fraction)}
+		var b := _path_surface_pixel(samples[i], support)
+		if a.is_finite() and b.is_finite():
+			var projected:=Geometry2D.get_closest_point_to_segment(pixel,a,b)
+			var distance:=pixel.distance_to(projected)
+			if distance < result.distance:
+				var fraction:=0.0 if a.distance_squared_to(b)<0.00001 else a.distance_to(projected)/a.distance_to(b)
+				result={"distance":distance,"point":samples[i-1].lerp(samples[i],fraction)}
+		a = b
 	return result
+
+
+func _plan_insert_target(region: Dictionary, pixel: Vector2) -> Vector2:
+	var on_line := _plan_path_hit(region, pixel)
+	if on_line.distance >= PATH_HIT_RADIUS:
+		return Vector2.INF
+	var step := 0.25 if region.has("support_placement_id") else 0.5
+	var point: Vector2 = on_line.point.snapped(Vector2.ONE * step)
+	for existing: Vector2 in region.points_m:
+		if point.distance_to(existing) < 1.0:
+			return Vector2.INF
+	return point
 
 func commit_plan_shape(target:EmberMapLoader,id:String,shape:Dictionary)->String:
 	var plan:Resource=TerrainPlan.read(target)
@@ -4180,7 +7003,11 @@ func commit_plan_shape(target:EmberMapLoader,id:String,shape:Dictionary)->String
 			if not Rect2(Vector2.ZERO,Vector2(extent)).has_point(point):return "Изгиб линии выходит за карту."
 		next.regions[index].points_m=points.duplicate()
 		next.regions[index].bounds=_plan_path_bounds(next.regions[index],next.regions[index].parameters,extent)
-	else:next.regions[index].bounds=shape.bounds
+	else:
+		next.regions[index].bounds = shape.bounds
+		if next.regions[index].has("plot_frame"):
+			next.regions[index].plot_frame = shape.plot_frame
+			next.regions[index].plot_size_m = shape.plot_size_m
 	return commit_terrain_plan(target,next)
 
 func commit_plan_points(target:EmberMapLoader,id:String,points:PackedVector2Array)->String:
@@ -4200,8 +7027,11 @@ func _plan_drag_position(pixel:Vector2)->Vector2:
 	return Vector2.INF if point==null else Vector2(point.x,point.z)/16.0
 
 func _plan_begin_drag(region:Dictionary,index:int,pixel:Vector2,translate:bool)->void:
+	if region.has("road_join") and (translate or index == 0):
+		_plan_panel.set_status("Начало ответвления закреплено на главной дороге.")
+		return
 	var handle:Vector2=TerrainPlan.Influence.plan_anchor(region) if translate else TerrainPlan.Influence.plan_controls(region)[index]
-	var p:=_plan_handle_world(handle)
+	var p := _path_surface_world(handle, _plan_path_support(region)) if TerrainPlan.Influence.plan_is_path(region) else _plan_handle_world(handle)
 	if not p.is_finite():return
 	clear_terrain_generation_preview()
 	if _plan_parameters_active():_generation_panel.set_pending("Перенос контура. Земля пока не меняется.")
@@ -4211,64 +7041,82 @@ func _plan_begin_drag(region:Dictionary,index:int,pixel:Vector2,translate:bool)-
 
 func _forward_plan_map(event:InputEvent)->int:
 	if event is InputEventMouse and (event.alt_pressed or event.button_mask&(MOUSE_BUTTON_MASK_RIGHT|MOUSE_BUTTON_MASK_MIDDLE)):
+		_plan_hover_index = -1
+		_plan_insert_hover = Vector2.INF
 		_plan_cancel_drag();return EditorPlugin.AFTER_GUI_INPUT_PASS
 	if event is InputEventMouseButton and event.button_index in [MOUSE_BUTTON_RIGHT,MOUSE_BUTTON_MIDDLE]:
 		_plan_cancel_drag();return EditorPlugin.AFTER_GUI_INPUT_PASS
 	var plan:Resource=TerrainPlan.read(map)
 	var index:int=plan.index_of(_plan_selected_id) if plan!=null else -1
 	var path:bool=index>=0 and TerrainPlan.Influence.plan_is_path(plan.regions[index])
+	var current: Dictionary = _branch_edit.get("region", plan.regions[index]) if index >= 0 else {}
 	if event is InputEventKey:
 		if not event.pressed or event.echo:return EditorPlugin.AFTER_GUI_INPUT_PASS
 		if event.is_command_or_control_pressed() and event.keycode in [KEY_Z,KEY_Y]:
 			if not _plan_drag.is_empty():_plan_cancel_drag();return EditorPlugin.AFTER_GUI_INPUT_STOP
+			if not _branch_edit.is_empty():
+				_branch_edit.clear()
+				_refresh_terrain_plan()
+				return EditorPlugin.AFTER_GUI_INPUT_STOP
 			return EditorPlugin.AFTER_GUI_INPUT_PASS
+		if event.keycode == KEY_ENTER and not _branch_edit.is_empty():
+			_preview_branch_edits()
+			return EditorPlugin.AFTER_GUI_INPUT_STOP
 		if event.keycode==KEY_ESCAPE:
 			if not _plan_drag.is_empty():_plan_cancel_drag()
+			elif not _branch_edit.is_empty():
+				_branch_edit.clear()
+				_refresh_terrain_plan()
+				_plan_panel.set_status("Черновик ответвления отменён.")
 			else:_plan_point_mode="move";_plan_panel.set_point_mode("move")
 			return EditorPlugin.AFTER_GUI_INPUT_STOP
 		if event.keycode in [KEY_DELETE,KEY_BACKSPACE] and path and _plan_point_mode!="translate":
-			_plan_remove_point(plan.regions[index].points_m,_plan_point_index);return EditorPlugin.AFTER_GUI_INPUT_STOP
+			_plan_remove_point(current.points_m,_plan_point_index);return EditorPlugin.AFTER_GUI_INPUT_STOP
 		return EditorPlugin.AFTER_GUI_INPUT_PASS
 	if event is InputEventMouseMotion:
 		if not _plan_drag.is_empty():
 			var point:=_plan_drag_position(event.position)
 			if point.is_finite():_plan_drag.ghost=TerrainPlan.Influence.plan_edit(_plan_drag.region,_plan_drag.index,point-_plan_drag.anchor,_plan_drag.translate);_update_overlay()
+		elif path:
+			_plan_hover_index = _plan_point_at(current.points_m, event.position, true, _plan_path_support(current))
+			_plan_insert_hover = _plan_insert_target(current, event.position) if _plan_point_mode == "insert" else Vector2.INF
+			_update_overlay()
 		return EditorPlugin.AFTER_GUI_INPUT_STOP
 	if not event is InputEventMouseButton or event.button_index!=MOUSE_BUTTON_LEFT:return EditorPlugin.AFTER_GUI_INPUT_PASS
 	if not event.pressed:
 		if not _plan_drag.is_empty():_plan_finish_drag()
 		return EditorPlugin.AFTER_GUI_INPUT_STOP
 	if index>=0:
-		var region:Dictionary=plan.regions[index]
+		var region:Dictionary=current
 		var points:PackedVector2Array=TerrainPlan.Influence.plan_controls(region)
 		if _plan_point_mode=="translate":
 			var centre:=_plan_point_pixel(TerrainPlan.Influence.plan_anchor(region))
 			if centre.is_finite() and centre.distance_to(event.position)<14:
 				_plan_begin_drag(region,-1,event.position,true);return EditorPlugin.AFTER_GUI_INPUT_STOP
 		else:
-			var hit:=_plan_point_at(points,event.position)
-			if hit>=0:
+			var hit := _plan_point_at(points, event.position, path, _plan_path_support(region) if path else null)
+			if hit >= 0 and _plan_point_mode != "insert":
+				_plan_hover_index = hit
 				_plan_point_index=hit;_plan_panel.set_point_selection(hit,points.size())
 				if path and _plan_point_mode=="remove":_plan_remove_point(points,hit)
 				elif _plan_point_mode=="move":_plan_begin_drag(region,hit,event.position,false)
 				_update_overlay();return EditorPlugin.AFTER_GUI_INPUT_STOP
 		if path and _plan_point_mode=="insert":
-			var on_line:=_plan_path_hit(region,event.position)
-			if on_line.distance<13.0:
-				var point:Vector2=on_line.point.snapped(Vector2.ONE*0.5)
+			var point := _plan_insert_target(region, event.position)
+			if point.is_finite():
 				var curve:=TerrainPlan.Influence.path_curve(points)
 				var offset:=curve.get_closest_offset(point)
 				var where:=1
 				while where<points.size()-1 and curve.get_closest_offset(points[where])<offset:where+=1
 				var changed:=points.duplicate();changed.insert(where,point)
-				var message:=commit_plan_points(map,_plan_selected_id,changed)
+				var message:=_stage_branch_points(changed) if region.has("road_join") else commit_plan_points(map,_plan_selected_id,changed)
 				if message.is_empty():_plan_point_index=where
 				_plan_panel.set_status(message if not message.is_empty() else "Точка добавлена.");_update_overlay()
 				return EditorPlugin.AFTER_GUI_INPUT_STOP
 	var selected:=_plan_region_at(event.position)
 	if not selected.is_empty():
 		_select_plan_region(selected)
-		if _plan_point_mode=="translate":
+		if _plan_point_mode=="translate" and _branch_edit.is_empty():
 			plan=TerrainPlan.read(map);index=plan.index_of(selected)
 			_plan_begin_drag(plan.regions[index],-1,event.position,true)
 	return EditorPlugin.AFTER_GUI_INPUT_STOP
@@ -4277,7 +7125,13 @@ func _plan_remove_point(points:PackedVector2Array,index:int)->void:
 	if index<0 or index>=points.size():return
 	if points.size()<=2:_plan_panel.set_status("У линии должны остаться хотя бы две точки.");return
 	var changed:=points.duplicate();changed.remove_at(index)
-	var message:=commit_plan_points(map,_plan_selected_id,changed)
+	var plan: Resource = TerrainPlan.read(map)
+	var region_index: int = plan.index_of(_plan_selected_id) if plan != null else -1
+	var branch: bool = region_index >= 0 and plan.regions[region_index].has("road_join")
+	if branch and index == 0:
+		_plan_panel.set_status("Начало ответвления закреплено на главной дороге.")
+		return
+	var message:=_stage_branch_points(changed) if branch else commit_plan_points(map,_plan_selected_id,changed)
 	if message.is_empty():_plan_point_index=mini(index,changed.size()-1)
 	_plan_panel.set_status(message if not message.is_empty() else "Точка удалена.");_update_overlay()
 
@@ -4288,5 +7142,6 @@ func _plan_finish_drag()->void:
 	var valid:bool=plan!=null and plan.data()==_plan_drag.version
 	# End the gesture before applying history; callbacks must render the saved shape.
 	_plan_cancel_drag()
-	if valid:message=commit_plan_shape(map,_plan_selected_id,ghost)
-	_plan_panel.set_status(message if not message.is_empty() else "Контур сохранён в плане. Предпросмотр → Применить.")
+	var branch := ghost.has("road_join")
+	if valid:message=_stage_branch_points(ghost.points_m) if branch else commit_plan_shape(map,_plan_selected_id,ghost)
+	_plan_panel.set_status(message if not message.is_empty() else "Точка изменена в черновике. Предпросмотр → Применить." if branch else "Контур сохранён в плане. Предпросмотр → Применить.")

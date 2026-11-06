@@ -14,6 +14,9 @@ extends Node
 ## Zero preserves legacy any-body plates. Character contribution is explicit.
 @export_range(0.0, 1000.0, 0.25) var required_weight := 0.0
 @export_range(0.0, 1000.0, 0.25) var character_weight := 1.0
+## Optional momentary lever operated by a follower instead of a saved toggle.
+@export var companion_hero_id := ""
+@export var companion_completion_flag := ""
 var sensed_weight := 0.0
 var value := false
 var blocked := false
@@ -100,6 +103,8 @@ func release() -> void:
 	if _target is Light3D: _target.visible = _original_visible
 func sense(delta: float, state: EmberExploreState, circuit_id: String) -> bool:
 	if kind == "lever":
+		if not companion_hero_id.is_empty():
+			return is_instance_valid(_adapter) and _adapter.call("companion_holding")
 		return bool(state.flags.get("mechanism_%s_%s" % [circuit_id, component_id], false)) if state != null else false
 	if kind != "plate" or not is_instance_valid(_target) or not _target is Area3D: return false
 	var valid := false

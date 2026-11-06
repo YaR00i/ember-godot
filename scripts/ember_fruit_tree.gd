@@ -1,10 +1,21 @@
 extends Area3D
+const RuntimeShadowLod = preload("res://scripts/ember_runtime_shadow_lod.gd")
 ## Authored gated fruit uses the existing ExploreState/WorldItem save path.
 @export var dropped_flag_id := ""
+@export var orchard_pickup_id := ""
 var progress_state: EmberExploreState
 var _shake: Tween
 var _direction := Vector2.ZERO
 var _dropped_now := false
+
+func _enter_tree() -> void:
+	if orchard_pickup_id.is_empty():
+		return
+	var pickup := get_node("ApplePickup")
+	dropped_flag_id = orchard_pickup_id + "_dropped"
+	pickup.pickup_id = orchard_pickup_id
+	pickup.available_flag_id = dropped_flag_id
+
 
 func _ready() -> void:
 	monitoring=false
@@ -46,11 +57,11 @@ func _shake_step(phase: float) -> void:
 	var mesh:=get_node_or_null("Tree/Mesh") as MeshInstance3D
 	if mesh==null:return
 	var amount:=sin(phase*TAU*2.2)*pow(1.0-phase,2.0)*0.12
-	mesh.set_instance_shader_parameter("tree_hit_sway",Vector4(_direction.x*amount,_direction.y*amount,1.2,3.2))
+	RuntimeShadowLod.forward_instance_parameter(mesh,"tree_hit_sway",Vector4(_direction.x*amount,_direction.y*amount,1.2,3.2))
 
 func _finish_shake() -> void:
 	var mesh:=get_node_or_null("Tree/Mesh") as MeshInstance3D
-	if mesh!=null:mesh.set_instance_shader_parameter("tree_hit_sway",Vector4.ZERO)
+	if mesh!=null:RuntimeShadowLod.forward_instance_parameter(mesh,"tree_hit_sway",Vector4.ZERO)
 	_shake=null
 
 func _exit_tree() -> void:

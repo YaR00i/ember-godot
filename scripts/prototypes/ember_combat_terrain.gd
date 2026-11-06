@@ -12,10 +12,37 @@ static func cell_key(cell: Vector2i) -> String:
 	return "%d:%d" % [cell.x, cell.y]
 
 
+static func world_edge_key(a: Vector2i, b: Vector2i) -> String:
+	if a.x > b.x or (a.x == b.x and a.y > b.y):
+		return cell_key(b) + "|" + cell_key(a)
+	return cell_key(a) + "|" + cell_key(b)
+
+
+static func world_edge_blocked(state: Dictionary, from_cell: Vector2i, to_cell: Vector2i) -> bool:
+	var edges: Dictionary = state.get("fieldGeometry", {}).get("edges", {})
+	if edges.is_empty():
+		return false
+	if from_cell.x == to_cell.x or from_cell.y == to_cell.y:
+		return edges.has(world_edge_key(from_cell, to_cell))
+	var cross_x := Vector2i(to_cell.x, from_cell.y)
+	var cross_z := Vector2i(from_cell.x, to_cell.y)
+	return edges.has(world_edge_key(from_cell, cross_x)) or edges.has(world_edge_key(cross_x, to_cell)) \
+		or edges.has(world_edge_key(from_cell, cross_z)) or edges.has(world_edge_key(cross_z, to_cell))
+
+
 static func cell_definition(state: Dictionary, cell: Vector2i) -> Dictionary:
-	return (((state.get("grid", {}) as Dictionary).get("cells", {}) as Dictionary).get(
+	var definition := (((state.get("grid", {}) as Dictionary).get("cells", {}) as Dictionary).get(
 		cell_key(cell), {}
 	) as Dictionary).duplicate(true)
+	var gate: Dictionary = state.get("pressureGate", {})
+	if not definition.is_empty() and gate.get("gateCell") == cell:
+		definition["blocked"] = not preload("res://scripts/ember_combat_world_items.gd").pressure_gate_open(state)
+	if state.get("fieldGeometry", {}).get("blocked", {}).has(cell):
+		definition["blocked"] = true
+	var levels: Dictionary = state.get("fieldGeometry", {}).get("levels", {})
+	if levels.has(cell):
+		definition["elevation"] = levels[cell]
+	return definition
 
 
 static func elevation(state: Dictionary, cell: Vector2i) -> int:
@@ -30,16 +57,21 @@ static func can_step(
 ) -> bool:
 	## Going up is limited by the unit's Jump. A downward step remains legal so
 	## the same path can preview a fall instead of silently making cliffs walls.
-	return elevation(state, to_cell) - elevation(state, from_cell) <= maxi(0, jump_height)
+	return not world_edge_blocked(state, from_cell, to_cell) and (
+		elevation(state, to_cell) - elevation(state, from_cell) <= maxi(0, jump_height)
+		or state.get("fieldGeometry", {}).get("walkEdges", {}).has(world_edge_key(from_cell, to_cell))
+	)
 
 
 static func can_force_move(state: Dictionary, from_cell: Vector2i, to_cell: Vector2i) -> bool:
 	## Pushes and throws can cross a ledge downward, but never shove a target up a
 	## vertical wall. Occupancy and map bounds stay with the grid owner.
-	return elevation(state, to_cell) <= elevation(state, from_cell)
+	return not world_edge_blocked(state, from_cell, to_cell) and elevation(state, to_cell) <= elevation(state, from_cell)
 
 
 static func fall_height(state: Dictionary, from_cell: Vector2i, to_cell: Vector2i) -> int:
+	if state.get("fieldGeometry", {}).get("walkEdges", {}).has(world_edge_key(from_cell, to_cell)):
+		return 0
 	return maxi(0, elevation(state, from_cell) - elevation(state, to_cell))
 
 
@@ -65,6 +97,10 @@ static func has_line_of_sight(state: Dictionary, from_cell: Vector2i, to_cell: V
 	if from_cell == to_cell:
 		return true
 	var cells := line_cells(from_cell, to_cell)
+	if not state.get("fieldGeometry", {}).get("edges", {}).is_empty():
+		for index in range(1, cells.size()):
+			if world_edge_blocked(state, cells[index - 1], cells[index]):
+				return false
 	if cells.size() <= 2:
 		return true
 	var start_eye := float(elevation(state, from_cell)) + 1.0

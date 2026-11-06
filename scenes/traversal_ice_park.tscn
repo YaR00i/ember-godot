@@ -1,0 +1,262 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/world_canvas.gd" id="world"]
+[ext_resource type="Script" path="res://scripts/ember_map_loader.gd" id="map"]
+[ext_resource type="Script" path="res://scripts/ember_region.gd" id="region"]
+[ext_resource type="Script" path="res://scripts/ember_interact.gd" id="interact"]
+[ext_resource type="Script" path="res://scripts/ember_ice_sled.gd" id="sled"]
+[ext_resource type="Resource" path="res://content/world_terrains/chapter1/chapter1_woodland.res" id="ground"]
+
+[sub_resource type="Environment" id="ambient"]
+background_mode = 1
+background_color = Color(0.33, 0.46, 0.61, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.82, 0.89, 1, 1)
+ambient_light_energy = 0.85
+
+[sub_resource type="BoxShape3D" id="entry_shape"]
+size = Vector3(24, 32, 24)
+
+[sub_resource type="StandardMaterial3D" id="ice"]
+albedo_color = Color(0.38, 0.78, 0.91, 1)
+roughness = 0.3
+
+[sub_resource type="BoxMesh" id="mesh_Rink"]
+size = Vector3(50, 2, 100)
+material = SubResource("ice")
+[sub_resource type="BoxShape3D" id="shape_Rink"]
+size = Vector3(50, 2, 100)
+
+[sub_resource type="BoxMesh" id="mesh_runout"]
+size = Vector3(95, 2, 100)
+material = SubResource("ice")
+[sub_resource type="BoxShape3D" id="shape_runout"]
+size = Vector3(95, 2, 100)
+
+[sub_resource type="BoxMesh" id="mesh_gap_side"]
+size = Vector3(15, 2, 30)
+material = SubResource("ice")
+[sub_resource type="BoxShape3D" id="shape_gap_side"]
+size = Vector3(15, 2, 30)
+
+[sub_resource type="BoxMesh" id="mesh_jump_ramp"]
+size = Vector3(15, 1.4, 32)
+material = SubResource("ice")
+[sub_resource type="BoxShape3D" id="shape_jump_ramp"]
+size = Vector3(15, 1.4, 32)
+
+[sub_resource type="StandardMaterial3D" id="sled_obstacle"]
+albedo_color = Color(0.88, 0.32, 0.10, 1)
+[sub_resource type="BoxMesh" id="sled_obstacle_mesh"]
+size = Vector3(4, 8, 5)
+material = SubResource("sled_obstacle")
+[sub_resource type="BoxShape3D" id="sled_obstacle_shape"]
+size = Vector3(4, 8, 5)
+
+[sub_resource type="BoxMesh" id="mesh_WestSlope"]
+size = Vector3(62.361847310675465, 2, 100)
+material = SubResource("ice")
+[sub_resource type="BoxShape3D" id="shape_WestSlope"]
+size = Vector3(62.361847310675465, 2, 100)
+
+[sub_resource type="BoxMesh" id="mesh_EastSlope"]
+size = Vector3(62.361847310675465, 2, 100)
+material = SubResource("ice")
+[sub_resource type="BoxShape3D" id="shape_EastSlope"]
+size = Vector3(62.361847310675465, 2, 100)
+
+[sub_resource type="StandardMaterial3D" id="sled_wood"]
+albedo_color = Color(0.62, 0.30, 0.13, 1)
+[sub_resource type="StandardMaterial3D" id="runner_metal"]
+albedo_color = Color(0.19, 0.23, 0.30, 1)
+metallic = 0.6
+[sub_resource type="BoxMesh" id="sled_seat"]
+size = Vector3(9, 1.2, 13)
+material = SubResource("sled_wood")
+[sub_resource type="BoxMesh" id="sled_runner"]
+size = Vector3(1.1, 1.1, 16)
+material = SubResource("runner_metal")
+[sub_resource type="BoxMesh" id="sled_ramp_mesh"]
+size = Vector3(50.117462026722784, 2, 23)
+material = SubResource("sled_wood")
+[sub_resource type="BoxShape3D" id="sled_ramp_shape"]
+size = Vector3(50.117462026722784, 2, 23)
+
+[node name="traversal_ice_park" type="Node3D"]
+script = ExtResource("world")
+map_id = "traversal_ice_park"
+sandbox_storage_root = "user://ember-chapter1-blockout"
+metadata/chapter1_blockout = true
+metadata/blockout_title = "Ледовый полигон"
+
+[node name="Map" type="Node3D" parent="."]
+script = ExtResource("map")
+map_id = "traversal_ice_park"
+compact_terrain = ExtResource("ground")
+compact_material_light_mode = 1
+authored_size_blocks = Vector2i(40, 36)
+camera_distance = 145.0
+camera_polar = 0.81
+camera_yaw = 0.35
+camera_far = 1600.0
+
+[node name="Look" type="Node3D" parent="Map"]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="Map/Look"]
+environment = SubResource("ambient")
+[node name="Sun" type="DirectionalLight3D" parent="Map/Look"]
+rotation = Vector3(-0.85, -0.45, 0)
+light_energy = 1.2
+shadow_enabled = true
+[node name="Terrain" type="Node3D" parent="Map"]
+[node name="Props" type="Node3D" parent="Map"]
+
+[node name="Return" type="Area3D" parent="Map/Props"]
+position = Vector3(75, 8, 224)
+collision_layer = 0
+collision_mask = 0
+monitoring = false
+script = ExtResource("interact")
+kind = "door"
+target_map_id = "chapter1_woodland"
+target_region_id = "from_traversal_parks"
+
+[node name="ReturnLabel" type="Label3D" parent="Map/Props"]
+position = Vector3(75, 34, 224)
+text = "F · На опушку"
+billboard = 1
+pixel_size = 0.105
+
+[node name="Rink" type="StaticBody3D" parent="Map/Props" groups=["ember_ice_surface", "ember_free_ice"]]
+position = Vector3(275, 8, 224)
+rotation = Vector3(0, 0, 0)
+collision_mask = 0
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/Rink"]
+shape = SubResource("shape_Rink")
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/Rink"]
+mesh = SubResource("mesh_Rink")
+
+[node name="Runout" type="StaticBody3D" parent="Map/Props" groups=["ember_ice_surface", "ember_free_ice"]]
+position = Vector3(362.5, 8, 224)
+collision_mask = 0
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/Runout"]
+shape = SubResource("shape_runout")
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/Runout"]
+mesh = SubResource("mesh_runout")
+
+[node name="GapLeft" type="StaticBody3D" parent="Map/Props" groups=["ember_ice_surface", "ember_free_ice"]]
+position = Vector3(307.5, 8, 189)
+collision_mask = 0
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/GapLeft"]
+shape = SubResource("shape_gap_side")
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/GapLeft"]
+mesh = SubResource("mesh_gap_side")
+
+[node name="GapRight" type="StaticBody3D" parent="Map/Props" groups=["ember_ice_surface", "ember_free_ice"]]
+position = Vector3(307.5, 8, 259)
+collision_mask = 0
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/GapRight"]
+shape = SubResource("shape_gap_side")
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/GapRight"]
+mesh = SubResource("mesh_gap_side")
+
+[node name="SledJump" type="StaticBody3D" parent="Map/Props" groups=["ember_ice_surface", "ember_free_ice"]]
+position = Vector3(293.04, 10.62, 224)
+rotation = Vector3(0, 0, 0.31)
+collision_mask = 0
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/SledJump"]
+shape = SubResource("shape_jump_ramp")
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/SledJump"]
+mesh = SubResource("mesh_jump_ramp")
+
+[node name="SledObstacleLeft" type="StaticBody3D" parent="Map/Props"]
+position = Vector3(220, 21, 220)
+collision_mask = 0
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/SledObstacleLeft"]
+shape = SubResource("sled_obstacle_shape")
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/SledObstacleLeft"]
+mesh = SubResource("sled_obstacle_mesh")
+
+[node name="SledObstacleRight" type="StaticBody3D" parent="Map/Props"]
+position = Vector3(240, 15, 244)
+collision_mask = 0
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/SledObstacleRight"]
+shape = SubResource("sled_obstacle_shape")
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/SledObstacleRight"]
+mesh = SubResource("sled_obstacle_mesh")
+
+[node name="WestSlope" type="StaticBody3D" parent="Map/Props" groups=["ember_ice_surface", "ember_free_ice"]]
+position = Vector3(220.27, 16.03, 224)
+rotation = Vector3(0, 0, -0.27609701939543646)
+collision_mask = 0
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/WestSlope"]
+shape = SubResource("shape_WestSlope")
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/WestSlope"]
+mesh = SubResource("mesh_WestSlope")
+
+[node name="EastSlope" type="StaticBody3D" parent="Map/Props" groups=["ember_ice_surface", "ember_free_ice"]]
+position = Vector3(439.73, 16.03, 224)
+rotation = Vector3(0, 0, 0.27609701939543646)
+collision_mask = 0
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/EastSlope"]
+shape = SubResource("shape_EastSlope")
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/EastSlope"]
+mesh = SubResource("mesh_EastSlope")
+
+[node name="RinkSign" type="Label3D" parent="Map/Props"]
+position = Vector3(270, 34, 174)
+text = "Каток · ровный лёд и два склона"
+billboard = 1
+pixel_size = 0.105
+
+[node name="SledRamp" type="StaticBody3D" parent="Map/Props"]
+position = Vector3(167.24718438038067, 15.762203110465979, 224)
+rotation = Vector3(0, 0, 0.3545670518732277)
+collision_mask = 0
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/SledRamp"]
+shape = SubResource("sled_ramp_shape")
+[node name="Visual" type="MeshInstance3D" parent="Map/Props/SledRamp"]
+mesh = SubResource("sled_ramp_mesh")
+
+[node name="Sled" type="Area3D" parent="Map/Props"]
+position = Vector3(188, 24.3, 224)
+rotation = Vector3(0, 1.5707963, 0)
+collision_layer = 0
+collision_mask = 0
+monitoring = false
+monitorable = false
+script = ExtResource("sled")
+kind = "custom"
+[node name="Launch" type="Marker3D" parent="Map/Props/Sled"]
+position = Vector3(0, 1.05, 5)
+[node name="SledVisual" type="Node3D" parent="Map/Props/Sled"]
+[node name="Seat" type="MeshInstance3D" parent="Map/Props/Sled/SledVisual"]
+position = Vector3(0, 2.2, 0)
+mesh = SubResource("sled_seat")
+[node name="RunnerLeft" type="MeshInstance3D" parent="Map/Props/Sled/SledVisual"]
+position = Vector3(-3.8, 0.65, 0)
+mesh = SubResource("sled_runner")
+[node name="RunnerRight" type="MeshInstance3D" parent="Map/Props/Sled/SledVisual"]
+position = Vector3(3.8, 0.65, 0)
+mesh = SubResource("sled_runner")
+[node name="SledSign" type="Label3D" parent="Map/Props"]
+position = Vector3(184, 46, 224)
+text = "F · Сани"
+billboard = 1
+pixel_size = 0.1
+
+[node name="Regions" type="Node3D" parent="Map"]
+[node name="entry" type="Area3D" parent="Map/Regions"]
+position = Vector3(106, 8, 224)
+script = ExtResource("region")
+kind = "player_start"
+map_id = "traversal_ice_park"
+region_id = "entry"
+[node name="Shape" type="CollisionShape3D" parent="Map/Regions/entry"]
+shape = SubResource("entry_shape")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+[node name="Gate" type="Label" parent="CanvasLayer"]
+[node name="BlockoutLegend" type="Label" parent="CanvasLayer"]
+offset_left = 16.0
+offset_top = 104.0
+text = "Ледовый полигон · Разгоняйся на льду, отпускай клавиши и пробуй заезжать на склоны."

@@ -25,7 +25,7 @@ static func candidates(root: Node) -> Array[Node3D]:
 			if parent != root and _direct_geometry(parent):
 				continue
 			result.append(node)
-		elif _direct_geometry(node):
+		elif _direct_geometry(node) or node.get_children().any(func(child): return child is AnimationPlayer):
 			result.append(node)
 	return result
 
@@ -52,6 +52,39 @@ static func bounds(node: Node3D) -> Dictionary:
 	return {"center": box.get_center() if found else node.global_position + Vector3.UP * 1.38,
 		"height": maxf(box.size.y, 0.1) if found else 1.8,
 		"span": maxf(maxf(box.size.x, box.size.y), maxf(box.size.z, 0.1)) if found else 0.35}
+
+static func actor_clips(actor: Node3D) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for child in actor.find_children("*", "AnimationPlayer", true, false):
+		var source := child as AnimationPlayer
+		var source_root := source.get_node_or_null(source.root_node)
+		if source_root == null or source.is_playing() or not source.autoplay.is_empty():
+			continue
+		for name in source.get_animation_list():
+			if name == "RESET":
+				continue
+			var clip := source.get_animation(name)
+			var paths := _bone_paths(actor, source_root, clip)
+			if not paths.is_empty():
+				result.append({"player": actor.get_path_to(source), "name": name, "length": clip.length})
+	return result
+
+
+static func _bone_paths(actor: Node3D, source_root: Node, clip: Animation) -> Dictionary:
+	var paths := {}
+	for index in clip.get_track_count():
+		if not clip.track_is_enabled(index):
+			continue
+		var path := clip.track_get_path(index)
+		var skeleton := source_root.get_node_or_null(NodePath(path.get_concatenated_names())) as Skeleton3D
+		if (
+			skeleton == null or not actor.is_ancestor_of(skeleton)
+			or path.get_subname_count() != 1 or skeleton.find_bone(path.get_subname(0)) < 0
+			or clip.track_get_type(index) not in [Animation.TYPE_POSITION_3D, Animation.TYPE_ROTATION_3D, Animation.TYPE_SCALE_3D]
+		):
+			return {}
+		paths[index] = skeleton
+	return paths
 
 
 static func build(root: Node3D, input: Dictionary) -> Dictionary:
@@ -82,6 +115,21 @@ static func build(root: Node3D, input: Dictionary) -> Dictionary:
 	var movement: Vector3 = input.get("movement", Vector3(0.8, 0, 0))
 	if not is_finite(duration) or duration < 0.5 or duration > 120.0 or not movement.is_finite():
 		return {"ok": false, "error": "Проверь длительность и смещение предмета"}
+	var chosen_clip: Dictionary = input.get("actorClip", {})
+	var actor_animation: Animation
+	var bone_paths := {}
+	if not chosen_clip.is_empty():
+		var actor := targets[1 if input.get("clipActor") == "secondary" else 0]
+		for entry in actor_clips(actor):
+			if entry.player == chosen_clip.get("player") and entry.name == chosen_clip.get("name"):
+				var source := actor.get_node(entry.player) as AnimationPlayer
+				actor_animation = source.get_animation(entry.name)
+				bone_paths = _bone_paths(actor, source.get_node(source.root_node), actor_animation)
+				break
+		if bone_paths.is_empty():
+			return {"ok": false, "error": "Выбранный клип больше не подходит участнику"}
+		if actor_animation.length > duration:
+			return {"ok": false, "error": "Увеличь длительность сценки до %.2f сек." % actor_animation.length}
 	var cues: Array[Cue] = []
 	var times: Array[float] = []
 	for entry in input.get("dialogues", []):
@@ -151,6 +199,25 @@ static func build(root: Node3D, input: Dictionary) -> Dictionary:
 	reset_track = reset.add_track(Animation.TYPE_VALUE)
 	reset.track_set_path(reset_track, shot_path)
 	reset.track_insert_key(reset_track, 0.0, 0)
+	for source_track in bone_paths:
+		var skeleton: Skeleton3D = bone_paths[source_track]
+		var bone_name := actor_animation.track_get_path(source_track).get_subname(0)
+		var path := NodePath(str(root.get_path_to(skeleton)) + ":" + str(bone_name))
+		var target_index := clip.get_track_count()
+		actor_animation.copy_track(source_track, clip)
+		clip.track_set_path(target_index, path)
+		clip.track_set_interpolation_loop_wrap(target_index, false)
+		var type := actor_animation.track_get_type(source_track)
+		var bone := skeleton.find_bone(bone_name)
+		reset_track = reset.add_track(type)
+		reset.track_set_path(reset_track, path)
+		match type:
+			Animation.TYPE_POSITION_3D:
+				reset.position_track_insert_key(reset_track, 0.0, skeleton.get_bone_pose_position(bone))
+			Animation.TYPE_ROTATION_3D:
+				reset.rotation_track_insert_key(reset_track, 0.0, skeleton.get_bone_pose_rotation(bone))
+			Animation.TYPE_SCALE_3D:
+				reset.scale_track_insert_key(reset_track, 0.0, skeleton.get_bone_pose_scale(bone))
 	var library := AnimationLibrary.new()
 	library.add_animation("story", clip)
 	library.add_animation("RESET", reset)

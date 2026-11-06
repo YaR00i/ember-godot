@@ -47,8 +47,10 @@ func run()->void:
 	key=InputEventKey.new();key.physical_keycode=KEY_SHIFT;key.pressed=false;Input.parse_input_event(key)
 	camera.look_at_from_position(actor.position+Vector3(42,18,48),actor.position+Vector3(0,13,0));await shot("hoshi-original-walk")
 	actor.controlled_hero_id="mira";actor._refresh_active_visual()
-	check(not visual.visible and actor.get_node("Viz").visible,"other hero keeps its placeholder")
-	check(is_equal_approx(actor.get_node("Shape").shape.height,24.0),"other hero capsule restored")
+	var mira := actor._hoshi_visual
+	check(not visual.visible and is_instance_valid(mira) and mira.visible and not actor.get_node("Viz").visible,"selecting Mira activates her own model")
+	if is_instance_valid(mira):
+		check(is_equal_approx(actor.get_node("Shape").shape.height,mira.height_m*16),"capsule matches Mira's visual")
 	actor.controlled_hero_id="protagonist";actor._refresh_active_visual()
 	check(visual.visible and not actor.get_node("Viz").visible,"Hoshi restored when returning to leader")
 	for i in rests.size():check(visual.skeleton.get_bone_rest(i)==rests[i],"rest transform unchanged")

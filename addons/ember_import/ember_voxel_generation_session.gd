@@ -32,7 +32,9 @@ var recipe_directory := "res://content/editor/voxel_generators"
 static func preset_recipe(recipe: Resource, name := "") -> Resource:
 	var result := recipe.duplicate(true)
 	result.parameters = Generator.normalized_parameters(result.generator_id, result.parameters)
-	result.structure = {}
+	# A building plan is authored layout, not a frozen generated skeleton.
+	if result.generator_id != Generator.BUILDING:
+		result.structure = {}
 	result.family_id = ""
 	result.family_title = ""
 	result.variation_name = "Основной"

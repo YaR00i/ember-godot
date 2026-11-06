@@ -59,6 +59,12 @@ func snapshot(projection: TerrainProjection) -> Dictionary:
 func run() -> void:
 	var source := fixture()
 	var original := source.working_copy()
+	var memo := Cache.EditorFingerprintMemo.new()
+	var editor_policy := ["editor-top-native-lod-v1", true]
+	for tile in [Vector2i.ZERO, Vector2i.RIGHT, Vector2i.DOWN]:
+		var shared := Cache.new().tile_key(source, tile, 0, editor_policy, PackedVector4Array(), {}, memo)
+		var independent := Cache.new().tile_key(source, tile, 0, editor_policy, PackedVector4Array(), {})
+		assert(shared == independent, "neighbour reuse must keep existing editor cache keys")
 	var cold := await project(source)
 	var baseline := snapshot(cold)
 	var cold_profile := cold.profile_snapshot()

@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="EmberShopResource" format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_shop_resource.gd" id="1_640hs"]
+
+[resource]
+script = ExtResource("1_640hs")
+shop_id = "chapter1_alchemy"
+definition = {
+"id": "chapter1_alchemy",
+"listings": [{
+"buyPrice": 3,
+"itemId": "herb",
+"sellPrice": 1,
+"stock": 8
+}, {
+"buyPrice": 15,
+"itemId": "revival_spark",
+"sellPrice": 0,
+"stock": 2
+}],
+"nameRu": "Алхимическая лавка · макет ассортимента"
+}

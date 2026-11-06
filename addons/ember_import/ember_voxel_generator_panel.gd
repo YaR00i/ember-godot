@@ -7,6 +7,8 @@ const Generator = preload("res://addons/ember_import/ember_voxel_generator.gd")
 const Creation = preload("res://addons/ember_import/ember_voxel_tree_object_creation.gd")
 const VectorField = preload("res://addons/ember_import/ember_voxel_vector_field.gd")
 const TreePartField = preload("res://addons/ember_import/ember_tree_part_density_field.gd")
+const BuildingPlan = preload("res://addons/ember_import/ember_building_plan_field.gd")
+const BuildingLayout = preload("res://addons/ember_import/ember_building_layout.gd")
 
 signal preview_changed(packed: PackedScene, source: EmberVoxelModelResource)
 signal variant_created(prop: EmberVoxelProp)
@@ -28,6 +30,7 @@ var _syncing := false
 var _save_mode: OptionButton
 var _variation_name: LineEdit
 var _source_id := ""
+var _building_plan:Control
 
 
 func _exit_tree() -> void:
@@ -98,6 +101,8 @@ func open_source(source: EmberVoxelModelResource, next_context := {}) -> bool:
 	# Loading never regenerates geometry or modifies the saved recipe.
 	recipe = loaded.duplicate(true)
 	recipe.parameters = Generator.normalized_parameters(recipe.generator_id, recipe.parameters)
+	if recipe.generator_id == Generator.BUILDING and not recipe.parameters.has("fixed_corner"):
+		recipe.parameters.fixed_corner = BuildingLayout.front_corner(recipe.parameters)
 	_baseline = recipe.duplicate(true)
 	_save_mode.select(0)
 	_variation_name.text = "Новая вариация"
@@ -179,6 +184,39 @@ func _rebuild_fields() -> void:
 			controls[field.key] = value
 	_sync_rock_fields()
 	_syncing = false
+	_building_plan=null
+	if recipe.generator_id==Generator.BUILDING:
+		_building_plan=BuildingPlan.new();_building_plan.add_tools(_fields)
+		_building_plan.configure(recipe.parameters,recipe.structure)
+		_building_plan.changed.connect(set_building_layout)
+
+func set_building_layout(parameters:Dictionary,structure:Dictionary)->void:
+	var normalized=Generator.normalized_parameters(Generator.BUILDING,parameters)
+	var errors=Generator.BuildingProvider.Layout.errors(structure,normalized)
+	if not errors.is_empty():_info.text=errors[0];_building_plan.cancel();return
+	history.create_action("План дома")
+	history.add_do_method(_assign_building.bind(normalized,structure.duplicate(true)))
+	history.add_undo_method(_assign_building.bind(recipe.parameters.duplicate(true),recipe.structure.duplicate(true)))
+	history.commit_action()
+
+func _assign_building(parameters:Dictionary,structure:Dictionary)->void:
+	recipe.parameters=parameters.duplicate(true);recipe.structure=structure.duplicate(true)
+	_clear_preview();_sync_controls()
+	_info.text="План изменён. Соберите точный предпросмотр; сохранённый дом пока прежний."
+
+func forward_building_input(camera:Camera3D,event:InputEvent,frame:Transform3D)->bool:
+	if not is_instance_valid(_building_plan):
+		return false
+	frame.origin -= frame.basis * building_source_offset()
+	return _building_plan.forward_input(camera,event,frame)
+
+
+func building_source_offset() -> Vector3:
+	return _source.solid_surface.get("building_offset", Vector3.ZERO) if _source != null else Vector3.ZERO
+
+func cancel_building_gesture()->bool:
+	if not is_instance_valid(_building_plan) or not _building_plan._drag:return false
+	_building_plan.cancel();return true
 
 
 func _sync_rock_fields() -> void:
@@ -201,6 +239,10 @@ func _sync_rock_fields() -> void:
 func set_parameter(key: String, value: Variant) -> void:
 	if _syncing or recipe == null or not controls.has(key):
 		return
+	if recipe.generator_id==Generator.BUILDING:
+		var candidate=recipe.parameters.duplicate(true);candidate[key]=value
+		var errors=Generator.BuildingProvider.Layout.errors(recipe.structure,Generator.normalized_parameters(Generator.BUILDING,candidate))
+		if not errors.is_empty():_sync_controls();_info.text=errors[0];return
 	if recipe.parameters[key] == value and not (recipe.generator_id == Generator.ROCK and Generator.Rock.Surface.needs_vein_upgrade(recipe.parameters, key, value)) and not (key == "foliage_style" and Generator.LargeTreeProvider.FoliagePattern.needs_style_upgrade(recipe.parameters, int(value))): return
 	var before: Variant = recipe.parameters[key]
 	history.create_action("Параметр генератора: " + key)
@@ -265,6 +307,7 @@ func _sync_controls() -> void:
 			controls[key].value = recipe.parameters[key]
 	_sync_rock_fields()
 	_syncing = false
+	if is_instance_valid(_building_plan):_building_plan.configure(recipe.parameters,recipe.structure)
 
 
 func _editing_fields() -> Array:

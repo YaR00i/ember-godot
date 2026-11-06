@@ -1,0 +1,9 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Resource" path="res://tools/fixtures/detail_wheat_source.tres" id="1_3x36m"]
+[ext_resource type="Script" path="res://addons/ember_import/ember_voxel_stamp_preset.gd" id="2_ee1ck"]
+
+[resource]
+script = ExtResource("2_ee1ck")
+display_name = "Колосья"
+geometry = ExtResource("1_3x36m")

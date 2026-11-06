@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="EmberEncounterResource" format=3]
+[ext_resource type="Script" path="res://scripts/prototypes/ember_encounter_resource.gd" id="1"]
+[ext_resource type="Resource" path="res://content/combat/battlefields/tide_pressure.tres" id="2"]
+[ext_resource type="PackedScene" path="res://scenes/prototypes/combat_grid_3d_world.tscn" id="3"]
+[resource]
+script = ExtResource("1")
+encounter_id = "tide_pressure"
+display_name = "Кабан за заслонкой"
+intro_text = "Кай может поджечь сухие листья, а Мира потушить их. За заслонкой лужа проводит «Искру» и замерзает от холода."
+battlefield = ExtResource("2")
+arena_scene = ExtResource("3")
+party_unit_ids = PackedStringArray("protagonist", "mira", "orik", "sena")
+enemy_unit_ids = PackedStringArray("shore_boar")
+victory_flag_id = "chapter1_tide_pressure_defeated"
+victory_xp = 15
+repeatable = false

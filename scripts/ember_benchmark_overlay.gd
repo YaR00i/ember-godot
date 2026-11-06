@@ -1,6 +1,6 @@
 class_name EmberBenchmarkOverlay
 extends Label
-## Debug-only lighting comparison overlay. F3 toggles data; F4 cycles production and stress profiles.
+## Session-only native rendering diagnostics; never modifies authored materials.
 
 const SHADOW_PROFILES := [0, 2, 4, 8, 12, 16]
 const SAMPLE_COUNT := 240
@@ -13,6 +13,11 @@ var _refresh_left := 0.0
 var _profile_index := 2
 var _viewport_rid := RID()
 var _cutaway_preview := false
+var _geometry_view := 0
+var _original_debug_draw := Viewport.DEBUG_DRAW_DISABLED
+var _original_lod_threshold := 1.0
+var _automatic_lod := true
+var _owns_geometry_view := false
 
 
 func _ready() -> void:
@@ -30,11 +35,15 @@ func _ready() -> void:
 			_profile_index = 2
 	var viewport := get_viewport()
 	if viewport:
+		_automatic_lod = viewport.mesh_lod_threshold > 0.0
 		_viewport_rid = viewport.get_viewport_rid()
 		RenderingServer.viewport_set_measure_render_time(_viewport_rid, true)
 
 
 func _exit_tree() -> void:
+	if _owns_geometry_view and is_instance_valid(get_viewport()):
+		get_viewport().debug_draw = _original_debug_draw
+		get_viewport().mesh_lod_threshold = _original_lod_threshold
 	if _viewport_rid.is_valid():
 		RenderingServer.viewport_set_measure_render_time(_viewport_rid, false)
 
@@ -43,7 +52,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if key == null or not key.pressed or key.echo:
 		return
-	if key.keycode == KEY_F3:
+	if key.keycode == KEY_F2:
+		if key.shift_pressed:
+			set_geometry_lod_enabled(not _automatic_lod)
+		else:
+			set_geometry_view((_geometry_view + 1) % 3)
+		visible = true
+		get_viewport().set_input_as_handled()
+	elif key.keycode == KEY_F3:
 		visible = not visible
 		get_viewport().set_input_as_handled()
 	elif key.keycode == KEY_F4:
@@ -57,6 +73,38 @@ func _unhandled_input(event: InputEvent) -> void:
 		map.set_cutaway_preview(_cutaway_preview)
 		visible = true
 		get_viewport().set_input_as_handled()
+
+func _remember_geometry_view() -> void:
+	if _owns_geometry_view:
+		return
+	var viewport := get_viewport()
+	_original_debug_draw = viewport.debug_draw
+	_original_lod_threshold = viewport.mesh_lod_threshold
+	_automatic_lod = _original_lod_threshold > 0.0
+	_owns_geometry_view = true
+
+
+func set_geometry_view(mode: int) -> void:
+	_remember_geometry_view()
+	_geometry_view = clampi(mode, 0, 2)
+	get_viewport().debug_draw = [
+		_original_debug_draw, Viewport.DEBUG_DRAW_LIGHTING, Viewport.DEBUG_DRAW_WIREFRAME,
+	][_geometry_view]
+	_reset_samples()
+
+
+func set_geometry_lod_enabled(enabled: bool) -> void:
+	_remember_geometry_view()
+	_automatic_lod = enabled
+	var restored_threshold := _original_lod_threshold if _original_lod_threshold > 0.0 else 1.0
+	get_viewport().mesh_lod_threshold = restored_threshold if enabled else 0.0
+	_reset_samples()
+
+
+func _reset_samples() -> void:
+	_sample_cursor = 0
+	_sample_size = 0
+	_refresh_left = 0.0
 
 
 func _process(delta: float) -> void:
@@ -77,6 +125,8 @@ func _summary() -> String:
 	var gpu_ms := 0.0
 	var visible_draws := 0
 	var shadow_draws := 0
+	var visible_primitives := 0
+	var shadow_primitives := 0
 	if _viewport_rid.is_valid():
 		cpu_ms = RenderingServer.viewport_get_measured_render_time_cpu(_viewport_rid)
 		gpu_ms = RenderingServer.viewport_get_measured_render_time_gpu(_viewport_rid)
@@ -90,10 +140,14 @@ func _summary() -> String:
 			RenderingServer.VIEWPORT_RENDER_INFO_TYPE_SHADOW,
 			RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME,
 		)
+		visible_primitives=RenderingServer.viewport_get_render_info(_viewport_rid,RenderingServer.VIEWPORT_RENDER_INFO_TYPE_VISIBLE,RenderingServer.VIEWPORT_RENDER_INFO_PRIMITIVES_IN_FRAME)
+		shadow_primitives=RenderingServer.viewport_get_render_info(_viewport_rid,RenderingServer.VIEWPORT_RENDER_INFO_TYPE_SHADOW,RenderingServer.VIEWPORT_RENDER_INFO_PRIMITIVES_IN_FRAME)
 	var budget := map.omni_shadow_count if map else 0
 	var atlas := map.lamp_shadow_size if map else 0
 	return "\n".join([
-		"LIGHT TEST · F3 скрыть · F4 профиль · F7 крыша",
+		"ДИАГНОСТИКА · F2 вид · Shift+F2 LOD · F3 скрыть · F4 свет · F7 крыша",
+		"Вид: %s · LOD: %s" % [["обычный","без материалов (свет прежний)","сетка фактической геометрии"][_geometry_view],"автоматически по камере" if _automatic_lod else "полная геометрия, LOD выключены"],
+		"Служебный вид меняет alpha/vertex эффекты; это диагностика, не игровой FPS PASS." if _geometry_view>0 else "Плотность, дальность, физика и исходные материалы сохраняются.",
 		"локальные тени: %d/%d · budget %d · atlas %d" % [
 			map.omni_shadow_active_count() if map else 0,
 			map.omni_shadow_candidate_count() if map else 0,
@@ -104,10 +158,18 @@ func _summary() -> String:
 			map.cutaway_active_count() if map else 0,
 			map.cutaway_section_count() if map else 0,
 		],
-		"FPS %.0f · frame p95 %.2f ms" % [Performance.get_monitor(Performance.TIME_FPS), _p95_ms()],
+		"FPS окна %.0f · frame p95 %.2f ms" % [_window_fps(), _p95_ms()],
 		"render CPU %.2f ms · GPU %.2f ms" % [cpu_ms, gpu_ms],
 		"draw calls visible %d · shadow %d" % [visible_draws, shadow_draws],
+		"примитивы проходов visible %d · shadow %d" % [visible_primitives,shadow_primitives],
 	])
+
+
+func _window_fps() -> float:
+	var total_ms := 0.0
+	for i in _sample_size:
+		total_ms += _samples[i]
+	return 1000.0 * _sample_size / total_ms if total_ms > 0.0 else 0.0
 
 
 func _p95_ms() -> float:

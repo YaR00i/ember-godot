@@ -1,0 +1,30 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/prototypes/ember_compact_planar_reflection_study.gd" id="1"]
+
+[node name="PlanarReflection" type="Node"]
+script = ExtResource("1")
+study_controls = false
+shallow_color = Color(0.084228516, 0.33480832, 0.359375, 1)
+deep_color = Color(0, 0.37718743, 0.425, 1)
+water_color_start_m = 0.31
+reflection_resolution_scale = 0.95
+river_flow_speed = 3.0
+shore_foam_strength = 0.48
+shore_foam_width_voxels = 3.4
+shore_foam_sharpness = 1.0
+river_crest_whiteness = 0.35
+river_arc_opening = 0.02
+river_crest_width_voxels = 1.45
+river_crest_sharpness = 0.99
+river_foam_variation = 1.0
+ripple_cell_scale = 1.15
+ripple_morph_strength = 0.8
+water_level_offset_voxels = -0.4
+sea_foam_trail_strength = 0.52
+sea_foam_trail_lifetime = 2.9
+sea_crest_foam_strength = 0.55
+sea_crest_foam_amount = 0.35
+local_bob_strength = 0.36
+underwater_shafts = 0.41
+obstacle_wave_mode = 2

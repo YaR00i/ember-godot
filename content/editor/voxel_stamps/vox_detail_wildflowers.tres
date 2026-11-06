@@ -1,9 +1,0 @@
-[gd_resource type="Resource" format=3]
-
-[ext_resource type="Resource" path="res://content/voxel_models/vox_detail_wildflowers.tres" id="1_kusbe"]
-[ext_resource type="Script" path="res://addons/ember_import/ember_voxel_stamp_preset.gd" id="2_6luby"]
-
-[resource]
-script = ExtResource("2_6luby")
-display_name = "Полевые цветы"
-geometry = ExtResource("1_kusbe")

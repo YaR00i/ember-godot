@@ -1,0 +1,20 @@
+[gd_resource type="Resource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_animal_profile.gd" id="1"]
+[ext_resource type="PackedScene" path="res://content/animals/Hare.scn" id="2"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Заяц"
+model = ExtResource("2")
+model_scale = 0.15
+ground_offset = 0.12
+move_clip = &"walk"
+reaction = 2
+walk_speed = 6.5
+retreat_speed = 22.0
+notice_distance = 17.0
+roam_radius = 7.0
+retreat_radius = 21.0
+body_size = Vector3(4,5,5)
+

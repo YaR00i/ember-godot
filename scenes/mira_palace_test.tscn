@@ -1,0 +1,23 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/mira_palace_test_snapshot.scn" id="1"]
+[ext_resource type="Script" path="res://scripts/ember_local_water_surface.gd" id="2"]
+
+[node name="MiraPalaceTest" instance=ExtResource("1")]
+
+[node name="Map" parent="." index="0"]
+camera_yaw = 3.5
+camera_polar = 1.16
+camera_distance = 110.0
+
+[node name="PlayerStart" parent="Map/Regions" index="0"]
+position = Vector3(360, 14, 327)
+
+[node name="Water" parent="Map/Props/PlotFountain/Basin" index="2"]
+script = ExtResource("2")
+water_depth = 5.44
+
+[node name="Water" parent="Map/Props/PlotFountain2/Basin" index="2"]
+script = ExtResource("2")
+water_depth = 4.32
+

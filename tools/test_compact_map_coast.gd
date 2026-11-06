@@ -4,7 +4,7 @@ const Creation = preload("res://addons/ember_import/ember_compact_map_creation.g
 const Dialog = preload("res://addons/ember_import/ember_compact_map_dialog.gd")
 const TerrainResource = preload("res://scripts/prototypes/ember_terrain_pilot_resource.gd")
 const Brush = preload("res://addons/ember_import/ember_compact_terrain_brush.gd")
-const DIRECTORY := "user://compact_map_coast_test"
+var directory := "user://compact_map_coast_test_%d" % OS.get_process_id()
 
 
 func _initialize() -> void:
@@ -74,7 +74,12 @@ func _run() -> void:
 	var sample_index := center.x + center.y * terrain.width
 	var initial_height := editable.column_value("heights", sample_index)
 	var floor_sample := map.surface_floor_sample(Vector3(center.x + 0.5, 0, center.y + 0.5))
-	assert(floor_sample.solid and is_equal_approx(floor_sample.position.y, float(initial_height)))
+	assert(floor_sample.solid)
+	await physics_frame
+	var point: Vector3 = floor_sample.position
+	var ray := PhysicsRayQueryParameters3D.create(point + Vector3.UP * 16, point - Vector3.UP * 16, 1)
+	var hit := map.get_world_3d().direct_space_state.intersect_ray(ray)
+	assert(not hit.is_empty() and absf(hit.position.y - point.y) < 0.1, "smooth coast floor and collision disagree")
 	var sea_sample := projection.water_surface_sample(Vector3(terrain.width * 0.5, 0, terrain.depth * 0.1))
 	assert(sea_sample.wet)
 	assert(brush.begin("raise", 0.5, 4, 2, 0, 16, 0, 371, 0, -99999, "coarse", "square", 4))
@@ -87,8 +92,8 @@ func _run() -> void:
 	undo.free()
 	var dialog := Dialog.new()
 	root.add_child(dialog)
-	dialog.creation.scene_directory = DIRECTORY.path_join("dialog_scenes")
-	dialog.creation.terrain_directory = DIRECTORY.path_join("dialog_terrains")
+	dialog.creation.scene_directory = directory.path_join("dialog_scenes")
+	dialog.creation.terrain_directory = directory.path_join("dialog_terrains")
 	dialog._id_field.text = "coast_dialog"
 	dialog._preset.select(1)
 	dialog._preset_changed(1)
@@ -108,6 +113,6 @@ func _run() -> void:
 
 func _creation() -> Creation:
 	var result := Creation.new()
-	result.scene_directory = DIRECTORY.path_join("scenes")
-	result.terrain_directory = DIRECTORY.path_join("terrains")
+	result.scene_directory = directory.path_join("scenes")
+	result.terrain_directory = directory.path_join("terrains")
 	return result

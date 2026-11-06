@@ -122,6 +122,9 @@ varying flat vec3 smooth_slots;
 #include "res://shaders/ember_bevel_light.gdshaderinc"
 #endif
 
+#ifndef EMBER_GRASS_COVER
+#include "res://shaders/ember_object_moss.gdshaderinc"
+#endif
 #ifdef EMBER_SOLID_MATERIAL_LAYERS
 #include "res://shaders/ember_solid_material_layers.gdshaderinc"
 #define EMBER_PALETTE_INDEX smooth_slots.x
@@ -316,6 +319,11 @@ vec3 slot_albedo(int slot) {
 #ifdef EMBER_TERRAIN_MATERIAL_DEPTH
 #include "res://shaders/ember_terrain_material_depth.gdshaderinc"
 #endif
+// Preserve uniform bindings when switching the same solid material. The far
+// program omits all fragment DEPTH writes and ray/light work below this point.
+#ifdef EMBER_SOLID_FAR
+#undef EMBER_TERRAIN_MATERIAL_DEPTH
+#endif
 
 #ifndef EMBER_TERRAIN_CHEAP
 vec3 png_relief_tile(vec2 uv,float layer,bool periodic) {
@@ -465,6 +473,11 @@ void fragment() {
 		grass_profile_values/=grass_profile_weight;grass_profile_cool/=grass_profile_weight;
 		grass_profile_warm/=grass_profile_weight;grass_profile_shadow/=grass_profile_weight;
 	}
+#ifdef EMBER_SOLID_MATERIAL_LAYERS
+ vec4 stone_depth_edge=vec4(0.0,1.0,0.0,1000.0);
+ float stone_depth_weathering=stone_weathering_weight();
+ if(stone_depth_weathering>0.0)stone_depth_edge=stone_edge(terrain_position);
+#endif
 #ifdef EMBER_TERRAIN_MATERIAL_DEPTH
 	DEPTH = FRAGCOORD.z;
 	material_depth_light = 1.0;
@@ -496,10 +509,12 @@ void fragment() {
 	}
 #endif
 #ifdef EMBER_SOLID_MATERIAL_LAYERS
- vec4 stone_depth_edge=vec4(0.0,1.0,0.0,1000.0);
- if(stone_weathering_weight()>0.0){
-  stone_depth_edge=stone_edge(terrain_position);
-  selected_depth_amount*=mix(1.0,0.9,stone_weathering_weight());
+ vec3 stone_depth_axes=vec3(0.0);
+ float stone_depth_width=1.0;
+ if(stone_depth_weathering>0.0){
+  stone_depth_axes=stone_weathering_axes();
+  stone_depth_width=max(stone_profile().y/0.02,0.001);
+  selected_depth_amount*=mix(1.0,0.9,stone_depth_weathering);
  }
 #endif
 	vec3 depth_footprint=fwidth(terrain_world_position / material_depth_span());
@@ -863,6 +878,9 @@ void fragment() {
 	if (solid_form_rim && dot(solid_form_local, solid_form_local) > 0.0) painterly_weights.y = rim_width_m > 0.0 ? 1.0 : 0.0;
 #ifdef EMBER_SOLID_MATERIAL_LAYERS
 	stone_finish(terrain_position,mat3(VIEW_MATRIX)*MODEL_NORMAL_MATRIX,ALBEDO,NORMAL,stone_depth_edge);
+#endif
+#ifndef EMBER_GRASS_COVER
+	ember_object_moss(terrain_position, ALBEDO, ROUGHNESS, SPECULAR);
 #endif
 }
 

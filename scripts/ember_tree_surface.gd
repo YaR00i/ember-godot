@@ -8,6 +8,7 @@ const Profiles=preload("res://scripts/ember_voxel_material_profiles.gd")
 const Provider=preload("res://addons/ember_import/ember_voxel_large_tree_generator.gd")
 const CONTRACT:="painted-tree-surface-v2-shared-shaders"
 const LEAF_BASE:="res://materials/ember_painted_tree_foliage.res"
+const GARDEN_LEAF_ART := "res://content/material_studies/trees/leaf_cluster_atlas_v5_two_tones.png"
 static var _meshes: Dictionary={}
 
 static func render_contract(model: Dictionary) -> String:
@@ -64,6 +65,8 @@ static func publish(built: Dictionary,parameters: Dictionary,seed: int) -> void:
 
 static func settings_errors(p: Dictionary) -> Array[String]:
 	var errors: Array[String]=[]
+	if p.has("garden_shrub") and (p.garden_shrub != true or p.get("plant_kind") != "shrub"):
+		errors.append("invalid garden shrub foliage profile")
 	if p.has("plant_kind"):
 		if p.plant_kind!="shrub":errors.append("invalid branch plant kind")
 		var scale: Variant=p.get("shrub_leaf_scale")
@@ -157,7 +160,8 @@ static func build(model: Dictionary) -> ArrayMesh:
 	if leaves.cards>0:
 		var material:=load(LEAF_BASE).duplicate() as ShaderMaterial
 		material.shader=load("res://shaders/ember_tree_leaf_cards.gdshader")
-		material.set_shader_parameter("painted_leaf_card_albedo",Bark.artwork(Species.LEAF_ART[kind],true))
+		var leaf_art := GARDEN_LEAF_ART if p.get("garden_shrub", false) else Species.LEAF_ART[kind]
+		material.set_shader_parameter("painted_leaf_card_albedo",Bark.artwork(leaf_art,true))
 		material.set_shader_parameter("painterly_grass_low",lerpf(1.0,float(material.get_shader_parameter("painterly_grass_low")),p.tree_leaf_depth/100.0))
 		material.set_shader_parameter("painted_leaf_shadow_strength",p.tree_leaf_receive/100.0)
 		if float(p.get("tree_leaf_palette_strength",0))>0.0:
@@ -180,6 +184,9 @@ static func leaf_layout(model: Dictionary) -> Dictionary:
 	var layout:=Geometry.branches(data.structure)
 	var options:=Species.card_options(int(p.tree_type))
 	if p.get("plant_kind","")=="shrub":options["size"]*=float(p.shrub_leaf_scale)
+	if p.get("garden_shrub",false):
+		options["garden_shrub"]=true
+		options["size"]*=2.2
 	var full:=Geometry.crown_cards(layout,data.structure,Vector3(data.pivot.x,0,data.pivot.y),float(p.density),int(data.seed),options)
 	var factors: Dictionary={}
 	for owner in p.tree_leaf_local:factors[int(owner)]=float(p.tree_leaf_local[owner])/100.0

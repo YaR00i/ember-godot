@@ -82,7 +82,7 @@ static func projection(definition_value: Dictionary, flags: Dictionary, inventor
 			var source_id := str(source.get("id", "")).strip_edges()
 			var source_flag := str(source.get("flagId", "")).strip_edges()
 			var source_value: Variant = flags.get(source_flag, null) if not source_flag.is_empty() else null
-			var counter_mode := str(source.get("progressMode", "flag")) in ["counter", "purchase"]
+			var counter_mode := str(source.get("progressMode", "flag")) in ["counter", "purchase", "world_action"]
 			var required := maxi(1, int(source.get("requiredCount", 1)))
 			done_by_id[source_id] = (
 				_counter_value(source_value) >= required
@@ -98,7 +98,7 @@ static func projection(definition_value: Dictionary, flags: Dictionary, inventor
 			var flag_id := str(objective.get("flagId", "")).strip_edges()
 			var objective_id := str(objective.get("id", "")).strip_edges()
 			var done := bool(done_by_id.get(objective_id, false))
-			if str(objective.get("progressMode", "flag")) in ["counter", "purchase"]:
+			if str(objective.get("progressMode", "flag")) in ["counter", "purchase", "world_action"]:
 				objective["currentCount"] = _counter_value(flags.get(flag_id, 0))
 				objective["requiredCount"] = maxi(1, int(objective.get("requiredCount", 1)))
 			if str(objective.get("progressMode", "")) == "handover":
@@ -169,6 +169,8 @@ static func authored_flag_transition(
 				continue
 			if str(objective.get("progressMode", "")) == "handover":
 				return {"allowed": false, "quest": true, "reason": "requires_handover", "message": "Эта цель завершается передачей предметов NPC"}
+			if str(objective.get("progressMode", "")) == "world_action":
+				return {"allowed": false, "quest": true, "reason": "requires_world_action", "message": "Эта цель учитывает реальные действия в мире"}
 			var projected := projection(quest, flags)
 			for raw_projected in projected.get("objectives", []):
 				if typeof(raw_projected) != TYPE_DICTIONARY:
@@ -228,6 +230,22 @@ static func counter_objective_updates(
 					"amount": applied,
 				})
 	return result
+
+
+static func world_action_updates(action: String, target: String, amount: int, flags: Dictionary) -> Array[Dictionary]:
+	## Build the whole batch before changing any flags: one action cannot advance
+	## two sequential goals. All progress uses the existing numeric save keys.
+	var updates: Array[Dictionary] = []
+	if amount <= 0: return updates
+	for quest_id in ids():
+		var projected := projection(definition(quest_id), flags)
+		if str(projected.get("status", "")) != "active": continue
+		for objective in projected.get("objectives", []):
+			if str(objective.get("progressMode", "")) != "world_action" or not bool(objective.get("available", false)): continue
+			if str(objective.get("worldAction", "")) != action or str(objective.get("worldTargetId", "")) != target: continue
+			var remaining := maxi(0, int(objective.get("requiredCount", 1)) - int(objective.get("currentCount", 0)))
+			if remaining > 0: updates.append({"flagId": str(objective.get("flagId", "")), "amount": mini(amount, remaining)})
+	return updates
 
 
 static func purchase_objective_updates(shop_id: String, item_id: String, flags: Dictionary) -> Array[Dictionary]:
@@ -293,11 +311,11 @@ static func progress_flag_ids(definition_value: Dictionary) -> Array[String]:
 	return result
 
 
-static func visible_projections(flags: Dictionary, inventory: Dictionary = {}) -> Array[Dictionary]:
+static func visible_projections(flags: Dictionary, inventory: Dictionary = {}, include_all := false) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	for quest_id in ids():
 		var value := projection(definition(quest_id), flags, inventory)
-		if str(value.get("status", "available")) != "available" or bool(value.get("showWhenAvailable", false)):
+		if include_all or str(value.get("status", "available")) != "available" or bool(value.get("showWhenAvailable", false)):
 			result.append(value)
 	return result
 

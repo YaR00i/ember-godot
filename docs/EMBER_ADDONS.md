@@ -37,7 +37,7 @@
 - интерьеры/архитектурный graybox: Cyclops `1.5.0-dev_3` — **just-in-time candidate** для D3, устанавливать перед одним disposable blockout-spike, не раньше;
 - сложный dialogue runtime/localization: Dialogue Manager `4.0.3` — **replacement candidate**, не adapter. До отдельного parity-spike не расширять самописный runtime новыми языками условий/мутаций;
 - задания: Questify `1.6.0` — rejected как runtime/store; полезные UX-паттерны уже накладываются на `EmberQuestResource`;
-- большие гладкие природные зоны: Terrain3D `1.0.2-stable` — deferred background/macro-terrain candidate. Не использовать для voxel surface, battle cells или gameplay-height owner.
+- большие гладкие природные зоны: Terrain3D `v1.1.0-stable` — внешний QA-кандидат ordinary primary terrain; текущий production voxel surface/battle/gameplay-height owner не меняет. См. статус Terrain3D ниже.
 
 Перед началом нового крупного editor/runtime-среза сначала проверяется этот реестр и актуальная Asset Library. Если готовое решение покрывает authoring и runtime без второго owner, сначала делается один обратимый spike; собственная подсистема появляется только после его измеримого провала.
 
@@ -113,11 +113,13 @@
 
 ### `Terrain3D`
 
-- Статус: **deferred macro/background-terrain candidate; не использовать для основной Ember surface**.
-- Источник: <https://github.com/TokisanGames/Terrain3D>; release `v1.0.2-stable` (`0077405b52e353c5e5dc3a094e7ede49833ba6fe`), проверен 2026-09-02; MIT; release заявляет Godot 4.4–4.6+ и требует отдельный Godot 4.7 smoke.
+- Статус: **изолированный кандидат новой обычной земли по решению автора01.11; production migration не принята**. Установлен только вне репозитория.
+- Источник: <https://github.com/TokisanGames/Terrain3D>; release `v1.1.0-stable`,проверен01.11;MIT;официально Godot4.5–4.8+,native4.7.2 Forward+/Jolt smoke PASS. ZIP SHA256 `c564638eaded41adcb8a4234fb5fc982bb4cbf73769b76354f16d287cab2b6ca`.
 - Сильные стороны: C++ GDExtension, heightmap sculpt/paint, holes, до 32 textures, LOD и foliage для зон от 64×64 м до очень больших пространств.
 - Причина паузы: heightmap/clipmap не выражает authored voxel-блоки, нависающие формы и единый мир/бой Tile Kit. Terrain data directory стал бы вторым owner высоты рядом с canonical voxel surface и semantic battle grid.
-- Возврат: только если D3 докажет потребность в дальнем гладком фоне/макрорельефе за пределами игровой voxel-поверхности. Один disposable 64×64+ zone spike обязан отделить render-only terrain от общей collision/navigation surface; иначе Terrain3D отклоняется.
+- Новое основание возврата01.11:автор предложил обратный source pipeline — сначала обычная земля,затем вокселизация. Это разрешение spike,не двухвысотных owners вproduction.512²heightmap/edit/physics/save-reload проверены;основная карта/редактор иdense acceptance OPEN. QA02.11 связывает native height→physics/floor/grass/history/save на32мcrop;
+  native collision cost/residency и Ember UI/paint/navigation/3looks/world gates открыты.
+  Это не production replacement и не120FPS PASS. Owners:Terrain Authoring/Performance.
 
 ### Zylann `Voxel Tools`
 

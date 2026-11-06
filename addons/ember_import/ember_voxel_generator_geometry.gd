@@ -100,11 +100,17 @@ static func paint_convex_part(source: EmberVoxelModelResource, grid: Vector3i, p
 	var planes: Array[Plane]=part.planes
 	var lo:=Vector3i(ceili(-planes[1].d),ceili(-planes[3].d),ceili(-planes[5].d)).clamp(Vector3i.ZERO,grid)
 	var hi:=Vector3i(floori(planes[0].d),floori(planes[2].d),floori(planes[4].d)).clamp(Vector3i.ZERO,grid)
+	var first_clip := 6
+	if part.has("paint_bounds"):
+		var bounds: AABB = part.paint_bounds
+		lo = Vector3i(bounds.position.floor()).clamp(Vector3i.ZERO, grid)
+		hi = Vector3i(bounds.end.ceil()).clamp(Vector3i.ZERO, grid)
+		first_clip = 0
 	for y in range(lo.y,hi.y):
 		for z in range(lo.z,hi.z):
 			for x in range(lo.x,hi.x):
 				var inside:=true
-				for i in range(6,planes.size()):
+				for i in range(first_clip,planes.size()):
 					if planes[i].distance_to(Vector3(x+0.5,y+0.5,z+0.5))>0.0001:inside=false;break
 				if not inside:continue
 				var index:=VoxMesher.cell_index(x,y,z,grid.x,grid.z)

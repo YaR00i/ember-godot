@@ -1,0 +1,105 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_traversal_route.gd" id="route"]
+[ext_resource type="Script" path="res://scripts/ember_pipe_obstacle.gd" id="obstacle"]
+
+[sub_resource type="StandardMaterial3D" id="deck_material"]
+albedo_color = Color(0.36, 0.27, 0.18, 1)
+
+[sub_resource type="StandardMaterial3D" id="obstacle_material"]
+albedo_color = Color(0.92, 0.31, 0.09, 1)
+
+[sub_resource type="BoxMesh" id="ramp_mesh"]
+material = SubResource("deck_material")
+size = Vector3(53.665631459994955, 2, 22)
+
+[sub_resource type="BoxShape3D" id="ramp_shape"]
+size = Vector3(53.665631459994955, 2, 22)
+
+[sub_resource type="BoxMesh" id="deck_mesh"]
+material = SubResource("deck_material")
+size = Vector3(12, 3, 22)
+
+[sub_resource type="BoxShape3D" id="deck_shape"]
+size = Vector3(12, 3, 22)
+
+[sub_resource type="BoxMesh" id="obstacle_mesh"]
+material = SubResource("obstacle_material")
+size = Vector3(6, 17, 13)
+
+[sub_resource type="BoxShape3D" id="obstacle_shape"]
+size = Vector3(6, 17, 13)
+
+[sub_resource type="BoxShape3D" id="approach_camera_shape"]
+size = Vector3(56, 25, 30)
+
+[node name="PipeSlide" type="Area3D"]
+script = ExtResource("route")
+kind = "custom"
+route_mode = 2
+speed = 64.0
+collision_layer = 0
+collision_mask = 0
+monitoring = false
+monitorable = false
+
+[node name="Landing" type="Marker3D" parent="."]
+position = Vector3(144, -24, 0)
+
+[node name="ApproachView" type="Area3D" parent="."]
+position = Vector3(-25, -8, 0)
+collision_layer = 0
+collision_mask = 2
+monitorable = false
+[node name="Shape" type="CollisionShape3D" parent="ApproachView"]
+shape = SubResource("approach_camera_shape")
+
+[node name="Deck" type="StaticBody3D" parent="."]
+position = Vector3(-11, -1.5, 0)
+collision_mask = 0
+[node name="Shape" type="CollisionShape3D" parent="Deck"]
+shape = SubResource("deck_shape")
+[node name="Visual" type="MeshInstance3D" parent="Deck"]
+mesh = SubResource("deck_mesh")
+
+[node name="Ramp" type="StaticBody3D" parent="."]
+position = Vector3(-40.55278640450004, -12.894427190999917, 0)
+rotation = Vector3(0, 0, 0.4636476090008061)
+collision_mask = 0
+[node name="Shape" type="CollisionShape3D" parent="Ramp"]
+shape = SubResource("ramp_shape")
+[node name="Visual" type="MeshInstance3D" parent="Ramp"]
+mesh = SubResource("ramp_mesh")
+
+[node name="CenterSlot" type="Marker3D" parent="."]
+position = Vector3(48, -8, 0)
+script = ExtResource("obstacle")
+segment = 3
+segment_offset = 0.0
+[node name="CenterBarrier" type="StaticBody3D" parent="CenterSlot"]
+position = Vector3(0, 8.5, 0)
+collision_mask = 0
+[node name="Shape" type="CollisionShape3D" parent="CenterSlot/CenterBarrier"]
+shape = SubResource("obstacle_shape")
+[node name="Visual" type="MeshInstance3D" parent="CenterSlot/CenterBarrier"]
+mesh = SubResource("obstacle_mesh")
+
+[node name="SideSlot" type="Marker3D" parent="."]
+position = Vector3(94, -9, 17)
+script = ExtResource("obstacle")
+segment = 4
+segment_offset = 0.9166667
+wall_angle = 65.0
+[node name="SideBarrier" type="StaticBody3D" parent="SideSlot"]
+position = Vector3(0, 8.5, 0)
+collision_mask = 0
+[node name="Shape" type="CollisionShape3D" parent="SideSlot/SideBarrier"]
+shape = SubResource("obstacle_shape")
+[node name="Visual" type="MeshInstance3D" parent="SideSlot/SideBarrier"]
+mesh = SubResource("obstacle_mesh")
+
+[node name="Sign" type="Label3D" parent="."]
+position = Vector3(-9, 24, 0)
+text = "Спуск по трубе · A / D"
+billboard = 1
+pixel_size = 0.1

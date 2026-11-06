@@ -10,7 +10,7 @@ func check(ok:bool,label:String)->void:
 	if not ok:errors.append(label);printerr("DETAIL_PATTERN_VALIDATION_FAIL ",label)
 func _initialize()->void:run.call_deferred()
 func run()->void:
-	var preset:Resource=load("res://content/editor/voxel_stamps/vox_detail_wheat.tres").duplicate()
+	var preset:Resource=load("res://tools/fixtures/detail_wheat_preset.tres").duplicate()
 	var geometry:=CountedGeometry.new()
 	for property:Dictionary in preset.geometry.get_property_list():
 		if property.usage & PROPERTY_USAGE_STORAGE and property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE:

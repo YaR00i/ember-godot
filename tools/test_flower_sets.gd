@@ -51,6 +51,10 @@ func run() -> void:
 	for index in Cover.SETS.size():
 		brush.controls.cover.select(index);brush.select_cover(index)
 		check(brush.cover_pattern.flower_shape==index,"native set selector chooses saved shape")
+		# Thin stem geometry deliberately samples this opaque atlas texel.
+		var atlas:Image=brush.cover_pattern.albedo_texture.get_image()
+		if atlas.is_compressed():atlas.decompress()
+		check(atlas.get_pixel(atlas.get_width()/4,atlas.get_height()/2).a>0.5,"stem texel visible for "+Cover.SETS[index][0])
 		var path:=output.path_join("set%d.tres" % index)
 		check(ResourceSaver.save(brush.cover_pattern.duplicate(true),path)==OK,"temporary source copy")
 		brush.cover_pattern=ResourceLoader.load(path,"",ResourceLoader.CACHE_MODE_REPLACE);set_paths.append(path)
@@ -61,12 +65,12 @@ func run() -> void:
 		var layer:Node=patches().back();expected[layer.name]=layer.density_cells.duplicate();counts[layer.name]=layer._visual.multimesh.instance_count
 		check(layer.cover_pattern==brush.cover_pattern and layer.detail_preset==null,"source reference without voxels")
 		check(layer._visual.multimesh.mesh==Cover.mesh(brush.cover_pattern),"saved set selects its own geometry")
-	var authored:=snapshot();check(patches().size()==3,"three overlapping sources coexist")
-	history.undo();check(patches().size()==2,"one Undo removes last set only")
-	history.redo();await settle();check(snapshot()==authored,"Redo restores third set exactly")
+	var authored:=snapshot();check(patches().size()==Cover.SETS.size(),"all overlapping plant sources coexist")
+	history.undo();check(patches().size()==Cover.SETS.size()-1,"one Undo removes last set only")
+	history.redo();await settle();check(snapshot()==authored,"Redo restores last set exactly")
 	brush.controls.erase.button_pressed=true;brush._append(Vector3(32,0,32));brush.commit_stroke();await settle()
 	for layer in patches():
-		if layer.cover_pattern.resource_path==set_paths[2]:check(layer._visual.multimesh.instance_count==0,"selected set erased")
+		if layer.cover_pattern.resource_path==set_paths.back():check(layer._visual.multimesh.instance_count==0,"selected set erased")
 		else:check(layer.density_cells==expected[layer.name] and layer._visual.multimesh.instance_count==counts[layer.name],"erase leaves other flowers untouched")
 	history.undo();await settle();brush.controls.erase.button_pressed=false
 	for look in [0,1,2,0]:
@@ -84,6 +88,7 @@ func run() -> void:
 	for key in expected:check(reopened.get_node("Map/Props/"+key).density_cells==expected[key],"discard keeps saved set masks")
 	reopened.free();history.undo();await settle()
 	# Shape edits are private previews; they never mutate another family's source or placement.
+	brush.cover_pattern=ResourceLoader.load(set_paths[2]);brush.controls.cover.select(2)
 	brush._edit_cover();await frames(6)
 	var editor=brush._cover_dialog
 	check(editor._cover_shape.selected==2,"material editor shows source shape")

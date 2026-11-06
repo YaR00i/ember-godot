@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="EmberItemResource" format=3]
+[ext_resource type="Script" path="res://scripts/ember_item_resource.gd" id="1"]
+[resource]
+script = ExtResource("1")
+item_id = "chapter1_perch"
+definition = {
+"id": "chapter1_perch", "nameRu": "Полосатый окунь", "kind": "material",
+"rarity": "common", "slot": "none", "stackMax": 10, "useIn": "explore"
+}

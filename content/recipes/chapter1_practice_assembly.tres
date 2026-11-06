@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="EmberCraftRecipeResource" load_steps=2 format=3]
+[ext_resource type="Script" path="res://scripts/ember_craft_recipe_resource.gd" id="recipe"]
+[resource]
+script = ExtResource("recipe")
+recipe_id = "chapter1_practice_assembly"
+title = "Учебная сборка"
+station_kind = "workbench"
+description = "Учебный рецепт для верстака."
+ingredients = {"herb": 2}
+results = {"revival_spark": 1}

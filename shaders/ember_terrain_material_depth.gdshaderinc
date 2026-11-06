@@ -223,14 +223,14 @@ vec3 material_depth_albedo(vec3 p, vec3 n) {
 #endif
 
 #ifdef EMBER_SOLID_MATERIAL_LAYERS
-#define EMBER_DEPTH_CONTEXT , vec4 stone_depth_edge
-#define EMBER_DEPTH_ARGUMENT , stone_depth_edge
+#define EMBER_DEPTH_CONTEXT , vec4 stone_depth_edge, float stone_depth_weathering, vec3 stone_depth_axes, float stone_depth_width
+#define EMBER_DEPTH_ARGUMENT , stone_depth_edge, stone_depth_weathering, stone_depth_axes, stone_depth_width
 #define EMBER_DEPTH_HEIGHT_AT stone_material_depth_height_at
-float stone_material_depth_height_at(vec3 p,vec3 n,vec4 stone_depth_edge){
- float amount=stone_weathering_weight();
+float stone_material_depth_height_at(vec3 p,vec3 n,vec4 stone_depth_edge,float stone_depth_weathering,vec3 stone_depth_axes,float stone_depth_width){
+ float amount=stone_depth_weathering;
  if(amount<=0.0)return material_depth_height_at(p,n);
  vec3 local=(solid_depth_world_to_local*vec4(p,1.0)).xyz;
- float carved=0.5-0.48*stone_weathering_coverage(local,stone_depth_edge);
+ float carved=0.5-0.48*stone_weathering_coverage_cached(local,stone_depth_edge,stone_depth_axes,stone_depth_width);
  if(amount>=1.0)return carved;
  return mix(material_depth_height_at(p,n),carved,amount);
 }

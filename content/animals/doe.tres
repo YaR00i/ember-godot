@@ -1,0 +1,20 @@
+[gd_resource type="Resource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_animal_profile.gd" id="1"]
+[ext_resource type="PackedScene" path="res://content/animals/Doe.scn" id="2"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Лань"
+model = ExtResource("2")
+model_scale = 0.29
+ground_offset = 0.23
+move_clip = &"walk"
+reaction = 1
+walk_speed = 7.0
+retreat_speed = 17.0
+notice_distance = 21.0
+roam_radius = 10.0
+retreat_radius = 22.0
+body_size = Vector3(6,12,10)
+

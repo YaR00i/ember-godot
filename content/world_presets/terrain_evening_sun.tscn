@@ -1,0 +1,12 @@
+[gd_scene format=3]
+
+[node name="Sun" type="DirectionalLight3D"]
+rotation_degrees = Vector3(-18, -55, 0)
+light_color = Color(1, 0.69, 0.42, 1)
+light_energy = 1.1
+light_angular_distance = 0.0
+shadow_enabled = true
+directional_shadow_mode = 1
+directional_shadow_split_1 = 0.3
+directional_shadow_blend_splits = true
+directional_shadow_max_distance = 1600.0

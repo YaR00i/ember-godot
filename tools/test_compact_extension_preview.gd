@@ -45,6 +45,9 @@ func _run() -> void:
 		assert(projection._editor_hidden_edge_keys.is_empty())
 		preview.free()
 	map.free()
+	if not await _check_dry_tile_handoff(creation.source.sectioned_copy()):
+		quit(1)
+		return
 	var large := Creation.new()
 	large.scene_directory = creation.scene_directory
 	large.terrain_directory = creation.terrain_directory
@@ -70,3 +73,64 @@ func _run() -> void:
 	large_map.free()
 	print("COMPACT_EXTENSION_PREVIEW four_sides=ok cancel_restores_scene=ok large_preview_ms=", large_preview_ms)
 	quit()
+
+
+func _check_dry_tile_handoff(source: Resource) -> bool:
+	var map := EmberMapLoader.new()
+	map.compact_terrain = source
+	map.compact_ground_style = 1
+	map.world_look = 0
+	root.add_child(map)
+	var projection := map._visual_surface_projection as EmberTerrainPilotProjection
+	projection.runtime_geometry_cache_enabled = false
+	var deadline := Time.get_ticks_msec() + 30000
+	while projection.pending_tile_count() > 0 and Time.get_ticks_msec() < deadline:
+		await process_frame
+	if projection.pending_tile_count() > 0:
+		push_error("dry preview fixture did not finish opening")
+		return false
+	var candidate: Resource = source.working_copy()
+	var part: Resource = candidate.sections[Vector2i.ZERO].working_copy()
+	part.heights[part.column_index(192, 192)] += 4
+	candidate.sections[Vector2i.ZERO] = part
+	var keys: Array[Vector2i] = []
+	for z in range(2, 5):
+		for x in range(2, 5):
+			keys.append(Vector2i(x,z))
+	var area := Rect2i(128, 128, 192, 192)
+	var cancelled := Preview.new()
+	map.add_child(cancelled)
+	assert(cancelled.show_area(map, candidate, area, Vector2i.ZERO, keys, true, true))
+	cancelled._process(0.0)
+	assert(not cancelled._tile_jobs.is_empty())
+	cancelled.clear_preview()
+	assert(cancelled._tile_jobs.is_empty() and projection._editor_hidden_edge_keys.is_empty())
+	assert(projection.document.same_terrain_data(source))
+	cancelled.free()
+	var preview := Preview.new()
+	map.add_child(preview)
+	assert(preview.show_area(map, candidate, area, Vector2i.ZERO, keys, true, true))
+	deadline = Time.get_ticks_msec() + 20000
+	while not preview._announced and Time.get_ticks_msec() < deadline:
+		await process_frame
+	var prepared := preview.take_prepared_tiles()
+	if prepared.size() != keys.size():
+		push_error("dry preview did not prepare every tile")
+		return false
+	var expected: Dictionary = prepared[Vector2i(3,3)]
+	preview.free()
+	projection.stage_dry_preview(candidate, prepared)
+	assert(projection.open_document(candidate))
+	deadline = Time.get_ticks_msec() + 20000
+	while projection.pending_tile_count() > 0 and Time.get_ticks_msec() < deadline:
+		await process_frame
+	if projection.pending_tile_count() > 0 or projection.profile_snapshot().get("editor_preview_reused_tiles",0) != keys.size():
+		push_error("dry preview publication did not reuse all prepared tiles")
+		return false
+	var tile: Node3D = projection._tiles[Vector2i(3,3)]
+	assert(tile.get_node("Ground").mesh == expected.terrain)
+	assert(tile.get_node("GroundPhysics/Shape").shape == expected.collision)
+	assert(projection.open_document(source) and projection.document.same_terrain_data(source))
+	map.free()
+	print("DRY_PREVIEW_HANDOFF cancel=ok mesh_and_collision_reuse=ok restore=ok")
+	return true

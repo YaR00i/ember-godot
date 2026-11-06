@@ -9,6 +9,7 @@ const Store = preload("res://addons/ember_import/ember_voxel_model_store.gd")
 const SurfaceProjection = preload("res://scripts/ember_voxel_surface_projection.gd")
 const TerrainResource = preload("res://scripts/prototypes/ember_terrain_pilot_resource.gd")
 const TerrainPlan = preload("res://scripts/ember_terrain_plan_resource.gd")
+const Plot = preload("res://addons/ember_import/ember_plot_construction.gd")
 const Grove = preload("res://addons/ember_import/ember_grove_planner.gd")
 const FIELDS := ["schema_version","model_id","display_name","tags","voxels_per_block","size_blocks","height_voxels","palette","voxels","emissive","shine","transparency","transmittance","surface_fill_levels","surface_fill_materials","surface_fill_palette","voxel_groups","voxel_part_ids","merge_parts","collision_voxels","material","solid_surface","external_surface","tree_surface","physical","emissive_casts_light","emissive_light_range","emissive_light_shadows","emissive_light_soft_rings","emissive_light_soft_shadows","emissive_strength","emissive_suppress_host_shadow","emissive_torch_flicker","emissive_light_offset","emissive_lights","imported_from","imported_source_hash"]
 const RECOVERY := "user://ember_world_drafts"
@@ -87,6 +88,7 @@ func open_map(map: EmberMapLoader, scene: Node) -> Dictionary:
 		next.plan_file_hash=FileAccess.get_sha256(next.plan_storage_path) if FileAccess.file_exists(next.plan_storage_path) else ""
 		next.grove_baseline = Grove.snapshot(map)
 		next.grove_pose_baseline = Grove.pose_version(map)
+		next.plot_baseline = Plot.snapshot(map)
 		entries[_key(map)] = next
 		preview(next)
 		return next
@@ -130,7 +132,12 @@ func open_object(prop: EmberVoxelProp, scene: Node) -> Dictionary:
 	return next
 
 func dirty(entry: Dictionary) -> bool:
-	return entry.get("created",false) or not same_data(entry.resource,entry.baseline) or plan_dirty(entry) or (entry.get("compact",false) and Grove.pose_version(entry.target.get_ref()) != entry.get("grove_pose_baseline",{}))
+	if entry.get("created", false) or not same_data(entry.resource, entry.baseline) or plan_dirty(entry):
+		return true
+	if not entry.get("compact", false):
+		return false
+	var map: Node = entry.target.get_ref()
+	return Grove.pose_version(map) != entry.get("grove_pose_baseline", {}) or Plot.snapshot(map) != entry.get("plot_baseline", {})
 
 func adopt_object(edit:RefCounted,resource:EmberVoxelModelResource)->Dictionary:
 	var target:Node=edit._target.get_ref();var scene:Node=edit._root.get_ref()
@@ -286,6 +293,7 @@ func discard(scene: Node = null) -> void:
 			if not grove_error.is_empty(): error = grove_error
 			set_plan(entry, entry.get("plan_baseline"))
 			var target: EmberMapLoader = entry.target.get_ref()
+			Plot.restore(target, entry.scene.get_ref(), entry.get("plot_baseline", {}))
 			var layout := compact_layout(target) if is_instance_valid(target) else {}
 			for name in entry.get("compact_layout_delta", {}):
 				if layout.get("positions", {}).has(name): layout.positions[name] -= entry.compact_layout_delta[name]
@@ -482,6 +490,7 @@ func _complete_save(prepared: Array[Dictionary], scene_snapshot: Dictionary, sce
 			if entry.get("compact",false) and is_instance_valid(root_node) and root_node.scene_file_path == scene_path and is_instance_valid(map_node):
 				entry.grove_baseline = Grove.snapshot(map_node)
 				entry.grove_pose_baseline = Grove.pose_version(map_node)
+				entry.plot_baseline = Plot.snapshot(map_node)
 		if not paths.is_empty(): Store.asset_events.assets_published.emit(paths)
 		var forms:Dictionary={}
 		for entry in entries.values():

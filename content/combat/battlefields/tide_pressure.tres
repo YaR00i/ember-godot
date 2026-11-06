@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="EmberBattlefieldResource" format=3]
+[ext_resource type="Script" path="res://scripts/prototypes/ember_battlefield_resource.gd" id="1"]
+[resource]
+script = ExtResource("1")
+field_id = "tide_pressure"
+display_name = "Заслонка в пещере"
+width = 5
+height = 5
+terrain_kinds = PackedByteArray(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
+elevations = PackedInt32Array(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
+blocked = PackedByteArray(0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0)
+groups = PackedStringArray("","","","","","","","","","","","","","","","","","","","","","","","","")
+focus_id = ""
+focus_cell = Vector2i(4, 4)
+party_deployment_cells = Array[Vector2i]([Vector2i(1, 4), Vector2i(2, 2), Vector2i(1, 1), Vector2i(0, 2)])
+enemy_deployment_cells = Array[Vector2i]([Vector2i(4, 2)])

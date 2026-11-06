@@ -183,6 +183,9 @@ static func crown_cards(layout: Array, structure: Dictionary, offset: Vector3, d
 			elif needle_boughs:
 				# Close the upper leader gaps without enlarging the needle texture.
 				sites=[0.28,0.36,0.44,0.52,0.60,0.68,0.76,0.82,0.87,0.91,0.94,0.97,1.0]
+		if options.get("garden_shrub", false):
+			sites = [0.50, 0.93]
+			count = 1
 		for t: float in sites:
 			var attachment := (point_at(branch, t) + offset) / density
 			var terminal_puff: bool = envelope_cards and branch.order==terminal and is_equal_approx(t,1.0)

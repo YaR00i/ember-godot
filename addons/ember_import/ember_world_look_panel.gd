@@ -2,6 +2,8 @@
 class_name EmberWorldLookPanel
 extends VBoxContainer
 
+signal terrain_materials_requested
+
 ## Scene-owned look controls. The Sun and Environment remain the source of truth.
 const VALUES := {
 	"sun_azimuth": EmberLights.SUN_LOOK_VALUES.sun_azimuth,
@@ -47,6 +49,7 @@ const COLORS := {
 }
 const WATER_VALUES = preload("res://scripts/prototypes/ember_compact_planar_reflection_study.gd").WATER_VALUES
 const WATER_COLORS = preload("res://scripts/prototypes/ember_compact_planar_reflection_study.gd").WATER_COLORS
+const COMMON_WATER_PATH := "res://prefabs/items/shared_world_water.tscn"
 const MATERIAL_VALUES := {
 	"world_look": ["Облик всей локации", "world_look", 0, 2, 1,
 		["Детальный мир", "Low poly", "Воксельный мир"]],
@@ -83,6 +86,7 @@ const ANOMALY_VALUES := {
 }
 var _anomaly_hint: Label
 var _grass_choice: OptionButton
+var _terrain_materials_button: Button
 var _grass_paths: Array[NodePath] = []
 
 var _scene: Node
@@ -108,10 +112,13 @@ var _shadow_advanced: VBoxContainer
 var _shadow_advanced_toggle: Button
 var _hint: Label
 var _water_hint: Label
+var _publish_water: Button
+var _water_publish_status: Label
 var _water: Node
 var _light_rows: VBoxContainer
 var _water_rows: VBoxContainer
 var _tabs: TabContainer
+var _world_preset_choices: Dictionary = {}
 var _rim_switch: CheckBox
 var _gray_switch: CheckBox
 var _contact_switch: CheckBox
@@ -162,6 +169,10 @@ func _ready() -> void:
 		_add_slider(key, material_rows)
 	for key in DEPTH_VALUES: _add_slider(key, material_rows)
 	for key in VOXEL_LIGHT_VALUES: _add_slider(key, material_rows)
+	_terrain_materials_button = Button.new()
+	_terrain_materials_button.text = "Размер рисунка земли…"
+	_terrain_materials_button.pressed.connect(func(): terrain_materials_requested.emit())
+	material_rows.add_child(_terrain_materials_button)
 	var grass_title := Label.new();grass_title.text="Травяной покров";material_rows.add_child(grass_title)
 	_grass_choice = OptionButton.new();material_rows.add_child(_grass_choice)
 	_grass_choice.item_selected.connect(func(_index): refresh())
@@ -224,6 +235,13 @@ func _ready() -> void:
 	_water_hint = Label.new()
 	_water_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_water_rows.add_child(_water_hint)
+	_publish_water = Button.new()
+	_publish_water.text = "Сохранить как общий пресет воды"
+	_publish_water.pressed.connect(func(): publish_common_water())
+	_water_rows.add_child(_publish_water)
+	_water_publish_status = Label.new()
+	_water_publish_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_water_rows.add_child(_water_publish_status)
 	var groups: Dictionary = {}
 	for key in WATER_VALUES:
 		var group: String = WATER_VALUES[key][4]
@@ -243,7 +261,71 @@ func _ready() -> void:
 			if group == "Цвет и прозрачность":
 				for color_key in WATER_COLORS: _add_color(color_key, rows)
 		_add_slider(key, groups[group])
+	_add_world_presets()
 	refresh()
+
+
+func _add_world_presets() -> void:
+	var page := VBoxContainer.new()
+	page.name = "Пресеты"
+	_tabs.add_child(page)
+	var library = EmberMapLoader.WorldPresets
+	var rows := [
+		["sky_preset", "Небо", library.skies],
+		["weather_preset", "Погода", library.weather],
+		["default_npc_model", "Модель для новых квестовых NPC", library.npc_models],
+	]
+	for row in rows:
+		var label := Label.new()
+		label.text = row[1]
+		page.add_child(label)
+		var choice := OptionButton.new()
+		page.add_child(choice)
+		var key: String = row[0]
+		choice.add_item("Из общих настроек" if key == "default_npc_model" else "Настройка карты")
+		choice.set_item_disabled(0, key != "default_npc_model")
+		for preset: Resource in row[2]:
+			var title := preset.resource_name
+			if title.is_empty(): title = preset.resource_path.get_file().get_basename()
+			choice.add_item(title)
+			choice.set_item_metadata(choice.item_count - 1, preset)
+		_world_preset_choices[key] = choice
+		choice.item_selected.connect(_select_world_preset.bind(key, choice))
+
+
+func _select_world_preset(index: int, key: String, choice: OptionButton) -> void:
+	if not is_instance_valid(_map) or not is_instance_valid(_history):
+		return
+	var preset: Resource = choice.get_item_metadata(index)
+	var old: Resource = _map.get(key)
+	if old == preset: return
+	if _history is EditorUndoRedoManager:
+		_history.create_action("Выбрать общий пресет", UndoRedo.MERGE_DISABLE, _scene)
+	else:
+		_history.create_action("Выбрать общий пресет")
+	_history.add_do_property(_map, key, preset)
+	_history.add_undo_property(_map, key, old)
+	if old == null and _environment != null:
+		if key == "sky_preset":
+			_history.add_undo_property(_environment, "sky", _environment.sky)
+			_history.add_undo_property(_environment, "background_mode", _environment.background_mode)
+		elif key == "weather_preset":
+			for property in ["fog_enabled", "fog_density", "fog_light_color"]:
+				_history.add_undo_property(_environment, property, _environment.get(property))
+	_history.commit_action()
+
+
+func _refresh_world_preset_choices() -> void:
+	for key: String in _world_preset_choices:
+		var choice := _world_preset_choices[key] as OptionButton
+		choice.disabled = not is_instance_valid(_map)
+		var selected := 0
+		if not choice.disabled:
+			for index in range(1, choice.item_count):
+				if _map.get(key) == choice.get_item_metadata(index):
+					selected = index
+					break
+		choice.select(selected)
 
 
 func set_target(scene: Node, map: EmberMapLoader, history: Object) -> void:
@@ -404,6 +486,75 @@ func apply_runtime_water(scene_path: String, node_path: NodePath, values: Dictio
 	return {"ok": true, "message": "Перенесено. В редакторе: Ctrl+S — сохранить, Ctrl+Z — отменить."}
 
 
+func publish_common_water(path := COMMON_WATER_PATH) -> bool:
+	if not is_instance_valid(_water) or _water.scene_file_path != path:
+		return _common_water_status("У этой карты другой источник настроек воды.", false)
+	if not _dragging.is_empty() or not _color_editing.is_empty():
+		return _common_water_status("Завершите настройку цвета или ползунка.", false)
+	if not (_history is EditorUndoRedoManager or _history is UndoRedo):
+		return _common_water_status("История редактора недоступна.", false)
+	var preset := _load_common_water(path)
+	if preset == null:
+		return _common_water_status("Не удалось открыть общий пресет воды.", false)
+	var before: Dictionary = preset.water_settings_snapshot()
+	preset.free()
+	var after: Dictionary = _water.water_settings_snapshot()
+	if before == after:
+		return _common_water_status("Общий пресет уже содержит эти настройки.", true)
+	if not _write_common_water(path, before, after):
+		return false
+	var title := "Вода: сохранить общий пресет"
+	if _history is EditorUndoRedoManager:
+		var history := _history as EditorUndoRedoManager
+		history.create_action(title, UndoRedo.MERGE_DISABLE, _scene)
+		history.add_do_method(self, "_write_common_water", path, before, after)
+		history.add_undo_method(self, "_write_common_water", path, after, before)
+		history.commit_action(false)
+	else:
+		var history := _history as UndoRedo
+		history.create_action(title)
+		history.add_do_method(_write_common_water.bind(path, before, after))
+		history.add_undo_method(_write_common_water.bind(path, after, before))
+		history.commit_action(false)
+	return true
+
+
+func _load_common_water(path: String) -> Node:
+	var scene := ResourceLoader.load(path, "PackedScene", ResourceLoader.CACHE_MODE_IGNORE) as PackedScene
+	if scene == null:
+		return null
+	var preset := scene.instantiate()
+	if preset.has_method("water_settings_snapshot"):
+		return preset
+	preset.free()
+	return null
+
+
+func _write_common_water(path: String, expected: Dictionary, values: Dictionary) -> bool:
+	var preset := _load_common_water(path)
+	if preset == null:
+		return _common_water_status("Не удалось открыть общий пресет воды.", false)
+	if preset.water_settings_snapshot() != expected:
+		preset.free()
+		return _common_water_status("Общий пресет уже изменён. Текущая версия сохранена.", false)
+	for key in values:
+		preset.set(key, values[key])
+	var scene := PackedScene.new()
+	var error := scene.pack(preset)
+	preset.free()
+	if error == OK:
+		error = ResourceSaver.save(scene, path)
+	if error != OK:
+		return _common_water_status("Не удалось сохранить общий пресет: %s" % error_string(error), false)
+	ResourceLoader.load(path, "PackedScene", ResourceLoader.CACHE_MODE_REPLACE)
+	return _common_water_status("Общий пресет сохранён. Переоткройте другие карты, чтобы увидеть изменения.", true)
+
+
+func _common_water_status(message: String, ok: bool) -> bool:
+	_water_publish_status.text = message
+	return ok
+
+
 func _target(key: String) -> Object:
 	if not is_instance_valid(_scene): return null
 	if ANOMALY_VALUES.has(key):
@@ -531,12 +682,16 @@ func _add_color(key: String, parent: VBoxContainer = null) -> void:
 
 
 func refresh() -> void:
+	_refresh_world_preset_choices()
 	if not is_node_ready(): return
 	_syncing = true
 	var available := is_instance_valid(_scene) and is_instance_valid(_sun) and _environment != null
+	_terrain_materials_button.disabled = not is_instance_valid(_map) or _map.compact_terrain == null
 	for button in _material_light_buttons:button.disabled=not available
 	_hint.text = "Настройки сохраняются в сцене карты." if available else "На карте нужны Look/Sun и Look/WorldEnvironment."
 	_water_hint.text = "Вода карты · 3D и F6. Настройки сохраняются в сцене; отражение объектов и подводный свет проверяйте в F6." if is_instance_valid(_water) else "На карте не найден контроллер воды."
+	_publish_water.visible = is_instance_valid(_water) and _water.scene_file_path == COMMON_WATER_PATH
+	_water_publish_status.visible = _publish_water.visible
 	for key in _choices:
 		var choice := _choices[key] as OptionButton
 		var target := _target(key)

@@ -1,0 +1,906 @@
+[gd_scene format=4]
+
+[ext_resource type="PackedScene" path="res://prefabs/items/shared_world_water.tscn" id="shared_world_water"]
+
+[ext_resource type="Script" path="res://scripts/world_canvas.gd" id="1_w1sjp"]
+[ext_resource type="Script" path="res://scripts/ember_map_loader.gd" id="2_rscqt"]
+[ext_resource type="Resource" path="res://content/world_terrains/chapter1/chapter1_residential.res" id="3_37v67"]
+[ext_resource type="Material" path="res://materials/ember_compact_sky_reflection_study.tres" id="4_6dmrh"]
+[ext_resource type="Material" path="res://materials/ember_voxel_toon.tres" id="5_mlmp5"]
+[ext_resource type="Script" path="res://scripts/ember_interact.gd" id="6_owtlr"]
+[ext_resource type="Script" path="res://scripts/ember_region.gd" id="7_dnc4e"]
+[ext_resource type="PackedScene" path="res://prefabs/voxels/vox_painted_maple_autumn_palette.tscn" id="8_fpvfm"]
+[ext_resource type="Script" path="res://scripts/ember_voxel_prop.gd" id="9_2ctsq"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_gc4xx"]
+sky_top_color = Color(0.24, 0.32, 0.48, 1)
+sky_horizon_color = Color(1, 0.6, 0.35, 1)
+ground_horizon_color = Color(0.68, 0.42, 0.33, 1)
+
+[sub_resource type="Sky" id="Sky_s28aa"]
+sky_material = SubResource("ProceduralSkyMaterial_gc4xx")
+
+[sub_resource type="Environment" id="Environment_g4xq8"]
+background_mode = 2
+sky = SubResource("Sky_s28aa")
+ambient_light_source = 2
+ambient_light_color = Color(0.5, 0.59, 0.78, 1)
+ambient_light_energy = 0.55
+tonemap_mode = 2
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_vts7p"]
+_surfaces = [{
+"aabb": AABB(-55, -2, -14, 110, 4, 28),
+"attribute_data": PackedByteArray("n5J5/wAAAAAAAAAAn5J5/6uqKj8AAAAAn5J5/6uqqj4AAAAAn5J5/wAAgD8AAAAAn5J5/wAAAAAAAAA/n5J5/6uqKj8AAAA/n5J5/6uqqj4AAAA/n5J5/wAAgD8AAAA/n5J5/6uqqj4AAAAAn5J5/wAAAAAAAAA/n5J5/6uqKj8AAAAAn5J5/6uqqj4AAAA/n5J5/6uqqj4AAAA/n5J5/wAAAAAAAIA/n5J5/6uqKj8AAAA/n5J5/6uqqj4AAIA/n5J5/6uqqj4AAAA/n5J5/6uqKj8AAAA/n5J5/6uqKj8AAAA/n5J5/wAAgD8AAAA/n5J5/6uqqj4AAIA/n5J5/6uqKj8AAIA/n5J5/6uqKj8AAIA/n5J5/wAAgD8AAIA/"),
+"format": 34359742495,
+"index_count": 36,
+"index_data": PackedByteArray("AAACAAQAAgAGAAQAAQADAAUAAwAHAAUACAAKAAwACgAOAAwACQALAA0ACwAPAA0AEAASABQAEgAWABQAEQATABUAEwAXABUA"),
+"material": ExtResource("5_mlmp5"),
+"name": "chapter1_blockout",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 24,
+"vertex_data": PackedByteArray("AABcwgAAAEAAAGBBAABcQgAAAEAAAGDBAABcQgAAAEAAAGBBAABcwgAAAEAAAGDBAABcwgAAAMAAAGBBAABcQgAAAMAAAGDBAABcQgAAAMAAAGBBAABcwgAAAMAAAGDBAABcQgAAAEAAAGBBAABcwgAAAEAAAGDBAABcQgAAAEAAAGDBAABcwgAAAEAAAGBBAABcQgAAAMAAAGBBAABcwgAAAMAAAGDBAABcQgAAAMAAAGDBAABcwgAAAMAAAGBBAABcQgAAAEAAAGBBAABcwgAAAMAAAGBBAABcwgAAAEAAAGBBAABcQgAAAMAAAGBBAABcQgAAAEAAAGDBAABcwgAAAMAAAGDBAABcwgAAAEAAAGDBAABcQgAAAMAAAGDB/3//f////7//////AAD/v/9//3////+//////wAA/7//f/9/////v/////8AAP+//3//f////7//////AAD/v///AID/////AAAAgP9//7///wCA/////wAAAID/f/+///8AgP////8AAACA/3//v///AID/////AAAAgP9//78AgP//AAD/vwCAAAD///+/AID//wAA/78AgAAA////vwCA//8AAP+/AIAAAP///78AgP//AAD/vwCAAAD///+/")
+}]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_2mknh"]
+size = Vector3(110, 4, 28)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_2thp7"]
+size = Vector3(110, 4, 28)
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_w51vr"]
+_surfaces = [{
+"aabb": AABB(-36, -24, -30, 72, 48, 60),
+"attribute_data": PackedByteArray("saOI/wAAAAAAAAAAsaOI/6uqKj8AAAAAsaOI/6uqqj4AAAAAsaOI/wAAgD8AAAAAsaOI/wAAAAAAAAA/saOI/6uqKj8AAAA/saOI/6uqqj4AAAA/saOI/wAAgD8AAAA/saOI/6uqqj4AAAAAsaOI/wAAAAAAAAA/saOI/6uqKj8AAAAAsaOI/6uqqj4AAAA/saOI/6uqqj4AAAA/saOI/wAAAAAAAIA/saOI/6uqKj8AAAA/saOI/6uqqj4AAIA/saOI/6uqqj4AAAA/saOI/6uqKj8AAAA/saOI/6uqKj8AAAA/saOI/wAAgD8AAAA/saOI/6uqqj4AAIA/saOI/6uqKj8AAIA/saOI/6uqKj8AAIA/saOI/wAAgD8AAIA/"),
+"format": 34359742495,
+"index_count": 36,
+"index_data": PackedByteArray("AAACAAQAAgAGAAQAAQADAAUAAwAHAAUACAAKAAwACgAOAAwACQALAA0ACwAPAA0AEAASABQAEgAWABQAEQATABUAEwAXABUA"),
+"material": ExtResource("5_mlmp5"),
+"name": "chapter1_blockout",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 24,
+"vertex_data": PackedByteArray("AAAQwgAAwEEAAPBBAAAQQgAAwEEAAPDBAAAQQgAAwEEAAPBBAAAQwgAAwEEAAPDBAAAQwgAAwMEAAPBBAAAQQgAAwMEAAPDBAAAQQgAAwMEAAPBBAAAQwgAAwMEAAPDBAAAQQgAAwEEAAPBBAAAQwgAAwEEAAPDBAAAQQgAAwEEAAPDBAAAQwgAAwEEAAPBBAAAQQgAAwMEAAPBBAAAQwgAAwMEAAPDBAAAQQgAAwMEAAPDBAAAQwgAAwMEAAPBBAAAQQgAAwEEAAPBBAAAQwgAAwMEAAPBBAAAQwgAAwEEAAPBBAAAQQgAAwMEAAPBBAAAQQgAAwEEAAPDBAAAQwgAAwMEAAPDBAAAQwgAAwEEAAPDBAAAQQgAAwMEAAPDB/3//f////7//////AAD/v/9//3////+//////wAA/7//f/9/////v/////8AAP+//3//f////7//////AAD/v///AID/////AAAAgP9//7///wCA/////wAAAID/f/+///8AgP////8AAACA/3//v///AID/////AAAAgP9//78AgP//AAD/vwCAAAD///+/AID//wAA/78AgAAA////vwCA//8AAP+/AIAAAP///78AgP//AAD/vwCAAAD///+/")
+}]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_kdd1q"]
+size = Vector3(72, 48, 60)
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_ki0dk"]
+_surfaces = [{
+"aabb": AABB(-38.5, -3, -32.5, 77, 6, 65),
+"attribute_data": PackedByteArray("jmVT/wAAAAAAAAAAjmVT/6uqKj8AAAAAjmVT/6uqqj4AAAAAjmVT/wAAgD8AAAAAjmVT/wAAAAAAAAA/jmVT/6uqKj8AAAA/jmVT/6uqqj4AAAA/jmVT/wAAgD8AAAA/jmVT/6uqqj4AAAAAjmVT/wAAAAAAAAA/jmVT/6uqKj8AAAAAjmVT/6uqqj4AAAA/jmVT/6uqqj4AAAA/jmVT/wAAAAAAAIA/jmVT/6uqKj8AAAA/jmVT/6uqqj4AAIA/jmVT/6uqqj4AAAA/jmVT/6uqKj8AAAA/jmVT/6uqKj8AAAA/jmVT/wAAgD8AAAA/jmVT/6uqqj4AAIA/jmVT/6uqKj8AAIA/jmVT/6uqKj8AAIA/jmVT/wAAgD8AAIA/"),
+"format": 34359742495,
+"index_count": 36,
+"index_data": PackedByteArray("AAACAAQAAgAGAAQAAQADAAUAAwAHAAUACAAKAAwACgAOAAwACQALAA0ACwAPAA0AEAASABQAEgAWABQAEQATABUAEwAXABUA"),
+"material": ExtResource("5_mlmp5"),
+"name": "chapter1_blockout",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 24,
+"vertex_data": PackedByteArray("AAAawgAAQEAAAAJCAAAaQgAAQEAAAALCAAAaQgAAQEAAAAJCAAAawgAAQEAAAALCAAAawgAAQMAAAAJCAAAaQgAAQMAAAALCAAAaQgAAQMAAAAJCAAAawgAAQMAAAALCAAAaQgAAQEAAAAJCAAAawgAAQEAAAALCAAAaQgAAQEAAAALCAAAawgAAQEAAAAJCAAAaQgAAQMAAAAJCAAAawgAAQMAAAALCAAAaQgAAQMAAAALCAAAawgAAQMAAAAJCAAAaQgAAQEAAAAJCAAAawgAAQMAAAAJCAAAawgAAQEAAAAJCAAAaQgAAQMAAAAJCAAAaQgAAQEAAAALCAAAawgAAQMAAAALCAAAawgAAQEAAAALCAAAaQgAAQMAAAALC/3//f////7//////AAD/v/9//3////+//////wAA/7//f/9/////v/////8AAP+//3//f////7//////AAD/v///AID/////AAAAgP9//7///wCA/////wAAAID/f/+///8AgP////8AAACA/3//v///AID/////AAAAgP9//78AgP//AAD/vwCAAAD///+/AID//wAA/78AgAAA////vwCA//8AAP+/AIAAAP///78AgP//AAD/vwCAAAD///+/")
+}]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_kcua6"]
+size = Vector3(77, 6, 65)
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_mbljq"]
+radius = 11.2
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_4p0eo"]
+_surfaces = [{
+"aabb": AABB(-6, -11.5, -1, 12, 23, 2),
+"attribute_data": PackedByteArray("W3eB/wAAAAAAAAAAW3eB/6uqKj8AAAAAW3eB/6uqqj4AAAAAW3eB/wAAgD8AAAAAW3eB/wAAAAAAAAA/W3eB/6uqKj8AAAA/W3eB/6uqqj4AAAA/W3eB/wAAgD8AAAA/W3eB/6uqqj4AAAAAW3eB/wAAAAAAAAA/W3eB/6uqKj8AAAAAW3eB/6uqqj4AAAA/W3eB/6uqqj4AAAA/W3eB/wAAAAAAAIA/W3eB/6uqKj8AAAA/W3eB/6uqqj4AAIA/W3eB/6uqqj4AAAA/W3eB/6uqKj8AAAA/W3eB/6uqKj8AAAA/W3eB/wAAgD8AAAA/W3eB/6uqqj4AAIA/W3eB/6uqKj8AAIA/W3eB/6uqKj8AAIA/W3eB/wAAgD8AAIA/"),
+"format": 34359742495,
+"index_count": 36,
+"index_data": PackedByteArray("AAACAAQAAgAGAAQAAQADAAUAAwAHAAUACAAKAAwACgAOAAwACQALAA0ACwAPAA0AEAASABQAEgAWABQAEQATABUAEwAXABUA"),
+"material": ExtResource("5_mlmp5"),
+"name": "chapter1_blockout",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 24,
+"vertex_data": PackedByteArray("AADAwAAAOEEAAIA/AADAQAAAOEEAAIC/AADAQAAAOEEAAIA/AADAwAAAOEEAAIC/AADAwAAAOMEAAIA/AADAQAAAOMEAAIC/AADAQAAAOMEAAIA/AADAwAAAOMEAAIC/AADAQAAAOEEAAIA/AADAwAAAOEEAAIC/AADAQAAAOEEAAIC/AADAwAAAOEEAAIA/AADAQAAAOMEAAIA/AADAwAAAOMEAAIC/AADAQAAAOMEAAIC/AADAwAAAOMEAAIA/AADAQAAAOEEAAIA/AADAwAAAOMEAAIA/AADAwAAAOEEAAIA/AADAQAAAOMEAAIA/AADAQAAAOEEAAIC/AADAwAAAOMEAAIC/AADAwAAAOEEAAIC/AADAQAAAOMEAAIC//3//f////7//////AAD/v/9//3////+//////wAA/7//f/9/////v/////8AAP+//3//f////7//////AAD/v///AID/////AAAAgP9//7///wCA/////wAAAID/f/+///8AgP////8AAACA/3//v///AID/////AAAAgP9//78AgP//AAD/vwCAAAD///+/AID//wAA/78AgAAA////vwCA//8AAP+/AIAAAP///78AgP//AAD/vwCAAAD///+/")
+}]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_jectm"]
+size = Vector3(28, 48, 28)
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_ovpfr"]
+_surfaces = [{
+"aabb": AABB(-32, -21, -24, 64, 42, 48),
+"attribute_data": PackedByteArray("saOI/wAAAAAAAAAAsaOI/6uqKj8AAAAAsaOI/6uqqj4AAAAAsaOI/wAAgD8AAAAAsaOI/wAAAAAAAAA/saOI/6uqKj8AAAA/saOI/6uqqj4AAAA/saOI/wAAgD8AAAA/saOI/6uqqj4AAAAAsaOI/wAAAAAAAAA/saOI/6uqKj8AAAAAsaOI/6uqqj4AAAA/saOI/6uqqj4AAAA/saOI/wAAAAAAAIA/saOI/6uqKj8AAAA/saOI/6uqqj4AAIA/saOI/6uqqj4AAAA/saOI/6uqKj8AAAA/saOI/6uqKj8AAAA/saOI/wAAgD8AAAA/saOI/6uqqj4AAIA/saOI/6uqKj8AAIA/saOI/6uqKj8AAIA/saOI/wAAgD8AAIA/"),
+"format": 34359742495,
+"index_count": 36,
+"index_data": PackedByteArray("AAACAAQAAgAGAAQAAQADAAUAAwAHAAUACAAKAAwACgAOAAwACQALAA0ACwAPAA0AEAASABQAEgAWABQAEQATABUAEwAXABUA"),
+"material": ExtResource("5_mlmp5"),
+"name": "chapter1_blockout",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 24,
+"vertex_data": PackedByteArray("AAAAwgAAqEEAAMBBAAAAQgAAqEEAAMDBAAAAQgAAqEEAAMBBAAAAwgAAqEEAAMDBAAAAwgAAqMEAAMBBAAAAQgAAqMEAAMDBAAAAQgAAqMEAAMBBAAAAwgAAqMEAAMDBAAAAQgAAqEEAAMBBAAAAwgAAqEEAAMDBAAAAQgAAqEEAAMDBAAAAwgAAqEEAAMBBAAAAQgAAqMEAAMBBAAAAwgAAqMEAAMDBAAAAQgAAqMEAAMDBAAAAwgAAqMEAAMBBAAAAQgAAqEEAAMBBAAAAwgAAqMEAAMBBAAAAwgAAqEEAAMBBAAAAQgAAqMEAAMBBAAAAQgAAqEEAAMDBAAAAwgAAqMEAAMDBAAAAwgAAqEEAAMDBAAAAQgAAqMEAAMDB/3//f////7//////AAD/v/9//3////+//////wAA/7//f/9/////v/////8AAP+//3//f////7//////AAD/v///AID/////AAAAgP9//7///wCA/////wAAAID/f/+///8AgP////8AAACA/3//v///AID/////AAAAgP9//78AgP//AAD/vwCAAAD///+/AID//wAA/78AgAAA////vwCA//8AAP+/AIAAAP///78AgP//AAD/vwCAAAD///+/")
+}]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_1y2at"]
+size = Vector3(64, 42, 48)
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_jmnw7"]
+_surfaces = [{
+"aabb": AABB(-34.5, -3, -26.5, 69, 6, 53),
+"attribute_data": PackedByteArray("jmVT/wAAAAAAAAAAjmVT/6uqKj8AAAAAjmVT/6uqqj4AAAAAjmVT/wAAgD8AAAAAjmVT/wAAAAAAAAA/jmVT/6uqKj8AAAA/jmVT/6uqqj4AAAA/jmVT/wAAgD8AAAA/jmVT/6uqqj4AAAAAjmVT/wAAAAAAAAA/jmVT/6uqKj8AAAAAjmVT/6uqqj4AAAA/jmVT/6uqqj4AAAA/jmVT/wAAAAAAAIA/jmVT/6uqKj8AAAA/jmVT/6uqqj4AAIA/jmVT/6uqqj4AAAA/jmVT/6uqKj8AAAA/jmVT/6uqKj8AAAA/jmVT/wAAgD8AAAA/jmVT/6uqqj4AAIA/jmVT/6uqKj8AAIA/jmVT/6uqKj8AAIA/jmVT/wAAgD8AAIA/"),
+"format": 34359742495,
+"index_count": 36,
+"index_data": PackedByteArray("AAACAAQAAgAGAAQAAQADAAUAAwAHAAUACAAKAAwACgAOAAwACQALAA0ACwAPAA0AEAASABQAEgAWABQAEQATABUAEwAXABUA"),
+"material": ExtResource("5_mlmp5"),
+"name": "chapter1_blockout",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 24,
+"vertex_data": PackedByteArray("AAAKwgAAQEAAANRBAAAKQgAAQEAAANTBAAAKQgAAQEAAANRBAAAKwgAAQEAAANTBAAAKwgAAQMAAANRBAAAKQgAAQMAAANTBAAAKQgAAQMAAANRBAAAKwgAAQMAAANTBAAAKQgAAQEAAANRBAAAKwgAAQEAAANTBAAAKQgAAQEAAANTBAAAKwgAAQEAAANRBAAAKQgAAQMAAANRBAAAKwgAAQMAAANTBAAAKQgAAQMAAANTBAAAKwgAAQMAAANRBAAAKQgAAQEAAANRBAAAKwgAAQMAAANRBAAAKwgAAQEAAANRBAAAKQgAAQMAAANRBAAAKQgAAQEAAANTBAAAKwgAAQMAAANTBAAAKwgAAQEAAANTBAAAKQgAAQMAAANTB/3//f////7//////AAD/v/9//3////+//////wAA/7//f/9/////v/////8AAP+//3//f////7//////AAD/v///AID/////AAAAgP9//7///wCA/////wAAAID/f/+///8AgP////8AAACA/3//v///AID/////AAAAgP9//78AgP//AAD/vwCAAAD///+/AID//wAA/78AgAAA////vwCA//8AAP+/AIAAAP///78AgP//AAD/vwCAAAD///+/")
+}]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_4j7c8"]
+size = Vector3(69, 6, 53)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_23tce"]
+size = Vector3(64, 42, 48)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_cnr6o"]
+size = Vector3(69, 6, 53)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_cxh2u"]
+size = Vector3(64, 42, 48)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_44are"]
+size = Vector3(69, 6, 53)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_pby1g"]
+size = Vector3(64, 42, 48)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_6vv0e"]
+size = Vector3(69, 6, 53)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_1iqjg"]
+size = Vector3(64, 42, 48)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_j5jx6"]
+size = Vector3(69, 6, 53)
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_31jgn"]
+_surfaces = [{
+"aabb": AABB(-20, -1, -11, 40, 2, 22),
+"attribute_data": PackedByteArray("d2VK/wAAAAAAAAAAd2VK/6uqKj8AAAAAd2VK/6uqqj4AAAAAd2VK/wAAgD8AAAAAd2VK/wAAAAAAAAA/d2VK/6uqKj8AAAA/d2VK/6uqqj4AAAA/d2VK/wAAgD8AAAA/d2VK/6uqqj4AAAAAd2VK/wAAAAAAAAA/d2VK/6uqKj8AAAAAd2VK/6uqqj4AAAA/d2VK/6uqqj4AAAA/d2VK/wAAAAAAAIA/d2VK/6uqKj8AAAA/d2VK/6uqqj4AAIA/d2VK/6uqqj4AAAA/d2VK/6uqKj8AAAA/d2VK/6uqKj8AAAA/d2VK/wAAgD8AAAA/d2VK/6uqqj4AAIA/d2VK/6uqKj8AAIA/d2VK/6uqKj8AAIA/d2VK/wAAgD8AAIA/"),
+"format": 34359742495,
+"index_count": 36,
+"index_data": PackedByteArray("AAACAAQAAgAGAAQAAQADAAUAAwAHAAUACAAKAAwACgAOAAwACQALAA0ACwAPAA0AEAASABQAEgAWABQAEQATABUAEwAXABUA"),
+"material": ExtResource("5_mlmp5"),
+"name": "chapter1_blockout",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 24,
+"vertex_data": PackedByteArray("AACgwQAAgD8AADBBAACgQQAAgD8AADDBAACgQQAAgD8AADBBAACgwQAAgD8AADDBAACgwQAAgL8AADBBAACgQQAAgL8AADDBAACgQQAAgL8AADBBAACgwQAAgL8AADDBAACgQQAAgD8AADBBAACgwQAAgD8AADDBAACgQQAAgD8AADDBAACgwQAAgD8AADBBAACgQQAAgL8AADBBAACgwQAAgL8AADDBAACgQQAAgL8AADDBAACgwQAAgL8AADBBAACgQQAAgD8AADBBAACgwQAAgL8AADBBAACgwQAAgD8AADBBAACgQQAAgL8AADBBAACgQQAAgD8AADDBAACgwQAAgL8AADDBAACgwQAAgD8AADDBAACgQQAAgL8AADDB/3//f////7//////AAD/v/9//3////+//////wAA/7//f/9/////v/////8AAP+//3//f////7//////AAD/v///AID/////AAAAgP9//7///wCA/////wAAAID/f/+///8AgP////8AAACA/3//v///AID/////AAAAgP9//78AgP//AAD/vwCAAAD///+/AID//wAA/78AgAAA////vwCA//8AAP+/AIAAAP///78AgP//AAD/vwCAAAD///+/")
+}]
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_snmtp"]
+_surfaces = [{
+"aabb": AABB(-2.5, -2, -5.5, 5, 4, 11),
+"attribute_data": PackedByteArray("e4xU/wAAAAAAAAAAe4xU/6uqKj8AAAAAe4xU/6uqqj4AAAAAe4xU/wAAgD8AAAAAe4xU/wAAAAAAAAA/e4xU/6uqKj8AAAA/e4xU/6uqqj4AAAA/e4xU/wAAgD8AAAA/e4xU/6uqqj4AAAAAe4xU/wAAAAAAAAA/e4xU/6uqKj8AAAAAe4xU/6uqqj4AAAA/e4xU/6uqqj4AAAA/e4xU/wAAAAAAAIA/e4xU/6uqKj8AAAA/e4xU/6uqqj4AAIA/e4xU/6uqqj4AAAA/e4xU/6uqKj8AAAA/e4xU/6uqKj8AAAA/e4xU/wAAgD8AAAA/e4xU/6uqqj4AAIA/e4xU/6uqKj8AAIA/e4xU/6uqKj8AAIA/e4xU/wAAgD8AAIA/"),
+"format": 34359742495,
+"index_count": 36,
+"index_data": PackedByteArray("AAACAAQAAgAGAAQAAQADAAUAAwAHAAUACAAKAAwACgAOAAwACQALAA0ACwAPAA0AEAASABQAEgAWABQAEQATABUAEwAXABUA"),
+"material": ExtResource("5_mlmp5"),
+"name": "chapter1_blockout",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 24,
+"vertex_data": PackedByteArray("AAAgwAAAAEAAALBAAAAgQAAAAEAAALDAAAAgQAAAAEAAALBAAAAgwAAAAEAAALDAAAAgwAAAAMAAALBAAAAgQAAAAMAAALDAAAAgQAAAAMAAALBAAAAgwAAAAMAAALDAAAAgQAAAAEAAALBAAAAgwAAAAEAAALDAAAAgQAAAAEAAALDAAAAgwAAAAEAAALBAAAAgQAAAAMAAALBAAAAgwAAAAMAAALDAAAAgQAAAAMAAALDAAAAgwAAAAMAAALBAAAAgQAAAAEAAALBAAAAgwAAAAMAAALBAAAAgwAAAAEAAALBAAAAgQAAAAMAAALBAAAAgQAAAAEAAALDAAAAgwAAAAMAAALDAAAAgwAAAAEAAALDAAAAgQAAAAMAAALDA/3//f////7//////AAD/v/9//3////+//////wAA/7//f/9/////v/////8AAP+//3//f////7//////AAD/v///AID/////AAAAgP9//7///wCA/////wAAAID/f/+///8AgP////8AAACA/3//v///AID/////AAAAgP9//78AgP//AAD/vwCAAAD///+/AID//wAA/78AgAAA////vwCA//8AAP+/AIAAAP///78AgP//AAD/vwCAAAD///+/")
+}]
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_0spwa"]
+_surfaces = [{
+"aabb": AABB(-29, -4.5, -1, 58, 9, 2),
+"attribute_data": PackedByteArray("lYFm/wAAAAAAAAAAlYFm/6uqKj8AAAAAlYFm/6uqqj4AAAAAlYFm/wAAgD8AAAAAlYFm/wAAAAAAAAA/lYFm/6uqKj8AAAA/lYFm/6uqqj4AAAA/lYFm/wAAgD8AAAA/lYFm/6uqqj4AAAAAlYFm/wAAAAAAAAA/lYFm/6uqKj8AAAAAlYFm/6uqqj4AAAA/lYFm/6uqqj4AAAA/lYFm/wAAAAAAAIA/lYFm/6uqKj8AAAA/lYFm/6uqqj4AAIA/lYFm/6uqqj4AAAA/lYFm/6uqKj8AAAA/lYFm/6uqKj8AAAA/lYFm/wAAgD8AAAA/lYFm/6uqqj4AAIA/lYFm/6uqKj8AAIA/lYFm/6uqKj8AAIA/lYFm/wAAgD8AAIA/"),
+"format": 34359742495,
+"index_count": 36,
+"index_data": PackedByteArray("AAACAAQAAgAGAAQAAQADAAUAAwAHAAUACAAKAAwACgAOAAwACQALAA0ACwAPAA0AEAASABQAEgAWABQAEQATABUAEwAXABUA"),
+"material": ExtResource("5_mlmp5"),
+"name": "chapter1_blockout",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 24,
+"vertex_data": PackedByteArray("AADowQAAkEAAAIA/AADoQQAAkEAAAIC/AADoQQAAkEAAAIA/AADowQAAkEAAAIC/AADowQAAkMAAAIA/AADoQQAAkMAAAIC/AADoQQAAkMAAAIA/AADowQAAkMAAAIC/AADoQQAAkEAAAIA/AADowQAAkEAAAIC/AADoQQAAkEAAAIC/AADowQAAkEAAAIA/AADoQQAAkMAAAIA/AADowQAAkMAAAIC/AADoQQAAkMAAAIC/AADowQAAkMAAAIA/AADoQQAAkEAAAIA/AADowQAAkMAAAIA/AADowQAAkEAAAIA/AADoQQAAkMAAAIA/AADoQQAAkEAAAIC/AADowQAAkMAAAIC/AADowQAAkEAAAIC/AADoQQAAkMAAAIC//3//f////7//////AAD/v/9//3////+//////wAA/7//f/9/////v/////8AAP+//3//f////7//////AAD/v///AID/////AAAAgP9//7///wCA/////wAAAID/f/+///8AgP////8AAACA/3//v///AID/////AAAAgP9//78AgP//AAD/vwCAAAD///+/AID//wAA/78AgAAA////vwCA//8AAP+/AIAAAP///78AgP//AAD/vwCAAAD///+/")
+}]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_g36sd"]
+size = Vector3(58, 9, 2)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_gfgpe"]
+size = Vector3(58, 9, 2)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_bbbma"]
+size = Vector3(58, 9, 2)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_qniqk"]
+size = Vector3(58, 9, 2)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_vfdsm"]
+size = Vector3(28, 48, 28)
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_pay0k"]
+_surfaces = [{
+"aabb": AABB(-1.5, -12, -1.5, 3, 24, 3),
+"attribute_data": PackedByteArray("hpN1/wAAAAAAAAAAhpN1/6uqKj8AAAAAhpN1/6uqqj4AAAAAhpN1/wAAgD8AAAAAhpN1/wAAAAAAAAA/hpN1/6uqKj8AAAA/hpN1/6uqqj4AAAA/hpN1/wAAgD8AAAA/hpN1/6uqqj4AAAAAhpN1/wAAAAAAAAA/hpN1/6uqKj8AAAAAhpN1/6uqqj4AAAA/hpN1/6uqqj4AAAA/hpN1/wAAAAAAAIA/hpN1/6uqKj8AAAA/hpN1/6uqqj4AAIA/hpN1/6uqqj4AAAA/hpN1/6uqKj8AAAA/hpN1/6uqKj8AAAA/hpN1/wAAgD8AAAA/hpN1/6uqqj4AAIA/hpN1/6uqKj8AAIA/hpN1/6uqKj8AAIA/hpN1/wAAgD8AAIA/"),
+"format": 34359742495,
+"index_count": 36,
+"index_data": PackedByteArray("AAACAAQAAgAGAAQAAQADAAUAAwAHAAUACAAKAAwACgAOAAwACQALAA0ACwAPAA0AEAASABQAEgAWABQAEQATABUAEwAXABUA"),
+"material": ExtResource("5_mlmp5"),
+"name": "chapter1_blockout",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 24,
+"vertex_data": PackedByteArray("AADAvwAAQEEAAMA/AADAPwAAQEEAAMC/AADAPwAAQEEAAMA/AADAvwAAQEEAAMC/AADAvwAAQMEAAMA/AADAPwAAQMEAAMC/AADAPwAAQMEAAMA/AADAvwAAQMEAAMC/AADAPwAAQEEAAMA/AADAvwAAQEEAAMC/AADAPwAAQEEAAMC/AADAvwAAQEEAAMA/AADAPwAAQMEAAMA/AADAvwAAQMEAAMC/AADAPwAAQMEAAMC/AADAvwAAQMEAAMA/AADAPwAAQEEAAMA/AADAvwAAQMEAAMA/AADAvwAAQEEAAMA/AADAPwAAQMEAAMA/AADAPwAAQEEAAMC/AADAvwAAQMEAAMC/AADAvwAAQEEAAMC/AADAPwAAQMEAAMC//3//f////7//////AAD/v/9//3////+//////wAA/7//f/9/////v/////8AAP+//3//f////7//////AAD/v///AID/////AAAAgP9//7///wCA/////wAAAID/f/+///8AgP////8AAACA/3//v///AID/////AAAAgP9//78AgP//AAD/vwCAAAD///+/AID//wAA/78AgAAA////vwCA//8AAP+/AIAAAP///78AgP//AAD/vwCAAAD///+/")
+}]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_r280w"]
+size = Vector3(3, 24, 3)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_2dgvb"]
+size = Vector3(3, 24, 3)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_4wgv6"]
+size = Vector3(28, 48, 28)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_jvfhu"]
+size = Vector3(3, 24, 3)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_8000t"]
+size = Vector3(3, 24, 3)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_pa5ya"]
+size = Vector3(28, 48, 28)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_j3e88"]
+size = Vector3(28, 48, 28)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_sptsc"]
+size = Vector3(28, 48, 28)
+
+[node name="chapter1_residential" type="Node3D" unique_id=1099505010]
+script = ExtResource("1_w1sjp")
+sandbox_storage_root = "user://ember-chapter1-blockout"
+map_id = "chapter1_residential"
+metadata/chapter1_blockout = true
+metadata/blockout_title = "Жилая улица · канал и дворы"
+
+[node name="Map" type="Node3D" parent="." unique_id=1629898974]
+script = ExtResource("2_rscqt")
+map_id = "chapter1_residential"
+compact_smooth_study_column_limit = 1572864
+compact_terrain = ExtResource("3_37v67")
+compact_ground_style = 1
+compact_smooth_material_blend = true
+compact_water_visual_material = ExtResource("4_6dmrh")
+compact_water_mesh_step = 8
+compact_water_volume_sides = true
+compact_material_light_mode = 1
+authored_size_blocks = Vector2i(32, 36)
+camera_distance = 170.0
+camera_polar = 0.88
+camera_yaw = 0.35
+camera_look_height = 5.0
+camera_far = 1600.0
+
+[node name="Look" type="Node3D" parent="Map" unique_id=1753887353]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="Map/Look" unique_id=545451864]
+environment = SubResource("Environment_g4xq8")
+
+[node name="Sun" type="DirectionalLight3D" parent="Map/Look" unique_id=1315972864]
+transform = Transform3D(0.57357645, 0.46984634, -0.6710101, 0, 0.81915206, 0.57357645, 0.81915206, -0.32898995, 0.46984634, 0, 0, 0)
+light_color = Color(1, 0.79, 0.59, 1)
+light_energy = 1.1
+shadow_enabled = true
+directional_shadow_max_distance = 600.0
+
+[node name="Terrain" type="Node3D" parent="Map" unique_id=422016900]
+
+[node name="Props" type="Node3D" parent="Map" unique_id=1527961968]
+
+[node name="Bridge10" type="MeshInstance3D" parent="Map/Props" unique_id=621605748]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 256, 8, 160)
+mesh = SubResource("ArrayMesh_vts7p")
+
+[node name="Bridge10Collision" type="StaticBody3D" parent="Map/Props" unique_id=1625129287]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 256, 8, 160)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/Bridge10Collision" unique_id=1598483850]
+shape = SubResource("BoxShape3D_2mknh")
+
+[node name="Bridge27" type="MeshInstance3D" parent="Map/Props" unique_id=2072652206]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 256, 8, 432)
+mesh = SubResource("ArrayMesh_vts7p")
+
+[node name="Bridge27Collision" type="StaticBody3D" parent="Map/Props" unique_id=2053151404]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 256, 8, 432)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/Bridge27Collision" unique_id=1877153752]
+shape = SubResource("BoxShape3D_2thp7")
+
+[node name="KaiHome" type="Node3D" parent="Map/Props" unique_id=636753759]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 112, 8, 112)
+metadata/presentation_id = "KaiHome"
+
+[node name="Walls" type="MeshInstance3D" parent="Map/Props/KaiHome" unique_id=1094852224]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 24, 0)
+mesh = SubResource("ArrayMesh_w51vr")
+
+[node name="WallsCollision" type="StaticBody3D" parent="Map/Props/KaiHome" unique_id=1071542367]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 24, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/KaiHome/WallsCollision" unique_id=1554210109]
+shape = SubResource("BoxShape3D_kdd1q")
+
+[node name="Roof" type="MeshInstance3D" parent="Map/Props/KaiHome" unique_id=132607046]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 51, 0)
+mesh = SubResource("ArrayMesh_ki0dk")
+
+[node name="RoofCollision" type="StaticBody3D" parent="Map/Props/KaiHome" unique_id=213445412]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 51, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/KaiHome/RoofCollision" unique_id=1091399163]
+shape = SubResource("BoxShape3D_kcua6")
+
+[node name="Label" type="Label3D" parent="Map/Props/KaiHome" unique_id=773820341]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 62, 0)
+pixel_size = 0.11
+billboard = 1
+modulate = Color(1, 0.95686275, 0.83137256, 1)
+text = "Дом Кая"
+outline_size = 8
+
+[node name="DoorInteraction" type="Area3D" parent="Map/Props/KaiHome" unique_id=1745684269]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 8, 37)
+collision_layer = 4
+collision_mask = 0
+monitoring = false
+script = ExtResource("6_owtlr")
+target_map_id = "chapter1_home"
+target_region_id = "entry"
+condition_value = true
+note = "Дом Кая"
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/KaiHome/DoorInteraction" unique_id=1509081778]
+shape = SubResource("SphereShape3D_mbljq")
+
+[node name="DoorPanel" type="MeshInstance3D" parent="Map/Props/KaiHome" unique_id=1521486789]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 15, 33)
+mesh = SubResource("ArrayMesh_4p0eo")
+
+[node name="return_home" type="Area3D" parent="Map/Props/KaiHome" unique_id=4911661]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 60)
+script = ExtResource("7_dnc4e")
+region_id = "return_home"
+map_id = "chapter1_residential"
+kind = "player_start"
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/KaiHome/return_home" unique_id=488280102]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 16, 0)
+shape = SubResource("BoxShape3D_jectm")
+
+[node name="Neighbour5" type="Node3D" parent="Map/Props" unique_id=309997551]
+transform = Transform3D(0.99680173, 0, -0.07991469, 0, 1, 0, 0.07991469, 0, 0.99680173, 112, 8, 288)
+metadata/presentation_id = "Neighbour5"
+
+[node name="Walls" type="MeshInstance3D" parent="Map/Props/Neighbour5" unique_id=1510981912]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 21, 0)
+mesh = SubResource("ArrayMesh_ovpfr")
+
+[node name="WallsCollision" type="StaticBody3D" parent="Map/Props/Neighbour5" unique_id=1521775186]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 21, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/Neighbour5/WallsCollision" unique_id=1402807843]
+shape = SubResource("BoxShape3D_1y2at")
+
+[node name="Roof" type="MeshInstance3D" parent="Map/Props/Neighbour5" unique_id=422907511]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 45, 0)
+mesh = SubResource("ArrayMesh_jmnw7")
+
+[node name="RoofCollision" type="StaticBody3D" parent="Map/Props/Neighbour5" unique_id=72169461]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 45, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/Neighbour5/RoofCollision" unique_id=921446840]
+shape = SubResource("BoxShape3D_4j7c8")
+
+[node name="Label" type="Label3D" parent="Map/Props/Neighbour5" unique_id=924417059]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 56, 0)
+pixel_size = 0.11
+billboard = 1
+modulate = Color(1, 0.95686275, 0.83137256, 1)
+text = "Дом"
+outline_size = 8
+
+[node name="Neighbour6" type="Node3D" parent="Map/Props" unique_id=747287915]
+transform = Transform3D(0.9950042, 0, 0.09983342, 0, 1, 0, -0.09983342, 0, 0.9950042, 112, 8, 464)
+metadata/presentation_id = "Neighbour6"
+
+[node name="Walls" type="MeshInstance3D" parent="Map/Props/Neighbour6" unique_id=691672228]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 21, 0)
+mesh = SubResource("ArrayMesh_ovpfr")
+
+[node name="WallsCollision" type="StaticBody3D" parent="Map/Props/Neighbour6" unique_id=479778866]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 21, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/Neighbour6/WallsCollision" unique_id=771684365]
+shape = SubResource("BoxShape3D_23tce")
+
+[node name="Roof" type="MeshInstance3D" parent="Map/Props/Neighbour6" unique_id=1878566590]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 45, 0)
+mesh = SubResource("ArrayMesh_jmnw7")
+
+[node name="RoofCollision" type="StaticBody3D" parent="Map/Props/Neighbour6" unique_id=578582025]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 45, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/Neighbour6/RoofCollision" unique_id=143012029]
+shape = SubResource("BoxShape3D_cnr6o")
+
+[node name="Label" type="Label3D" parent="Map/Props/Neighbour6" unique_id=1562076280]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 56, 0)
+pixel_size = 0.11
+billboard = 1
+modulate = Color(1, 0.95686275, 0.83137256, 1)
+text = "Дом"
+outline_size = 8
+
+[node name="Neighbour7" type="Node3D" parent="Map/Props" unique_id=1188552714]
+transform = Transform3D(0.99680173, 0, -0.07991469, 0, 1, 0, 0.07991469, 0, 0.99680173, 400, 8, 96)
+metadata/presentation_id = "Neighbour7"
+
+[node name="Walls" type="MeshInstance3D" parent="Map/Props/Neighbour7" unique_id=1438052178]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 21, 0)
+mesh = SubResource("ArrayMesh_ovpfr")
+
+[node name="WallsCollision" type="StaticBody3D" parent="Map/Props/Neighbour7" unique_id=1015388932]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 21, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/Neighbour7/WallsCollision" unique_id=225675013]
+shape = SubResource("BoxShape3D_cxh2u")
+
+[node name="Roof" type="MeshInstance3D" parent="Map/Props/Neighbour7" unique_id=470875365]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 45, 0)
+mesh = SubResource("ArrayMesh_jmnw7")
+
+[node name="RoofCollision" type="StaticBody3D" parent="Map/Props/Neighbour7" unique_id=1925959452]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 45, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/Neighbour7/RoofCollision" unique_id=2137871134]
+shape = SubResource("BoxShape3D_44are")
+
+[node name="Label" type="Label3D" parent="Map/Props/Neighbour7" unique_id=907549716]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 56, 0)
+pixel_size = 0.11
+billboard = 1
+modulate = Color(1, 0.95686275, 0.83137256, 1)
+text = "Дом"
+outline_size = 8
+
+[node name="Neighbour8" type="Node3D" parent="Map/Props" unique_id=1192973569]
+transform = Transform3D(0.997551, 0, 0.06994285, 0, 1, 0, -0.06994285, 0, 0.997551, 416, 8, 288)
+metadata/presentation_id = "Neighbour8"
+
+[node name="Walls" type="MeshInstance3D" parent="Map/Props/Neighbour8" unique_id=316617766]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 21, 0)
+mesh = SubResource("ArrayMesh_ovpfr")
+
+[node name="WallsCollision" type="StaticBody3D" parent="Map/Props/Neighbour8" unique_id=200033994]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 21, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/Neighbour8/WallsCollision" unique_id=1616512869]
+shape = SubResource("BoxShape3D_pby1g")
+
+[node name="Roof" type="MeshInstance3D" parent="Map/Props/Neighbour8" unique_id=1783527189]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 45, 0)
+mesh = SubResource("ArrayMesh_jmnw7")
+
+[node name="RoofCollision" type="StaticBody3D" parent="Map/Props/Neighbour8" unique_id=782248002]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 45, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/Neighbour8/RoofCollision" unique_id=2010199423]
+shape = SubResource("BoxShape3D_6vv0e")
+
+[node name="Label" type="Label3D" parent="Map/Props/Neighbour8" unique_id=1734547373]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 56, 0)
+pixel_size = 0.11
+billboard = 1
+modulate = Color(1, 0.95686275, 0.83137256, 1)
+text = "Дом"
+outline_size = 8
+
+[node name="Neighbour9" type="Node3D" parent="Map/Props" unique_id=343365894]
+transform = Transform3D(0.9950042, 0, -0.09983342, 0, 1, 0, 0.09983342, 0, 0.9950042, 400, 8, 480)
+metadata/presentation_id = "Neighbour9"
+
+[node name="Walls" type="MeshInstance3D" parent="Map/Props/Neighbour9" unique_id=1779619353]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 21, 0)
+mesh = SubResource("ArrayMesh_ovpfr")
+
+[node name="WallsCollision" type="StaticBody3D" parent="Map/Props/Neighbour9" unique_id=935138438]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 21, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/Neighbour9/WallsCollision" unique_id=1718356548]
+shape = SubResource("BoxShape3D_1iqjg")
+
+[node name="Roof" type="MeshInstance3D" parent="Map/Props/Neighbour9" unique_id=1243925077]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 45, 0)
+mesh = SubResource("ArrayMesh_jmnw7")
+
+[node name="RoofCollision" type="StaticBody3D" parent="Map/Props/Neighbour9" unique_id=733205330]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 45, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/Neighbour9/RoofCollision" unique_id=1578690625]
+shape = SubResource("BoxShape3D_j5jx6")
+
+[node name="Label" type="Label3D" parent="Map/Props/Neighbour9" unique_id=1448846798]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 56, 0)
+pixel_size = 0.11
+billboard = 1
+modulate = Color(1, 0.95686275, 0.83137256, 1)
+text = "Дом"
+outline_size = 8
+
+[node name="Yard10" type="Node3D" parent="Map/Props" unique_id=1318758118]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 128, 8, 176)
+metadata/presentation_id = "Yard10"
+
+[node name="VegetableBed" type="MeshInstance3D" parent="Map/Props/Yard10" unique_id=1906051570]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+mesh = SubResource("ArrayMesh_31jgn")
+
+[node name="Crop0" type="MeshInstance3D" parent="Map/Props/Yard10" unique_id=967738785]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 4, 0)
+mesh = SubResource("ArrayMesh_snmtp")
+
+[node name="Crop1" type="MeshInstance3D" parent="Map/Props/Yard10" unique_id=455247135]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 4, 0)
+mesh = SubResource("ArrayMesh_snmtp")
+
+[node name="Crop2" type="MeshInstance3D" parent="Map/Props/Yard10" unique_id=1887144992]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4, 0)
+mesh = SubResource("ArrayMesh_snmtp")
+
+[node name="Crop3" type="MeshInstance3D" parent="Map/Props/Yard10" unique_id=512490467]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 4, 0)
+mesh = SubResource("ArrayMesh_snmtp")
+
+[node name="Crop4" type="MeshInstance3D" parent="Map/Props/Yard10" unique_id=1708862945]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 4, 0)
+mesh = SubResource("ArrayMesh_snmtp")
+
+[node name="Fence6" type="Node3D" parent="Map/Props/Yard10" unique_id=2074561314]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 17.6)
+metadata/presentation_id = "Fence6"
+
+[node name="Rail" type="MeshInstance3D" parent="Map/Props/Yard10/Fence6" unique_id=1700569999]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.5, 0)
+mesh = SubResource("ArrayMesh_0spwa")
+
+[node name="RailCollision" type="StaticBody3D" parent="Map/Props/Yard10/Fence6" unique_id=182207516]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.5, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/Yard10/Fence6/RailCollision" unique_id=1100570938]
+shape = SubResource("BoxShape3D_g36sd")
+
+[node name="Yard11" type="Node3D" parent="Map/Props" unique_id=587947342]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 128, 8, 352)
+metadata/presentation_id = "Yard11"
+
+[node name="VegetableBed" type="MeshInstance3D" parent="Map/Props/Yard11" unique_id=717063776]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+mesh = SubResource("ArrayMesh_31jgn")
+
+[node name="Crop0" type="MeshInstance3D" parent="Map/Props/Yard11" unique_id=347116164]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 4, 0)
+mesh = SubResource("ArrayMesh_snmtp")
+
+[node name="Crop1" type="MeshInstance3D" parent="Map/Props/Yard11" unique_id=598035481]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 4, 0)
+mesh = SubResource("ArrayMesh_snmtp")
+
+[node name="Crop2" type="MeshInstance3D" parent="Map/Props/Yard11" unique_id=1492696734]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4, 0)
+mesh = SubResource("ArrayMesh_snmtp")
+
+[node name="Crop3" type="MeshInstance3D" parent="Map/Props/Yard11" unique_id=1906322732]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 4, 0)
+mesh = SubResource("ArrayMesh_snmtp")
+
+[node name="Crop4" type="MeshInstance3D" parent="Map/Props/Yard11" unique_id=729293568]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 4, 0)
+mesh = SubResource("ArrayMesh_snmtp")
+
+[node name="Fence6" type="Node3D" parent="Map/Props/Yard11" unique_id=347488709]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 17.6)
+metadata/presentation_id = "Fence6"
+
+[node name="Rail" type="MeshInstance3D" parent="Map/Props/Yard11/Fence6" unique_id=1922383430]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.5, 0)
+mesh = SubResource("ArrayMesh_0spwa")
+
+[node name="RailCollision" type="StaticBody3D" parent="Map/Props/Yard11/Fence6" unique_id=682930104]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.5, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/Yard11/Fence6/RailCollision" unique_id=1022705562]
+shape = SubResource("BoxShape3D_gfgpe")
+
+[node name="Yard12" type="Node3D" parent="Map/Props" unique_id=1948530029]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 400, 8, 160)
+metadata/presentation_id = "Yard12"
+
+[node name="VegetableBed" type="MeshInstance3D" parent="Map/Props/Yard12" unique_id=608107540]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+mesh = SubResource("ArrayMesh_31jgn")
+
+[node name="Crop0" type="MeshInstance3D" parent="Map/Props/Yard12" unique_id=321370926]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 4, 0)
+mesh = SubResource("ArrayMesh_snmtp")
+
+[node name="Crop1" type="MeshInstance3D" parent="Map/Props/Yard12" unique_id=2135228544]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 4, 0)
+mesh = SubResource("ArrayMesh_snmtp")
+
+[node name="Crop2" type="MeshInstance3D" parent="Map/Props/Yard12" unique_id=1512988162]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4, 0)
+mesh = SubResource("ArrayMesh_snmtp")
+
+[node name="Crop3" type="MeshInstance3D" parent="Map/Props/Yard12" unique_id=934659954]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 4, 0)
+mesh = SubResource("ArrayMesh_snmtp")
+
+[node name="Crop4" type="MeshInstance3D" parent="Map/Props/Yard12" unique_id=1638974135]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 4, 0)
+mesh = SubResource("ArrayMesh_snmtp")
+
+[node name="Fence6" type="Node3D" parent="Map/Props/Yard12" unique_id=1596898040]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 17.6)
+metadata/presentation_id = "Fence6"
+
+[node name="Rail" type="MeshInstance3D" parent="Map/Props/Yard12/Fence6" unique_id=2088943366]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.5, 0)
+mesh = SubResource("ArrayMesh_0spwa")
+
+[node name="RailCollision" type="StaticBody3D" parent="Map/Props/Yard12/Fence6" unique_id=1153937579]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.5, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/Yard12/Fence6/RailCollision" unique_id=470194049]
+shape = SubResource("BoxShape3D_bbbma")
+
+[node name="Yard13" type="Node3D" parent="Map/Props" unique_id=464161744]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 416, 8, 352)
+metadata/presentation_id = "Yard13"
+
+[node name="VegetableBed" type="MeshInstance3D" parent="Map/Props/Yard13" unique_id=426574475]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+mesh = SubResource("ArrayMesh_31jgn")
+
+[node name="Crop0" type="MeshInstance3D" parent="Map/Props/Yard13" unique_id=1107990898]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 4, 0)
+mesh = SubResource("ArrayMesh_snmtp")
+
+[node name="Crop1" type="MeshInstance3D" parent="Map/Props/Yard13" unique_id=701260344]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 4, 0)
+mesh = SubResource("ArrayMesh_snmtp")
+
+[node name="Crop2" type="MeshInstance3D" parent="Map/Props/Yard13" unique_id=1908067205]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4, 0)
+mesh = SubResource("ArrayMesh_snmtp")
+
+[node name="Crop3" type="MeshInstance3D" parent="Map/Props/Yard13" unique_id=855309474]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 4, 0)
+mesh = SubResource("ArrayMesh_snmtp")
+
+[node name="Crop4" type="MeshInstance3D" parent="Map/Props/Yard13" unique_id=332451631]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 4, 0)
+mesh = SubResource("ArrayMesh_snmtp")
+
+[node name="Fence6" type="Node3D" parent="Map/Props/Yard13" unique_id=2023120593]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 17.6)
+metadata/presentation_id = "Fence6"
+
+[node name="Rail" type="MeshInstance3D" parent="Map/Props/Yard13/Fence6" unique_id=263883776]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.5, 0)
+mesh = SubResource("ArrayMesh_0spwa")
+
+[node name="RailCollision" type="StaticBody3D" parent="Map/Props/Yard13/Fence6" unique_id=1557738981]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.5, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/Yard13/Fence6/RailCollision" unique_id=722688026]
+shape = SubResource("BoxShape3D_qniqk")
+
+[node name="Maple14" type="Node3D" parent="Map/Props" unique_id=424303866 instance=ExtResource("8_fpvfm")]
+transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 48, 8, 208)
+script = ExtResource("9_2ctsq")
+model_id = "vox_painted_maple_autumn_palette"
+placement_id = "chapter1_residential_Maple14"
+metadata/ember_source_signature = "802017ebad60aeae8e176230727862c08ba5c4c3e1b8f1e838a124aaf50166fe"
+
+[node name="Maple15" type="Node3D" parent="Map/Props" unique_id=845869215 instance=ExtResource("8_fpvfm")]
+transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 448, 8, 192)
+script = ExtResource("9_2ctsq")
+model_id = "vox_painted_maple_autumn_palette"
+placement_id = "chapter1_residential_Maple15"
+metadata/ember_source_signature = "802017ebad60aeae8e176230727862c08ba5c4c3e1b8f1e838a124aaf50166fe"
+
+[node name="Maple16" type="Node3D" parent="Map/Props" unique_id=540763254 instance=ExtResource("8_fpvfm")]
+transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 64, 8, 528)
+script = ExtResource("9_2ctsq")
+model_id = "vox_painted_maple_autumn_palette"
+placement_id = "chapter1_residential_Maple16"
+metadata/ember_source_signature = "802017ebad60aeae8e176230727862c08ba5c4c3e1b8f1e838a124aaf50166fe"
+
+[node name="Maple17" type="Node3D" parent="Map/Props" unique_id=525269541 instance=ExtResource("8_fpvfm")]
+transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 464, 8, 528)
+script = ExtResource("9_2ctsq")
+model_id = "vox_painted_maple_autumn_palette"
+placement_id = "chapter1_residential_Maple17"
+metadata/ember_source_signature = "802017ebad60aeae8e176230727862c08ba5c4c3e1b8f1e838a124aaf50166fe"
+
+[node name="ToCentre" type="Node3D" parent="Map/Props" unique_id=1141725087]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 488, 8, 160)
+metadata/presentation_id = "ToCentre"
+
+[node name="exit_from_centre" type="Area3D" parent="Map/Props/ToCentre" unique_id=125614326]
+script = ExtResource("7_dnc4e")
+region_id = "exit_from_centre"
+map_id = "chapter1_residential"
+target_map_id = "chapter1_centre"
+target_region_id = "from_residential"
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/ToCentre/exit_from_centre" unique_id=1677598471]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 16, 0)
+shape = SubResource("BoxShape3D_vfdsm")
+
+[node name="Label" type="Label3D" parent="Map/Props/ToCentre" unique_id=1138056991]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 22, 0)
+pixel_size = 0.11
+billboard = 1
+modulate = Color(0.84313726, 0.9137255, 0.7254902, 1)
+text = "Центр →"
+outline_size = 8
+
+[node name="GateLeft" type="MeshInstance3D" parent="Map/Props/ToCentre" unique_id=1809576305]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -19, 12, 0)
+mesh = SubResource("ArrayMesh_pay0k")
+
+[node name="GateLeftCollision" type="StaticBody3D" parent="Map/Props/ToCentre" unique_id=1778462042]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -19, 12, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/ToCentre/GateLeftCollision" unique_id=1622567596]
+shape = SubResource("BoxShape3D_r280w")
+
+[node name="GateRight" type="MeshInstance3D" parent="Map/Props/ToCentre" unique_id=624801164]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 12, 0)
+mesh = SubResource("ArrayMesh_pay0k")
+
+[node name="GateRightCollision" type="StaticBody3D" parent="Map/Props/ToCentre" unique_id=176610221]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 12, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/ToCentre/GateRightCollision" unique_id=1457097662]
+shape = SubResource("BoxShape3D_2dgvb")
+
+[node name="ToEstate" type="Node3D" parent="Map/Props" unique_id=1238416149]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 80, 8, 544)
+metadata/presentation_id = "ToEstate"
+
+[node name="exit_from_estate" type="Area3D" parent="Map/Props/ToEstate" unique_id=968441484]
+script = ExtResource("7_dnc4e")
+region_id = "exit_from_estate"
+map_id = "chapter1_residential"
+target_map_id = "chapter1_estate"
+target_region_id = "from_residential"
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/ToEstate/exit_from_estate" unique_id=807464303]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 16, 0)
+shape = SubResource("BoxShape3D_4wgv6")
+
+[node name="Label" type="Label3D" parent="Map/Props/ToEstate" unique_id=1981443633]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 22, 0)
+pixel_size = 0.11
+billboard = 1
+modulate = Color(0.84313726, 0.9137255, 0.7254902, 1)
+text = "К усадьбе Миры →"
+outline_size = 8
+
+[node name="GateLeft" type="MeshInstance3D" parent="Map/Props/ToEstate" unique_id=1556905869]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -19, 12, 0)
+mesh = SubResource("ArrayMesh_pay0k")
+
+[node name="GateLeftCollision" type="StaticBody3D" parent="Map/Props/ToEstate" unique_id=1942801734]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -19, 12, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/ToEstate/GateLeftCollision" unique_id=677733504]
+shape = SubResource("BoxShape3D_jvfhu")
+
+[node name="GateRight" type="MeshInstance3D" parent="Map/Props/ToEstate" unique_id=1295920531]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 12, 0)
+mesh = SubResource("ArrayMesh_pay0k")
+
+[node name="GateRightCollision" type="StaticBody3D" parent="Map/Props/ToEstate" unique_id=1820728318]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 12, 0)
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/ToEstate/GateRightCollision" unique_id=373287990]
+shape = SubResource("BoxShape3D_8000t")
+
+[node name="Regions" type="Node3D" parent="Map" unique_id=2018635929]
+
+[node name="entry" type="Area3D" parent="Map/Regions" unique_id=1114463163]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 176, 8, 160)
+script = ExtResource("7_dnc4e")
+region_id = "entry"
+map_id = "chapter1_residential"
+kind = "player_start"
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Regions/entry" unique_id=1811285010]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 16, 0)
+shape = SubResource("BoxShape3D_pa5ya")
+
+[node name="from_centre" type="Area3D" parent="Map/Regions" unique_id=1697830486]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 440, 8, 160)
+script = ExtResource("7_dnc4e")
+region_id = "from_centre"
+map_id = "chapter1_residential"
+kind = "player_start"
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Regions/from_centre" unique_id=1533930518]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 16, 0)
+shape = SubResource("BoxShape3D_j3e88")
+
+[node name="from_estate" type="Area3D" parent="Map/Regions" unique_id=436775345]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 80, 8, 496)
+script = ExtResource("7_dnc4e")
+region_id = "from_estate"
+map_id = "chapter1_residential"
+kind = "player_start"
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Regions/from_estate" unique_id=1319262727]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 16, 0)
+shape = SubResource("BoxShape3D_sptsc")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=466272143]
+
+[node name="Gate" type="Label" parent="CanvasLayer" unique_id=655163004]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 16.0
+offset_bottom = 16.0
+
+[node name="BlockoutLegend" type="Label" parent="CanvasLayer" unique_id=439123495]
+offset_left = 16.0
+offset_top = 104.0
+offset_right = 16.0
+offset_bottom = 104.0
+theme_override_font_sizes/font_size = 18
+text = "Жилая улица · канал и дворы · ЧЕРНОВОЙ МАРШРУТ
+WASD — ходьба · F — дверь / разговор · Tab — лидер"
+
+[node name="PlanarReflection" parent="." instance=ExtResource("shared_world_water")]

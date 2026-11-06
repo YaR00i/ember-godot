@@ -465,6 +465,7 @@ func drain_next_physics_chunk(wait_for_heightfield := true) -> bool:
 		if body == null:
 			body = StaticBody3D.new()
 			body.name = "SurfaceCollision_%d_%d" % [chunk.x, chunk.y]
+			body.add_to_group("ember_battle_walkable")
 			body.collision_mask = 0
 			body.collision_layer = 1 if _physics_live else 0
 			var shape := CollisionShape3D.new()

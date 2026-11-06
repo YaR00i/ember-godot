@@ -241,6 +241,8 @@ static func _normalize_object(parameters: Dictionary) -> Dictionary:
 		result.spread_radius=clampi(result.spread_radius,4,24)
 		result.stem_count=clampi(result.stem_count,3,7)
 		result.density=16;result.bush_type=0
+	if result.generation_version!=7 or result.get("garden_shrub",false)!=true:
+		result.erase("garden_shrub")
 	return result
 
 
@@ -317,6 +319,7 @@ static func _build_branch_shrub(settings: Dictionary,seed: int,material: Diction
 	var built: Dictionary=tree.build_on_structure(p,structure,maxi(seed,0),material,title,model_id)
 	if built.has("error"):return built
 	p["plant_kind"]="shrub";p["shrub_leaf_scale"]=clampf(h/64.0*0.72,0.15,0.65)
+	if settings.get("garden_shrub",false):p["garden_shrub"]=true
 	load("res://scripts/ember_tree_surface.gd").publish(built,p,maxi(seed,0))
 	built.geometry.tags=PackedStringArray(["stamp","generated","bush"])
 	built["parameters"]=settings

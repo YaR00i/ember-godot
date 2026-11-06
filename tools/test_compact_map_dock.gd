@@ -41,7 +41,14 @@ func _run() -> void:
 	assert(saved.same_terrain_data(candidate.sectioned_copy()), "Create lost preview terrain")
 	var packed := ResourceLoader.load(created_path, "", ResourceLoader.CACHE_MODE_IGNORE) as PackedScene
 	var scene := packed.instantiate()
-	assert(scene.get_node("Map").compact_terrain.same_terrain_data(candidate.sectioned_copy()))
+	var map := scene.get_node("Map") as EmberMapLoader
+	assert(map.compact_terrain.same_terrain_data(candidate.sectioned_copy()))
+	for material in ["cartoon_grass", "soil_grain", "cartoon_sand", "cartoon_stone"]:
+		assert(map.compact_terrain.palette_material_ids.has(material), "missing shared terrain material " + material)
+	assert(map.get_node("Look/Sun").scene_file_path == "res://content/world_presets/terrain_evening_sun.tscn")
+	assert(map.get_node("Look/WorldEnvironment").environment.sky != null)
+	var grass := map.get_node("Props")
+	assert(grass.get_child_count() == 18 and grass.get_child(0).get_script() == Creation.GrassPatch)
 	scene.free()
 	var terrain_path: String = panel.creation.terrain_path()
 	var hash := FileAccess.get_sha256(terrain_path)

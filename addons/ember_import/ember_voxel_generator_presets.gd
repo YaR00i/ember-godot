@@ -1,7 +1,7 @@
 @tool
 extends RefCounted
-## Editor presets reuse Recipe. They never contain a frozen object skeleton or
-## family identity and never enter the runtime object catalog.
+## Editor presets reuse Recipe. Buildings keep their authored plan. Presets
+## have no frozen skeleton or family identity and stay out of the runtime catalog.
 const Generator = preload("res://addons/ember_import/ember_voxel_generator.gd")
 const Session = preload("res://addons/ember_import/ember_voxel_generation_session.gd")
 var directory := "res://content/editor/voxel_generator_presets"

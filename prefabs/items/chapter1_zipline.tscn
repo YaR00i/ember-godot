@@ -1,0 +1,66 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_traversal_route.gd" id="route"]
+
+[sub_resource type="StandardMaterial3D" id="wood"]
+albedo_color = Color(0.42, 0.24, 0.11, 1)
+
+[sub_resource type="BoxMesh" id="deck_mesh"]
+material = SubResource("wood")
+size = Vector3(12, 3, 20)
+
+[sub_resource type="BoxShape3D" id="deck_shape"]
+size = Vector3(12, 3, 20)
+
+[sub_resource type="BoxMesh" id="ramp_mesh"]
+material = SubResource("wood")
+size = Vector3(51.88448708429139, 2, 18)
+
+[sub_resource type="BoxShape3D" id="ramp_shape"]
+size = Vector3(51.88448708429139, 2, 18)
+
+[sub_resource type="BoxMesh" id="post_mesh"]
+material = SubResource("wood")
+size = Vector3(2.4, 24, 2.4)
+
+[node name="Zipline" type="Area3D"]
+script = ExtResource("route")
+kind = "custom"
+collision_layer = 0
+collision_mask = 0
+monitoring = false
+monitorable = false
+
+[node name="Landing" type="Marker3D" parent="."]
+position = Vector3(64, -24, 0)
+
+[node name="Deck" type="StaticBody3D" parent="."]
+position = Vector3(-11, -1.5, 0)
+collision_mask = 0
+[node name="Shape" type="CollisionShape3D" parent="Deck"]
+shape = SubResource("deck_shape")
+[node name="Visual" type="MeshInstance3D" parent="Deck"]
+mesh = SubResource("deck_mesh")
+
+[node name="Ramp" type="StaticBody3D" parent="."]
+position = Vector3(-39.54, -12.88, 0)
+rotation = Vector3(0, 0, 0.48088728019533583)
+collision_mask = 0
+[node name="Shape" type="CollisionShape3D" parent="Ramp"]
+shape = SubResource("ramp_shape")
+[node name="Visual" type="MeshInstance3D" parent="Ramp"]
+mesh = SubResource("ramp_mesh")
+
+[node name="DeparturePost" type="MeshInstance3D" parent="."]
+position = Vector3(-2, 10, 0)
+mesh = SubResource("post_mesh")
+
+[node name="LandingPost" type="MeshInstance3D" parent="."]
+position = Vector3(65, -12, 0)
+mesh = SubResource("post_mesh")
+
+[node name="Sign" type="Label3D" parent="."]
+position = Vector3(-10, 17, 0)
+text = "Канатный спуск"
+billboard = 1
+pixel_size = 0.1

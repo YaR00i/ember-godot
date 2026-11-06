@@ -8,6 +8,7 @@ signal pattern_created(id: String, role: String)
 signal edit_closed
 signal variant_opened(id: String, role: String)
 signal light_profile_previewed(pattern: Resource, id: String)
+signal pattern_scale_previewed(pattern: Resource, id: String)
 const EDIT_FIELDS := ["role_id", "base_color", "light_color", "shadow_color", "pixels", "side_pixels", "gloss", "sheen", "pixel_relief", "micro_relief", "micro_size_m", "micro_roughness", "relief_pixels", "side_relief_pixels", "roughness_pixels", "side_roughness_pixels", "pattern_size_m", "roughness_variation", "albedo_texture", "albedo_relief_enabled", "albedo_periodic", "grass_light_enabled", "grass_light_low", "grass_light_tint_strength", "grass_light_cool", "grass_light_warm", "grass_light_shadow_color", "grass_light_shadow_fill", "style_rim_custom", "style_rim_enabled", "style_rim_strength", "style_rim_width_mm", "depth_texture", "depth_mm", "depth_softness", "depth_sharpness", "form_pull_mm", "flower_shape", "stone_edges_enabled", "stone_weathering_enabled", "stone_edge_width_mm", "stone_edge_strength", "stone_faces_enabled", "stone_face_pattern_variation", "stone_face_tint_variation"]
 
 const Materials = preload("res://scripts/ember_voxel_surface_materials.gd")
@@ -110,13 +111,15 @@ func _ready() -> void:
 	column.add_child(_variant_choice); _variant_choice.hide()
 	var hint := Label.new(); hint.text = "Общий вариант: сохранение изменит все карты, где он выбран."
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; column.add_child(hint)
+	_add_finish_slider(column, ["pattern_size_m", "Размер рисунка на земле · м", 16.0, 0.125])
 	_texture_label=Label.new();_texture_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART;column.add_child(_texture_label)
-	for item in [["Выбрать текстуру PNG…",_choose_texture],["Убрать PNG · использовать рисунок",_remove_texture]]:
+	for item in [["Выбрать текстуру PNG/SVG…",_choose_texture],["Убрать текстуру · использовать рисунок",_remove_texture]]:
 		var button:=Button.new();button.text=item[0];button.tooltip_text=item[0]
 		button.clip_text=true;button.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
 		button.pressed.connect(item[1]);column.add_child(button)
 	_texture_dialog=FileDialog.new();_texture_dialog.access=FileDialog.ACCESS_RESOURCES
 	_texture_dialog.file_mode=FileDialog.FILE_MODE_OPEN_FILE;_texture_dialog.add_filter("*.png","Текстура PNG")
+	_texture_dialog.add_filter("*.svg","Векторная текстура SVG")
 	_texture_dialog.file_selected.connect(_load_texture);add_child(_texture_dialog)
 	for option in [["albedo_periodic","Бесшовная текстура PNG"],["albedo_relief_enabled","Световой рельеф из цвета PNG"]]:
 		var toggle:=CheckBox.new();toggle.text=option[1];toggle.clip_text=true;toggle.tooltip_text=option[1]
@@ -126,13 +129,8 @@ func _ready() -> void:
 		var picker := ColorPickerButton.new(); picker.custom_minimum_size.y = 28
 		picker.edit_alpha = false; picker.color_changed.connect(_change_tone.bind(tone_index)); column.add_child(picker); _tones.append(picker)
 	for setting in [["gloss", "Глянец", 1.0, 0.0], ["sheen", "Сила блика", 1.0, 0.0], ["pixel_relief", "Рельеф рисунка", 0.3, 0.0],
-		["micro_relief", "Сила мелкой фактуры", 0.3, 0.0], ["micro_size_m", "Размер фактуры · м", 1.0, 0.03], ["micro_roughness", "Неоднородность мелкого блика", 0.5, 0.0], ["pattern_size_m", "Размер рисунка · м", 16.0, 0.125], ["roughness_variation", "Сила рисунка матовости", 0.5, 0.0]]:
-		var label := Label.new(); label.text = setting[1]; label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART; column.add_child(label)
-		var row := HBoxContainer.new(); column.add_child(row)
-		var slider := HSlider.new(); slider.min_value = setting[3]; slider.max_value = setting[2]; slider.step = 0.025 if setting[0]=="pattern_size_m" else 0.01
-		slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL; slider.value_changed.connect(_change_finish.bind(setting[0])); row.add_child(slider)
-		var value_label := Label.new(); value_label.custom_minimum_size.x = 44; row.add_child(value_label)
-		_finish_sliders[setting[0]] = slider; _finish_values[setting[0]] = value_label
+		["micro_relief", "Сила мелкой фактуры", 0.3, 0.0], ["micro_size_m", "Размер фактуры · м", 1.0, 0.03], ["micro_roughness", "Неоднородность мелкого блика", 0.5, 0.0], ["roughness_variation", "Сила рисунка матовости", 0.5, 0.0]]:
+		_add_finish_slider(column, setting)
 	_create_style_rim_controls(column)
 	_create_grass_light_controls(column)
 	_channel_choice=OptionButton.new()
@@ -325,7 +323,7 @@ func _refresh_grid() -> void:
 		_texture_label.text="PNG: "+_draft.albedo_texture.resource_path.get_file()+" · рисунок ниже сохранён как запасной" if _draft.albedo_texture!=null else "Текстура PNG не выбрана · используется рисунок 16×16"
 	if _draft == null: return
 	if _cover_mode:
-		_texture_label.text = "PNG: " + _draft.albedo_texture.resource_path.get_file() if _draft.albedo_texture != null else "Выберите PNG-атлас."
+		_texture_label.text = "Атлас: " + _draft.albedo_texture.resource_path.get_file() if _draft.albedo_texture != null else "Выберите атлас растения."
 		_cover_texture_preview.texture = _draft.albedo_texture
 		_cover_texture_preview.modulate = _draft.base_color
 		_cover_shape.select(_draft.flower_shape)
@@ -353,16 +351,16 @@ func configure_texture_cover() -> void:
 	var tint_label: Control = _tones[0].get_parent().get_child(_tones[0].get_index() - 1)
 	for child: Control in column.get_children():
 		var keep: bool = child == _texture_label or child == _tones[0] or child == tint_label
-		if child is Button and child.text == "Выбрать текстуру PNG…": keep = true
+		if child is Button and child.text == "Выбрать текстуру PNG/SVG…": keep = true
 		if child is HBoxContainer and child.get_child_count()>0 and child.get_child(0) is Button and child.get_child(0).text == "Отменить": keep = true
 		if child is Label and child.text.begins_with("Общий вариант"):
-			child.text = "Рисунок цветущей травы. Слева в атласе — отдельный лист, справа — головка цветка. Сохранение обновит этот набор на карте."
+			child.text = "Рисунок растения. Слева в атласе — лист, справа — цветок или колос. Сохранение обновит этот вид на карте."
 			keep = true
 		child.visible = keep
 	tint_label.text = "Оттенок рисунка"
 	var shape_label:=Label.new();shape_label.text="Форма растения";column.add_child(shape_label)
 	_cover_shape=OptionButton.new();column.add_child(_cover_shape)
-	for label in ["Ромашки","Лютики · чашечки","Луговые соцветия"]:_cover_shape.add_item(label)
+	for label in preload("res://scripts/ember_flowered_grass.gd").SHAPE_LABELS:_cover_shape.add_item(label)
 	_cover_shape.item_selected.connect(_change_cover_shape)
 	_cover_texture_preview = TextureRect.new()
 	_cover_texture_preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -443,6 +441,27 @@ func _set_tone(index: int, color: Color) -> void:
 	if _cover_mode: light_profile_previewed.emit(_draft,_id)
 
 
+func _add_finish_slider(column: VBoxContainer, setting: Array) -> void:
+	var label := Label.new()
+	label.text = setting[1]
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	column.add_child(label)
+	var row := HBoxContainer.new()
+	column.add_child(row)
+	var slider := HSlider.new()
+	slider.min_value = setting[3]
+	slider.max_value = setting[2]
+	slider.step = 0.025 if setting[0] == "pattern_size_m" else 0.01
+	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	slider.value_changed.connect(_change_finish.bind(setting[0]))
+	row.add_child(slider)
+	var value_label := Label.new()
+	value_label.custom_minimum_size.x = 44
+	row.add_child(value_label)
+	_finish_sliders[setting[0]] = slider
+	_finish_values[setting[0]] = value_label
+
+
 func _change_finish(value: float, key: String) -> void:
 	if _loading or _draft == null: return
 	var before := float(_draft.get(key))
@@ -454,12 +473,17 @@ func _change_finish(value: float, key: String) -> void:
 
 
 func _set_finish(key: String, value: float) -> void:
+	var initializing := _loading
 	_draft.set(key, value)
 	_loading = true
 	(_finish_sliders[key] as HSlider).value = value
 	(_finish_values[key] as Label).text = "%.2f" % value if key in ["micro_size_m","pattern_size_m"] else "%d%%" % roundi(value / (0.3 if key in ["pixel_relief","micro_relief"] else 0.5 if key in ["micro_roughness","roughness_variation"] else 1.0) * 100.0)
-	_loading = false
-	if key.begins_with("grass_light_") or (key=="pattern_size_m" and _draft.role_id=="grass"):light_profile_previewed.emit(_draft,_id)
+	_loading = initializing
+	if not initializing and key == "pattern_size_m":
+		if _cover_mode or _draft.role_id == "grass":
+			light_profile_previewed.emit(_draft, _id)
+		else:
+			pattern_scale_previewed.emit(_draft, _id)
 
 
 func _create_grass_light_controls(column: VBoxContainer) -> void:
@@ -526,6 +550,8 @@ func _restore_grass_light_preview() -> void:
 	var original: Pattern=_draft.duplicate(true)
 	for field in EDIT_FIELDS:
 		if field.begins_with("grass_light_") or field.begins_with("style_rim_") or field.begins_with("depth_") or field.begins_with("stone_") or field in ["form_pull_mm","pattern_size_m"]:original.set(field,_baseline[field])
+	if original.role_id != "grass" and not is_equal_approx(original.pattern_size_m, _draft.pattern_size_m):
+		pattern_scale_previewed.emit(original, _id)
 	light_profile_previewed.emit(original,_id)
 
 

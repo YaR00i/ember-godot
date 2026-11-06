@@ -86,6 +86,15 @@ static func validation_errors(data: Dictionary, part_count: int, palette_count: 
 	if data.get("version") != 1 or not data.get("parts") is Array:
 		return ["invalid solid surface version/parts"]
 	if data.get("topology","hull") not in ["hull","volume"]:errors.append("invalid solid surface topology")
+	if data.has("building_offset"):
+		var offset: Variant = data.building_offset
+		if not offset is Vector3 or not offset.is_finite() or offset.y != 0.0 or offset.length() > 12.0:
+			errors.append("invalid building placement offset")
+	if data.has("building_entry"):
+		var entry:Variant=data.building_entry
+		if not entry is Dictionary or not entry.get("point") is Vector3 or not entry.get("normal") is Vector3:
+			errors.append("invalid prepared building entry")
+		elif not entry.point.is_finite() or entry.point.length()>8192 or not entry.normal in [Vector3.FORWARD,Vector3.RIGHT,Vector3.BACK,Vector3.LEFT]:errors.append("invalid prepared building entry frame")
 	if data.parts.size() != part_count or part_count < 1 or part_count > 32:
 		errors.append("solid surface requires one guide per merge part (1..32)")
 	if not data.get("occupancy") is String or str(data.get("occupancy","")).length()!=64 or not str(data.get("occupancy","")).is_valid_hex_number():errors.append("invalid solid surface occupancy reference")
@@ -297,6 +306,23 @@ static func solid_depth_shader() -> Shader:
 		_depth_shader.code = "#define EMBER_TERRAIN_MATERIAL_DEPTH\n#define EMBER_SOLID_DEPTH\n" + base.code
 		_depth_shader.set_meta("ember_compact_terrain_shader", true)
 	return _depth_shader
+
+
+static var _far_depth_shaders: Dictionary = {}
+
+## Same color/finish program and bindings; only the already faded POM is absent.
+static func far_depth_shader(full: Shader) -> Shader:
+	if full != null:full=full.get_meta("ember_depth_full_shader",full) as Shader
+	if full == null or not full.code.contains("#define EMBER_SOLID_DEPTH\n") or full.code.contains("EMBER_BEVEL_STUDY"):
+		return null
+	var key := full.get_instance_id()
+	if not _far_depth_shaders.has(key):
+		var far := Shader.new()
+		far.code = "#define EMBER_SOLID_FAR\n" + full.code
+		for name in full.get_meta_list():far.set_meta(name,full.get_meta(name))
+		far.set_meta("ember_depth_full_shader", full)
+		_far_depth_shaders[key] = far
+	return _far_depth_shaders[key]
 
 
 ## World units per authored metre as the material currently knows it (1 = a metre-sized world).

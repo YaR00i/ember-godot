@@ -344,6 +344,99 @@ Source (воксельные данные, хозяин формы) → гене
   bounds setters/transform reindex инвалидируют его. Paused ancestor сохраняет retry;
   editor/custom projection без epoch остаётся на periodic fallback. Ни Source,ни residency
   policy не меняются;cost/evidence и открытый120 gate — EMBER_WORLD_PERFORMANCE.md.
+  GrassPatch хранит typed map Node с is_instance_valid,очищает при exit/reparent;
+  Node reference не удерживает удалённую карту. Context/sleeping refs остаются weak.
+  project.godot задаёт PSO cache save growth64MiB;cache enabled,save-on-exit прежний.
+  Это снижает частоту тяжёлой сериализации,не ограничивает cache и не закрывает stalls.
+  Instance shader buffer524288 vec4 slots (8MiB) вместо65536: общий dense population
+  stress превысил прежние4096 instances и воспроизвёл renderer allocation errors.
+  Это конечный запас32768 instances, не доказательство отсутствия утечек.
+  EmberAnimationDistanceLod — leaf policy HoshiVisual: near/party full,30/15Hz,
+  offscreen5/hidden2Hz; накопленное время для pose/morph/secondary bones, без
+  замедления physics/AI. Flight/ragdoll сохраняют владельца; near-offscreen full.
+  HoshiVisual `important_character` — export-флаг важного героя хаба независимо
+  от активной партии. EmberPlayer/EmberPartyFollowers защищены автоматически.
+  HoshiVisual удерживает одну avatar PackedScene/AnimationLibrary:instances сами
+  не сохраняют PackedScene cache. Streaming caller вызывает `prepare_resources(host)`
+  до reveal;готовность включает toon/outline templates. Sync setup остаётся fallback
+  первого player. GPU crowd palette/clock пока external QA,не второй runtime owner.
+  HoshiVisual `_select_motion()` сохраняет default idle/walk/run;stress subclass
+  выбирает клип через этот же crossfade/LOD/blink owner. Только locomotion меняет
+  playback speed от скорости тела. Stress controller отдельно чередует idle/walk/run;
+  `test_crowd_animation_mix` с `EMBER_STRESS_MOTIONS` добавляет talk/sit/dance.
+  Retarget tool поддерживает `clips=idle,walk,run,talk,sit,dance`;default по-прежнему3.
+  Библиотека6клипов создаётся в отдельный output,private original motion не перезаписан.
+  Projection `prepare_floor_query(point)` готовит один точечный CPU snapshot в
+  штатном WorkerThreadPool;FieldJob использует прежний halo/фильтр/правила формы.
+  Один task наprojection,результат принимается только для того же document/revision;
+  смена/закрытие joins task через `_cancel_mesh_lods`. Обычные массовые запросы
+  сохраняют full-tile cache;prepared point не заменяет renderer/collision/navigation.
+  Stress preload сцен — ResourceLoader,публикация по одному цельному объекту закадр.
+  Crate records восстанавливаются после подключения всего пакета;иначе частичный
+  stream создавал лишние физические экземпляры. Body admission guard:11→27 (+16).
+  У ordinary NPC экземпляры SpringBoneSimulator3D.active=false;body/morph/physics
+  продолжаются. Важность возвращает только authored-active springs с reset истории
+  после новой позы. Партия4 не ограничивает число важных героев(минимум8 поавтору).
+  Original avatar/motion/REST неизменны;редкие hero hair ticks не реализованы.
+  Подготовка Hoshi01.11: stage_hoshi_avatar.py → hoshi_avatar_bake.gd.txt →
+  tools/fixtures/hoshi_native_lods.gd. Native ImporterMesh генерирует index LOD тела/
+  волос offline. В производный ArrayMesh переносятся только LOD indices; исходные
+  packed vertex/normal/tangent/skin streams сохраняются (повторный native encoding
+  иначе округлял normals/tangents). Face с57blend shapes остаётся исходным.
+  tools/prepare_hoshi_native_lods.gd может подготовить уже staged avatar в явно
+  указанный output без Companion/config; текущий private avatar подключён на main,
+  backup вне Git у evidence. CPU runtime generation/new renderer не добавлены.
+  Это render LOD,не полная выгрузка NPC/rig/AI. Body и gameplay/save owners прежние.
+  Geometry diagnostic01.11 принадлежит EmberBenchmarkOverlay, подключённому ExploreScene:
+  F2 normal/native LIGHTING/wire,Shift+F2 mesh_lod_threshold0/full или исходный auto.
+  Только session viewport state; authored mesh/material/Source не меняются, exit восстанавливает
+  исходный debug draw/threshold. Native primitive counters и FPS окна не заменяют stress gate;
+  alpha/vertex caveat, main counts и evidence — Performance → «Геометрия отдельно от материалов».
+  EmberRuntimeShadowLod — производный SHADOWS_ONLY mesh с native LOD, теми же
+  материалами и явными instance overrides. Полный binding/eligibility остаётся
+  в существующем bounded object-detail poll;камера вызывает Prop.recheck_runtime_shadow_receivers
+  и helper.recheck_receivers уже готовой геометрии. Derived bounds/transform/layers обновляются
+  полным poll;изменения Source/receiver/party/local lights/low Sun возвращают full caster.
+  Решение о full caster общее для обоих путей;новой очереди/формата нет. Map profile сохраняет
+  object-only process_us и отдельно публикует shadow_context_us/total_process_us.
+  Native guards/A-B-A/render parity и пределы — Performance «Исправление CPU shadow-context04.11».
+  Count-bounded poll128 дополнительно уступает после≈1мс с сохранением cursor;
+  допускается хотя бы1шаг,explicit full refresh(max_props0) прежний. Native шаг и
+  финальная сортировка могут превысить порог;это не обещание hard1мс всего callback.
+  Instance writes Map rim/FruitTree/WorldAnomaly идут через helper.forward_instance_parameter:
+  Source setter прежний, proxy получает запись через WeakRef metadata binding.
+  Stable poll не читает RS uniforms; raw внешние setter требуют helper.invalidate_instance_parameters.
+  Geometry/material/caster setters также coalesced по текущему значению: native
+  same-value surface material/cast setters всё равно ставили instance dependencies
+  на обновление. lod_bias сравнивается is_equal_approx из-за float precision.
+  Источник восстанавливается до удаления proxy. Temporal directional cache отложен
+  решением автора: остаёмся на штатном Godot.
+  MapLoader physics activity использует weak registry существующего WorldRecovery:
+  CharacterBody/RigidBody удерживают terrain support; безопасные дальние
+  StaticBody отключаются штатным DISABLE_MODE_REMOVE без смены shape/source.
+  Возврат36м, удаление48м; teleport/recovery сперва поднимает опоры, затем ждёт
+  подробный пол. Изменение кванта одного участника пересматривает только его окрестности.
+  WorldRecovery принимает opt-in `runtime_simulation_required()->bool` у CharacterBody:
+  controller владеет importance/quest/combat/view/shadow demand. False приостанавливает
+  только его physics callback и исключает anchor;Node/pose/velocity/state остаются.
+  True возвращает anchor/пол до движения;priority-200 перед Map-100. Cancelled wake,
+  independent pause,снятие opt-in при wake,смена World3D/removal owner сохраняют callback ownership.
+  Текущий consumer — passive stress PopulationActor:near/shadow guard64м,важные always-on.
+  Без opt-in прежний tick/support;RigidBody включая sleeping/frozen остаются anchors.
+  WorldItem сохраняет свой progress/freeze owner. Source/shape/NPC RAM paging и
+  production AI этим не реализованы. Проверки/пределы — Performance → шаг3.
+  Общий gameplay stress01.11 — tools/test_world_gameplay_stress.gd:runtime copy main,
+  external576 fixture bundle,32Hoshi+production harvest-prefabs с независимымиIDs,
+  real Player strike/nearest/interact/autosave,SourceSHAguards. Никакого нового
+  runtime owner/схемы механик. Full vs interactions scopes и результаты — Performance.
+  Тотжеharness mode=cpu даёт reversible NPC motion/animation/secondary/blink иworld
+  callback ablations;самproduction runtime этимрежимом не меняется. Clean иprofiled
+  интервалы раздельны;native coroutine total неexclusive CPU. Findings — Performance.
+  Flag-gated unavailable WorldItems остаются в recovery/save registry,но исключены
+  из eager floor preparation и physics anchors. Hide re-arms waiting;reveal/available
+  restore делают once prepare и readiness hold доthaw;pending impulse применяется одинраз.
+  Обычные frozen/sleeping/carried/actors не фильтруются. Focused physics check PASS;
+  общий dense outcome — Performance. Это ещё не полная выгрузка дальних dynamic props.
   Очередь coroutine turns возобновляется через SceneTreeTimer после Node._process, земля раньше
   scatter; edit/draft wake приоритетен. Exit/release отменяет waiters и возвращает processing.
   Это scheduling производных в editor/runtime;он не выгружает весь мир и не меняет Source/Resource.
@@ -461,6 +554,24 @@ Source (воксельные данные, хозяин формы) → гене
   already forwards all uniforms. cartoon_stone enables B; source/prefab/map bytes unchanged.
   Focused editor/depth + native main/looks/sphere/fresh PASS; physical input/art acceptance OPEN.
   Owners/gates/evidence — Terrain Authoring → «Слои камня Б», directions/materials.md.
+  Ray context01.11: existing EMBER_DEPTH_CONTEXT passes cached weathering weight,
+  triplanar axes and width divisor per fragment, in addition to edge context.
+  Optical depth/steps/fades and paint/profile data unchanged; ordinary finish keeps
+  its wrapper, no extra varyings. Comparison material() expands the shared body include
+  before inserting its old hooks. Native editor/three-look cycle PASS; main GPU evidence
+  and dense acceptance belong to Performance → «Дорогой ближний камень».
+  SolidSurface.far_depth_shader reuses the full program bindings but compiles out
+  POM/manual DEPTH after fade. Prop._sync_depth_program chooses by full world AABB,
+  restores near/editor/active Source/no camera, keeps material identity; runtime priority1
+  follows default camera0. No change to published material/source serialization.
+  Native bound/pixel/cache/3look and dense moving render checks PASS;whole120FPS OPEN.
+  Stock LightmapGI01.11 compatibility ONLY: tools/editor_test_static_shadow_bake.gd builds
+  a disposable main-source patch+rock fixture, tools/fixtures/ember_lightmap_probe.gd
+  preserves native indexed upload, remaps UV2 palette/face IDs into spare CUSTOM0.w,
+  then rebuilds native LOD indices without replacing accepted packed vertex streams.
+  tools/test_static_shadow_bake.gd proves static cached shadows and dynamic receiver limits.
+  No production Source/schema/material/editor path changed. Hybrid integration,3looks,
+  revision invalidation,memory/full stress and editor clean exit OPEN;Performance owns evidence.
   Weathering28.10: Pattern.stone_weathering_enabled / прежний dialog / stone_profiles row1.z.
   Detail-only coverage/height; optional explicit edge context in common parallax, no new varying
   or plant cache overwrite. Off retains legacy branch; owners/gates — Terrain Authoring →
@@ -474,6 +585,35 @@ Source (воксельные данные, хозяин формы) → гене
   multicolour derived contract adds solid-part-palette-v1. Prop material refresh defaults missing gray/mode.
   Native house editor/save/history + three global main looks PASS; old rock buffers identical.
   Manual art/input OPEN; exterior masses only. Details/gates — World Authoring → Building Massing v0.
+  Building plan05.11: BuildingLayout/BuildingPlanField extend existing GeneratorRecipe.structure,
+  both creation/edit panels, Canvas forwards optional3D plan input. Rectangular core + one low rear annex;
+  lightweight draft/release Undo, explicit exact preparation, shared variant save/protection.
+  Optional validated solid_surface.building_entry is derived point/normal, baked to prefab mesh
+  metadata. EmberBuildingEntrance reads the published authoring mesh frame; no runtime recipe.
+  Entrance/return follow Source update/Undo/3looks; runtime process stops after initial placement.
+  wing_side/width/length are provider parameters; Layout owns exposed edges/bounds/frame offset.
+  Existing house edit freezes Recipe.fixed_corner. The generated solid_surface.building_offset
+  feeds the prefab mesh/collision position adapter. The viewport uses the same offset relative
+  to the open Source, including on a second edit. Legacy Sources without the offset keep their frame.
+  Five annex convex parts, lean-to below main eave; original roof coverage retained, cap32 unchanged.
+  With wing_roof=1 the full-height gabled wing shares the exterior slope and clips both roof
+  extents at the join. Its five parts use the same Source/convex prefab path.
+  Optional opposite_wing uses the same provider with its own dimensions
+  and roof. Layout owns wall IDs 7–9 and the gap between roof overhangs.
+  Roof option 2 clips the main and perpendicular wing slope at their equal-height
+  plane. A six-part convex wing includes the infill under the valley.
+  Low wings can slide along the rear wall with wing_inset_m / opposite_inset_m.
+  Layout reserves wall IDs 10–11 for rear strips exposed by a slide.
+  wing_on_side rotates one lean-to and its wall frame by a quarter turn. The
+  convex fill keeps ordered grid bounds. Wall segment 12 is for picking only,
+  remapped to its original side-wall opening ID before save.
+  entry_canopy adds three convex parts in the door frame using the existing
+  roof/timber slots. Layout guards the budget and the adjoining roof footprint.
+  window_style applies a shared profile to all window openings. The stone chamfer
+  and arch preserve the frame/glass two-part contract and existing opening IDs.
+  Main CoastalHouse uses vox_coastal_house_wing32parts, original/layout variants preserved; coastal_house_interior
+  uses existing ExploreScene/MapLoader/MapTransition. Native layout/wing/Canvas/save/route/actual3looks PASS;
+  manual input/art/dense quarter/large mixed assemblies OPEN. Owner — World Authoring plan05.11.
   Cliffs v0 (26.10): ember_voxel_cliff_generator.gd in the existing registry/recipe/workspaces.
   Three layered Sources/prefabs/recipes on main, 16 vox/m, max524288 cells, candidate_limit1.
   form_strength defaults0 for existing recipes,65 for new ones; 9/18 convex pieces model
@@ -1554,9 +1694,13 @@ Source (воксельные данные, хозяин формы) → гене
   при перестройке; collision/floor остаются прежними. `EmberVoxelProp.set_world_look`
   маршрутизирует существующие rock/tree bake; pre-save восстанавливает опубликованный mesh,
   post-save возвращает отображение, поэтому карта не сериализует производные буферы.
-  `scripts/ember_grass_patch.gd` хранит параметры участка в scene Node, внутренний MultiMesh
-  следует сухой травяной земле и общему Pattern/свету. Grass0 — новая cached форма8 травинок/
-  80 треугольников (`Fixture.grass_blade_mesh`); low1 — старый `Styles.grass_mesh`, voxel2 — прежний
+  `scripts/ember_grass_patch.gd` хранит параметры участка в scene Node;внутренний
+  MultiMesh следует сухой травяной земле и общему Pattern/свету.
+  Для detailed grass01.11 использует общий baked `prefabs/voxels/meshes/grass_card_contour.res`
+  (8triangles),builder — `tools/build_grass_card_contour.gd`/Fixture/supporting trapezoid.
+  Расстановка/ключи transform-cache/опора используют прежний полный card footprint;
+  atlas image не обрабатывается runtime. Такой же contour в cuttable/стерне/herb visual.
+  Grass0 — baked contour8triangles/native card LOD8; low1 — старый `Styles.grass_mesh`, voxel2 — прежний
   outline/snapshot. Оба исходника сохранены, WorldAnomaly использует прежний low correspondence.
   Маски/seed/материалы не менялись. Painted detail mode того же owner хранит
   плитки4м/density_cells25см/kind/seed/вариации; общий leaf — `ember_detail_scatter.gd`.
@@ -1658,8 +1802,27 @@ Source (воксельные данные, хозяин формы) → гене
   Exact parity/lifetime/admission и native immediate move PASS;120FPS/manual view OPEN.
   Данные — World Authoring → «Фоновая подготовка и пробуждение травы30.10».
   GrassPatch surface_object_changed подключён только у resident painted patches; exit/return dirty.
+  QA grass residency04.11 наблюдает Map.detail_scatter_changed(publication/look/release);
+  GrassPatch.set_detail_render_override — transient native visibility handoff,не Source/save.
+  QA worker bytes→bounded RD pool/generation guards принадлежат внешнему qa_stream_grass;
+  compute иshader fade следуют одному живому projection. Production GPU adapter не подключён.
+  Shared DetailPreparation приоритетно доставляет completed material/cache-read owner,пока
+  он удерживает bounded slot:иначе dense nearer retries могут бесконечно не пускать его.
+  RED→GREEN/cancel/teardown иdense GPU return PASS;latency/memory/art/120FPS OPEN — Performance.
   MapLoader владеет одним ObjectLOD.ObjectJob: main snapshot, CPU ImporterMesh worker, main publish,
   stale/disabled discard и exit join; прежние cache8/prop/physics/material owners. Poll distances local.
+  Перенос04.11: для named tree_bark тот же ObjectJob выбирает первый meshoptimizer LOD
+  как near presentation, compact vertices и строит дальние native LOD; Source/коллизия не меняются.
+  GrassPatch.grass_render_mesh держит один derived ArrayMesh ordinary8→6→4 с прежними
+  вершинами/UV/атласом/roots, native projected-error selection; look1/2 прежние.
+  FloweredGrass05.11:6thin plant families в том же GrassPatch detail_kind3, включая wheat;
+  cache keyed by existing flower_shape0..5, TerrainMeshLOD.object_mesh даёт native distance LOD.
+  Pattern/validation/dialog/brush/save используют тот же Resource, без нового renderer/scatter.
+  Voxel flowers удалены; старый wheat только tools/fixtures, main mask переведён на cover.
+  Near geometry/UV/color первых3 exact,6sets/history/save/3looks и main FOV40/70 PASS;
+  детали/цена/пределы — Terrain Authoring «Цветы, высокая трава и ориентир Zelda03.11».
+  Source assets не перезаписываются. Геометрия/материалы/main3looks/native editor save/reopen
+  проверены; нагрузочный маршрут и ограничения — Performance «Возврат к созданию локации».
   Far preflight в том же MapLoader: threaded Source read → Layers.PreparationJob CPU arrays/model →
   прежний Layers cache8 → main prepared_mesh. Один CPU object job суммарно с ObjectLOD.
   VoxelProp.remember_solid_source сохраняет cache4/hooks; volume far не читает ненужный Source.
@@ -1728,6 +1891,10 @@ Source (воксельные данные, хозяин формы) → гене
   Surface.prepare_render_upload использует CPU SurfaceTool.index и remap native LOD;
   MeshBuilder/HeightUpdateJob передают transient upload,canonical layout/Source/cache schema прежние.
   Main-thread publication потребляет indexed upload;residency seams тоже indexed.
+  OverviewJob.index_upload готовит immutable CPU chunks/identity indices. Projection._update_overview_ground
+  хранит revision-scoped ArrayMesh/coverage mask и обновляет render index buffer штатным RenderingServer API.
+  Hidden patch — degenerate triangles,all-covered Ground hidden;новый revision создаёт новый mesh.
+  Picking читает document/fields,не CPU triangle cache overview;water/seams и Source schema прежние.
   WorldCanvas.is_world_preparation_complete читает прежний startup barrier,не новый flag.
   Preparation.frame_budget_us выбирает startup/editor/active brush5мс или gameplay3мс;
   replacement/reparent не сохраняют чужую фазу. Physics/preview/pixels/gates — Performance owner.
@@ -1747,6 +1914,10 @@ Source (воксельные данные, хозяин формы) → гене
   Materials.refresh_terrain_features выбирает shared immutable program по10живым feature flags,
   cap32Shaders (stress2); uniforms/texture bindings прежние. Materials profile APIs,
   MapLoader.bind_voxel_light, Projection и GrassPatch light/look/publication обновляют варианты.
+  Grass publication теперь ждёт `Materials.prepare_terrain_features_step` впрежнем
+  Preparation dispatcher:короткая генерация,≤2threaded ResourceLoader requests,
+  live binding тольконаmain;failed staging возвращает sync путь. Генератор уsync
+  иincremental общий;временные `.tres/.gdshader` принадлежат user cache,не карте.
   Runtime raw changes этих flags требуют refresh; tool-editor/headless generic. ResourceLoader
   раскрывает ShaderInclude; Source/physics/save schema не менялись. Native3looks/render/live PASS.
   Native проверки/числа/открытый gate — [Производительность мира](EMBER_WORLD_PERFORMANCE.md#доверенная-текущая-точка) → «Доверенная текущая точка».
@@ -2541,6 +2712,34 @@ generation, placement, publication и scene-authoring пути.
 
 ### Party, save и переход в бой
 
+- Квестовые действия05.11: прежние QuestStore/Graph/QuestEditor/QuestCatalog принимают
+  `world_action` (destroy/reveal_leaves/cut_grass/collect/craft + target/count).
+  WorldItem/LeafPile/CuttableGrass/BerryBush/recipe commit → ExploreState → прежние
+  numeric flags и единый autosave. Два общих файла описаний/селекторов не исполняют
+  прогресс; второй bus/save-owner не вводился. UI/границы/команды — Inspector I3.15
+  «Действия в мире как цели05.11». Ручное авторство своего задания/main OPEN.
+- Груз между картами05.11: MapTransition process-local IDs→ExploreState.adopt_carried_items→
+  ExploreScene restore той же записи/героя. WorldItems v2 optional physical/carrierHeroId
+  нормализует переносимые WorldItem свойства, без второго save-owner. Дефолтные старые
+  записи совместимы; чужая mapId не даёт старому prefab перезаписать/дублировать груз.
+  WorldItem берёт родительский map_id до регистрации; F у доступной двери входит,
+  иначе ставит. Tab перепривязывает тело к тому же hero_id; возврат — к входу новой карты.
+  WorldRecovery deferred-ID guards устраняют регистрацию удалённого body.
+  Fresh native cargo/профиль/save/Tab/norespawn, physical/world-item/map/combat/recovery
+  regressions PASS; manual input OPEN. Owners/ограничения — Inspector I3.15 «Перенос груза между картами05.11».
+- Рецепты05.11: authored `EmberCraftRecipeResource` + `ember_crafting_station.gd`
+  EmberInteract adapter, общая InteractionUi MODE_CRAFT. State.preview_exchange —
+  прежний расчёт обмена без мутации; exchange_items/craft_recipe остаются единственным
+  commit/autosave. Учебные workbench/kitchen подключены в chapter1_estate/home;
+  recipe/станция редактируются native Inspector, save schema неизменна.
+  Границы/проверки — Inspector I3.15 «Верстак и кухня05.11»; manual input/DPI OPEN.
+- Макет главы05.11:13native `scenes/chapter1_*.tscn` через существующий `world_canvas.gd`,
+  общий отдельный `sandbox_storage_root=user://ember-chapter1-blockout`; main save не заменён.
+  Builders/ресурсы/границы — Inspector I3.15 «Проходимый макет локаций05.11».
+  `EmberMapLoader._region_nodes` ищет Regions→Props рекурсивно и без повторов, чтобы
+  объектные Door/return_* и свободные Region имели единый поиск/occupancy. Входы/NPC
+  движутся со своей группой; defaultentry новых карт первый. Схема save не менялась.
+  Native route/movedbuilding/NPC/shop/coldload и старый maptransition PASS; ручной проход OPEN.
 - `scripts/ember_explore_state.gd` — единственный mutable/save owner мира,
   партии, общей сумки, флагов и прогресса.
 - `scripts/ember_party_state.gd` — чистая нормализация, derived stats, XP/level-up;
@@ -3525,6 +3724,9 @@ Owners:
   native material bank выпекается через Forward+, не dummy headless. Existing herb
   получил worldScene `herb_sprig.scn`; stats прежние. Main/Props/CuttableGrass.
   Assets/ограничения/test_cuttable_grass/evidence — Inspector I3.15 «Срезаемая трава29.10».
+  Срез01.11:grass-slot main при bake без отдельного tint;пучок/стерня/разлёт используют
+  прежний compiled feature program. Runtime не дублирует стоящие meshes/materials;
+  gameplay/leaf gates PASS,render-crop/чистый замер/ручная приёмка — World Performance.
 - `ember_fruit_tree.gd`: Area strike adapter, повторная crown реакция и однократный
   authored flag → прежний gated WorldItem apple. Per-instance tree_hit_sway в
   tree-card shader/общем surface vertex hook, physics Tween0,65с; bark/mesh/collision
@@ -3621,6 +3823,10 @@ Quest/NPC objective_scripts/Dialogue/Action/enter-trigger/WorldItem/settle-zone
 пробелы authoring/следующая рекомендация — Inspector Design → I3.15.
 
 Обратная связь взаимодействий28.10:
+- Player._nearest — единый query owner для F и InteractionFocus. Сначала точная
+  distance_to_world/region distance/strict12,затем live availability только кандидата,
+  который может стать ближайшим. Group order/held priority/live flags сохранены;
+  cache/задержка обновления не вводились. Native regressions/performance — Performance owner.
 - `ember_interaction_focus.gd` читает прежний Player._nearest: только доступный
   объект на расстоянии F. Derived MeshInstance копии используют source mesh/skin,
   собственный outline material; авторские материалы/mesh/collision не меняются.

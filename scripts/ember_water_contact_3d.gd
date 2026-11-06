@@ -10,6 +10,7 @@ const WAKE_MESH_FPS := 15.0
 const MASK_SIZE := 12
 const MASK_INTERVAL := 0.10
 const SURFACE_ARC_SPACING_BLOCKS := 0.45
+const RIG_SECTION_INTERVAL_MS := 83
 
 @export_range(0.05, 1.5, 0.01) var radius_blocks := 0.30
 @export_range(-2.0, 2.0, 0.01) var feet_offset_blocks := 0.0
@@ -60,9 +61,14 @@ var _mesh_section_signature := 0
 var _mesh_section := {}
 var _mesh_sections := {}
 var _section_mesh: Mesh
+var _rig_section := {}
+var _rig_section_visual: Node3D
+var _rig_section_due_ms := 0
+var _rig_section_pose := PackedVector4Array()
 
 
 func _ready() -> void:
+	add_to_group(&"ember_water_contacts")
 	get_tree().node_added.connect(_on_projection_tree_changed)
 	get_tree().node_removed.connect(_on_projection_tree_changed)
 	_target = get_parent() as Node3D
@@ -180,7 +186,13 @@ func set_surface_integrated(enabled: bool) -> void:
 	# retain this component's ordinary ripple and wake presentation.
 	_surface_integrated = enabled
 	if is_instance_valid(_visual):
-		_visual.visible = _contact_active and not _surface_integrated
+		_visual.visible = _contact_active and not _uses_integrated_surface()
+
+
+func _uses_integrated_surface() -> bool:
+	return _surface_integrated or (is_instance_valid(_projection)
+		and _projection.has_method("uses_integrated_water_contacts")
+		and _projection.uses_integrated_water_contacts())
 
 
 func _invalidate_mesh_section() -> void:
@@ -254,6 +266,11 @@ func water_interaction_shape(water_y: float) -> Dictionary:
 	# One contact for stationary/moving bodies. Primitive and ArrayMesh sections
 	# retain their outline; other visuals use the authored radius.
 	if not is_instance_valid(_target) or not _target.is_visible_in_tree(): return {}
+	if _contact_active:
+		for visual in _target.get_children():
+			if visual is Node3D and visual.visible and visual.has_method("waterline_rig_segments"):
+				return _rig_interaction_shape(visual)
+	_rig_section_visual = null
 	var shape := foam_footprint_shape(water_y)
 	if shape.is_empty():
 		# An exact mesh section with no intersection must not turn back into a disc.
@@ -264,6 +281,33 @@ func water_interaction_shape(water_y: float) -> Dictionary:
 			"radius": radius_blocks * _motion_block_world_size}
 	shape["velocity"] = _surface_velocity
 	shape["id"] = get_instance_id()
+	return shape
+
+
+func _rig_interaction_shape(visual: Node3D) -> Dictionary:
+	var position := _target.global_position
+	var origin := Vector2(position.x, position.z)
+	var now := Time.get_ticks_msec()
+	if visual != _rig_section_visual or now >= _rig_section_due_ms:
+		var segments: Array[Vector4] = visual.waterline_rig_segments()
+		var water_y := global_position.y - _motion_block_world_size * 0.002
+		var pose := PackedVector4Array()
+		for point in segments:
+			pose.append(Vector4(snappedf(point.x - origin.x, 0.2), snappedf(point.y - water_y, 0.2),
+				snappedf(point.z - origin.y, 0.2), point.w))
+		if visual != _rig_section_visual or pose != _rig_section_pose:
+			_rig_section = MeshSection.build_rig(segments, water_y, origin)
+			_rig_section_pose = pose
+		_rig_section_visual = visual
+		_rig_section_due_ms = now + RIG_SECTION_INTERVAL_MS
+	if _rig_section.is_empty():
+		return {}
+	var shape := _rig_section.duplicate()
+	shape.kind = "mesh"
+	shape.center = origin + Vector2(shape.center_offset)
+	shape.angle = 0.0
+	shape.velocity = _surface_velocity
+	shape.id = get_instance_id()
 	return shape
 
 
@@ -295,7 +339,13 @@ func _resolve_projection() -> void:
 			_projections.append(candidate)
 
 
-func _select_water_sample() -> Dictionary:
+func swimming_surface_sample() -> Dictionary:
+	if _projections_dirty:
+		_resolve_projection()
+	return _select_water_sample(INF, false)
+
+
+func _select_water_sample(depth_limit := -1.0, track_contact := true) -> Dictionary:
 	var best: Dictionary = {"wet": false}
 	var best_distance := INF
 	var chosen: Node3D
@@ -308,13 +358,14 @@ func _select_water_sample() -> Dictionary:
 		var block_size := maxf(0.001, float(sample.get("block_world_size", 1.0)))
 		var point: Vector3 = sample["position"]
 		var depth := (point.y - _target.global_position.y) / block_size - feet_offset_blocks
-		if depth < -dry_tolerance_blocks or depth > max_submerge_blocks:
+		var max_depth := max_submerge_blocks if depth_limit < 0.0 else depth_limit
+		if depth < -dry_tolerance_blocks or depth > max_depth:
 			continue
 		if absf(depth) < best_distance:
 			best_distance = absf(depth)
 			best = sample
 			chosen = candidate
-	if chosen != _projection:
+	if track_contact and chosen != _projection:
 		_wake_origin_initialized = false
 		# A different projection may use another scale or even another lake.
 		# Samples on the previous surface cannot be reinterpreted there.
@@ -425,7 +476,7 @@ func _set_contact_visible(next_visible: bool) -> void:
 	if not next_visible:
 		_wake_origin_initialized = false
 	if is_instance_valid(_visual):
-		_visual.visible = next_visible and not _surface_integrated
+		_visual.visible = next_visible and not _uses_integrated_surface()
 
 
 func wake_sample_count() -> int:
@@ -525,7 +576,7 @@ func _rebuild_wake_mesh() -> void:
 	if not is_instance_valid(_wake_mesh) or not is_instance_valid(_wake_visual):
 		return
 	_wake_mesh.clear_surfaces()
-	if _surface_integrated:
+	if _uses_integrated_surface():
 		_wake_visual.visible = false
 		return
 	if _wake_samples.is_empty():

@@ -8,11 +8,23 @@ const Materials = preload("res://scripts/ember_voxel_surface_materials.gd")
 const Detail = preload("res://scripts/ember_detail_scatter.gd")
 const PatternBake = preload("res://scripts/ember_detail_pattern_bake.gd")
 const FlowerCover = preload("res://scripts/ember_flowered_grass.gd")
+const LeafCover = preload("res://scripts/ember_ground_leaf_cover.gd")
+const Moss = preload("res://scripts/ember_object_moss.gd")
+const GrassProfile = preload("res://scripts/ember_grass_profile.gd")
 const GRASS_CARD_ATLAS = preload("res://content/terrain_materials/textures/grass-cards-runtime.png")
+const GRASS_CARD_MESH = preload("res://prefabs/voxels/meshes/grass_card_contour.res")
+static var _native_grass_mesh: ArrayMesh
+
+static func grass_render_mesh() -> ArrayMesh:
+	if _native_grass_mesh==null:
+		_native_grass_mesh=GrassProfile.native_card_mesh(GRASS_CARD_MESH)
+	return _native_grass_mesh
+
 const Preparation = preload("res://scripts/ember_detail_preparation.gd")
 @export_storage var detail_kind := 0:
 	set(value):
-		detail_kind = clampi(value,0,3); _coloured_meshes.clear(); _dirty = true
+		detail_kind = clampi(value, 0, Moss.GROUND_KIND); _coloured_meshes.clear(); _dirty = true
+		if is_inside_tree(): _sync_cover_tile()
 @export_storage var cover_pattern: EmberCompactTerrainPattern:
 	set(value):
 		if cover_pattern != null and cover_pattern.changed.is_connected(_cover_changed): cover_pattern.changed.disconnect(_cover_changed)
@@ -38,7 +50,9 @@ var _pattern_data: Dictionary = {}
 @export_storage var painted_only := false:
 	set(value):
 		painted_only=value
-		if is_inside_tree():Preparation.moved_sleeping_patch(self)
+		if is_inside_tree():
+			_sync_cover_tile()
+			Preparation.moved_sleeping_patch(self)
 var _density_decode_error:=""
 var _density_bad_blob:=PackedByteArray()
 var _density_storage_valid:=true
@@ -52,6 +66,7 @@ var density_cells: Dictionary = {}:
 		_density_storage_valid=Detail.validation_errors(density_cells).is_empty()
 		_dirty = true
 		_wake_preparation()
+		_invalidate_moss_neighbors()
 		_density_decode_error="";_density_bad_blob=PackedByteArray()
 var density_mask:PackedByteArray=PackedByteArray():
 	get:return _density_bad_blob if not _density_decode_error.is_empty() else Detail.encode_mask(density_cells)
@@ -70,8 +85,11 @@ var _detail_preview: Dictionary = {}:
 	set(value):
 		_detail_preview = value
 		_wake_preparation() # Existing brush drafts respond immediately, even on a sleeping patch.
+		_invalidate_moss_neighbors()
 var _detail_transform_cache: Dictionary = {}
 var _detail_cache_key := 0
+## Content address of the painted transforms, used by the offline map packer.
+var prepared_placement_key := ""
 var detail_generations := 0
 var detail_disk_hits := 0
 static var _pebble_meshes: Dictionary = {}
@@ -103,6 +121,17 @@ var _pending_material:ShaderMaterial
 var _material_role_binding:=false
 var _material_role_refreshes:Dictionary={} # Latest profile commands only while role IO awaits.
 var _detail_resident := false
+var _detail_render_override := false
+var _detail_native_visible := false
+
+func set_detail_render_override(value:bool)->void:
+	# Opt-in presentation consumer;placement,preparation and saves stay here.
+	_detail_render_override=value
+	if is_instance_valid(_visual):_visual.visible=_detail_native_visible and not value
+
+func _notify_detail_scatter()->void:
+	var map:=_map()
+	if map!=null:map.detail_scatter_changed.emit(self)
 var _detail_poll_projection_id := 0
 var _detail_priority_pending := false
 var _detail_fade_state:Array=[]
@@ -110,7 +139,7 @@ var _detail_poll_epoch:=-1
 var _detail_poll_area:=Rect2()
 var _detail_context:WeakRef
 var _detail_context_projection_id:=0
-var _map_ref:WeakRef
+var _map_owner:EmberMapLoader
 
 func _wake_preparation() -> void:
 	set_process(true)
@@ -125,6 +154,14 @@ func detail_preparation_pending() -> bool:
 	return _detail_resident and (_dirty or _rebuilding)
 var _look := 0
 var _visual: MultiMeshInstance3D
+var _leaf_decal: Decal
+var _moss_preview := Vector3.ZERO
+var _leaf_density_preview := -1.0
+var _leaf_layer_stamp: Array = []
+var _cover_tile_group: StringName
+var _cover_tile_address := Vector2i.ZERO
+var _cover_tile_kind := -1
+var _folded_leaves: MeshInstance3D
 static var _meshes: Dictionary = {}
 static var _coloured_meshes: Dictionary = {}
 var _transform := Transform3D.IDENTITY
@@ -161,6 +198,82 @@ func _ready() -> void:
 	if painted_only and _map() != null: _look = maxi(0, _map().world_look)
 	_register_detail_poll.call_deferred()
 
+func _enter_tree() -> void:
+	if detail_kind in [Moss.GROUND_KIND, LeafCover.KIND]:
+		_sync_cover_tile()
+
+
+func _moss_group(address: Vector2i) -> StringName:
+	return Detail.ground_cover_group(_map().get_instance_id(), Moss.GROUND_KIND, address)
+
+
+func _sync_cover_tile() -> void:
+	var map := _map()
+	var group := &""
+	var address := Vector2i.ZERO
+	if detail_kind in [Moss.GROUND_KIND, LeafCover.KIND] and painted_only and map != null:
+		set_notify_transform(true)
+		var origin := map.to_local(global_position) / (map.imported_tile_size * Detail.PATCH_M)
+		address = Vector2i(roundi(origin.x), roundi(origin.z))
+		group = Detail.ground_cover_group(map.get_instance_id(), detail_kind, address)
+	if group == _cover_tile_group: return
+	_unregister_cover_tile()
+	_cover_tile_group = group
+	_cover_tile_address = address
+	_cover_tile_kind = detail_kind
+	if group != &"":
+		add_to_group(group)
+		_invalidate_moss_neighbors()
+
+
+func _unregister_cover_tile() -> void:
+	if _cover_tile_group == &"": return
+	remove_from_group(_cover_tile_group)
+	_invalidate_moss_neighbors()
+	_cover_tile_group = &""
+
+
+func _moss_neighbors() -> Dictionary:
+	var result := {}
+	if _cover_tile_kind != Moss.GROUND_KIND or _cover_tile_group == &"" or not is_inside_tree() or _map() == null: return result
+	for z in range(-1, 2):
+		for x in range(-1, 2):
+			var offset := Vector2i(x, z)
+			if offset == Vector2i.ZERO: continue
+			var patch := get_tree().get_first_node_in_group(_moss_group(_cover_tile_address + offset))
+			if patch != null: result[offset] = patch
+	return result
+
+
+func _invalidate_moss_neighbors() -> void:
+	for patch in _moss_neighbors().values():
+		if patch._dirty: continue
+		patch._dirty = true
+		patch._wake_preparation()
+
+
+func _moss_halo(projection: Node3D, span: float) -> Dictionary:
+	var neighbors := _moss_neighbors()
+	var masks := {}
+	for offset in neighbors:
+		var patch: Node = neighbors[offset]
+		masks[offset] = patch._detail_preview.get("cells", patch.density_cells)
+	var halo := {}
+	for y in range(-Moss.GROUND_HALO, Detail.CELLS + Moss.GROUND_HALO):
+		for x in range(-Moss.GROUND_HALO, Detail.CELLS + Moss.GROUND_HALO):
+			var cell := Vector2i(x, y)
+			var offset := Vector2i(floori(float(x) / Detail.CELLS), floori(float(y) / Detail.CELLS))
+			if not masks.has(offset): continue
+			var weight := int(masks[offset].get(cell - offset * Detail.CELLS, 0))
+			if weight <= 0: continue
+			var point := to_global(Vector3(x + 0.5, 0.0, y + 0.5) * span)
+			var floor_hit: Dictionary = projection.floor_surface_sample(point)
+			if not floor_hit.get("solid", false): continue
+			var water: Dictionary = projection.water_surface_sample(point)
+			if water.get("wet", false) and water.position.y > floor_hit.position.y: continue
+			halo[cell] = weight
+	return halo
+
 func _ensure_visual()->void:
 	if is_instance_valid(_visual):return
 	_visual=MultiMeshInstance3D.new()
@@ -178,16 +291,22 @@ func _register_detail_poll() -> void:
 		Preparation.for_projection(projection).sleep_patch(self)
 
 func _notification(what:int)->void:
+	if what == NOTIFICATION_TRANSFORM_CHANGED and detail_kind in [Moss.GROUND_KIND, LeafCover.KIND] and is_inside_tree():
+		_sync_cover_tile()
 	if what==NOTIFICATION_TRANSFORM_CHANGED and _detail_poll_projection_id!=0 and is_inside_tree():
 		Preparation.moved_sleeping_patch(self)
 
 func _exit_tree() -> void:
+	_unregister_cover_tile()
+	_detail_resident=false;_detail_native_visible=false
+	set_detail_render_override(false)
+	_notify_detail_scatter()
 	# Undo/Redo can reattach this exact node without another _ready().
 	_watch_object_surface(_map(),false)
 	Preparation.cancel_patch(self)
 	_detail_poll_projection_id = 0
 	_detail_context=null;_detail_context_projection_id=0;_detail_poll_epoch=-1
-	_map_ref=null
+	_map_owner=null
 	_area_valid=false
 	_dirty=true
 	set_process(true)
@@ -246,6 +365,11 @@ func set_material_light(mode: int, gray: bool) -> void:
 
 func refresh_shared_material(pattern: EmberCompactTerrainPattern = null, id := "") -> void:
 	if detail_kind == 2: return # This source keeps its own palette, independent of terrain artwork.
+	if detail_kind == Moss.GROUND_KIND:
+		if pattern == null or id == "moss":
+			_dirty = true
+			_wake_preparation()
+		return
 	var map := _map()
 	if map == null: return
 	var projection = map._visual_surface_projection
@@ -278,6 +402,15 @@ func refresh_shared_material(pattern: EmberCompactTerrainPattern = null, id := "
 func set_world_look(value: int) -> void:
 	_look = maxi(0, value)
 	_dirty = true
+	_notify_detail_scatter()
+
+
+func refresh_grass_profile() -> void:
+	if detail_kind != 0:
+		return
+	_dirty = true
+	_wake_preparation()
+	_notify_detail_scatter()
 
 
 func is_detail_stone() -> bool:
@@ -292,7 +425,7 @@ func prepared_look_mesh(look: int) -> ArrayMesh:
 	if detail_kind == 1: return _pebble_look_mesh(look)
 	if not _meshes.has(look):
 		if look == 0:
-			_meshes[look] = Fixture.grass_card_mesh()
+			_meshes[look] = grass_render_mesh()
 		else:
 			# Preserve the accepted voxel silhouette independently of the new detailed blades.
 			var original: ArrayMesh = load("res://prefabs/voxels/meshes/environment_review_grass.res").mesh
@@ -334,12 +467,18 @@ func _process(_delta: float) -> void:
 		context=Preparation.for_projection(projection)
 		_detail_context=weakref(context);_detail_context_projection_id=projection.get_instance_id();_detail_poll_epoch=-1
 	var epoch:int=context.detail_poll_epoch() if not Engine.is_editor_hint() else -1
-	var area:=_world_area()
-	if epoch>=0 and epoch==_detail_poll_epoch and area==_detail_poll_area and _detail_resident and not _dirty and _revision==projection.column_revision() and global_transform==_transform and is_instance_valid(_visual) and _visual.material_override is ShaderMaterial and _detail_fade_state.size()==6:
-		var material:=_visual.material_override as ShaderMaterial
-		if material.get_instance_id()==_detail_fade_state[0] and material.shader.get_instance_id()==_detail_fade_state[1] and (material.get_shader_parameter("ember_anomaly_prepared")==true)==_detail_fade_state[5]:
+	# Size edits mark dirty; paint mode, transforms and map scale are checked here.
+	# Thus unchanged residents need no bounds query, including its map lookup.
+	if epoch>=0 and epoch==_detail_poll_epoch and _detail_resident and not _dirty and _revision==projection.column_revision() and global_transform==_transform and _area_valid and painted_only==_area_painted and map.imported_tile_size==_area_unit:
+		if detail_kind in [LeafCover.KIND, Moss.GROUND_KIND]:
 			context.finish_detail(began)
 			return
+		if is_instance_valid(_visual) and _visual.material_override is ShaderMaterial and _detail_fade_state.size()==6:
+			var material:=_visual.material_override as ShaderMaterial
+			if material.get_instance_id()==_detail_fade_state[0] and material.shader.get_instance_id()==_detail_fade_state[1] and (material.get_shader_parameter("ember_anomaly_prepared")==true)==_detail_fade_state[5]:
+				context.finish_detail(began)
+				return
+	var area:=_world_area()
 	_update_detail_patch(map,projection)
 	_detail_poll_epoch=epoch;_detail_poll_area=area
 	context.finish_detail(began)
@@ -358,12 +497,15 @@ func _update_detail_patch(map:EmberMapLoader,projection:Node3D)->void:
 				_visual.multimesh=null
 				_visual.material_override=null
 				_visual.hide()
+			_clear_leaf_cover()
 			_detail_fade_state.clear()
+			_detail_native_visible=false
+			_notify_detail_scatter()
 		if (not Engine.is_editor_hint() or owner != null) and _detail_preview.is_empty():
 			Preparation.for_projection(projection).sleep_patch(self)
 		return
 	_detail_resident=true
-	_watch_object_surface(map,true)
+	_watch_object_surface(map, detail_kind not in [LeafCover.KIND, Moss.GROUND_KIND])
 	_update_detail_fade(projection,map)
 	if _rebuilding:return
 	if projection._live_brush_active: return
@@ -412,7 +554,8 @@ func _update_detail_fade(projection:Node3D,map:EmberMapLoader)->void:
 		# even its nearest edge is past fade-end, the vertex shader collapses
 		# every instance to zero. Keep its resident buffer, skip the empty draw.
 		fully_faded=focus.distance_to(focus.clamp(area.position,area.end))>=fade.y
-	_visual.visible=not fully_faded and not (is_detail_stone() and _look==2)
+	_detail_native_visible=not fully_faded and not (is_detail_stone() and _look==2)
+	_visual.visible=_detail_native_visible and not _detail_render_override
 	material.set_shader_parameter("world_detail_fade_enabled",active)
 	material.set_shader_parameter("world_detail_anchor",anchor)
 	material.set_shader_parameter("world_detail_fade_range",fade)
@@ -420,7 +563,8 @@ func _update_detail_fade(projection:Node3D,map:EmberMapLoader)->void:
 
 func _surface_signature(projection:Node3D)->Array:
 	var source=projection.document
-	var unit:float=_map().imported_tile_size
+	var map:=_map()
+	var unit:float=map.imported_tile_size
 	var area:=Rect2(Vector2.ZERO,Vector2.ONE*Detail.PATCH_M) if painted_only else Rect2(-size_blocks*0.5,size_blocks)
 	var radius:=0.25 if painted_only else 0.128*1.18*tuft_size+0.035
 	if painted_only and detail_kind==2:
@@ -438,14 +582,11 @@ func _surface_signature(projection:Node3D)->Array:
 	# Four raw columns beyond the sampled footprint cover material blending too.
 	low=(low-Vector2.ONE*4).max(Vector2.ZERO);high=(high+Vector2.ONE*4).min(Vector2(source.width-1,source.depth-1))
 	var result:Array=[projection.get_instance_id(),projection.global_transform,projection.ground_style,source.width,source.depth,source.origin_y,source.palette_surface_roles.duplicate(),source.palette_material_ids.duplicate(),source.palette.duplicate()]
-	if painted_only:
+	if painted_only and detail_kind not in [LeafCover.KIND, Moss.GROUND_KIND]:
 		var objects:Array=[];var world_area:=_world_area()
-		for prop in get_tree().get_nodes_in_group(&"ember_solid_surface"):
-			if not _map().is_ancestor_of(prop):continue
-			var visual:=prop.get_node_or_null("Mesh") as MeshInstance3D
-			if visual==null or visual.mesh==null:continue
-			var box:AABB=visual.global_transform*visual.mesh.get_aabb()
-			if world_area.intersects(Rect2(Vector2(box.position.x,box.position.z),Vector2(box.size.x,box.size.z)),true):objects.append(prop.detail_surface_signature())
+		var bounds:=AABB(Vector3(world_area.position.x,0,world_area.position.y),Vector3(world_area.size.x,0,world_area.size.y))
+		for prop in map._solid_floor_candidates(bounds):
+			objects.append(prop.detail_surface_signature())
 		result[1]=[projection.global_transform,objects,"object-roots-v1"]
 	for y in range(floori(low.y/64),floori(high.y/64)+1):
 		for x in range(floori(low.x/64),floori(high.x/64)+1):result.append([Vector2i(x,y),projection.surface_tile_revision(Vector2i(x,y))])
@@ -455,14 +596,13 @@ func _surface_signature(projection:Node3D)->Array:
 func _map() -> EmberMapLoader:
 	# Clean resident callbacks and their bounds queries use the same owner.
 	# Cache only while attached: reparent/Undo exits the tree and clears this
-	# weak reference, while detached authoring queries still resolve ancestry.
-	if _map_ref!=null:
-		var cached:=_map_ref.get_ref() as EmberMapLoader
-		if cached!=null:return cached
+	# node reference, while detached authoring queries still resolve ancestry.
+	# Nodes are freed explicitly; this reference does not keep a deleted map alive.
+	if is_instance_valid(_map_owner):return _map_owner
 	var ancestor := get_parent()
 	while ancestor != null:
 		if ancestor is EmberMapLoader:
-			if is_inside_tree():_map_ref=weakref(ancestor)
+			if is_inside_tree():_map_owner=ancestor
 			return ancestor
 		ancestor = ancestor.get_parent()
 	return null
@@ -476,6 +616,10 @@ func _bind_grass_cards(material: ShaderMaterial, slot: int) -> void:
 
 func _rebuild(map: EmberMapLoader, projection: Node3D) -> void:
 	if not await _wait_preparation(map,projection): return
+	if detail_kind in [LeafCover.KIND, Moss.GROUND_KIND]:
+		await _rebuild_ground_cover(map, projection)
+		return
+	if is_instance_valid(_leaf_decal) or is_instance_valid(_folded_leaves): _clear_leaf_cover()
 	if not painted_only and detail_kind in [0,3]:
 		if not await Preparation.prepare_shader(detail_kind == 3 or _look == 0,self,func():return not _scatter_current(map,projection)):
 			_rebuilding=false;_dirty=true;return
@@ -535,7 +679,7 @@ func _rebuild(map: EmberMapLoader, projection: Node3D) -> void:
 	if not await _wait_preparation(map,projection):return
 	if stored.has(_look):
 		transforms.assign(stored[_look]); detail_disk_hits+=1
-		_publish_scatter(transforms,colored,material,map,projection); return
+		await _publish_scatter(transforms,colored,material,map,projection); return
 	var smooth = preload("res://scripts/prototypes/ember_terrain_smooth_surface.gd")
 	for z in floori(size_blocks.y/spacing):
 		for x in floori(size_blocks.x/spacing):
@@ -571,33 +715,171 @@ func _rebuild(map: EmberMapLoader, projection: Node3D) -> void:
 			transforms.append(global_transform.affine_inverse()*Transform3D(basis, point))
 	if not await _wait_preparation(map,projection): return
 	preparation.write(disk_key,{_look:transforms},func():return not _scatter_current(map,projection))
-	_publish_scatter(transforms, colored, material, map, projection)
+	await _publish_scatter(transforms, colored, material, map, projection)
+
+
+func preview_moss_details(detail: Vector3) -> void:
+	if detail_kind != Moss.GROUND_KIND: return
+	_moss_preview = detail
+	_dirty = true
+	_wake_preparation()
+
+
+func preview_leaf_details(detail: Vector3) -> void:
+	if detail_kind != LeafCover.KIND: return
+	_leaf_density_preview = detail.z if detail.x > 0.0 else -1.0
+	_dirty = true
+	_wake_preparation()
+
+
+func _rebuild_ground_cover(map: EmberMapLoader, projection: Node3D) -> void:
+	var moss := detail_kind == Moss.GROUND_KIND
+	add_to_group(Moss.PAINTED_GROUP if moss else LeafCover.PAINTED_GROUP)
+	var cells: Dictionary = _detail_preview.get("cells", density_cells)
+	_visual.hide()
+	if not painted_only or not Detail.validation_errors(cells).is_empty() or not validation_errors().is_empty():
+		_clear_leaf_cover()
+		_rebuilding = false
+		return
+	_surface_stamp = _surface_signature(projection)
+	var dry_cells := {}
+	var moss_hits := {}
+	var lower := INF
+	var upper := -INF
+	var unit := map.imported_tile_size
+	var span := Detail.CELL_M * unit
+	var preparation := Preparation.for_projection(projection)
+	for cell: Vector2i in cells:
+		if not preparation.available() and not await _wait_preparation(map, projection):
+			return
+		var point := to_global(Vector3(cell.x + 0.5, 0.0, cell.y + 0.5) * span)
+		var floor_hit: Dictionary = projection.floor_surface_sample(point)
+		if not floor_hit.get("solid", false):
+			continue
+		var water: Dictionary = projection.water_surface_sample(point)
+		if water.get("wet", false) and water.position.y > floor_hit.position.y:
+			continue
+		var height := to_local(floor_hit.position).y
+		lower = minf(lower, height)
+		upper = maxf(upper, height)
+		dry_cells[cell] = cells[cell]
+		if moss:
+			var east: Dictionary = projection.floor_surface_sample(point + Vector3.RIGHT * span * 0.5)
+			var south: Dictionary = projection.floor_surface_sample(point + Vector3.BACK * span * 0.5)
+			if east.get("solid", false) and south.get("solid", false):
+				var east_slope: Vector3 = east.position - floor_hit.position
+				var south_slope: Vector3 = south.position - floor_hit.position
+				floor_hit.normal = south_slope.cross(east_slope).normalized()
+			moss_hits[cell] = floor_hit
+	if not _scatter_current(map, projection):
+		_rebuilding = false
+		_dirty = true
+		return
+	if dry_cells.is_empty():
+		_clear_leaf_cover()
+	else:
+		# The authored tile name stays stable when the map grows north or west.
+		var tile_seed := hash([_detail_preview.get("seed", scatter_seed), name])
+		var leaf_size: float = _detail_preview.get("size", tuft_size)
+		var texture: Texture2D
+		if moss:
+			_leaf_layer_stamp.clear()
+			texture = Moss.ground_texture(dry_cells, _moss_halo(projection, span))
+		else:
+			var stamp := [dry_cells, tile_seed, leaf_size]
+			if stamp == _leaf_layer_stamp and is_instance_valid(_leaf_decal):
+				texture = _leaf_decal.texture_albedo
+			if texture == null:
+				texture = LeafCover.paint_texture(dry_cells, tile_seed, leaf_size)
+			_leaf_layer_stamp = stamp
+		if not await _wait_preparation(map, projection): return
+		var moss_detail := _moss_preview if _moss_preview.x > 0.0 else Moss.saved_detail()
+		var details: ArrayMesh
+		if moss:
+			details = Moss.ground_tuft_mesh(moss_hits, dry_cells, global_transform, unit, tile_seed, moss_detail)
+		else:
+			var density := _leaf_density_preview if _leaf_density_preview >= 0.0 else LeafCover.preset.detail_density
+			details = LeafCover.folded_mesh(dry_cells, global_transform, projection.floor_surface_sample, unit, tile_seed, leaf_size, density)
+		if not is_instance_valid(_leaf_decal):
+			_leaf_decal = Decal.new()
+			_leaf_decal.name = "DerivedGroundCover"
+			_leaf_decal.cull_mask = LeafCover.GROUND_LAYER
+			_leaf_decal.normal_fade = 0.4
+			add_child(_leaf_decal, false, Node.INTERNAL_MODE_BACK)
+		_leaf_decal.modulate = Color.WHITE if moss else Color(0.78, 0.67, 0.57, 0.9)
+		_leaf_decal.distance_fade_enabled = not moss
+		_leaf_decal.distance_fade_begin = 20.0 * unit
+		_leaf_decal.distance_fade_length = 10.0 * unit
+		_leaf_decal.upper_fade = 0.0 if moss else 0.3
+		_leaf_decal.lower_fade = 0.0 if moss else 0.3
+		var width := Detail.PATCH_M * unit
+		_leaf_decal.position = Vector3(width * 0.5, (lower + upper) * 0.5, width * 0.5)
+		var projected_width := width * (1.0 + 2.0 * Moss.GROUND_APRON / Moss.GROUND_TEXTURE_SIZE) if moss else width
+		_leaf_decal.size = Vector3(projected_width, upper - lower + unit, projected_width)
+		_leaf_decal.texture_albedo = texture
+		_leaf_decal.show()
+		if details != null and not is_instance_valid(_folded_leaves):
+			_folded_leaves = MeshInstance3D.new()
+			_folded_leaves.name = "DerivedGroundDetails"
+			_folded_leaves.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			_folded_leaves.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+			add_child(_folded_leaves, false, Node.INTERNAL_MODE_BACK)
+		if is_instance_valid(_folded_leaves):
+			_folded_leaves.material_override = null if moss else LeafCover.folded_material()
+			_folded_leaves.visibility_range_end = (12.0 if moss else 15.0) * unit
+			_folded_leaves.visibility_range_end_margin = 3.0 * unit
+			_folded_leaves.mesh = details
+			_folded_leaves.visible = details != null
+	_rebuilding = false
+
+
+func _clear_leaf_cover() -> void:
+	_leaf_layer_stamp.clear()
+	if is_instance_valid(_leaf_decal):
+		_leaf_decal.hide()
+		_leaf_decal.texture_albedo = null
+	if is_instance_valid(_folded_leaves):
+		_folded_leaves.hide()
+		_folded_leaves.mesh = null
 
 
 func _publish_scatter(transforms: Array[Transform3D], colored: ArrayMesh, material: ShaderMaterial, map: EmberMapLoader, projection: Node3D) -> void:
+	map.bind_voxel_light(material, _look, map.imported_tile_size)
+	var preparation=Preparation.for_projection(projection)
+	while true:
+		var features_ready:bool=Materials.prepare_terrain_features_step(material)
+		if features_ready:break
+		if not await preparation.wait_for_turn(self) or not _scatter_current(map,projection):
+			_rebuilding=false;_dirty=true;return
+	if not await _wait_preparation(map,projection):return
 	var scatter := MultiMesh.new()
 	scatter.transform_format = MultiMesh.TRANSFORM_3D
 	scatter.mesh = colored
-	scatter.instance_count = transforms.size()
-	for i in transforms.size(): scatter.set_instance_transform(i, transforms[i])
+	if detail_kind == 0:
+		GrassProfile.fill_native(scatter, transforms, GrassProfile.settings())
+	else:
+		scatter.instance_count = transforms.size()
+		for i in transforms.size():
+			scatter.set_instance_transform(i, transforms[i])
 	if not _scatter_current(map,projection):
 		_rebuilding = false; _dirty = true; return
-	map.bind_voxel_light(material, _look, map.imported_tile_size)
-	Materials.refresh_terrain_features(material)
+	# Feature program is already warm before this publication budget turn.
 	_visual.material_override = material
 	_visual.multimesh = scatter
-	_visual.visible = not (is_detail_stone() and _look == 2)
+	_detail_native_visible = not (is_detail_stone() and _look == 2)
+	_visual.visible = _detail_native_visible and not _detail_render_override
 	_update_detail_fade(projection,map)
 	# _scatter_current already validated the stamp; no await or source edit
 	# occurs during this publication, so another complete scan is redundant.
 	_rebuilding = false
 	_detail_priority_pending=false
+	_notify_detail_scatter()
 
 
 func validation_errors() -> Array[String]:
 	var errors := Detail.validation_errors(density_cells)
 	if not _density_decode_error.is_empty():errors.append(_density_decode_error)
-	if detail_kind not in [0, 1, 2, 3]: errors.append("Неизвестный набор деталей.")
+	if detail_kind not in [0, 1, 2, 3, LeafCover.KIND, Moss.GROUND_KIND]: errors.append("Неизвестный набор деталей.")
 	if detail_kind == 3: errors.append_array(FlowerCover.validation_errors(cover_pattern))
 	if detail_kind == 2:
 		errors.append_array(PatternBake.validation_errors(detail_preset))
@@ -709,27 +991,29 @@ func _rebuild_painted(map: EmberMapLoader, projection: Node3D) -> void:
 	_surface_stamp=_surface_signature(projection)
 	var cache_key := hash([cells,seed_value,size_value,jitter,variation,yaw_range,detail_kind,_pattern_data.get("key",""),detail_variant,detail_mixed,_surface_stamp,global_transform,unit])
 	if cache_key == _detail_cache_key and _detail_transform_cache.has(_look):
-		_visual.show(); _publish_scatter(_detail_transform_cache[_look], colored, material, map, projection); return
+		_visual.show(); await _publish_scatter(_detail_transform_cache[_look], colored, material, map, projection); return
 	var detailed: Array[Transform3D] = []; var low_poly: Array[Transform3D] = []; var voxel: Array[Transform3D] = []
 	var variants := {0:detailed,1:low_poly,2:voxel}
 	var patch_origin := map.to_local(global_position) / unit
 	var absolute_cell := Detail.cell_address(Vector2(patch_origin.x, patch_origin.z))
 	var preparation = Preparation.for_projection(projection)
 	_pending_material=material
-	var disk_key: String = await preparation.content_key(projection,_surface_stamp,[true,Detail.encode_mask(cells),seed_value,size_value,jitter,variation,yaw_range,detail_kind,_pattern_data.get("key",""),detail_variant,detail_mixed,colored.get_aabb(),global_transform,unit,"object-roots-v1"],self,func():return not _scatter_current(map,projection))
+	# Tightening the render silhouette must not change placement/support samples.
+	var placement_mesh: ArrayMesh = Fixture.grass_card_mesh() if detail_kind==0 else colored
+	var disk_key: String = await preparation.content_key(projection,_surface_stamp,[true,Detail.encode_mask(cells),seed_value,size_value,jitter,variation,yaw_range,detail_kind,_pattern_data.get("key",""),detail_variant,detail_mixed,placement_mesh.get_aabb(),global_transform,unit,"object-roots-v1"],self,func():return not _scatter_current(map,projection))
 	if not _scatter_current(map,projection): _rebuilding=false; _dirty=true; return
 	var stored: Dictionary = await preparation.read_async(disk_key,self,func():return not _scatter_current(map,projection))
 	if not await _wait_preparation(map,projection):return
 	if stored.has(0) and stored.has(1) and stored.has(2) and stored[0].size()==stored[1].size() and stored[0].size()==stored[2].size():
-		_detail_transform_cache=stored; _detail_cache_key=cache_key; detail_disk_hits+=1
+		_detail_transform_cache=stored; _detail_cache_key=cache_key; prepared_placement_key=disk_key; detail_disk_hits+=1
 		transforms.assign(stored[_look]); _visual.show()
-		_publish_scatter(transforms,colored,material,map,projection); return
+		await _publish_scatter(transforms,colored,material,map,projection); return
 	# Footprint roots are only consumed by a new scatter. A valid disk hit
 	# must not read back and scan every look mesh for every painted patch.
 	var roots:=PackedVector3Array()
 	if detail_kind in [0,3]:
 		for variant in 3:
-			var mesh:=prepared_coloured_look_mesh(variant,slot)
+			var mesh:=Fixture.grass_card_mesh() if detail_kind==0 and variant==0 else prepared_coloured_look_mesh(variant,slot)
 			var low_y:=mesh.get_aabb().position.y
 			for vertex:Vector3 in mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
 				if vertex.y<=low_y+0.0001 and not vertex in roots:roots.append(vertex)
@@ -809,12 +1093,12 @@ func _rebuild_painted(map: EmberMapLoader, projection: Node3D) -> void:
 			if not worker_variants.is_empty():foreground_ranges[cell]=Vector2i(begin,variants[0].size()-begin)
 	if not worker_variants.is_empty():variants=Detail.merge_cells(cells,worker_variants,terrain_job.cell_ranges,variants,foreground_ranges)
 	if not _scatter_current(map,projection): _rebuilding = false; _dirty = true; return
-	_detail_transform_cache = variants; _detail_cache_key = cache_key; detail_generations += 1
+	_detail_transform_cache = variants; _detail_cache_key = cache_key; prepared_placement_key=disk_key; detail_generations += 1
 	transforms.assign(variants[_look])
 	_visual.show()
 	if not await _wait_preparation(map,projection): return
 	preparation.write(disk_key,variants,func():return not _scatter_current(map,projection))
-	_publish_scatter(transforms, colored, material, map, projection)
+	await _publish_scatter(transforms, colored, material, map, projection)
 
 
 func _terrain_only_cells(cells:Dictionary,candidates:Array,unit:float,jitter:float)->Dictionary:

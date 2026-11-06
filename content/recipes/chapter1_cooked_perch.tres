@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="EmberCraftRecipeResource" format=3]
+[ext_resource type="Script" path="res://scripts/ember_craft_recipe_resource.gd" id="recipe"]
+[ext_resource type="Resource" path="res://content/dialogues/chapter1_fishing_cooked.tres" id="reaction"]
+[resource]
+script = ExtResource("recipe")
+recipe_id = "chapter1_cooked_perch"
+title = "Окунь с костра"
+station_kind = "kitchen"
+description = "Запечь полосатого окуня на походной кухне."
+ingredients = { "chapter1_perch": 1 }
+results = { "chapter1_cooked_fish": 1 }
+completion_dialogue = ExtResource("reaction")

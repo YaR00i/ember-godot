@@ -1,0 +1,217 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/ember_explore_scene.gd" id="1_1oft0"]
+[ext_resource type="Script" path="res://scripts/ember_map_loader.gd" id="2_05tx7"]
+[ext_resource type="Script" path="res://scripts/ember_interact.gd" id="3_l4tsr"]
+[ext_resource type="Script" path="res://scripts/ember_region.gd" id="4_nr6o5"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_l81fn"]
+albedo_color = Color(0.45490196, 0.3882353, 0.30588236, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_y3v8m"]
+size = Vector3(96, 4, 80)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_0tc3a"]
+size = Vector3(96, 4, 80)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_5gqm2"]
+albedo_color = Color(0.84705883, 0.7764706, 0.63529414, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_p1mrw"]
+size = Vector3(4, 48, 80)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_4wkms"]
+size = Vector3(4, 48, 80)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_vlwtf"]
+albedo_color = Color(0.84705883, 0.7764706, 0.63529414, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_kp4qf"]
+size = Vector3(4, 48, 80)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_rfwa3"]
+size = Vector3(4, 48, 80)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_bi515"]
+albedo_color = Color(0.84705883, 0.7764706, 0.63529414, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_oih8i"]
+size = Vector3(96, 48, 4)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ltq7p"]
+size = Vector3(96, 48, 4)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_t26ij"]
+albedo_color = Color(0.84705883, 0.7764706, 0.63529414, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_n5wst"]
+size = Vector3(38, 48, 4)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_htpwa"]
+size = Vector3(38, 48, 4)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_lsww3"]
+albedo_color = Color(0.84705883, 0.7764706, 0.63529414, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_uwhdd"]
+size = Vector3(38, 48, 4)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_81s8e"]
+size = Vector3(38, 48, 4)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_av0cq"]
+albedo_color = Color(0.5568628, 0.45490196, 0.32941177, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_xqnpw"]
+size = Vector3(20, 10, 4)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_54oqu"]
+size = Vector3(20, 10, 4)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_fg2hn"]
+size = Vector3(22, 36, 22)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_exit_stop"]
+size = Vector3(28, 36, 2)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_lqcbk"]
+size = Vector3(10, 40, 10)
+
+[sub_resource type="Environment" id="Environment_m3qvx"]
+background_mode = 1
+background_color = Color(0.2509804, 0.21960784, 0.18039216, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.9372549, 0.84705883, 0.6862745, 1)
+ambient_light_energy = 0.9
+
+[node name="CoastalHouseInterior" type="Node3D" unique_id=69047983]
+script = ExtResource("1_1oft0")
+map_id = "coastal_house_interior"
+
+[node name="Map" type="Node3D" parent="." unique_id=259062588]
+script = ExtResource("2_05tx7")
+map_id = "coastal_house_interior"
+authored_size_blocks = Vector2i(6, 5)
+
+camera_distance = 110.0
+camera_polar = 0.35
+camera_yaw = 0.0
+camera_fov = 50.0
+
+[node name="Props" type="Node3D" parent="Map" unique_id=2085279155]
+
+[node name="Floor" type="StaticBody3D" parent="Map/Props" unique_id=1793571276]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 2, 40)
+
+[node name="Mesh" type="MeshInstance3D" parent="Map/Props/Floor" unique_id=114438525]
+material_override = SubResource("StandardMaterial3D_l81fn")
+mesh = SubResource("BoxMesh_y3v8m")
+
+[node name="@CollisionShape3D@3" type="CollisionShape3D" parent="Map/Props/Floor" unique_id=1168653561]
+shape = SubResource("BoxShape3D_0tc3a")
+
+[node name="LeftWall" type="StaticBody3D" parent="Map/Props" unique_id=647938920]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 28, 40)
+
+[node name="Mesh" type="MeshInstance3D" parent="Map/Props/LeftWall" unique_id=1872716314]
+material_override = SubResource("StandardMaterial3D_5gqm2")
+mesh = SubResource("BoxMesh_p1mrw")
+
+[node name="@CollisionShape3D@4" type="CollisionShape3D" parent="Map/Props/LeftWall" unique_id=1066910690]
+shape = SubResource("BoxShape3D_4wkms")
+
+[node name="RightWall" type="StaticBody3D" parent="Map/Props" unique_id=315876874]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 96, 28, 40)
+
+[node name="Mesh" type="MeshInstance3D" parent="Map/Props/RightWall" unique_id=1428297486]
+material_override = SubResource("StandardMaterial3D_vlwtf")
+mesh = SubResource("BoxMesh_kp4qf")
+
+[node name="@CollisionShape3D@5" type="CollisionShape3D" parent="Map/Props/RightWall" unique_id=1826788427]
+shape = SubResource("BoxShape3D_rfwa3")
+
+[node name="BackWall" type="StaticBody3D" parent="Map/Props" unique_id=1546418508]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 28, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Map/Props/BackWall" unique_id=807751690]
+material_override = SubResource("StandardMaterial3D_bi515")
+mesh = SubResource("BoxMesh_oih8i")
+
+[node name="@CollisionShape3D@6" type="CollisionShape3D" parent="Map/Props/BackWall" unique_id=1819090277]
+shape = SubResource("BoxShape3D_ltq7p")
+
+[node name="EntranceLeft" type="StaticBody3D" parent="Map/Props" unique_id=288023477]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 28, 80)
+
+[node name="Mesh" type="MeshInstance3D" parent="Map/Props/EntranceLeft" unique_id=2065621374]
+material_override = SubResource("StandardMaterial3D_t26ij")
+mesh = SubResource("BoxMesh_n5wst")
+
+[node name="@CollisionShape3D@7" type="CollisionShape3D" parent="Map/Props/EntranceLeft" unique_id=820006254]
+shape = SubResource("BoxShape3D_htpwa")
+
+[node name="EntranceRight" type="StaticBody3D" parent="Map/Props" unique_id=651501522]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 77, 28, 80)
+
+[node name="Mesh" type="MeshInstance3D" parent="Map/Props/EntranceRight" unique_id=1014274875]
+material_override = SubResource("StandardMaterial3D_lsww3")
+mesh = SubResource("BoxMesh_uwhdd")
+
+[node name="@CollisionShape3D@8" type="CollisionShape3D" parent="Map/Props/EntranceRight" unique_id=1821863681]
+shape = SubResource("BoxShape3D_81s8e")
+
+[node name="EntranceTop" type="StaticBody3D" parent="Map/Props" unique_id=310839135]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 47, 80)
+
+[node name="Mesh" type="MeshInstance3D" parent="Map/Props/EntranceTop" unique_id=322676535]
+material_override = SubResource("StandardMaterial3D_av0cq")
+mesh = SubResource("BoxMesh_xqnpw")
+
+[node name="@CollisionShape3D@9" type="CollisionShape3D" parent="Map/Props/EntranceTop" unique_id=1317091862]
+shape = SubResource("BoxShape3D_54oqu")
+
+[node name="Exit" type="Area3D" parent="Map/Props" unique_id=834575390]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 20, 69)
+script = ExtResource("3_l4tsr")
+target_map_id = "landscape_compact"
+target_region_id = "coastal_house_return"
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/Exit" unique_id=804949659]
+shape = SubResource("BoxShape3D_fg2hn")
+
+[node name="Sign" type="Label3D" parent="Map/Props/Exit"]
+position = Vector3(0, 11, 0)
+text = "F · Выход"
+billboard = 1
+pixel_size = 0.15
+
+[node name="EdgeStop" type="StaticBody3D" parent="Map/Props/Exit"]
+position = Vector3(0, 0, 10)
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Props/Exit/EdgeStop"]
+shape = SubResource("BoxShape3D_exit_stop")
+
+[node name="Regions" type="Node3D" parent="Map" unique_id=1114397150]
+
+[node name="entry" type="Area3D" parent="Map/Regions" unique_id=1698020651]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 4, 59)
+script = ExtResource("4_nr6o5")
+region_id = "entry"
+map_id = "coastal_house_interior"
+kind = "player_start"
+
+[node name="Shape" type="CollisionShape3D" parent="Map/Regions/entry" unique_id=1417813716]
+shape = SubResource("BoxShape3D_lqcbk")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=183625852]
+
+[node name="Gate" type="Label" parent="CanvasLayer" unique_id=1041703623]
+
+[node name="Environment" type="WorldEnvironment" parent="." unique_id=782325571]
+environment = SubResource("Environment_m3qvx")
+
+[node name="RoomLight" type="OmniLight3D" parent="." unique_id=2002552716]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 44, 40)
+light_color = Color(1, 0.87058824, 0.6745098, 1)
+light_energy = 1.5
+omni_range = 160.0

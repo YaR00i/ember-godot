@@ -1,0 +1,10 @@
+{
+	"settings": {
+		"camera_distance": 12.5,
+		"camera_fov": 45.0,
+		"camera_polar": 50.4202859715124,
+		"grass_amount": 50.0,
+		"grass_height": 0.3,
+		"grass_width": 6.0
+	}
+}

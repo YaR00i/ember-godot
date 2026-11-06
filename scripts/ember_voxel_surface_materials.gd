@@ -16,6 +16,12 @@ const GRASS_MATERIAL_PATH := "res://materials/ember_compact_grass.tres"
 const FLOWER_MATERIAL_PATH := "res://materials/ember_compact_flower.tres"
 const TerrainPattern = preload("res://scripts/ember_compact_terrain_pattern.gd")
 const TERRAIN_PATTERN_DIR := "res://content/terrain_materials"
+const WORLD_GROUND_MATERIALS := {
+	"soil": "soil_grain",
+	"grass": "cartoon_grass",
+	"sand": "cartoon_sand",
+	"stone": "cartoon_stone",
+}
 const TERRAIN_PATTERN_PATHS := {
 	"soil": "res://content/terrain_materials/soil.tres",
 	"grass": "res://content/terrain_materials/grass.tres",
@@ -164,6 +170,9 @@ static func compact_flower_material() -> ShaderMaterial:
 const TERRAIN_FEATURE_FIELDS := ["grass_light_profiles_enabled", "style_rim_profiles_enabled", "independent_surface_enabled", "smooth_surface_enabled", "painterly_blades", "material_light_mode", "material_gray_preview", "voxel_light_enabled", "voxel_light_anomaly", "look_study_mode"]
 const TERRAIN_FEATURE_PROGRAM_LIMIT := 32
 static var _terrain_feature_programs: Dictionary = {}
+static var _terrain_feature_loads: Dictionary = {}
+static var _terrain_feature_generations:Dictionary={}
+static var _terrain_feature_failed:Dictionary={}
 
 static func refresh_existing_terrain_features(material: ShaderMaterial) -> void:
 	if material != null and material.shader != null and material.shader.has_meta("ember_feature_base"):
@@ -172,12 +181,24 @@ static func refresh_existing_terrain_features(material: ShaderMaterial) -> void:
 ## Finalize a published terrain/card binding, or refresh after its feature command.
 ## Original uniform declarations and values remain available to preview/save.
 static func refresh_terrain_features(material: ShaderMaterial) -> void:
-	if material == null or material.shader == null: return
+	var state:=_terrain_feature_state(material)
+	if state.is_empty():return
+	var base:Shader=state.base;var key:String=state.key
+	if material.shader.get_meta("ember_feature_key", "") == key:return
+	var program:Shader=_terrain_feature_programs.get(key)
+	if program==null:
+		var code:=_terrain_feature_code(base.code,state.features)
+		if code.is_empty():material.shader=base;return
+		program=Shader.new();program.code=code
+	_adopt_terrain_feature_program(material,state,program)
+
+static func _terrain_feature_state(material: ShaderMaterial) -> Dictionary:
+	if material == null or material.shader == null: return {}
 	var base: Shader = material.shader.get_meta("ember_feature_base", material.shader)
 	if Engine.is_editor_hint() or DisplayServer.get_name() == "headless":
 		if material.shader != base: material.shader = base
-		return
-	if base.resource_path not in [GRASS_SHADER_PATH, FLOWER_SHADER_PATH] and not base.get_meta("ember_terrain_cheap", false): return
+		return {}
+	if base.resource_path not in [GRASS_SHADER_PATH, FLOWER_SHADER_PATH] and not base.get_meta("ember_terrain_cheap", false): return {}
 	var declared: Dictionary = {}
 	for entry in base.get_shader_uniform_list(): declared[str(entry.name)] = true
 	var features: Dictionary = {}
@@ -187,48 +208,115 @@ static func refresh_terrain_features(material: ShaderMaterial) -> void:
 		if value == null: value = RenderingServer.shader_get_parameter_default(base.get_rid(), field)
 		if not (value is bool or value is int):
 			material.shader = base
-			return
+			return {}
 		features[field] = value
 	var key := str(base.get_instance_id()) + ":" + str(base.code.hash()) + ":" + JSON.stringify(features)
-	if material.shader.get_meta("ember_feature_key", "") == key: return
-	var program: Shader = _terrain_feature_programs.get(key)
-	if program == null:
-		var code := _expand_terrain_feature_code(base.code)
-		if code.is_empty():
-			material.shader = base
-			return
-		var declarations: Dictionary = {}
-		for field: String in features:
-			var expression := RegEx.create_from_string("uniform\\s+(bool|int)\\s+" + field + "\\b[^;]*;")
-			var found := expression.search(code)
-			if found == null:
-				material.shader = base
-				return
-			var marker := "EMBER_FEATURE_DECL_" + field
-			declarations[marker] = found.get_string()
-			code = expression.sub(code, marker, true)
-		for field: String in features:
-			var alias := "ember_fixed_" + field
-			code = RegEx.create_from_string("\\b" + field + "\\b").sub(code, alias, true)
-			var value: Variant = features[field]
-			var type := "bool" if value is bool else "int"
-			var literal := ("true" if value else "false") if value is bool else str(value)
-			var marker := "EMBER_FEATURE_DECL_" + field
-			code = code.replace(marker, declarations[marker] + "\nconst " + type + " " + alias + " = " + literal + ";")
-		program = Shader.new()
-		program.code = code
-		for name in base.get_meta_list(): program.set_meta(name, base.get_meta(name))
-		program.set_meta("ember_feature_base", base)
-		program.set_meta("ember_feature_key", key)
-		program.set_meta("ember_feature_values", features)
+	return {"base":base,"features":features,"key":key}
+
+static func _terrain_feature_code(source_code:String,features:Dictionary)->String:
+	var generation:=_new_terrain_feature_generation(source_code,features)
+	while not _advance_terrain_feature_generation(generation):pass
+	return generation.code
+
+static func _new_terrain_feature_generation(source_code:String,features:Dictionary)->Dictionary:
+	return {"code":_expand_terrain_feature_code(source_code),"features":features,"fields":features.keys(),"declarations":{},"phase":0,"index":0}
+
+static func _advance_terrain_feature_generation(generation:Dictionary)->bool:
+	if generation.code.is_empty() or generation.fields.is_empty():return true
+	if generation.index>=generation.fields.size():
+		generation.index=0;generation.phase+=1
+		if generation.phase>=2:return true
+	var field:String=generation.fields[generation.index]
+	var code:String=generation.code
+	if generation.phase==0:
+		var expression:=RegEx.create_from_string("uniform\\s+(bool|int)\\s+"+field+"\\b[^;]*;")
+		var found:=expression.search(code)
+		if found==null:generation.code="";return true
+		var marker:="EMBER_FEATURE_DECL_"+field
+		generation.declarations[marker]=found.get_string();code=expression.sub(code,marker,true)
 	else:
-		_terrain_feature_programs.erase(key)
+		var alias:="ember_fixed_"+field
+		var identifier:=RegEx.create_from_string("\\b"+field+"\\b")
+		code=identifier.sub(code,alias,true)
+		var value:Variant=generation.features[field]
+		var type:="bool" if value is bool else "int"
+		var literal:=("true" if value else "false") if value is bool else str(value)
+		code=code.replace("EMBER_FEATURE_DECL_"+field,generation.declarations["EMBER_FEATURE_DECL_"+field]+"\nconst "+type+" "+alias+" = "+literal+";")
+	generation.code=code;generation.index+=1
+	return false
+
+static func _adopt_terrain_feature_program(material:ShaderMaterial,state:Dictionary,program:Shader)->void:
+	_cache_terrain_feature_program(state,program)
+	material.shader = program
+
+static func _cache_terrain_feature_program(state:Dictionary,program:Shader)->void:
+	var base:Shader=state.base;var key:String=state.key
+	if not program.has_meta("ember_feature_key"):
+		for name in base.get_meta_list():program.set_meta(name,base.get_meta(name))
+		program.set_meta("ember_feature_base",base);program.set_meta("ember_feature_key",key);program.set_meta("ember_feature_values",state.features)
+	_terrain_feature_programs.erase(key)
 	_terrain_feature_programs[key] = program
 	while _terrain_feature_programs.size() > TERRAIN_FEATURE_PROGRAM_LIMIT:
 		_terrain_feature_programs.erase(_terrain_feature_programs.keys()[0])
 	# ShaderMaterial retains its parameter cache and both programs declare the
 	# same uniforms. No new textures, profile images or material copies here.
-	material.shader = program
+
+## Poll from an existing preparation budget turn. ResourceLoader owns the
+## background material/shader work; no live material enters another thread.
+static func prepare_terrain_features_step(material:ShaderMaterial)->bool:
+	var state:=_terrain_feature_state(material)
+	if state.is_empty():return true
+	var key:String=state.key
+	if material.shader.get_meta("ember_feature_key","")==key:return true
+	_poll_terrain_feature_loads()
+	if not _terrain_feature_generations.is_empty():
+		var building_key:String=_terrain_feature_generations.keys()[0]
+		var building:Dictionary=_terrain_feature_generations[building_key]
+		if _advance_terrain_feature_generation(building):
+			_terrain_feature_generations.erase(building_key)
+			if building.code.is_empty() or not _start_terrain_feature_load(building.state,building.code):_terrain_feature_failed[building_key]=true
+	if _terrain_feature_failed.has(key):refresh_terrain_features(material);return true
+	var program:Shader=_terrain_feature_programs.get(key)
+	if program!=null:_adopt_terrain_feature_program(material,state,program);return true
+	if _terrain_feature_loads.has(key) or _terrain_feature_generations.has(key) or _terrain_feature_loads.size()+_terrain_feature_generations.size()>=2:return false
+	var generation:=_new_terrain_feature_generation(state.base.code,state.features)
+	generation.state=state;_terrain_feature_generations[key]=generation
+	return false
+
+static func _start_terrain_feature_load(state:Dictionary,code:String)->bool:
+	var key:String=state.key
+	var folder:="user://ember-runtime-shader-features"
+	if DirAccess.make_dir_recursive_absolute(folder)!=OK:return false
+	var stem:=folder.path_join(str(OS.get_process_id())+"-"+key.sha256_text())
+	var shader_path:=stem+".gdshader";var material_path:=stem+".tres"
+	var file:=FileAccess.open(shader_path,FileAccess.WRITE)
+	if file==null:return false
+	file.store_string(code);file.close()
+	file=FileAccess.open(material_path,FileAccess.WRITE)
+	if file==null:DirAccess.remove_absolute(shader_path);return false
+	var text:="[gd_resource type=\"ShaderMaterial\" load_steps=2 format=3]\n[ext_resource type=\"Shader\" path="+JSON.stringify(shader_path)+" id=\"1_shader\"]\n[resource]\nshader=ExtResource(\"1_shader\")\n"
+	for field:String in state.features:
+		var value:Variant=state.features[field]
+		text+="shader_parameter/"+field+" = "+(("true" if value else "false") if value is bool else str(value))+"\n"
+	file.store_string(text);file.close()
+	if ResourceLoader.load_threaded_request(material_path,"ShaderMaterial")!=OK:
+		DirAccess.remove_absolute(material_path);DirAccess.remove_absolute(shader_path);return false
+	_terrain_feature_loads[key]={"state":state,"material_path":material_path,"shader_path":shader_path}
+	return true
+
+static func _poll_terrain_feature_loads()->void:
+	for key:String in _terrain_feature_loads.keys():
+		var entry:Dictionary=_terrain_feature_loads[key]
+		var status:=ResourceLoader.load_threaded_get_status(entry.material_path)
+		if status==ResourceLoader.THREAD_LOAD_IN_PROGRESS:continue
+		if status==ResourceLoader.THREAD_LOAD_LOADED:
+			var warmed:=ResourceLoader.load_threaded_get(entry.material_path) as ShaderMaterial
+			if warmed!=null:_cache_terrain_feature_program(entry.state,warmed.shader)
+		else:
+			_terrain_feature_failed[key]=true
+			while _terrain_feature_failed.size()>TERRAIN_FEATURE_PROGRAM_LIMIT:_terrain_feature_failed.erase(_terrain_feature_failed.keys()[0])
+		DirAccess.remove_absolute(entry.material_path);DirAccess.remove_absolute(entry.shader_path)
+		_terrain_feature_loads.erase(key)
 
 static func _expand_terrain_feature_code(code: String) -> String:
 	var lines := PackedStringArray()
@@ -518,7 +606,7 @@ static func prepare_terrain_roles(roles: PackedStringArray, material_ids := Pack
 		side_atlas.blit_rect(side_images[id], Rect2i(0, 0, 16, 16), Vector2i(0, index * 16))
 		finish_lookup.set_pixel(index, 0, Color(finish.gloss, finish.sheen, finish.pixel_relief / 0.3, 1.0))
 		detail_lookup.set_pixel(index,0,Color(finish.micro_relief,finish.micro_size_m,finish.micro_roughness,0.0))
-		var custom:=not finish.relief_pixels.is_empty() or not finish.side_relief_pixels.is_empty() or not finish.roughness_pixels.is_empty() or not finish.side_roughness_pixels.is_empty() or not is_equal_approx(finish.pattern_size_m,4)
+		var custom := _custom_surface_finish(finish)
 		surface_lookup.set_pixel(index,0,Color(finish.pattern_size_m,finish.roughness_variation,1.0 if custom else 0.0,0))
 		for side in [false,true]:
 			var rough:=finish.surface_image("roughness",side); rough.convert(Image.FORMAT_R8)
@@ -558,6 +646,28 @@ static func apply_prepared_terrain_roles(material:ShaderMaterial,prepared:Dictio
 	refresh_existing_terrain_features(material)
 
 
+static func _custom_surface_finish(pattern: TerrainPattern) -> bool:
+	return not pattern.relief_pixels.is_empty() or not pattern.side_relief_pixels.is_empty() \
+		or not pattern.roughness_pixels.is_empty() or not pattern.side_roughness_pixels.is_empty() \
+		or not is_equal_approx(pattern.pattern_size_m, 4.0)
+
+
+static func update_terrain_pattern_scale(material: ShaderMaterial, slot: int, pattern: TerrainPattern) -> void:
+	if material == null or slot < 1 or slot > 255 or pattern == null:
+		return
+	for spec in [["png_lookup", "ember_png_lookup_image", 1], ["surface_lookup", "ember_surface_lookup_image", 0]]:
+		var lookup_image: Image = material.get_meta(spec[1], null)
+		var lookup_texture: ImageTexture = material.get_shader_parameter(spec[0])
+		if lookup_image == null or lookup_texture == null:
+			continue
+		var entry := lookup_image.get_pixel(slot, 0)
+		entry[spec[2]] = pattern.pattern_size_m
+		if spec[0] == "surface_lookup":
+			entry.b = 1.0 if _custom_surface_finish(pattern) else 0.0
+		lookup_image.set_pixel(slot, 0, entry)
+		lookup_texture.update(lookup_image)
+
+
 static func update_grass_light_profile(material: ShaderMaterial, slot: int, pattern: TerrainPattern) -> void:
 	if material==null or slot<1 or slot>255 or pattern==null or not pattern.validation_errors().is_empty():return
 	var image: Image=material.get_meta("ember_grass_light_image",null)
@@ -572,14 +682,7 @@ static func update_grass_light_profile(material: ShaderMaterial, slot: int, patt
 	# Live grass-size preview must agree with save/reload for colour and POM too.
 	# Keep CPU lookup images beside the existing grass lookup, avoiding GPU readback.
 	if pattern.role_id == "grass":
-		for spec in [["png_lookup", "ember_png_lookup_image", 1], ["surface_lookup", "ember_surface_lookup_image", 0]]:
-			var lookup_image: Image = material.get_meta(spec[1], null)
-			var lookup_texture: ImageTexture = material.get_shader_parameter(spec[0])
-			if lookup_image == null or lookup_texture == null: continue
-			var entry := lookup_image.get_pixel(slot, 0)
-			entry[spec[2]] = pattern.pattern_size_m
-			lookup_image.set_pixel(slot, 0, entry)
-			lookup_texture.update(lookup_image)
+		update_terrain_pattern_scale(material, slot, pattern)
 	var enabled:=false
 	for i in 256:
 		if image.get_pixel(i,0).a>0.5:enabled=true;break

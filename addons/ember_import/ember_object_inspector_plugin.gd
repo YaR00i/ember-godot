@@ -76,7 +76,41 @@ class PatternSizeProperty extends EditorProperty:
 		value.editable=not readonly
 
 
+class NpcModelProperty extends EditorProperty:
+	var _choice := OptionButton.new()
+	var _models: Array[PackedScene] = []
+
+	func _init() -> void:
+		_models = EmberMapLoader.WorldPresets.npc_models.duplicate()
+		_choice.add_item("Модель из сцены NPC")
+		for model: PackedScene in _models:
+			var caption := model.resource_name
+			if caption.is_empty(): caption = model.resource_path.get_file().get_basename()
+			_choice.add_item(caption)
+		add_child(_choice)
+		add_focusable(_choice)
+		_choice.item_selected.connect(func(index: int):
+			emit_changed(get_edited_property(), null if index == 0 else _models[index - 1]))
+
+	func _update_property() -> void:
+		var object := get_edited_object()
+		if object == null: return
+		var model := object.get(get_edited_property()) as PackedScene
+		var index := _models.find(model)
+		if model != null and index < 0:
+			_models.append(model)
+			_choice.add_item(model.resource_path.get_file().get_basename())
+			index = _models.size() - 1
+		_choice.select(index + 1)
+
+	func _set_read_only(readonly: bool) -> void:
+		_choice.disabled = readonly
+
+
 func _parse_property(object:Object,_type:Variant.Type,property:String,_hint:PropertyHint,_hint_text:String,_usage:int,_wide:bool)->bool:
+	if object is EmberInteract and property == "model_preset":
+		add_property_editor(property, NpcModelProperty.new(), false, "Модель NPC из библиотеки")
+		return true
 	if object is EmberVoxelProp and property=="material_pattern_scale":
 		var visual:=object.get_node_or_null("Mesh") as MeshInstance3D
 		if visual==null or visual.mesh==null or not visual.mesh.has_meta("solid_surface_material_ids"):return true

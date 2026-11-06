@@ -126,6 +126,15 @@ func start() -> bool:
 					status = "У дорожки не указано свойство: " + str(path)
 					return false
 			Animation.TYPE_POSITION_3D, Animation.TYPE_ROTATION_3D, Animation.TYPE_SCALE_3D:
+				if not property_path.is_empty():
+					var skeleton := node as Skeleton3D
+					var bone_name := path.get_subname(0)
+					var bone := skeleton.find_bone(bone_name) if skeleton != null and path.get_subname_count() == 1 else -1
+					if bone < 0:
+						status = "Не найдена кость сценки: " + str(path)
+						return false
+					tracks.append({"node": weakref(skeleton), "bone": bone_name, "value": skeleton.get_bone_pose(bone)})
+					continue
 				property_path = NodePath("transform")
 			_:
 				status = "В этой пробе поддержаны свойства и3D-transform; вызовы/клипы/звук — позже"
@@ -232,6 +241,9 @@ func _finish(outcome: String) -> void:
 	remove_from_group("ember_active_story_presentations")
 	paused = false
 	player.stop(true)
+	for entry in _baseline:
+		if entry.has("bone"):
+			_restore_entry(entry)
 	if _action_driven:
 		# Commit visual poses for this run, but return the shot to its prior settings.
 		var rig := get_parent().get_node("ShotRig")
@@ -250,10 +262,21 @@ func _finish(outcome: String) -> void:
 
 func _restore_properties() -> void:
 	for entry in _baseline:
-		var node: Node = entry.node.get_ref()
-		if node != null:
-			node.set_indexed(entry.property, entry.value)
+		_restore_entry(entry)
 	_baseline.clear()
+
+
+func _restore_entry(entry: Dictionary) -> void:
+	var node: Node = entry.node.get_ref()
+	if node == null:
+		return
+	if entry.has("bone"):
+		var skeleton := node as Skeleton3D
+		var bone := skeleton.find_bone(entry.bone)
+		if bone >= 0:
+			skeleton.set_bone_pose(bone, entry.value)
+	else:
+		node.set_indexed(entry.property, entry.value)
 
 
 func _restore_panel() -> void:

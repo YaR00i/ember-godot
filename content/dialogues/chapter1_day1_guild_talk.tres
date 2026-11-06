@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="EmberDialogueResource" format=3]
+[ext_resource type="Script" path="res://scripts/ember_dialogue_resource.gd" id="1"]
+[resource]
+script = ExtResource("1")
+dialogue_id = "chapter1_day1_guild_talk"
+document = {
+  "id": "chapter1_day1_guild_talk",
+  "nameRu": "Служащий гильдии",
+  "startStepId": "line",
+  "steps": [
+    {
+      "id": "line",
+      "type": "dialogue",
+      "nameRu": "Служащий гильдии",
+      "textRu": "Лавочник отложил для тебя ленту. Выйди из гильдии в центр и ищи на главной улице вывеску «Товары». Поговори с лавочником внутри.",
+      "next": "end"
+    },
+    {
+      "id": "end",
+      "type": "end"
+    }
+  ]
+}

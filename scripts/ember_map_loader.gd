@@ -10,9 +10,12 @@ const TerrainResource := preload("res://scripts/prototypes/ember_terrain_pilot_r
 const TerrainProjection := preload("res://scripts/prototypes/ember_terrain_pilot_projection.gd")
 const SolidLayers = preload("res://scripts/ember_solid_material_layers.gd")
 const ObjectLOD = preload("res://scripts/prototypes/ember_terrain_mesh_lod.gd")
+const RuntimeShadowLod = preload("res://scripts/ember_runtime_shadow_lod.gd")
+const PACKED_OBJECT_INDEX := "res://ember-prepared/objects/map.json"
 signal anomaly_materials_changed
 signal quality_changed
 signal surface_object_changed(bounds: AABB)
+signal detail_scatter_changed(patch: Node) # Derived publication/release;no authored state.
 
 # Derived editor presentation only. Scene nodes, authored bindings and physical
 # surfaces remain owned by the same props; no second population or save format.
@@ -23,6 +26,11 @@ var _object_detail_poll:=0.0
 var _object_detail_scan:Array=[]
 var _object_detail_scan_cursor:=0
 var _object_detail_distances:Dictionary={}
+var _packed_object_index: Dictionary
+var _packed_index_checked := false
+var _packed_mesh_loading := ""
+var _packed_mesh_host: WeakRef
+var _packed_mesh_failures := {}
 var _object_lod_cache:Dictionary={}
 var _object_depth_task := -1
 var _object_depth_job: EmberVoxelSurfaceMaterials.DepthPreparationJob
@@ -42,6 +50,174 @@ var _object_lod_source: WeakRef
 var _object_lod_waiting:Dictionary={}
 var _object_lod_attach:Array[WeakRef]=[]
 var _object_detail_profile:Dictionary={"released":0,"restored":0,"lod_builds":0,"lod_levels":0,"lod_us":0,"worst_step_us":0}
+var _physics_activity_source:WeakRef
+var _physics_activity_stamp:Array=[]
+var _physics_activity_suspended:Dictionary={}
+var _physics_activity_scan:Array=[]
+var _physics_activity_cursor:=0
+var _physics_activity_enabled:=true
+var _runtime_shadow_context:Dictionary={}
+var _runtime_shadow_props:Dictionary={}
+var _runtime_shadow_lights:Array=[]
+var _runtime_shadow_lights_dirty:=true
+var _runtime_shadow_enabled:=true
+
+func set_runtime_shadow_lod_enabled(enabled:bool)->void:
+	# Runtime QA control only; source data, other LOD and editor state are unchanged.
+	_runtime_shadow_enabled=enabled
+	if not enabled:_restore_runtime_shadows()
+	_runtime_shadow_context.clear();_object_detail_poll=0.0
+
+func _restore_runtime_shadows()->void:
+	for reference:WeakRef in _runtime_shadow_props.values():
+		var prop:=reference.get_ref() as EmberVoxelProp
+		if is_instance_valid(prop):prop.restore_runtime_shadow_lod()
+	_runtime_shadow_props.clear()
+
+func _update_runtime_shadow_context()->void:
+	if not _runtime_shadow_enabled or Engine.is_editor_hint() or not editor_object_detail_enabled():
+		if not _runtime_shadow_props.is_empty():_restore_runtime_shadows()
+		_runtime_shadow_context.clear();return
+	for light in _runtime_shadow_lights:
+		if not is_instance_valid(light) or not light.is_inside_tree():_runtime_shadow_lights_dirty=true;break
+	if _runtime_shadow_lights_dirty:
+		var scope:Node=get_tree().current_scene
+		if scope==null or (scope!=self and not scope.is_ancestor_of(self)):scope=get_parent()
+		_runtime_shadow_lights=scope.find_children("*","Light3D",true,false) if scope!=null else []
+		_runtime_shadow_lights_dirty=false
+	var anchors:Array[Vector3]=[]
+	var camera:=get_viewport().get_camera_3d()
+	# Shadow quality follows the viewer/party; distant crates still pin physics,
+	# but their unseen receivers must not force full shadow geometry everywhere.
+	if camera!=null and camera.get_parent() is EmberFollowCamera:
+		var target:Node3D=camera.get_parent().target
+		if is_instance_valid(target):anchors.append(target.global_position)
+		if target is EmberPlayer and is_instance_valid(target.party_followers):
+			for follower in target.party_followers._followers:
+				if is_instance_valid(follower):anchors.append(follower.global_position)
+	var next:=RuntimeShadowLod.context(self,camera,_runtime_shadow_lights,anchors)
+	if next.get("signature",[])!=_runtime_shadow_context.get("signature",[]):
+		# Sun preset/rotation, local light or terrain changes restore before rendering.
+		_restore_runtime_shadows()
+	elif next.get("receivers",[])!=_runtime_shadow_context.get("receivers",[]):
+		# Camera/actor return is immediate; only admission remains staggered.
+		for id in _runtime_shadow_props.keys():
+			var prop:=(_runtime_shadow_props[id] as WeakRef).get_ref() as EmberVoxelProp
+			if not is_instance_valid(prop) or not prop.recheck_runtime_shadow_receivers(next):_runtime_shadow_props.erase(id)
+	_runtime_shadow_context=next
+
+func _update_prop_shadow(prop:EmberVoxelProp,protected:bool=false)->void:
+	if protected or Engine.is_editor_hint() or _runtime_shadow_context.is_empty():
+		prop.restore_runtime_shadow_lod();_runtime_shadow_props.erase(prop.get_instance_id());return
+	if prop.update_runtime_shadow_lod(_runtime_shadow_context):_runtime_shadow_props[prop.get_instance_id()]=weakref(prop)
+	else:_runtime_shadow_props.erase(prop.get_instance_id())
+
+func set_physics_activity_source(source:Node)->void:
+	_restore_physics_activity()
+	_physics_activity_source=weakref(source) if is_instance_valid(source) else null
+	process_physics_priority=-100 # Restore before ordinary actor movement.
+
+func set_runtime_physics_activity_enabled(enabled:bool)->void:
+	_physics_activity_enabled=enabled
+	if not enabled:_restore_physics_activity()
+
+func invalidate_physics_activity()->void:
+	_physics_activity_stamp.clear()
+
+func runtime_physics_anchors()->Array[Vector3]:
+	var source:Node=_physics_activity_source.get_ref() if _physics_activity_source!=null else null
+	var anchors:Array[Vector3]=[]
+	if is_instance_valid(source):anchors=source.physics_activity_anchors(get_world_3d())
+	return anchors
+
+func prepare_physics_destination(point:Vector3)->bool:
+	_restore_physics_near(point)
+	if is_instance_valid(_visual_surface_projection) and _visual_surface_projection.has_method("prepare_runtime_body_support"):
+		_visual_surface_projection.prepare_runtime_body_support(point)
+	return physics_destination_ready(point)
+
+func physics_destination_ready(point:Vector3)->bool:
+	if not is_instance_valid(_visual_surface_projection) or compact_ground_style!=1:return true
+	var radius:=imported_tile_size*0.5
+	return _visual_surface_projection.detail_area_ready(Rect2(Vector2(point.x,point.z)-Vector2.ONE*radius,Vector2.ONE*radius*2.0))
+
+func _physics_activity_unit()->float:
+	var scale_size:=global_basis.get_scale().abs()
+	return maxf(0.001,imported_tile_size*maxf(scale_size.x,scale_size.z))
+
+func _physics_area_distance(prop:EmberVoxelProp,point:Vector3)->float:
+	return _physics_area_point_distance(_physics_prop_area(prop),point)
+
+func _physics_prop_area(prop:EmberVoxelProp)->Rect2:
+	var bounds:=prop.object_detail_bounds()
+	return Rect2(Vector2(bounds.position.x,bounds.position.z),Vector2(bounds.size.x,bounds.size.z))
+
+func _physics_area_point_distance(area:Rect2,point:Vector3)->float:
+	var focus:=Vector2(point.x,point.z)
+	return focus.distance_to(focus.clamp(area.position,area.end))
+
+func _restore_physics_activity()->void:
+	for reference:WeakRef in _physics_activity_suspended.values():
+		var prop:=reference.get_ref() as EmberVoxelProp
+		if is_instance_valid(prop):prop.set_runtime_physics_active(true)
+	_physics_activity_suspended.clear();_physics_activity_stamp.clear();_physics_activity_scan.clear();_physics_activity_cursor=0
+
+func _restore_physics_near(point:Vector3)->void:
+	if _physics_activity_suspended.is_empty():return
+	var radius:=36.0*_physics_activity_unit()
+	for id in _physics_activity_suspended.keys():
+		var prop:=(_physics_activity_suspended[id] as WeakRef).get_ref() as EmberVoxelProp
+		if not is_instance_valid(prop):_physics_activity_suspended.erase(id);continue
+		if _physics_area_distance(prop,point)<=radius:
+			prop.set_runtime_physics_active(true);_physics_activity_suspended.erase(id)
+
+func _restore_physics_near_points(points:Array[Vector3])->void:
+	if points.is_empty() or _physics_activity_suspended.is_empty():return
+	var radius:=36.0*_physics_activity_unit()
+	# One published bound per suspended prop, shared by all returning actors.
+	# No cached geometry or stale positions survive this synchronous admission.
+	for id in _physics_activity_suspended.keys():
+		var prop:=(_physics_activity_suspended[id] as WeakRef).get_ref() as EmberVoxelProp
+		if not is_instance_valid(prop):_physics_activity_suspended.erase(id);continue
+		var area:=_physics_prop_area(prop)
+		for point in points:
+			if _physics_area_point_distance(area,point)<=radius:
+				prop.set_runtime_physics_active(true);_physics_activity_suspended.erase(id)
+				break
+
+func _physics_process(_delta:float)->void:
+	var source:Node=_physics_activity_source.get_ref() if _physics_activity_source!=null else null
+	if Engine.is_editor_hint() or not _physics_activity_enabled or source==null or not editor_object_detail_enabled():
+		if not _physics_activity_suspended.is_empty():_restore_physics_activity()
+		return
+	var anchors:Array[Vector3]=source.physics_activity_anchors(get_world_3d())
+	if anchors.is_empty():_restore_physics_activity();return
+	var unit:=_physics_activity_unit()
+	var stamp:Array=[]
+	for point in anchors:stamp.append(Vector2i(floori(point.x/(4.0*unit)),floori(point.z/(4.0*unit))))
+	if stamp!=_physics_activity_stamp:
+		# Immediate near admission handles new actors/teleports; only removal is staggered.
+		var returning:Array[Vector3]=[]
+		for index in anchors.size():
+			if index>=_physics_activity_stamp.size() or stamp[index]!=_physics_activity_stamp[index]:returning.append(anchors[index])
+		if returning.size()==1:_restore_physics_near(returning[0])
+		else:_restore_physics_near_points(returning)
+		_physics_activity_stamp=stamp
+		_physics_activity_scan=_object_details.values();_physics_activity_cursor=0
+	var remaining:=8
+	while _physics_activity_cursor<_physics_activity_scan.size() and remaining>0:
+		var prop:=(_physics_activity_scan[_physics_activity_cursor] as WeakRef).get_ref() as EmberVoxelProp
+		_physics_activity_cursor+=1;remaining-=1
+		if not is_instance_valid(prop) or not is_ancestor_of(prop):continue
+		if not prop.runtime_physics_safe():
+			prop.set_runtime_physics_active(true);_physics_activity_suspended.erase(prop.get_instance_id());continue
+		var nearby:=false
+		var area:=_physics_prop_area(prop)
+		for point in anchors:
+			if _physics_area_point_distance(area,point)<=48.0*unit:nearby=true;break
+		if not nearby:
+			prop.set_runtime_physics_active(false)
+			if not prop._runtime_physics_state.is_empty():_physics_activity_suspended[prop.get_instance_id()]=weakref(prop)
 
 func editor_object_detail_enabled()->bool:
 	if compact_terrain==null or world_look!=0 or compact_ground_style!=1:return false
@@ -50,6 +226,7 @@ func editor_object_detail_enabled()->bool:
 func _queue_object_look(prop:EmberVoxelProp)->bool:
 	if not editor_object_detail_enabled():return false
 	_object_details[prop.get_instance_id()]=weakref(prop)
+	invalidate_physics_activity()
 	_object_detail_poll=0.0
 	if not prop.object_detail_safe():
 		_object_detail_pending.erase(prop.get_instance_id());return true
@@ -57,8 +234,53 @@ func _queue_object_look(prop:EmberVoxelProp)->bool:
 		# The existing preview/publication queue owns these temporary nodes.
 		# Prepare only the selected world, without eager alternate-world bakes.
 		prop.apply_object_detail(true);return true
+	if not Engine.is_editor_hint(): _bind_packed_object(prop)
 	prop._distance_ready=false
 	return true
+
+func _bind_packed_object(prop: EmberVoxelProp) -> void:
+	if not _packed_index_checked:
+		_packed_index_checked = true
+		if owner != null and FileAccess.file_exists(PACKED_OBJECT_INDEX):
+			var index: Variant = JSON.parse_string(FileAccess.get_file_as_string(PACKED_OBJECT_INDEX))
+			if index is Dictionary and index.get("scene") == owner.scene_file_path and index.get("props") is Dictionary:
+				_packed_object_index = index.props
+	if _packed_object_index.is_empty(): return
+	var entry: Array = _packed_object_index.get(str(get_path_to(prop)), [])
+	var path: String = entry[1] if entry.size() == 2 and entry[0] == prop.model_id else ""
+	if path != prop.packed_detail_path:
+		prop.packed_detail_path = path
+		prop.packed_detail_mesh = null
+
+func _request_packed_detail(prop: EmberVoxelProp) -> bool:
+	var path := prop.packed_detail_path
+	if path.is_empty() or prop.authoring_source != null or prop.packed_detail_mesh != null or _packed_mesh_failures.has(path):
+		return true
+	if not _packed_mesh_loading.is_empty(): return false
+	var cached := ResourceLoader.get_cached_ref(path) as ArrayMesh
+	if cached != null:
+		prop.packed_detail_mesh = cached
+		return true
+	if ResourceLoader.load_threaded_request(path, "ArrayMesh") != OK:
+		_packed_mesh_failures[path] = true
+		return true # Older/missing data uses the original representation.
+	_packed_mesh_loading = path
+	_packed_mesh_host = weakref(prop)
+	return false
+
+func _finish_packed_detail(leaving := false) -> void:
+	if _packed_mesh_loading.is_empty(): return
+	var status := ResourceLoader.load_threaded_get_status(_packed_mesh_loading)
+	if status == ResourceLoader.THREAD_LOAD_IN_PROGRESS and not leaving: return
+	var mesh: ArrayMesh
+	if status == ResourceLoader.THREAD_LOAD_LOADED or status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+		mesh = ResourceLoader.load_threaded_get(_packed_mesh_loading) as ArrayMesh
+	if mesh == null: _packed_mesh_failures[_packed_mesh_loading] = true
+	var prop := _packed_mesh_host.get_ref() as EmberVoxelProp
+	if not leaving and is_instance_valid(prop) and is_ancestor_of(prop) and prop.packed_detail_wanted and prop.packed_detail_path == _packed_mesh_loading:
+		prop.packed_detail_mesh = mesh
+	_packed_mesh_loading = ""
+	_packed_mesh_host = null
 
 func _invalidate_object_lod(id:int)->void:
 	if _object_lod_job != null and _object_lod_source.get_ref() != null and _object_lod_source.get_ref().get_instance_id() == id: _object_lod_job.stale = true
@@ -84,22 +306,35 @@ func _poll_object_details(max_props:int=0)->void:
 		for id:int in _object_detail_distances.keys():
 			if not _object_details.has(id):_object_detail_distances.erase(id)
 	var remaining:=max_props if max_props>0 else _object_detail_scan.size()
+	# Native caster/material work varies per prop. A count cap alone produces
+	# bursts on populated maps; retain the cursor and yield after one millisecond.
+	# Explicit full refreshes (max_props=0) keep their existing synchronous contract.
+	var started:=Time.get_ticks_usec()
+	var visited:=0
 	while _object_detail_scan_cursor<_object_detail_scan.size() and remaining>0:
+		if max_props>0 and visited>0 and Time.get_ticks_usec()-started>=1000:break
 		var id:int=_object_detail_scan[_object_detail_scan_cursor]
-		_object_detail_scan_cursor+=1;remaining-=1
+		_object_detail_scan_cursor+=1;remaining-=1;visited+=1
 		if not _object_details.has(id):continue
 		var prop:=(_object_details[id] as WeakRef).get_ref() as EmberVoxelProp
 		if not is_instance_valid(prop) or not is_ancestor_of(prop):
 			_object_details.erase(id);_object_detail_pending.erase(id);continue
-		if prop.owner==null:continue
+		if prop.owner==null:
+			_update_prop_shadow(prop,true);continue
 		if not prop.object_detail_safe():
+			_update_prop_shadow(prop,true)
 			_object_detail_pending.erase(id);continue
 		var protected:=prop.authoring_source!=null or (prop.authoring_preview!=null and is_instance_valid(prop.authoring_preview.get_ref()))
 		for node:Node in selected:
 			if node==prop or prop.is_ancestor_of(node):protected=true;break
+		_update_prop_shadow(prop,protected)
 		var area := _object_area(projection,prop)
 		_object_detail_distances[id] = projection.detail_policy.distance_m(area)
 		var wanted:bool=projection.detail_policy.object_resident(area,prop._distance_resident if prop._distance_managed else false,protected)
+		if not prop.packed_detail_path.is_empty():
+			prop.packed_detail_wanted = wanted or float(_object_detail_distances[id]) <= projection.detail_policy.object_release_m
+			if prop.packed_detail_wanted: _request_packed_detail(prop)
+			else: prop.packed_detail_mesh = null
 		if not prop._distance_ready or not prop._distance_managed or wanted!=prop._distance_resident:_object_detail_pending[id]=wanted
 		else:_object_detail_pending.erase(id) # A camera reversal cancels obsolete preparation.
 	_object_detail_order=_object_detail_pending.keys()
@@ -252,15 +487,20 @@ func _finish_object_lod(wait: bool = false) -> void:
 		if is_instance_valid(prop) and prop.object_lod_allowed() and prop.object_detail_base() == source: _object_lod_attach.append(reference)
 
 func _process(_delta:float)->void:
+	var callback_started := Time.get_ticks_usec()
+	_update_runtime_shadow_context()
 	var started := Time.get_ticks_usec()
+	_object_detail_profile.shadow_context_us = started - callback_started
 	for key: String in ["finish_depth_us","finish_far_us","finish_lod_us","poll_us","preflight_us","apply_us","snapshot_us","attach_us"]: _object_detail_profile[key] = 0
 	_object_detail_profile.profile_frame = Engine.get_process_frames()
 	_process_object_details(_delta)
 	var elapsed := Time.get_ticks_usec() - started
 	_object_detail_profile.process_us = elapsed
 	_object_detail_profile.worst_process_us = maxi(int(_object_detail_profile.get("worst_process_us",0)), elapsed)
+	_object_detail_profile.total_process_us = Time.get_ticks_usec() - callback_started
 
 func _process_object_details(_delta:float)->void:
+	_finish_packed_detail()
 	var phase := Time.get_ticks_usec()
 	_finish_object_depth()
 	_object_detail_profile.finish_depth_us = Time.get_ticks_usec() - phase
@@ -270,6 +510,11 @@ func _process_object_details(_delta:float)->void:
 	phase = Time.get_ticks_usec()
 	_finish_object_lod()
 	_object_detail_profile.finish_lod_us = Time.get_ticks_usec() - phase
+	# Scene meshes are already visible. Let the initial exact ground publish
+	# before replacing those meshes with distance-managed detail in the editor.
+	var terrain := _visual_surface_projection as TerrainProjection
+	if Engine.is_editor_hint() and is_instance_valid(terrain) and terrain.editor_ground_opening():
+		return
 	if not editor_object_detail_enabled():
 		if _object_lod_job != null: _object_lod_job.stale = true
 		if _object_far_job != null: _object_far_job.stale = true
@@ -309,6 +554,9 @@ func _process_object_details(_delta:float)->void:
 		var resident:bool=_object_detail_pending[id]
 		var prop:=(_object_details[id] as WeakRef).get_ref() as EmberVoxelProp
 		if is_instance_valid(prop) and prop.owner!=null and is_ancestor_of(prop) and prop.object_detail_safe():
+			if resident and not _request_packed_detail(prop):
+				_object_detail_order.append(id)
+				return # Keep the published mesh and collision while reading.
 			if not resident:
 				phase = Time.get_ticks_usec()
 				var ready := _prepare_object_far(prop)
@@ -322,6 +570,7 @@ func _process_object_details(_delta:float)->void:
 			_object_detail_profile.apply_us = Time.get_ticks_usec() - phase
 			_object_detail_profile.apply_model = prop.model_id
 			_object_detail_profile.apply_resident = resident
+			_object_detail_profile.apply_packed = resident and prop.packed_detail_mesh != null
 			if _object_depth_task < 0 and _object_depth_host != null and _object_depth_host.get_ref() == prop: _release_object_depth_sources()
 			_object_detail_profile["restored" if resident else "released"]+=1
 			_request_object_lod(prop)
@@ -332,7 +581,7 @@ func _process_object_details(_delta:float)->void:
 		_object_lod_waiting.erase(id)
 		if source!=null:
 			phase = Time.get_ticks_usec()
-			var job := ObjectLOD.object_job(source)
+			var job := ObjectLOD.object_job(source,source.get_surface_count()>0 and source.surface_get_name(0)=="tree_bark")
 			_object_detail_profile.snapshot_us = Time.get_ticks_usec() - phase
 			if job != null:
 				var invalidate := _invalidate_object_lod.bind(id)
@@ -467,6 +716,31 @@ func bind_material_depth_distance(material: ShaderMaterial, units_per_m: float) 
 		voxel_light_levels = clampi(value, 2, 32)
 		_refresh_voxel_light_settings()
 
+
+## Scene-local derived bindings. Weak references let unloaded props release materials.
+var _runtime_tree_materials: Dictionary = {}
+
+func runtime_tree_material(source: ShaderMaterial, look: int) -> ShaderMaterial:
+	var signature: Array = [source.shader, source.render_priority, source.next_pass]
+	# Godot normalizes unset/default uniform values when enumerating properties
+	# (duplicate() does this too). Fingerprint that canonical state from the start.
+	for property in source.get_property_list():
+		if str(property.name).begins_with("shader_parameter/"):
+			signature.append([property.name, source.get(property.name)])
+	var key: Array = [source.get_instance_id(), look]
+	var entry: Dictionary = _runtime_tree_materials.get(key, {})
+	if not entry.is_empty() and entry.source.get_ref() == source and entry.signature == signature:
+		var existing := entry.material.get_ref() as ShaderMaterial
+		if existing != null: return existing
+	# Bound the registry when source/props leave. Each source/look keeps one version.
+	for stale_key in _runtime_tree_materials.keys():
+		var stale: Dictionary = _runtime_tree_materials[stale_key]
+		if stale.source.get_ref() == null or stale.material.get_ref() == null:
+			_runtime_tree_materials.erase(stale_key)
+	var material := source.duplicate() as ShaderMaterial
+	material.set_meta("ember_derived_tree_material", true)
+	_runtime_tree_materials[key] = {"source": weakref(source), "signature": signature.duplicate(true), "material": weakref(material)}
+	return material
 
 func bind_voxel_light(material: ShaderMaterial, look: int, units_per_m: float, anomaly := false) -> void:
 	if material == null: return
@@ -656,7 +930,36 @@ func set_lighting_test_profile(shadow_count: int) -> void:
 	apply_authored_lighting()
 
 
+const WorldPresets = preload("res://content/world_presets/library.tres")
+@export_group("Общие пресеты мира")
+@export var sky_preset: Sky:
+	set(value):
+		sky_preset = value
+		if is_inside_tree(): apply_world_presets()
+@export var weather_preset: Environment:
+	set(value):
+		weather_preset = value
+		if is_inside_tree(): apply_world_presets()
+@export var default_npc_model: PackedScene
+@export_group("")
+
+
+func apply_world_presets() -> void:
+	var world := _content_node("Look/WorldEnvironment") as WorldEnvironment
+	if world == null or world.environment == null:
+		return
+	var environment := world.environment
+	if sky_preset != null:
+		environment.sky = sky_preset
+		environment.background_mode = Environment.BG_SKY
+	if weather_preset != null:
+		environment.fog_enabled = weather_preset.fog_enabled
+		environment.fog_density = weather_preset.fog_density
+		environment.fog_light_color = weather_preset.fog_light_color
+
+
 func _ready() -> void:
+	apply_world_presets()
 	get_tree().node_added.connect(_style_rim_node_added)
 	refresh_style_rim.call_deferred()
 	_refresh_world_look.call_deferred()
@@ -665,6 +968,7 @@ func _ready() -> void:
 
 
 func apply_authored_lighting() -> void:
+	_restore_runtime_shadows()
 	if _voxel_mat == null:
 		_voxel_mat = EmberVoxelPrefab.voxel_material()
 	if _voxel_mat:
@@ -760,9 +1064,7 @@ func apply_quality() -> void:
 	if follow:
 		follow.cam_near = camera_near
 		follow.cam_far = play_camera_far()
-		follow.fov = camera_fov
-		follow.follow_distance = camera_distance
-		follow.polar_angle = camera_polar
+		follow.apply_exploration_framing(camera_fov, camera_distance, camera_polar, imported_tile_size)
 		follow.look_height = camera_look_height
 
 
@@ -924,6 +1226,7 @@ func spawn_world() -> Vector3:
 
 
 func safe_spawn_world(point: Vector3) -> Vector3:
+	prepare_physics_destination(point)
 	# Terrain authoring can raise land around an unchanged entry marker. Resolve
 	# against the same physical surface, without rewriting authored node positions.
 	if compact_terrain != null:
@@ -951,14 +1254,19 @@ func find_region(region_id: String) -> EmberRegion:
 
 func _region_nodes() -> Array[EmberRegion]:
 	var result: Array[EmberRegion] = []
-	var regions := _content_node("Regions")
-	if regions == null: return result
-	var pending: Array[Node] = []
-	pending.assign(regions.get_children())
-	while not pending.is_empty():
-		var node := pending.pop_front() as Node
-		if node is EmberRegion: result.append(node as EmberRegion)
-		pending.append_array(node.get_children())
+	var visited := {}
+	# Free regions keep their established order/default spawn. Object-bound
+	# entries and triggers then follow their movable building/NPC under Props.
+	for branch in [_content_node("Regions"), _content_node("Props")]:
+		if branch == null: continue
+		var pending: Array[Node] = []
+		pending.assign(branch.get_children())
+		while not pending.is_empty():
+			var node := pending.pop_front() as Node
+			if visited.has(node.get_instance_id()): continue
+			visited[node.get_instance_id()] = true
+			if node is EmberRegion: result.append(node as EmberRegion)
+			pending.append_array(node.get_children())
 	return result
 
 
@@ -992,12 +1300,8 @@ func _refresh_interact_runtime_bindings(node: Node) -> void:
 
 
 func occupying_region_id(world: Vector3, kinds: Array[String]) -> String:
-	var regions := _content_node("Regions")
-	if regions == null:
-		return ""
-	for child in regions.get_children():
-		var area := child as EmberRegion
-		if area and area.kind in kinds and area.contains_world_xz(world):
+	for area in _region_nodes():
+		if area.kind in kinds and area.contains_world_xz(world):
 			return area.region_id
 	return ""
 
@@ -1621,6 +1925,13 @@ func _maybe_interact(
 
 
 func _exit_tree() -> void:
+	_finish_packed_detail(true)
+	_packed_object_index.clear()
+	_packed_index_checked = false
+	_packed_mesh_failures.clear()
+	_restore_runtime_shadows()
+	_runtime_shadow_context.clear();_runtime_shadow_lights_dirty=true
+	_restore_physics_activity()
 	_finish_object_depth(true)
 	_finish_object_far(true)
 	_finish_object_lod(true)
@@ -1628,6 +1939,8 @@ func _exit_tree() -> void:
 		get_tree().node_added.disconnect(_style_rim_node_added)
 
 func _style_rim_node_added(node: Node) -> void:
+	if node.get_meta(RuntimeShadowLod.DERIVED_PROXY_META,false):return
+	if node is Light3D:_runtime_shadow_lights_dirty=true
 	if node is GeometryInstance3D: _apply_style_rim_weak.call_deferred(weakref(node))
 	if node.has_method("set_world_look") and node != _visual_surface_projection:
 		_apply_added_world_look.call_deferred(weakref(node))
@@ -1661,6 +1974,7 @@ func _apply_style_rim_branch(parent: Node) -> void:
 
 func _apply_style_rim_instance(node: Node) -> void:
 	if not is_instance_valid(node) or not node.is_inside_tree(): return
+	if node.get_meta(RuntimeShadowLod.DERIVED_PROXY_META,false):return
 	var scope := get_parent() if get_parent() != null else self
 	if not scope.is_ancestor_of(node): return
 	var parent := node.get_parent()
@@ -1678,5 +1992,5 @@ func _apply_style_rim_instance(node: Node) -> void:
 		if material is ShaderMaterial and material.shader != null:
 			var code: String = material.shader.code
 			if code.contains("ember_compact_terrain_body.gdshaderinc") or code.contains("ember_stylized_rim.gdshaderinc") or code.contains("ember_painterly_light.gdshaderinc") or code.contains("ember_voxel_toon_body.gdshaderinc"):
-				visual.set_instance_shader_parameter("ember_style_rim_master", compact_style_rim_enabled)
+				RuntimeShadowLod.forward_instance_parameter(visual,"ember_style_rim_master", compact_style_rim_enabled)
 				return

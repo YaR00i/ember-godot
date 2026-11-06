@@ -1,0 +1,84 @@
+[gd_scene load_steps=8 format=3]
+
+[sub_resource type="StandardMaterial3D" id="Wood"]
+albedo_color = Color(0.25, 0.12, 0.17, 1)
+roughness = 0.85
+
+[sub_resource type="StandardMaterial3D" id="Brass"]
+albedo_color = Color(0.82, 0.58, 0.27, 1)
+metallic = 0.3
+roughness = 0.52
+
+[sub_resource type="StandardMaterial3D" id="Crystal"]
+albedo_color = Color(0.56, 0.31, 0.86, 1)
+roughness = 0.3
+
+[sub_resource type="CylinderMesh" id="Shaft"]
+material = SubResource("Wood")
+top_radius = 0.016
+bottom_radius = 0.013
+height = 1.06
+radial_segments = 8
+rings = 0
+
+[sub_resource type="CylinderMesh" id="Collar"]
+material = SubResource("Brass")
+top_radius = 0.038
+bottom_radius = 0.02
+height = 0.075
+radial_segments = 8
+rings = 0
+
+[sub_resource type="PrismMesh" id="Gem"]
+material = SubResource("Crystal")
+size = Vector3(0.072, 0.15, 0.067)
+
+[sub_resource type="CylinderMesh" id="Butt"]
+material = SubResource("Brass")
+top_radius = 0.016
+bottom_radius = 0.017
+height = 0.05
+radial_segments = 8
+rings = 0
+
+[node name="MiraStaff" type="Node3D"]
+
+[node name="Geometry" type="Node3D" parent="."]
+position = Vector3(-0.067, -0.018, 0)
+
+[node name="Shaft" type="MeshInstance3D" parent="Geometry"]
+position = Vector3(0, 0, 0.31)
+rotation = Vector3(1.5707963, 0, 0)
+mesh = SubResource("Shaft")
+
+[node name="Collar" type="MeshInstance3D" parent="Geometry"]
+position = Vector3(0, 0, 0.84)
+rotation = Vector3(1.5707963, 0, 0)
+mesh = SubResource("Collar")
+
+[node name="Gem" type="MeshInstance3D" parent="Geometry"]
+position = Vector3(0, 0, 0.935)
+rotation = Vector3(1.5707963, 0, 0.7853982)
+mesh = SubResource("Gem")
+
+[node name="Butt" type="MeshInstance3D" parent="Geometry"]
+position = Vector3(0, 0, -0.21)
+rotation = Vector3(1.5707963, 0, 0)
+mesh = SubResource("Butt")
+
+[node name="RightGrip" type="Marker3D" parent="."]
+position = Vector3(-0.067, -0.018, 0)
+
+[node name="Contact" type="Marker3D" parent="RightGrip"]
+position = Vector3(0, 0, 0.53)
+
+[node name="Wrist" type="Marker3D" parent="RightGrip"]
+position = Vector3(0.067, 0.018, 0)
+
+[node name="LeftGripFrame" type="Node3D" parent="."]
+position = Vector3(-0.067, -0.018, 0.19)
+
+[node name="LeftGrip" type="Marker3D" parent="LeftGripFrame"]
+
+[node name="Wrist" type="Marker3D" parent="LeftGripFrame/LeftGrip"]
+position = Vector3(-0.067, 0.018, 0)

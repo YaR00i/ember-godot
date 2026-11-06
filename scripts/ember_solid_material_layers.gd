@@ -77,12 +77,30 @@ static func prepared_mesh(source:ArrayMesh,model:Variant)->ArrayMesh:
 	preparation_usec+=Time.get_ticks_usec()-started
 	return mesh
 
-static func bind(target:ShaderMaterial,mesh:ArrayMesh)->void:
-	if not mesh.has_meta("solid_layer_faces"):return
+static func _layer_shader() -> Shader:
 	if _runtime_shader==null:
 		_runtime_shader=Shader.new()
 		_runtime_shader.code="#define EMBER_SOLID_MATERIAL_LAYERS\n"+Solid.solid_depth_shader().code
-	target.shader=_runtime_shader
+	return _runtime_shader
+
+static var _runtime_depth_prepared := false
+
+static func prepare_runtime_depth_programs() -> void:
+	if _runtime_depth_prepared or DisplayServer.get_name() == "headless": return
+	# The first switch on a material with a live renderer RID is expensive.
+	# Warm the same two shared shader pairs used by the actual solid props.
+	for full: Shader in [Solid.solid_depth_shader(), _layer_shader()]:
+		var material := ShaderMaterial.new()
+		material.shader = full
+		material.get_rid()
+		material.shader = Solid.far_depth_shader(full)
+		material.get_rid()
+		material.shader.get_shader_uniform_list()
+	_runtime_depth_prepared = true
+
+static func bind(target:ShaderMaterial,mesh:ArrayMesh)->void:
+	if not mesh.has_meta("solid_layer_faces"):return
+	target.shader=_layer_shader()
 	target.set_meta("ember_solid_layers",true)
 	if _wear_mask==null:_wear_mask=load("res://content/terrain_materials/textures/stone-weathering-mask.png")
 	target.set_shader_parameter("stone_weathering_mask",_wear_mask)
@@ -229,6 +247,8 @@ static func material(original:ShaderMaterial,prepared:Dictionary)->ShaderMateria
 	var result:ShaderMaterial=original.duplicate()
 	# The comparison can also run after production layers have been enabled.
 	var code:String=Solid.solid_depth_shader().code.replace("\r\n","\n")
+	# The shared shader is now an include wrapper; splice hooks into its body.
+	code=code.replace('#include "res://shaders/ember_compact_terrain_body.gdshaderinc"',FileAccess.get_file_as_string("res://shaders/ember_compact_terrain_body.gdshaderinc").replace("\r\n","\n"))
 	assert(code.contains("void fragment() {") and code.contains("void vertex() {"))
 	code=code.replace("void vertex() {",FileAccess.get_file_as_string(LEAF)+"\nvoid vertex() {")
 	code=code.replace("palette_slot = COLOR.a;","palette_slot = UV2.y;")

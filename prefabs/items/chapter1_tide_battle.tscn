@@ -1,0 +1,157 @@
+[gd_scene format=3]
+[ext_resource type="Script" path="res://scripts/ember_field_encounter.gd" id="field"]
+[ext_resource type="Script" path="res://scripts/ember_mechanism_circuit.gd" id="circuit"]
+[ext_resource type="Script" path="res://scripts/ember_mechanism_component.gd" id="component"]
+[ext_resource type="PackedScene" path="res://prefabs/items/chapter1_delivery_crate.tscn" id="crate"]
+[ext_resource type="PackedScene" path="res://prefabs/items/shore_boar_visual.tscn" id="boar"]
+[ext_resource type="PackedScene" path="res://prefabs/items/autumn_leaf_pile.scn" id="leaves"]
+
+[sub_resource type="StandardMaterial3D" id="stone"]
+albedo_color = Color(0.29, 0.36, 0.37, 1)
+[sub_resource type="BoxMesh" id="wall_mesh"]
+size = Vector3(6, 28, 32)
+material = SubResource("stone")
+[sub_resource type="BoxShape3D" id="wall_shape"]
+size = Vector3(6, 28, 32)
+[sub_resource type="BoxMesh" id="door_mesh"]
+size = Vector3(4, 28, 16)
+material = SubResource("stone")
+[sub_resource type="BoxShape3D" id="door_shape"]
+size = Vector3(4, 28, 16)
+[sub_resource type="BoxShape3D" id="clearance"]
+size = Vector3(10, 32, 16)
+[sub_resource type="BoxMesh" id="plate_mesh"]
+size = Vector3(14, 0.5, 14)
+[sub_resource type="BoxShape3D" id="plate_shape"]
+size = Vector3(16, 10, 16)
+[sub_resource type="BoxShape3D" id="entry"]
+size = Vector3(18, 24, 16)
+[sub_resource type="StandardMaterial3D" id="puddle_material"]
+transparency = 1
+albedo_color = Color(0.12, 0.53, 0.66, 0.7)
+roughness = 0.23
+[sub_resource type="PlaneMesh" id="puddle_mesh"]
+material = SubResource("puddle_material")
+size = Vector2(46, 13)
+
+[node name="TidePressureEncounter" type="Node3D"]
+script = ExtResource("field")
+encounter_id = "tide_pressure"
+field_corner = Vector3(0, 0, 0)
+field_corner_local = true
+pressure_circuit_path = NodePath("Circuit")
+wet_surface_path = NodePath("Puddle")
+dry_leaves_path = NodePath("DryLeaves")
+pressure_gate_cell = Vector2i(3, 2)
+unit_visual_scenes = { "shore_boar": ExtResource("boar") }
+
+[node name="Puddle" type="MeshInstance3D" parent="."]
+position = Vector3(56, 0.18, 40)
+cast_shadow = 0
+mesh = SubResource("puddle_mesh")
+
+[node name="DryLeaves" parent="." instance=ExtResource("leaves")]
+position = Vector3(24, 0.15, 24)
+scale = Vector3(0.4, 0.4, 0.4)
+revealed_flag_id = ""
+
+[node name="HiddenPickup" parent="DryLeaves" index="2"]
+pickup_id = ""
+visible = false
+
+[node name="BattleEntry" type="Area3D" parent="."]
+position = Vector3(8, 12, 40)
+collision_layer = 0
+collision_mask = 2
+[node name="Shape" type="CollisionShape3D" parent="BattleEntry"]
+shape = SubResource("entry")
+
+[node name="Crate" parent="." instance=ExtResource("crate")]
+position = Vector3(8, 0.3, 72)
+pickup_id = "chapter1_tide_battle_crate"
+map_id = "chapter1_tide_cave"
+
+[node name="HeavyCrate" parent="." instance=ExtResource("crate")]
+position = Vector3(24, 0.3, 56)
+pickup_id = "chapter1_tide_battle_heavy_crate"
+map_id = "chapter1_tide_cave"
+carryable = false
+item_mass = 8.0
+visual_size = 14.0
+
+[node name="Label" type="Label3D" parent="."]
+position = Vector3(8, 27, 61)
+text = "Кабан за заслонкой\nВозьми ящик и шагни на площадку"
+billboard = 1
+pixel_size = 0.09
+
+[node name="Circuit" type="Node3D" parent="."]
+script = ExtResource("circuit")
+circuit_id = "tide_battle_pressure"
+links = Array[Dictionary]([{"from": "plate", "to": "door", "port": 0}])
+
+[node name="WallNorth" type="StaticBody3D" parent="Circuit"]
+position = Vector3(48, 14, 16)
+collision_mask = 0
+[node name="Shape" type="CollisionShape3D" parent="Circuit/WallNorth"]
+shape = SubResource("wall_shape")
+[node name="Visual" type="MeshInstance3D" parent="Circuit/WallNorth"]
+mesh = SubResource("wall_mesh")
+
+[node name="WallSouth" type="StaticBody3D" parent="Circuit"]
+position = Vector3(48, 14, 64)
+collision_mask = 0
+[node name="Shape" type="CollisionShape3D" parent="Circuit/WallSouth"]
+shape = SubResource("wall_shape")
+[node name="Visual" type="MeshInstance3D" parent="Circuit/WallSouth"]
+mesh = SubResource("wall_mesh")
+
+[node name="Gate" type="AnimatableBody3D" parent="Circuit"]
+position = Vector3(48, 14, 40)
+collision_mask = 0
+[node name="Shape" type="CollisionShape3D" parent="Circuit/Gate"]
+shape = SubResource("door_shape")
+[node name="Visual" type="MeshInstance3D" parent="Circuit/Gate"]
+mesh = SubResource("door_mesh")
+
+[node name="Clearance" type="Area3D" parent="Circuit"]
+position = Vector3(48, 16, 40)
+collision_layer = 0
+collision_mask = 6
+[node name="Shape" type="CollisionShape3D" parent="Circuit/Clearance"]
+shape = SubResource("clearance")
+
+[node name="WeightPlate" type="Area3D" parent="Circuit"]
+position = Vector3(24, 0, 40)
+collision_layer = 0
+collision_mask = 6
+[node name="Shape" type="CollisionShape3D" parent="Circuit/WeightPlate"]
+position = Vector3(0, 4, 0)
+shape = SubResource("plate_shape")
+[node name="Visual" type="MeshInstance3D" parent="Circuit/WeightPlate"]
+mesh = SubResource("plate_mesh")
+[node name="Label" type="Label3D" parent="Circuit/WeightPlate"]
+position = Vector3(0, 15, 0)
+text = "Грузовая плита"
+billboard = 1
+pixel_size = 0.075
+
+[node name="Plate" type="Node" parent="Circuit"]
+script = ExtResource("component")
+component_id = "plate"
+label = "Грузовая плита"
+kind = "plate"
+target_path = NodePath("../WeightPlate")
+required_weight = 1.0
+character_weight = 1.0
+
+[node name="Door" type="Node" parent="Circuit"]
+script = ExtResource("component")
+component_id = "door"
+label = "Заслонка"
+kind = "door"
+target_path = NodePath("../Gate")
+clearance_path = NodePath("../Clearance")
+open_offset = Vector3(0, 32, 0)
+
+[editable path="DryLeaves"]

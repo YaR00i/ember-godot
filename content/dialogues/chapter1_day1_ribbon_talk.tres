@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="EmberDialogueResource" format=3]
+[ext_resource type="Script" path="res://scripts/ember_dialogue_resource.gd" id="1"]
+[resource]
+script = ExtResource("1")
+dialogue_id = "chapter1_day1_ribbon_talk"
+document = {
+  "id": "chapter1_day1_ribbon_talk",
+  "nameRu": "Лавочник",
+  "startStepId": "line",
+  "steps": [
+    {
+      "id": "line",
+      "type": "dialogue",
+      "nameRu": "Лавочник",
+      "textRu": "Вот твоя лента. Из центра вернись на Жилую улицу. Иди к выходу «К усадьбе Миры» и ищи верстак в саду, рядом с особняком.",
+      "next": "end"
+    },
+    {
+      "id": "end",
+      "type": "end"
+    }
+  ]
+}

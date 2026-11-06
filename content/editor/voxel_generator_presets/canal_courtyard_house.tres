@@ -1,0 +1,41 @@
+[gd_resource type="Resource" format=3]
+
+[ext_resource type="Script" path="res://addons/ember_import/ember_voxel_generator_recipe.gd" id="1"]
+
+[resource]
+resource_name = "Канал · Дом с огородом"
+script = ExtResource("1")
+generator_id = "building"
+parameters = {
+"depth_m": 4.25,
+"entry_style": 1,
+"fence": true,
+"fence_custom": true,
+"fence_front_m": 0.5,
+"fence_left_m": 1.0,
+"fence_rear_m": 1.5,
+"fence_right_m": 0.75,
+"fence_style": 0,
+"floor_height_m": 2.5,
+"gate_style": 1,
+"overhang_m": 0.375,
+"roof_color": Color(0.55, 0.31, 0.26, 1),
+"roof_height_m": 1.5,
+"timber_color": Color(0.36, 0.275, 0.21, 1),
+"wall_color": Color(0.895, 0.81, 0.67, 1),
+"width_m": 4.25,
+"wing_length_m": 1.75,
+"wing_side": 1,
+"wing_width_m": 1.75
+}
+structure = {
+"door": {"side": 0, "t": 0.5},
+"facade_details": [{"kind": "beam", "level": 0, "side": 0, "t": 0.125, "end_t": 0.875}],
+"version": 1,
+"windows": [
+{"level": 0, "side": 0, "t": 0.23},
+{"level": 0, "side": 0, "t": 0.77},
+{"level": 0, "side": 3, "t": 0.5},
+{"level": 0, "side": 5, "t": 0.5}
+]
+}

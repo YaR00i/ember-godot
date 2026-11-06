@@ -54,7 +54,8 @@ func refresh_runtime_binding() -> void:
 	var base_actionable := false
 	match kind:
 		"door":
-			base_actionable = not target_map_id.is_empty()
+			var leaf := swing_leaf()
+			base_actionable = not target_map_id.is_empty() or (leaf != null and is_zero_approx(leaf.rotation.y))
 		"talk":
 			base_actionable = not script_id.is_empty()
 		"shop":
@@ -79,6 +80,10 @@ func refresh_runtime_binding() -> void:
 	set_deferred("monitoring", not Engine.is_editor_hint() and activation_mode == "enter" and actionable)
 	_refresh_quest_marker()
 	set_process(kind == "quest_marker")
+
+
+func swing_leaf() -> AnimatableBody3D:
+	return get_node_or_null("SwingLeaf") as AnimatableBody3D
 
 
 func _process(_delta: float) -> void:

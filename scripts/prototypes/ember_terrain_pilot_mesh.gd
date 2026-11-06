@@ -62,7 +62,25 @@ class OverviewJob extends RefCounted:
 		for z in grid_size.y:
 			for x in grid_size.x:grid.append(height((_bounds.position+Vector2i(x,z)*16).min(_bounds.end)))
 		result={"arrays":arrays,"patches":patches,"water_arrays":water.arrays(),"water_patches":water_patches,"grid":grid,"grid_size":grid_size,"bounds":_bounds}
+		result["index_upload"]=EmberTerrainPilotMesh.prepare_overview_indices(arrays,patches)
 		_source=null;_heights.clear()
+
+static func prepare_overview_indices(arrays:Array,patches:Dictionary)->Dictionary:
+	# Immutable CPU payload; only the render-only overview consumes these indices.
+	var indices:=PackedInt32Array();var chunks:Array[PackedByteArray]=[];var hidden:Array[PackedByteArray]=[]
+	var vertex_count:int=arrays[Mesh.ARRAY_VERTEX].size()
+	var stride:=2 if vertex_count<=65536 else 4
+	for key:Vector2i in patches:
+		var span:Vector2i=patches[key]
+		var chunk:=PackedByteArray();chunk.resize(span.y*stride)
+		for offset in span.y:
+			var index:=span.x+offset;indices.append(index)
+			if stride==2:chunk.encode_u16(offset*stride,index)
+			else:chunk.encode_u32(offset*stride,index)
+		var zero:=PackedByteArray();zero.resize(chunk.size())
+		chunks.append(chunk);hidden.append(zero)
+	var indexed:=arrays.duplicate();indexed[Mesh.ARRAY_INDEX]=indices
+	return {"arrays":indexed,"keys":patches.keys(),"chunks":chunks,"hidden":hidden,"stride":stride}
 
 static func overview_edge(source:TerrainResource,data:Dictionary,covered:Dictionary)->ArrayMesh:
 	var points:=PackedVector3Array();var normals:=PackedVector3Array();var colors:=PackedColorArray();var uv:=PackedVector2Array();var uv2:=PackedVector2Array()
